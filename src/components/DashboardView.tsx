@@ -13,10 +13,21 @@ import {
   RefreshCcw,
   CheckCircle,
   FileText,
-  TrendingDown,
-  Warehouse
+  Warehouse,
+  Package,
+  Send,
+  RotateCcw,
+  ShieldCheck,
+  Activity,
+  Boxes,
+  TrendingUp,
+  PlusCircle,
+  Sparkles,
+  ArrowUpRight,
+  SlidersHorizontal,
+  FileCheck
 } from "lucide-react";
-import { AuditLog, UserRole } from "../types.js";
+import { AuditLog, MaterialRequest, OutboundDispatch, MaterialReturn } from "../types.js";
 
 interface DashboardViewProps {
   summary: {
@@ -25,6 +36,10 @@ interface DashboardViewProps {
     pendingApprovalsCount: number;
     activeDispatchesCount: number;
     totalReceivingCount: number;
+    tug5Count?: number;
+    tug6Count?: number;
+    tug8Count?: number;
+    tug10Count?: number;
     lowStockAlerts: Array<{
       id: string;
       part_name: string;
@@ -33,18 +48,29 @@ interface DashboardViewProps {
       reorder_point: number;
       sku: string;
     }>;
+    pendingMaterialRequests?: MaterialRequest[];
     recentActivities: AuditLog[];
   };
+  materialRequests?: MaterialRequest[];
+  materialRequestsTUG6?: MaterialRequest[];
+  dispatches?: OutboundDispatch[];
+  materialReturns?: MaterialReturn[];
   onQuickOrder?: (partId: string) => void;
   onNavigateTab: (tab: string) => void;
+  onProcessTUG5?: (request: MaterialRequest) => void;
   onRefresh: () => void;
   loading: boolean;
 }
 
 export default function DashboardView({ 
   summary, 
+  materialRequests,
+  materialRequestsTUG6,
+  dispatches,
+  materialReturns,
   onQuickOrder, 
   onNavigateTab, 
+  onProcessTUG5,
   onRefresh, 
   loading 
 }: DashboardViewProps) {
@@ -55,228 +81,54 @@ export default function DashboardView({
   // Storage utilization percentage calculator (simulated based on parts layout)
   const utilPercent = Math.min(95, 45 + (summary.totalParts * 6.5));
 
-  const YEAR_DATA_MAP: Record<number, Array<{
-    name: string;
-    inbound: number;
-    outbound: number;
-    criticalDeliveries: number;
-    efficiency: string;
-    topCategory: string;
-    vesselServiced: string;
-    volumeCargo: string;
-    staffPerformance: string;
-  }>> = {
-    2026: [
-      {
-        name: "JANUARI 2026",
-        inbound: 45,
-        outbound: 25,
-        criticalDeliveries: 2,
-        efficiency: "94.5%",
-        topCategory: "Filtrasi Solar & Oli",
-        vesselServiced: "KMP Bahtera 01, Citra Mulia 2",
-        volumeCargo: "12.4 Tons",
-        staffPerformance: "Optimal"
-      },
-      {
-        name: "FEBRUARI 2026",
-        inbound: 75,
-        outbound: 50,
-        criticalDeliveries: 4,
-        efficiency: "96.2%",
-        topCategory: "Injektor Bahan Bakar Mesin",
-        vesselServiced: "Dharma Kartika, SPB Mahakam",
-        volumeCargo: "18.9 Tons",
-        staffPerformance: "Baik"
-      },
-      {
-        name: "MARET 2026",
-        inbound: 120,
-        outbound: 65,
-        criticalDeliveries: 5,
-        efficiency: "95.8%",
-        topCategory: "Karet Seal & Gasket Hidrolik",
-        vesselServiced: "Bahtera Adhiguna 12, Citra 08",
-        volumeCargo: "24.1 Tons",
-        staffPerformance: "Optimal"
-      },
-      {
-        name: "APRIL 2026",
-        inbound: 150,
-        outbound: 110,
-        criticalDeliveries: 8,
-        efficiency: "98.1%",
-        topCategory: "Bilah Mekanis Turbin Propeler",
-        vesselServiced: "KRI Banda Aceh, Meratus Spirit",
-        volumeCargo: "35.6 Tons",
-        staffPerformance: "Puncak"
-      },
-      {
-        name: "MEI 2026",
-        inbound: 135,
-        outbound: 95,
-        criticalDeliveries: 3,
-        efficiency: "97.4%",
-        topCategory: "Zinc Anode Proteksi Korosi",
-        vesselServiced: "KMP Legundi, Marina Express",
-        volumeCargo: "29.2 Tons",
-        staffPerformance: "Baik"
-      },
-      {
-        name: "JUNI 2026 (YTD)",
-        inbound: 160,
-        outbound: 145,
-        criticalDeliveries: 11,
-        efficiency: "99.2%",
-        topCategory: "Suku Cadang Kemudi Makropuls",
-        vesselServiced: "KRI Nanggala, KMP Port Link V",
-        volumeCargo: "42.8 Tons",
-        staffPerformance: "Istimewa"
-      }
-    ],
-    2025: [
-      {
-        name: "JANUARI 2025",
-        inbound: 38,
-        outbound: 22,
-        criticalDeliveries: 1,
-        efficiency: "92.1%",
-        topCategory: "Fluida Hidrolik & Pelumas",
-        vesselServiced: "Citra Mulia 2, Dharma Kartika",
-        volumeCargo: "10.1 Tons",
-        staffPerformance: "Baik"
-      },
-      {
-        name: "FEBRUARI 2025",
-        inbound: 65,
-        outbound: 45,
-        criticalDeliveries: 3,
-        efficiency: "94.8%",
-        topCategory: "Suku Cadang Generator Listrik",
-        vesselServiced: "SPB Mahakam, Bahtera 12",
-        volumeCargo: "15.4 Tons",
-        staffPerformance: "Optimal"
-      },
-      {
-        name: "MARET 2025",
-        inbound: 110,
-        outbound: 80,
-        criticalDeliveries: 2,
-        efficiency: "96.4%",
-        topCategory: "Paking Gasket & Karet Valve",
-        vesselServiced: "KMP Bahtera 01, KMP Legundi",
-        volumeCargo: "21.6 Tons",
-        staffPerformance: "Optimal"
-      },
-      {
-        name: "APRIL 2025",
-        inbound: 130,
-        outbound: 95,
-        criticalDeliveries: 6,
-        efficiency: "97.0%",
-        topCategory: "Suku Cadang Turbin Utama",
-        vesselServiced: "Citra 08, Meratus Spirit",
-        volumeCargo: "30.2 Tons",
-        staffPerformance: "Puncak"
-      },
-      {
-        name: "MEI 2025",
-        inbound: 125,
-        outbound: 110,
-        criticalDeliveries: 4,
-        efficiency: "95.5%",
-        topCategory: "Sistem Kemudi Kompresor",
-        vesselServiced: "KMP Port Link V, Marina Express",
-        volumeCargo: "27.8 Tons",
-        staffPerformance: "Optimal"
-      },
-      {
-        name: "JUNI 2025",
-        inbound: 140,
-        outbound: 130,
-        criticalDeliveries: 9,
-        efficiency: "98.3%",
-        topCategory: "Pompa Air Laut Pendingin",
-        vesselServiced: "KRI Banda Aceh, KRI Nanggala",
-        volumeCargo: "38.1 Tons",
-        staffPerformance: "Istimewa"
-      }
-    ],
-    2024: [
-      {
-        name: "JANUARI 2024",
-        inbound: 30,
-        outbound: 18,
-        criticalDeliveries: 0,
-        efficiency: "90.4%",
-        topCategory: "Filter Oli Mesin Genset",
-        vesselServiced: "Bahtera 12, Citra Mulia 2",
-        volumeCargo: "8.5 Tons",
-        staffPerformance: "Standard"
-      },
-      {
-        name: "FEBRUARI 2024",
-        inbound: 50,
-        outbound: 35,
-        criticalDeliveries: 2,
-        efficiency: "91.8%",
-        topCategory: "Suku Cadang Pompa Solar",
-        vesselServiced: "SPB Mahakam, Citro Express",
-        volumeCargo: "12.8 Tons",
-        staffPerformance: "Baik"
-      },
-      {
-        name: "MARET 2024",
-        inbound: 95,
-        outbound: 60,
-        criticalDeliveries: 4,
-        efficiency: "93.9%",
-        topCategory: "Kabel Terminal & Listrik",
-        vesselServiced: "Citra 08, KMP Bahtera 01",
-        volumeCargo: "19.3 Tons",
-        staffPerformance: "Optimal"
-      },
-      {
-        name: "APRIL 2024",
-        inbound: 115,
-        outbound: 85,
-        criticalDeliveries: 5,
-        efficiency: "95.2%",
-        topCategory: "Bilah Turbin & Seal Ring",
-        vesselServiced: "KMP Legundi, Meratus Spirit",
-        volumeCargo: "25.0 Tons",
-        staffPerformance: "Optimal"
-      },
-      {
-        name: "MEI 2024",
-        inbound: 105,
-        outbound: 90,
-        criticalDeliveries: 2,
-        efficiency: "94.1%",
-        topCategory: "Zinc Anode Anti Karat",
-        vesselServiced: "Marina Express, Citra Mulia 2",
-        volumeCargo: "23.4 Tons",
-        staffPerformance: "Baik"
-      },
-      {
-        name: "JUNI 2024",
-        inbound: 125,
-        outbound: 115,
-        criticalDeliveries: 7,
-        efficiency: "97.1%",
-        topCategory: "Kompresor Udara Kemudi",
-        vesselServiced: "KRI Banda Aceh, Dharma Kartika",
-        volumeCargo: "32.9 Tons",
-        staffPerformance: "Puncak"
-      }
-    ]
-  };
+  const chartMonthlyData = React.useMemo(() => {
+    const months = [
+      { name: "JANUARI", monthIdx: 0, baseTug5: 24, baseTug8: 18 },
+      { name: "FEBRUARI", monthIdx: 1, baseTug5: 38, baseTug8: 30 },
+      { name: "MARET", monthIdx: 2, baseTug5: 55, baseTug8: 42 },
+      { name: "APRIL", monthIdx: 3, baseTug5: 82, baseTug8: 68 },
+      { name: "MEI", monthIdx: 4, baseTug5: 70, baseTug8: 58 },
+      { name: "JUNI (YTD)", monthIdx: 5, baseTug5: 95, baseTug8: 84 }
+    ];
 
-  const MONTHS_DATA = YEAR_DATA_MAP[selectedYear] || YEAR_DATA_MAP[2026];
+    return months.map(m => {
+      const countTug5 = (materialRequests || []).filter(mr => {
+        if (!mr.request_date) return false;
+        const d = new Date(mr.request_date);
+        return d.getMonth() === m.monthIdx;
+      }).length;
+
+      const countTug8 = (dispatches || []).filter(d => {
+        const dateStr = d.created_at || d.dispatch_number;
+        if (!dateStr) return false;
+        const dateObj = new Date(dateStr);
+        return dateObj.getMonth() === m.monthIdx;
+      }).length;
+
+      const tug5 = countTug5 > 0 ? countTug5 : m.baseTug5;
+      const tug8 = countTug8 > 0 ? countTug8 : m.baseTug8;
+
+      return {
+        name: `${m.name} ${selectedYear}`,
+        tug5,
+        tug8,
+        inbound: tug5,
+        outbound: tug8,
+        criticalDeliveries: Math.max(1, Math.round(tug5 * 0.08)),
+        efficiency: `${Math.min(99.8, 82 + (tug8 / Math.max(1, tug5)) * 17).toFixed(1)}%`,
+        topCategory: m.monthIdx % 2 === 0 ? "Filtrasi Solar & Oli Main Engine" : "Suku Cadang Kemudi & Propeler",
+        vesselServiced: "MV. KARTINI BARUNA, MV. MALAHAYATI BARUNA",
+        volumeCargo: `${(tug8 * 0.28).toFixed(1)} Tons`,
+        staffPerformance: tug8 > 60 ? "Istimewa" : "Optimal"
+      };
+    });
+  }, [materialRequests, dispatches, selectedYear]);
+
+  const MONTHS_DATA = chartMonthlyData;
 
   // Calculate annual highlights YTD
-  const totalInboundYTD = MONTHS_DATA.reduce((acc, curr) => acc + curr.inbound, 0);
-  const totalOutboundYTD = MONTHS_DATA.reduce((acc, curr) => acc + curr.outbound, 0);
+  const totalInboundYTD = MONTHS_DATA.reduce((acc, curr) => acc + curr.tug5, 0);
+  const totalOutboundYTD = MONTHS_DATA.reduce((acc, curr) => acc + curr.tug8, 0);
   const avgEfficiency = (MONTHS_DATA.reduce((acc, curr) => acc + parseFloat(curr.efficiency), 0) / MONTHS_DATA.length).toFixed(1) + "%";
   
   // Find peak cargo month
@@ -286,299 +138,415 @@ export default function DashboardView({
     const val = parseFloat(m.volumeCargo);
     if (val > peakCargoVal) {
       peakCargoVal = val;
-      peakCargoMonthName = m.name.split(" ")[0]; // just month name e.g. "JUNI"
+      peakCargoMonthName = m.name.split(" ")[0];
     }
   });
 
   const xCoords = [100, 220, 340, 460, 580, 660];
 
   return (
-    <div className="flex-1 flex flex-col p-6 gap-6 overflow-y-auto font-sans selection:bg-blue-100">
+    <div className="flex-1 flex flex-col p-6 gap-6 overflow-y-auto font-sans bg-slate-50/50 selection:bg-blue-100">
       
-      {/* Title block with refresh action */}
-      <div className="flex items-center justify-between shrink-0 no-print">
-        <div>
-          <h1 className="text-xl font-bold font-display tracking-tight text-slate-900 uppercase">
-            Maritime Operations Hub Dashboard
-          </h1>
-          <p className="text-xs text-slate-500 mt-1 font-mono uppercase tracking-wider">
-            Consolidated stock levels, vessel requests approval flow, and audit trail ledger
-          </p>
+      {/* Dynamic Executive Banner & Quick Workflow Launcher Hub */}
+      <div className="bg-gradient-to-r from-slate-900 via-slate-850 to-blue-950 text-white rounded-2xl p-6 shadow-xl border border-slate-800 relative overflow-hidden shrink-0">
+        
+        {/* Decorative Background Elements */}
+        <div className="absolute right-0 top-0 bottom-0 w-1/3 bg-[radial-gradient(circle_at_top_right,rgba(59,130,246,0.25),transparent_70%)] pointer-events-none" />
+        <div className="absolute -bottom-10 -right-10 w-48 h-48 bg-blue-600/10 rounded-full blur-2xl pointer-events-none" />
+
+        <div className="relative z-10 flex flex-col lg:flex-row lg:items-center justify-between gap-6">
+          
+          {/* Header Title & Branding */}
+          <div className="flex items-start gap-4">
+            <div className="bg-white p-2 rounded-xl shadow-lg shrink-0 border border-slate-700/50">
+              <img src="/bag-logo.jpg" alt="BAg Logo" className="h-12 w-auto object-contain" />
+            </div>
+            <div>
+              <div className="flex items-center gap-2 mb-1">
+                <span className="bg-blue-500/20 text-blue-400 text-[9px] font-mono px-2 py-0.5 rounded-full font-bold uppercase border border-blue-500/30 flex items-center gap-1">
+                  <Activity className="w-3 h-3 animate-pulse text-blue-400" />
+                  Live Operational WMS HQ
+                </span>
+                <span className="bg-emerald-500/20 text-emerald-400 text-[9px] font-mono px-2 py-0.5 rounded-full font-bold uppercase border border-emerald-500/30 flex items-center gap-1">
+                  <ShieldCheck className="w-3 h-3 text-emerald-400" />
+                  Synced Ledger Active
+                </span>
+              </div>
+              <h1 className="text-xl md:text-2xl font-black font-display tracking-tight text-white uppercase">
+                Executive Operations Control Dashboard
+              </h1>
+              <p className="text-xs text-slate-300 font-sans mt-0.5 max-w-2xl leading-relaxed">
+                PT. Pelayaran Bahtera Adhiguna — Pusat Monitoring Mutasi Suku Cadang, Pengeluaran (TUG 8), Permintaan (TUG 5), dan Pengembalian (TUG 10).
+              </p>
+            </div>
+          </div>
+
+          {/* Refresh & Quick Launcher Action Toolbar */}
+          <div className="flex flex-wrap items-center gap-2.5 shrink-0 no-print">
+            <button 
+              onClick={() => onNavigateTab("material-requests")}
+              className="flex items-center gap-1.5 bg-blue-600 hover:bg-blue-500 active:bg-blue-700 text-white font-mono font-bold text-xs uppercase px-3.5 py-2.5 rounded-xl shadow-md hover:shadow-blue-500/20 transition-all cursor-pointer"
+            >
+              <PlusCircle className="w-4 h-4 text-white" />
+              <span>Form TUG 5</span>
+            </button>
+
+            <button 
+              onClick={() => onNavigateTab("dispatch")}
+              className="flex items-center gap-1.5 bg-slate-800 hover:bg-slate-700 text-white font-mono font-bold text-xs uppercase px-3.5 py-2.5 rounded-xl border border-slate-700 transition-all cursor-pointer"
+            >
+              <Send className="w-3.5 h-3.5 text-blue-400" />
+              <span>TUG 8 Dispatch</span>
+            </button>
+
+            <button 
+              onClick={() => onNavigateTab("material-returns")}
+              className="flex items-center gap-1.5 bg-slate-800 hover:bg-slate-700 text-white font-mono font-bold text-xs uppercase px-3.5 py-2.5 rounded-xl border border-slate-700 transition-all cursor-pointer"
+            >
+              <RotateCcw className="w-3.5 h-3.5 text-indigo-400" />
+              <span>TUG 10 Return</span>
+            </button>
+
+            <button 
+              onClick={onRefresh}
+              disabled={loading}
+              className="flex items-center gap-1.5 bg-slate-900 hover:bg-black text-slate-200 disabled:opacity-50 font-mono font-bold text-xs uppercase px-3.5 py-2.5 rounded-xl border border-slate-800 transition-all cursor-pointer shadow-sm"
+              title="Sinkronisasi ulang seluruh status database"
+            >
+              <RefreshCcw className={`w-3.5 h-3.5 text-emerald-400 ${loading ? 'animate-spin' : ''}`} />
+              <span>Sync</span>
+            </button>
+          </div>
+
         </div>
-        <button 
-          onClick={onRefresh}
-          disabled={loading}
-          className="flex items-center gap-1.5 bg-slate-800 hover:bg-slate-700 disabled:opacity-50 text-white font-bold uppercase text-[10px] px-3 py-2 rounded transition-colors self-center shadow-xs cursor-pointer font-mono"
-        >
-          <RefreshCcw className={`w-3.5 h-3.5 ${loading ? 'animate-spin' : ''}`} />
-          <span>Sync Realtime States</span>
-        </button>
       </div>
 
-      {/* Top Professional ERP Stats Cards */}
-      <section className="grid grid-cols-1 md:grid-cols-4 gap-4 shrink-0">
+      {/* Top 5 Executive Metric Cards */}
+      <section className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-4 shrink-0">
         
+        {/* Card 1: Total Master SKU */}
         <div 
           onClick={() => onNavigateTab("master-parts")}
-          className="bg-white border border-slate-200 p-4 rounded-md shadow-xs hover:border-blue-400 transition-all cursor-pointer group"
+          className="bg-white border border-slate-200/90 hover:border-blue-500 p-4 rounded-xl shadow-xs hover:shadow-md transition-all duration-200 cursor-pointer group flex flex-col justify-between relative overflow-hidden border-l-4 border-l-blue-500"
         >
-          <div className="flex justify-between items-start mb-2">
-            <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest font-mono">
-              Total SKU Managed
-            </p>
-            <Layers className="w-4 h-4 text-slate-400 group-hover:text-blue-500 transition-colors" />
+          <div className="absolute top-0 right-0 w-24 h-24 bg-blue-500/5 rounded-bl-full pointer-events-none group-hover:bg-blue-500/10 transition-colors" />
+          <div>
+            <div className="flex justify-between items-start mb-2">
+              <span className="text-[10px] font-extrabold text-slate-400 uppercase tracking-widest font-mono">
+                Total Master SKU
+              </span>
+              <div className="p-2 bg-blue-50 text-blue-600 rounded-lg group-hover:scale-110 transition-transform">
+                <Boxes className="w-4 h-4" />
+              </div>
+            </div>
+            <div className="flex items-baseline gap-2">
+              <span className="text-2xl font-mono font-black text-slate-900">
+                {summary.totalParts}
+              </span>
+              <span className="text-[10px] text-emerald-600 font-bold font-mono">
+                Catalog Active
+              </span>
+            </div>
           </div>
-          <div className="flex items-end gap-2">
-            <span className="text-2xl font-mono font-bold tracking-tight text-slate-800">
-              {summary.totalParts}
-            </span>
-            <span className="text-xs text-green-600 mb-1 font-medium font-mono leading-none">
-              In Storage
-            </span>
+          <div className="mt-3 pt-2.5 border-t border-slate-100 flex items-center justify-between text-[10px] font-mono text-slate-400 font-medium">
+            <span>Katalog Suku Cadang</span>
+            <ArrowUpRight className="w-3.5 h-3.5 text-blue-500 group-hover:translate-x-0.5 transition-transform" />
           </div>
         </div>
 
-        <div 
-          onClick={() => onNavigateTab("master-parts")}
-          className={`bg-white border border-slate-200 p-4 rounded-md shadow-xs hover:border-red-400 transition-all cursor-pointer group border-l-4 ${
-            summary.lowStockParts > 0 ? "border-l-red-500" : "border-l-slate-350"
-          }`}
-        >
-          <div className="flex justify-between items-start mb-2">
-            <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest font-mono">
-              Critical Low Stock
-            </p>
-            <AlertTriangle className={`w-4 h-4 ${summary.lowStockParts > 0 ? "text-red-500" : "text-slate-400"}`} />
-          </div>
-          <div className="flex items-end gap-2">
-            <span className={`text-2xl font-mono font-bold tracking-tight ${summary.lowStockParts > 0 ? 'text-red-600' : 'text-slate-800'}`}>
-              {summary.lowStockParts}
-            </span>
-            <span className="text-xs text-slate-400 mb-1 font-mono leading-none">
-              Requires Inbound PO
-            </span>
-          </div>
-        </div>
-
+        {/* Card 2: TUG 5 */}
         <div 
           onClick={() => onNavigateTab("material-requests")}
-          className="bg-white border border-slate-200 p-4 rounded-md shadow-xs hover:border-amber-400 transition-all cursor-pointer group border-l-4 border-l-amber-400"
+          className="bg-white border border-slate-200/90 hover:border-amber-500 p-4 rounded-xl shadow-xs hover:shadow-md transition-all duration-200 cursor-pointer group flex flex-col justify-between relative overflow-hidden border-l-4 border-l-amber-500"
         >
-          <div className="flex justify-between items-start mb-2">
-            <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest font-mono">
-              Pending Requisitions
-            </p>
-            <Clock className="w-4 h-4 text-amber-500" />
+          <div>
+            <div className="flex justify-between items-start mb-2">
+              <span className="text-[10px] font-extrabold text-slate-400 uppercase tracking-widest font-mono">
+                TUG 5 Permintaan
+              </span>
+              <div className="p-2 bg-amber-50 text-amber-600 rounded-lg group-hover:scale-110 transition-transform">
+                <FileText className="w-4 h-4" />
+              </div>
+            </div>
+            <div className="flex items-baseline gap-2">
+              <span className="text-2xl font-mono font-black text-slate-900">
+                {summary.tug5Count ?? (materialRequests ? materialRequests.length : summary.pendingApprovalsCount)}
+              </span>
+              <span className="text-[10px] text-amber-600 font-bold font-mono">
+                Dokumen Permintaan
+              </span>
+            </div>
           </div>
-          <div className="flex items-end gap-2">
-            <span className="text-2xl font-mono font-bold tracking-tight text-slate-800">
-              {summary.pendingApprovalsCount}
-            </span>
-            <span className="text-[10px] text-zinc-400 mb-1 truncate max-w-[130px] font-mono leading-none">
-              Vessel Requisitions
-            </span>
+          <div className="mt-3 pt-2.5 border-t border-slate-100 flex items-center justify-between text-[10px] font-mono text-slate-400 font-medium">
+            <span>Permintaan Material</span>
+            <ArrowUpRight className="w-3.5 h-3.5 text-amber-500 group-hover:translate-x-0.5 transition-transform" />
           </div>
         </div>
 
-        <div className="bg-white border border-slate-200 p-5 rounded-md shadow-xs flex flex-col justify-between">
-          <div className="flex justify-between items-start mb-1">
-            <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest font-mono">
-              Depot Utilization
-            </p>
-            <Warehouse className="w-4 h-4 text-slate-400" />
-          </div>
-          <div className="flex items-center gap-2">
-            <span className="text-2xl font-mono font-bold tracking-tight text-slate-800">
-              {utilPercent.toFixed(1)}%
-            </span>
-            <div className="flex-1 bg-slate-100 rounded-full h-2 overflow-hidden max-w-[80px]">
-              <div 
-                className={`h-full rounded-full transition-all duration-500 ${utilPercent > 80 ? 'bg-amber-500' : 'bg-blue-600'}`}
-                style={{ width: `${utilPercent}%` }}
-              ></div>
+        {/* Card 3: TUG 6 */}
+        <div 
+          onClick={() => onNavigateTab("material-requests-tug6")}
+          className="bg-white border border-slate-200/90 hover:border-indigo-500 p-4 rounded-xl shadow-xs hover:shadow-md transition-all duration-200 cursor-pointer group flex flex-col justify-between relative overflow-hidden border-l-4 border-l-indigo-500"
+        >
+          <div>
+            <div className="flex justify-between items-start mb-2">
+              <span className="text-[10px] font-extrabold text-slate-400 uppercase tracking-widest font-mono">
+                TUG 6 Requisition
+              </span>
+              <div className="p-2 bg-indigo-50 text-indigo-600 rounded-lg group-hover:scale-110 transition-transform">
+                <FileCheck className="w-4 h-4" />
+              </div>
             </div>
+            <div className="flex items-baseline gap-2">
+              <span className="text-2xl font-mono font-black text-slate-900">
+                {summary.tug6Count ?? (materialRequestsTUG6 ? materialRequestsTUG6.length : 0)}
+              </span>
+              <span className="text-[10px] text-indigo-600 font-bold font-mono">
+                Bon Permintaan
+              </span>
+            </div>
+          </div>
+          <div className="mt-3 pt-2.5 border-t border-slate-100 flex items-center justify-between text-[10px] font-mono text-slate-400 font-medium">
+            <span>Bon Permintaan Lapangan</span>
+            <ArrowUpRight className="w-3.5 h-3.5 text-indigo-500 group-hover:translate-x-0.5 transition-transform" />
+          </div>
+        </div>
+
+        {/* Card 4: TUG 8 */}
+        <div 
+          onClick={() => onNavigateTab("dispatch")}
+          className="bg-white border border-slate-200/90 hover:border-blue-600 p-4 rounded-xl shadow-xs hover:shadow-md transition-all duration-200 cursor-pointer group flex flex-col justify-between relative overflow-hidden border-l-4 border-l-blue-600"
+        >
+          <div>
+            <div className="flex justify-between items-start mb-2">
+              <span className="text-[10px] font-extrabold text-slate-400 uppercase tracking-widest font-mono">
+                TUG 8 Dispatch
+              </span>
+              <div className="p-2 bg-blue-50 text-blue-600 rounded-lg group-hover:scale-110 transition-transform">
+                <Send className="w-4 h-4" />
+              </div>
+            </div>
+            <div className="flex items-baseline gap-2">
+              <span className="text-2xl font-mono font-black text-slate-900">
+                {summary.tug8Count ?? (dispatches ? dispatches.length : summary.activeDispatchesCount)}
+              </span>
+              <span className="text-[10px] text-blue-600 font-bold font-mono">
+                Outbound Shipments
+              </span>
+            </div>
+          </div>
+          <div className="mt-3 pt-2.5 border-t border-slate-100 flex items-center justify-between text-[10px] font-mono text-slate-400 font-medium">
+            <span>Pengeluaran Armada</span>
+            <ArrowUpRight className="w-3.5 h-3.5 text-blue-600 group-hover:translate-x-0.5 transition-transform" />
+          </div>
+        </div>
+
+        {/* Card 5: TUG 10 */}
+        <div 
+          onClick={() => onNavigateTab("material-returns")}
+          className="bg-white border border-slate-200/90 hover:border-emerald-600 p-4 rounded-xl shadow-xs hover:shadow-md transition-all duration-200 cursor-pointer group flex flex-col justify-between relative overflow-hidden border-l-4 border-l-emerald-600"
+        >
+          <div>
+            <div className="flex justify-between items-start mb-2">
+              <span className="text-[10px] font-extrabold text-slate-400 uppercase tracking-widest font-mono">
+                TUG 10 Pengembalian
+              </span>
+              <div className="p-2 bg-emerald-50 text-emerald-600 rounded-lg group-hover:scale-110 transition-transform">
+                <RotateCcw className="w-4 h-4" />
+              </div>
+            </div>
+            <div className="flex items-baseline gap-2">
+              <span className="text-2xl font-mono font-black text-slate-900">
+                {summary.tug10Count ?? (materialReturns ? materialReturns.length : 0)}
+              </span>
+              <span className="text-[10px] text-emerald-600 font-bold font-mono">
+                Retur Barang
+              </span>
+            </div>
+          </div>
+          <div className="mt-3 pt-2.5 border-t border-slate-100 flex items-center justify-between text-[10px] font-mono text-slate-400 font-medium">
+            <span>Pengembalian Suku Cadang</span>
+            <ArrowUpRight className="w-3.5 h-3.5 text-emerald-600 group-hover:translate-x-0.5 transition-transform" />
           </div>
         </div>
 
       </section>
 
       {/* SVG Analytical Flow Chart Comparison (Receiving vs Dispatch) */}
-      <section className="bg-white border border-slate-200 rounded-md p-5 shadow-xs flex flex-col gap-4 shrink-0 transition-all">
-        <div className="flex flex-col md:flex-row items-start md:items-center justify-between gap-2 border-b border-slate-100 pb-3">
+      <section className="bg-white border border-slate-200/90 rounded-2xl p-6 shadow-sm flex flex-col gap-5 shrink-0">
+        
+        {/* Section Header */}
+        <div className="flex flex-col md:flex-row items-start md:items-center justify-between gap-3 border-b border-slate-100 pb-4">
           <div>
-            <h3 className="text-xs font-black font-display uppercase tracking-wider text-slate-900 flex items-center gap-2">
-              <span className="w-2 h-2 rounded-full bg-blue-600 animate-ping"></span>
-              Cargo Flow Activity Analysis
+            <h3 className="text-sm font-black font-display uppercase tracking-wider text-slate-900 flex items-center gap-2">
+              <span className="w-2.5 h-2.5 rounded-full bg-blue-600 animate-ping" />
+              Analisis Tren Permintaan (TUG 5) vs Pengeluaran Armada (TUG 8)
             </h3>
-            <p className="text-[10px] text-slate-500 font-mono">
-              Inbound receipts (PO check receipts) vs outbound dispatched vessel supplies &bull; Click/hover points for full rincian detil
+            <p className="text-xs text-slate-500 font-mono mt-0.5">
+              Grafik perbandingan volume permintaan barang (TUG 5) vs pengeluaran armada (TUG 8) per bulan.
             </p>
           </div>
-          <div className="flex items-center gap-3 text-[10.5px] font-mono text-slate-600 uppercase font-semibold">
-            <span className="flex items-center gap-1.5 bg-blue-50 px-2 py-0.5 rounded border border-blue-100">
-              <span className="w-2.5 h-1.5 bg-blue-600 rounded"></span> Inbound Receipts
+          <div className="flex items-center gap-3 text-xs font-mono text-slate-600 uppercase font-semibold">
+            <span className="flex items-center gap-1.5 bg-blue-50 text-blue-700 px-3 py-1 rounded-lg border border-blue-200/60 font-bold">
+              <span className="w-2.5 h-2.5 bg-blue-600 rounded-sm" /> Permintaan (TUG 5)
             </span>
-            <span className="flex items-center gap-1.5 bg-amber-50 px-2 py-0.5 rounded border border-amber-100">
-              <span className="w-2.5 h-1.5 bg-amber-500 rounded"></span> Outbound Dispatched
+            <span className="flex items-center gap-1.5 bg-amber-50 text-amber-700 px-3 py-1 rounded-lg border border-amber-200/60 font-bold">
+              <span className="w-2.5 h-2.5 bg-amber-500 rounded-sm" /> Pengeluaran (TUG 8)
             </span>
           </div>
         </div>
 
-        {/* Modern Interactive Year Filter & Compact Summary Highlights */}
-        <div className="bg-slate-50/80 border border-slate-150 rounded-lg p-3.5 flex flex-col md:flex-row gap-4 justify-between items-center shrink-0">
+        {/* Year Filter & Aggregated KPI Bar */}
+        <div className="bg-slate-50 border border-slate-200/80 rounded-xl p-4 flex flex-col md:flex-row gap-4 justify-between items-center shrink-0">
           
-          {/* Year selector dropdown */}
-          <div className="flex flex-col gap-1.5 shrink-0 self-start md:self-center w-full md:w-auto">
-            <label className="text-[9px] uppercase font-bold text-slate-450 font-mono tracking-widest block">
-              PILIH TAHUN ANALISIS:
+          {/* Year Selector */}
+          <div className="flex flex-col gap-1 shrink-0 self-start md:self-center w-full md:w-auto">
+            <label className="text-[10px] font-extrabold text-slate-500 uppercase font-mono tracking-widest block">
+              Pilih Tahun Analisis:
             </label>
-            <div className="relative">
-              <select
-                value={selectedYear}
-                onChange={(e) => {
-                  setSelectedYear(Number(e.target.value));
-                  setSelectedMonth(5); // Reset to latest month on change
-                }}
-                className="w-full md:w-36 bg-white border border-slate-200/80 hover:border-slate-350 px-3.5 py-1.5 rounded-lg text-xs font-mono font-bold text-slate-700 shadow-sm hover:shadow transition-all duration-150 cursor-pointer focus:outline-none focus:ring-1 focus:ring-blue-500 appearance-none pr-8"
-              >
-                <option value={2026}>📅 TAHUN 2026</option>
-                <option value={2025}>📅 TAHUN 2025</option>
-                <option value={2024}>📅 TAHUN 2024</option>
-              </select>
-              <div className="pointer-events-none absolute inset-y-0 right-0 flex items-center px-2 text-slate-500">
-                <svg className="fill-current h-4 w-4" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20">
-                  <path d="M9.293 12.95l.707.707L15.657 8l-1.414-1.414L10 10.828 5.757 6.586 4.343 8z"/>
-                </svg>
-              </div>
-            </div>
+            <select
+              value={selectedYear}
+              onChange={(e) => {
+                setSelectedYear(Number(e.target.value));
+                setSelectedMonth(5);
+              }}
+              className="w-full md:w-40 bg-white border border-slate-250 px-3.5 py-2 rounded-xl text-xs font-mono font-bold text-slate-800 shadow-xs focus:outline-none focus:ring-2 focus:ring-blue-500/20 cursor-pointer"
+            >
+              <option value={2026}>📅 TAHUN 2026</option>
+              <option value={2025}>📅 TAHUN 2025</option>
+              <option value={2024}>📅 TAHUN 2024</option>
+            </select>
           </div>
 
-          {/* Compact Year aggregates */}
-          <div className="flex-1 w-full grid grid-cols-2 sm:grid-cols-4 gap-3 bg-white border border-slate-150 p-2.5 rounded-lg shadow-2xs">
+          {/* Annual Aggregate Highlights */}
+          <div className="flex-1 w-full grid grid-cols-2 sm:grid-cols-4 gap-3 bg-white border border-slate-200/80 p-3 rounded-xl shadow-xs">
             <div className="flex flex-col justify-center">
-              <span className="text-[8px] font-mono uppercase font-black text-slate-400">Inbound YTD ({selectedYear})</span>
-              <span className="text-[13px] font-mono font-black text-blue-600 mt-0.5">{totalInboundYTD} <span className="text-[9px] text-slate-400 font-normal">PCS</span></span>
+              <span className="text-[9px] font-mono uppercase font-black text-slate-400">Total Permintaan TUG 5</span>
+              <span className="text-sm font-mono font-black text-blue-600 mt-0.5">{totalInboundYTD} <span className="text-[10px] text-slate-400 font-normal">Form</span></span>
             </div>
             
             <div className="flex flex-col justify-center border-l border-slate-150 pl-3">
-              <span className="text-[8px] font-mono uppercase font-black text-slate-400">Outbound YTD ({selectedYear})</span>
-              <span className="text-[13px] font-mono font-black text-amber-500 mt-0.5">{totalOutboundYTD} <span className="text-[9px] text-slate-400 font-normal">PCS</span></span>
+              <span className="text-[9px] font-mono uppercase font-black text-slate-400">Total Dispatch TUG 8</span>
+              <span className="text-sm font-mono font-black text-amber-500 mt-0.5">{totalOutboundYTD} <span className="text-[10px] text-slate-400 font-normal">Pengiriman</span></span>
             </div>
 
             <div className="flex flex-col justify-center border-l border-slate-150 pl-3">
-              <span className="text-[8px] font-mono uppercase font-black text-slate-400">Rasio Efisiensi</span>
-              <span className="text-[13px] font-mono font-black text-emerald-600 mt-0.5">{avgEfficiency}</span>
+              <span className="text-[9px] font-mono uppercase font-black text-slate-400">Rasio Pemenuhan</span>
+              <span className="text-sm font-mono font-black text-emerald-600 mt-0.5">{avgEfficiency}</span>
             </div>
 
             <div className="flex flex-col justify-center border-l border-slate-150 pl-3">
-              <span className="text-[8px] font-mono uppercase font-black text-slate-400">Bulan Puncak</span>
-              <span className="text-[13px] font-mono font-black text-rose-600 mt-0.5 uppercase">{peakCargoMonthName}</span>
+              <span className="text-[9px] font-mono uppercase font-black text-slate-400">Bulan Puncak</span>
+              <span className="text-sm font-mono font-black text-rose-600 mt-0.5 uppercase">{peakCargoMonthName}</span>
             </div>
           </div>
 
         </div>
 
-        <div className="grid grid-cols-1 lg:grid-cols-12 gap-5 items-stretch">
+        {/* Chart & Detailed Sidebar Grid */}
+        <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 items-stretch">
           
-          {/* Main Chart (Left Side) */}
+          {/* Main SVG Vector Graph Container */}
           <div className="lg:col-span-8 flex flex-col justify-between">
-            <div className="flex justify-between items-center bg-slate-100 p-2 px-3 rounded text-[10px] font-mono mb-2">
+            <div className="flex justify-between items-center bg-blue-50/60 border border-blue-100 p-2.5 px-3.5 rounded-xl text-xs font-mono mb-3">
               <span>
-                Bulan Terpilih: <strong className="text-blue-700 font-bold">{MONTHS_DATA[selectedMonth].name}</strong>
+                Bulan Terpilih: <strong className="text-blue-800 font-bold">{MONTHS_DATA[selectedMonth].name}</strong>
               </span>
               <span>
-                Rasio Penyaluran: <strong className="text-amber-600">{(MONTHS_DATA[selectedMonth].outbound / MONTHS_DATA[selectedMonth].inbound * 100).toFixed(0)}%</strong> dari total masuk
+                Rasio Pemenuhan: <strong className="text-amber-600 font-bold">{(MONTHS_DATA[selectedMonth].tug8 / Math.max(1, MONTHS_DATA[selectedMonth].tug5) * 100).toFixed(0)}%</strong> dari total permintaan
               </span>
             </div>
 
-            {/* Robust custom vector interactive graph container */}
-            <div className="h-44 w-full bg-slate-50 border border-slate-105 rounded p-2 flex items-center justify-center relative font-mono text-[9px] text-slate-400">
-              <svg className="w-full h-full" viewBox="0 0 700 150" fill="none">
+            {/* Custom Vector Graph (Heightened to fill space) */}
+            <div className="h-[340px] md:h-[380px] w-full bg-slate-50/80 border border-slate-200 rounded-xl p-4 flex items-center justify-center relative font-mono text-[9.5px] text-slate-400 shadow-inner">
+              <svg className="w-full h-full" viewBox="0 0 700 220" fill="none">
                 <defs>
                   <linearGradient id="blue-grad" x1="0" y1="0" x2="0" y2="1">
-                    <stop offset="0%" stopColor="#2563eb" stopOpacity="0.25" />
+                    <stop offset="0%" stopColor="#2563eb" stopOpacity="0.35" />
                     <stop offset="100%" stopColor="#2563eb" stopOpacity="0.01" />
                   </linearGradient>
                   <linearGradient id="amber-grad" x1="0" y1="0" x2="0" y2="1">
-                    <stop offset="0%" stopColor="#f59e0b" stopOpacity="0.20" />
+                    <stop offset="0%" stopColor="#f59e0b" stopOpacity="0.30" />
                     <stop offset="100%" stopColor="#f59e0b" stopOpacity="0.01" />
                   </linearGradient>
                 </defs>
 
                 {/* Horizontal reference grid metrics */}
-                <line x1="50" y1="20" x2="680" y2="20" stroke="#e2e8f0" strokeDasharray="3,3" />
-                <line x1="50" y1="60" x2="680" y2="60" stroke="#e2e8f0" strokeDasharray="3,3" />
-                <line x1="50" y1="100" x2="680" y2="100" stroke="#e2e8f0" strokeDasharray="3,3" />
-                <line x1="50" y1="130" x2="680" y2="130" stroke="#cbd5e1" strokeWidth="1.5" />
+                <line x1="50" y1="25" x2="680" y2="25" stroke="#e2e8f0" strokeDasharray="3,3" />
+                <line x1="50" y1="70" x2="680" y2="70" stroke="#e2e8f0" strokeDasharray="3,3" />
+                <line x1="50" y1="115" x2="680" y2="115" stroke="#e2e8f0" strokeDasharray="3,3" />
+                <line x1="50" y1="160" x2="680" y2="160" stroke="#e2e8f0" strokeDasharray="3,3" />
+                <line x1="50" y1="195" x2="680" y2="195" stroke="#cbd5e1" strokeWidth="1.5" />
 
                 {/* Y Axis markings */}
-                <text x="12" y="24" fill="#64748b" fontWeight="bold">160 unt</text>
-                <text x="12" y="64" fill="#64748b">100 unt</text>
-                <text x="12" y="104" fill="#64748b">50 unt</text>
-                <text x="12" y="134" fill="#64748b">0 unt</text>
+                <text x="10" y="29" fill="#64748b" fontWeight="bold">160 unit</text>
+                <text x="10" y="74" fill="#64748b">120 unit</text>
+                <text x="10" y="119" fill="#64748b">75 unit</text>
+                <text x="10" y="164" fill="#64748b">30 unit</text>
+                <text x="10" y="199" fill="#64748b">0 unit</text>
 
-                {/* High tech tracking guide line at active state */}
+                {/* Active Tracking Line */}
                 <line 
                   x1={xCoords[selectedMonth]} 
                   y1="15" 
                   x2={xCoords[selectedMonth]} 
-                  y2="130" 
-                  stroke="#3b82f6" 
-                  strokeWidth="1.2" 
+                  y2="195" 
+                  stroke="#2563eb" 
+                  strokeWidth="1.5" 
                   strokeDasharray="4,4" 
                 />
                 
-                {/* Subtle backlit slice focus card backdrop */}
+                {/* Active Selection Card Highlight Backdrop */}
                 <rect
-                  x={xCoords[selectedMonth] - 22}
+                  x={xCoords[selectedMonth] - 24}
                   y="15"
-                  width="44"
-                  height="115"
+                  width="48"
+                  height="180"
                   fill="#eff6ff"
-                  opacity="0.6"
-                  rx="4"
+                  opacity="0.85"
+                  rx="8"
                 />
 
                 {/* Shaded Area Paths */}
                 <path
-                  d={`M 100 130 L 100 ${130 - (MONTHS_DATA[0].inbound / 160) * 110} L 220 ${130 - (MONTHS_DATA[1].inbound / 160) * 110} L 340 ${130 - (MONTHS_DATA[2].inbound / 160) * 110} L 460 ${130 - (MONTHS_DATA[3].inbound / 160) * 110} L 580 ${130 - (MONTHS_DATA[4].inbound / 160) * 110} L 660 ${130 - (MONTHS_DATA[5].inbound / 160) * 110} L 660 130 Z`}
+                  d={`M 100 195 L 100 ${195 - (MONTHS_DATA[0].inbound / 160) * 165} L 220 ${195 - (MONTHS_DATA[1].inbound / 160) * 165} L 340 ${195 - (MONTHS_DATA[2].inbound / 160) * 165} L 460 ${195 - (MONTHS_DATA[3].inbound / 160) * 165} L 580 ${195 - (MONTHS_DATA[4].inbound / 160) * 165} L 660 ${195 - (MONTHS_DATA[5].inbound / 160) * 165} L 660 195 Z`}
                   fill="url(#blue-grad)"
                 />
                 <path
-                  d={`M 100 130 L 100 ${130 - (MONTHS_DATA[0].outbound / 160) * 110} L 220 ${130 - (MONTHS_DATA[1].outbound / 160) * 110} L 340 ${130 - (MONTHS_DATA[2].outbound / 160) * 110} L 460 ${130 - (MONTHS_DATA[3].outbound / 160) * 110} L 580 ${130 - (MONTHS_DATA[4].outbound / 160) * 110} L 660 ${130 - (MONTHS_DATA[5].outbound / 160) * 110} L 660 130 Z`}
+                  d={`M 100 195 L 100 ${195 - (MONTHS_DATA[0].outbound / 160) * 165} L 220 ${195 - (MONTHS_DATA[1].outbound / 160) * 165} L 340 ${195 - (MONTHS_DATA[2].outbound / 160) * 165} L 460 ${195 - (MONTHS_DATA[3].outbound / 160) * 165} L 580 ${195 - (MONTHS_DATA[4].outbound / 160) * 165} L 660 ${195 - (MONTHS_DATA[5].outbound / 160) * 165} L 660 195 Z`}
                   fill="url(#amber-grad)"
                 />
 
                 {/* Primary Data Line Paths */}
                 <path 
-                  d={`M 100 ${130 - (MONTHS_DATA[0].inbound / 160) * 110} L 220 ${130 - (MONTHS_DATA[1].inbound / 160) * 110} L 340 ${130 - (MONTHS_DATA[2].inbound / 160) * 110} L 460 ${130 - (MONTHS_DATA[3].inbound / 160) * 110} L 580 ${130 - (MONTHS_DATA[4].inbound / 160) * 110} L 660 ${130 - (MONTHS_DATA[5].inbound / 160) * 110}`} 
+                  d={`M 100 ${195 - (MONTHS_DATA[0].inbound / 160) * 165} L 220 ${195 - (MONTHS_DATA[1].inbound / 160) * 165} L 340 ${195 - (MONTHS_DATA[2].inbound / 160) * 165} L 460 ${195 - (MONTHS_DATA[3].inbound / 160) * 165} L 580 ${195 - (MONTHS_DATA[4].inbound / 160) * 165} L 660 ${195 - (MONTHS_DATA[5].inbound / 160) * 165}`} 
                   stroke="#2563eb" 
-                  strokeWidth="2.8" 
+                  strokeWidth="3.5" 
                   strokeLinecap="round" 
                   strokeLinejoin="round" 
                 />
                 <path 
-                  d={`M 100 ${130 - (MONTHS_DATA[0].outbound / 160) * 110} L 220 ${130 - (MONTHS_DATA[1].outbound / 160) * 110} L 340 ${130 - (MONTHS_DATA[2].outbound / 160) * 110} L 460 ${130 - (MONTHS_DATA[3].outbound / 160) * 110} L 580 ${130 - (MONTHS_DATA[4].outbound / 160) * 110} L 660 ${130 - (MONTHS_DATA[5].outbound / 160) * 110}`} 
+                  d={`M 100 ${195 - (MONTHS_DATA[0].outbound / 160) * 165} L 220 ${195 - (MONTHS_DATA[1].outbound / 160) * 165} L 340 ${195 - (MONTHS_DATA[2].outbound / 160) * 165} L 460 ${195 - (MONTHS_DATA[3].outbound / 160) * 165} L 580 ${195 - (MONTHS_DATA[4].outbound / 160) * 165} L 660 ${195 - (MONTHS_DATA[5].outbound / 160) * 165}`} 
                   stroke="#f59e0b" 
-                  strokeWidth="2.8" 
+                  strokeWidth="3.5" 
                   strokeLinecap="round" 
                   strokeLinejoin="round" 
                 />
 
                 {/* Blue Metric Anchors */}
                 {xCoords.map((x, idx) => {
-                  const yVal = 130 - (MONTHS_DATA[idx].inbound / 160) * 110;
+                  const yVal = 195 - (MONTHS_DATA[idx].inbound / 160) * 165;
                   const active = selectedMonth === idx;
                   return (
-                    <g key={`banchor-${idx}`} className="transition-all">
-                      {active && <circle cx={x} cy={yVal} r="8" fill="#2563eb" opacity="0.35" className="animate-ping" />}
+                    <g key={`banchor-${idx}`}>
+                      {active && <circle cx={x} cy={yVal} r="10" fill="#2563eb" opacity="0.3" className="animate-ping" />}
                       <circle 
                         cx={x} 
                         cy={yVal} 
-                        r={active ? "6.5" : "4.5"} 
+                        r={active ? "7" : "5"} 
                         fill="#2563eb" 
                         stroke="#ffffff" 
-                        strokeWidth="1.5" 
+                        strokeWidth="2" 
                       />
                     </g>
                   );
@@ -586,47 +554,47 @@ export default function DashboardView({
 
                 {/* Amber Metric Anchors */}
                 {xCoords.map((x, idx) => {
-                  const yVal = 130 - (MONTHS_DATA[idx].outbound / 160) * 110;
+                  const yVal = 195 - (MONTHS_DATA[idx].outbound / 160) * 165;
                   const active = selectedMonth === idx;
                   return (
-                    <g key={`aanchor-${idx}`} className="transition-all">
-                      {active && <circle cx={x} cy={yVal} r="8" fill="#f59e0b" opacity="0.35" className="animate-ping" />}
+                    <g key={`aanchor-${idx}`}>
+                      {active && <circle cx={x} cy={yVal} r="10" fill="#f59e0b" opacity="0.3" className="animate-ping" />}
                       <circle 
                         cx={x} 
                         cy={yVal} 
-                        r={active ? "6.5" : "4.5"} 
+                        r={active ? "7" : "5"} 
                         fill="#f59e0b" 
                         stroke="#ffffff" 
-                        strokeWidth="1.5" 
+                        strokeWidth="2" 
                       />
                     </g>
                   );
                 })}
 
-                {/* Interactive Click/Hover Hitzones columns */}
+                {/* Interactive Hitzones */}
                 {xCoords.map((x, idx) => (
                   <rect
                     key={`hit-${idx}`}
-                    x={x - 25}
+                    x={x - 30}
                     y="10"
-                    width="50"
-                    height="120"
+                    width="60"
+                    height="190"
                     fill="transparent"
-                    className="cursor-pointer hover:fill-slate-900/5 rounded transition-all"
+                    className="cursor-pointer hover:fill-slate-900/5 transition-all"
                     onClick={() => setSelectedMonth(idx)}
                     onMouseEnter={() => setSelectedMonth(idx)}
                   />
                 ))}
 
-                {/* X Axis labels */}
-                {["JAN", "FEB", "MAR", "APR", "MAY", "JUN (YTD)"].map((lbl, idx) => (
+                {/* X Axis Labels */}
+                {["JAN", "FEB", "MAR", "APR", "MEI", "JUN (YTD)"].map((lbl, idx) => (
                   <text 
                     key={`xlab-${idx}`} 
-                    x={xCoords[idx] - 10} 
-                    y="144" 
-                    fill={selectedMonth === idx ? "#1e40af" : "#475569"} 
+                    x={xCoords[idx] - 14} 
+                    y="214" 
+                    fill={selectedMonth === idx ? "#1e40af" : "#64748b"} 
                     fontWeight={selectedMonth === idx ? "bold" : "normal"}
-                    className="text-[9.5px] cursor-pointer"
+                    className="text-[10.5px] cursor-pointer font-bold"
                     onClick={() => setSelectedMonth(idx)}
                   >
                     {lbl}
@@ -636,63 +604,61 @@ export default function DashboardView({
             </div>
           </div>
 
-          {/* Interactive KPI Sidebar Breakdown */}
-          <div className="lg:col-span-4 bg-slate-900 text-white border border-slate-800 rounded p-4 flex flex-col justify-between shadow-sm">
-            <div>
-              <div className="flex justify-between items-center pb-2 border-b border-slate-800/80 mb-3 text-[9px] font-mono text-zinc-400">
-                <span>KPI ANALYSIS DEPOT</span>
-                <span className="bg-emerald-500/20 text-emerald-400 px-1.5 py-0.5 rounded border border-emerald-500/30">
-                  {MONTHS_DATA[selectedMonth].staffPerformance} Performance
-                </span>
-              </div>
-
-              <h4 className="text-xs font-bold uppercase font-sans tracking-wide text-white">
-                {MONTHS_DATA[selectedMonth].name}
-              </h4>
-              <p className="text-[10px] text-zinc-400 font-mono leading-tight mt-0.5">Analisis Detil & Efisiensi Alokasi Kargo</p>
-
-              {/* Grid values summary */}
-              <div className="grid grid-cols-2 gap-2 mt-3.5">
-                <div className="bg-slate-850 border border-slate-800 p-2 rounded">
-                  <span className="text-[8.5px] text-zinc-400 block font-mono">Inbound Recs</span>
-                  <p className="text-sm font-bold font-mono text-blue-450 mt-0.5">{MONTHS_DATA[selectedMonth].inbound} <span className="text-[9px] text-zinc-400 font-normal">PCS</span></p>
-                </div>
-                <div className="bg-slate-850 border border-slate-800 p-2 rounded">
-                  <span className="text-[8.5px] text-zinc-400 block font-mono">Outbound Jets</span>
-                  <p className="text-sm font-bold font-mono text-amber-400 mt-0.5">{MONTHS_DATA[selectedMonth].outbound} <span className="text-[9px] text-zinc-400 font-normal">PCS</span></p>
-                </div>
-              </div>
-
-              {/* Metric indicators table */}
-              <div className="mt-4 space-y-2 text-[10.5px] font-mono">
-                <div className="flex justify-between border-b border-slate-800/50 pb-1">
-                  <span className="text-zinc-400">Tonnage Kargo:</span>
-                  <span className="text-zinc-200 font-bold">{MONTHS_DATA[selectedMonth].volumeCargo}</span>
-                </div>
-                <div className="flex justify-between border-b border-slate-800/50 pb-1">
-                  <span className="text-zinc-400">Efisiensi Dispatch:</span>
-                  <span className="text-emerald-400 font-bold">{MONTHS_DATA[selectedMonth].efficiency}</span>
-                </div>
-                <div className="flex justify-between border-b border-slate-800/50 pb-1">
-                  <span className="text-zinc-400">Sinyal Alarm Kritis:</span>
-                  <span className={`${MONTHS_DATA[selectedMonth].criticalDeliveries > 5 ? 'text-rose-400' : 'text-zinc-200'} font-bold`}>
-                    {MONTHS_DATA[selectedMonth].criticalDeliveries} Alerts
+          {/* Interactive KPI Sidebar Breakdown Panel */}
+          <div className="lg:col-span-4 bg-slate-900 text-white border border-slate-800 rounded-xl p-5 flex flex-col justify-between shadow-lg h-[340px] md:h-[380px]">
+            <div className="flex flex-col h-full justify-between">
+              <div>
+                <div className="flex justify-between items-center pb-2.5 border-b border-slate-800 text-[10px] font-mono text-slate-400">
+                  <span>ANALISIS BULANAN</span>
+                  <span className="bg-emerald-500/20 text-emerald-400 px-2 py-0.5 rounded-full border border-emerald-500/30 font-bold">
+                    {MONTHS_DATA[selectedMonth].staffPerformance}
                   </span>
                 </div>
-                <div className="flex flex-col gap-0.5 pt-1.5">
-                  <span className="text-zinc-400 text-[9px]">Sektor Terbanyak:</span>
-                  <span className="text-blue-300 font-semibold truncate text-[10px]">{MONTHS_DATA[selectedMonth].topCategory}</span>
+
+                <h4 className="text-sm font-bold uppercase font-display tracking-wide text-white mt-3">
+                  {MONTHS_DATA[selectedMonth].name}
+                </h4>
+                <p className="text-[11px] text-slate-400 font-mono mt-0.5">Ringkasan Alokasi Kargo Kapal</p>
+
+                {/* Grid Values Summary */}
+                <div className="grid grid-cols-2 gap-2.5 mt-3">
+                  <div className="bg-slate-800/80 border border-slate-700/80 p-2.5 rounded-xl">
+                    <span className="text-[9px] text-slate-400 block font-mono">Inbound Receipts</span>
+                    <p className="text-base font-black font-mono text-blue-400 mt-0.5">{MONTHS_DATA[selectedMonth].inbound} <span className="text-[10px] text-slate-400 font-normal">PCS</span></p>
+                  </div>
+                  <div className="bg-slate-800/80 border border-slate-700/80 p-2.5 rounded-xl">
+                    <span className="text-[9px] text-slate-400 block font-mono">Outbound TUG 8</span>
+                    <p className="text-base font-black font-mono text-amber-400 mt-0.5">{MONTHS_DATA[selectedMonth].outbound} <span className="text-[10px] text-slate-400 font-normal">PCS</span></p>
+                  </div>
                 </div>
               </div>
-            </div>
 
-            {/* Vessel listings */}
-            <div className="pt-2.5 border-t border-slate-800/80 mt-4 font-mono">
-              <span className="text-[8.5px] uppercase font-bold text-zinc-400 block mb-1">
-                Kargo Kapal Tujuan:
-              </span>
-              <div className="text-[9.5px] text-zinc-305 leading-normal bg-slate-950 p-2 rounded border border-slate-800 truncate">
-                ⚓ {MONTHS_DATA[selectedMonth].vesselServiced}
+              {/* Unified Metric Indicators Table including Kapal Tujuan */}
+              <div className="space-y-1.5 text-xs font-mono bg-slate-950/80 border border-slate-800/80 p-3 rounded-xl mt-3">
+                <div className="flex justify-between border-b border-slate-800/80 pb-1.5">
+                  <span className="text-slate-400">Tonnage Kargo:</span>
+                  <span className="text-slate-100 font-bold">{MONTHS_DATA[selectedMonth].volumeCargo}</span>
+                </div>
+                <div className="flex justify-between border-b border-slate-800/80 pb-1.5">
+                  <span className="text-slate-400">Efisiensi Processing:</span>
+                  <span className="text-emerald-400 font-bold">{MONTHS_DATA[selectedMonth].efficiency}</span>
+                </div>
+                <div className="flex justify-between border-b border-slate-800/80 pb-1.5">
+                  <span className="text-slate-400">Alarm Kritis:</span>
+                  <span className={`${MONTHS_DATA[selectedMonth].criticalDeliveries > 5 ? 'text-rose-400 font-bold' : 'text-slate-200'}`}>
+                    {MONTHS_DATA[selectedMonth].criticalDeliveries} Alert Items
+                  </span>
+                </div>
+                <div className="flex justify-between border-b border-slate-800/80 pb-1.5">
+                  <span className="text-slate-400">Kategori Terbanyak:</span>
+                  <span className="text-blue-300 font-bold truncate max-w-[150px]">{MONTHS_DATA[selectedMonth].topCategory}</span>
+                </div>
+                <div className="flex justify-between items-center pt-0.5">
+                  <span className="text-slate-400">Kapal Tujuan:</span>
+                  <span className="text-amber-300 font-bold flex items-center gap-1 text-[11px] truncate max-w-[170px]" title={MONTHS_DATA[selectedMonth].vesselServiced}>
+                    ⚓ {MONTHS_DATA[selectedMonth].vesselServiced}
+                  </span>
+                </div>
               </div>
             </div>
           </div>
@@ -700,53 +666,149 @@ export default function DashboardView({
         </div>
       </section>
 
-      {/* Main Grid: Left side Low Stock Warnings, Right Side Custom Live Audit Logs */}
+      {/* TUG 5 Permintaan Pending Approval Table Panel */}
+      <section className="bg-white border border-slate-200/90 rounded-2xl p-5 flex flex-col shadow-xs">
+        <div className="flex items-center justify-between pb-3.5 border-b border-slate-150 mb-3">
+          <div className="flex items-center gap-2">
+            <div className="p-1.5 bg-amber-50 text-amber-600 rounded-lg">
+              <Clock className="w-4 h-4" />
+            </div>
+            <h4 className="text-xs font-bold font-display uppercase tracking-widest text-slate-800">
+              DAFTAR PERMINTAAN TUG 5 (STATUS: DRAFT, SUBMITTED & APPROVED)
+            </h4>
+          </div>
+          <button 
+            onClick={() => onNavigateTab("material-requests")}
+            className="text-[10px] text-amber-600 hover:text-amber-700 font-mono font-bold uppercase flex items-center gap-1 cursor-pointer"
+          >
+            <span>Kelola TUG 5 ({summary.pendingApprovalsCount})</span>
+            <ArrowRight className="w-3 h-3" />
+          </button>
+        </div>
+
+        <div className="overflow-x-auto max-h-[350px] dark-scrollbar">
+          {(!summary.pendingMaterialRequests || summary.pendingMaterialRequests.length === 0) ? (
+            <div className="text-center py-8 text-xs text-slate-500 font-mono italic">
+              ✓ Tidak ada dokumen TUG 5 dengan status Draft, Submitted, atau Approved saat ini.
+            </div>
+          ) : (
+            <table className="w-full text-left border-collapse">
+              <thead>
+                <tr className="bg-slate-50 border-b border-slate-200 text-[10px] font-mono font-bold uppercase text-slate-500 tracking-wider">
+                  <th className="py-2.5 px-3">No. Dokumen TUG 5</th>
+                  <th className="py-2.5 px-3">Nama Kapal Armada</th>
+                  <th className="py-2.5 px-3">Departemen / Pemohon</th>
+                  <th className="py-2.5 px-3">Urgensi</th>
+                  <th className="py-2.5 px-3">Jumlah Item</th>
+                  <th className="py-2.5 px-3">Status</th>
+                  <th className="py-2.5 px-3 text-right">Aksi</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-slate-100 text-xs font-sans">
+                {summary.pendingMaterialRequests.slice(0, 10).map((req) => {
+                  const statusClass = 
+                    req.status === "Approved" ? "bg-emerald-50 text-emerald-700 border-emerald-200" :
+                    req.status === "Submitted" ? "bg-amber-50 text-amber-700 border-amber-200" :
+                    "bg-slate-100 text-slate-700 border-slate-200";
+
+                  return (
+                    <tr key={req.id} className="hover:bg-slate-50/80 transition-colors">
+                      <td className="py-2.5 px-3 font-mono font-bold text-blue-700">
+                        {req.tug5_number || req.request_number}
+                      </td>
+                      <td className="py-2.5 px-3 font-semibold text-slate-800">
+                        ⚓ {req.vessel_name}
+                      </td>
+                      <td className="py-2.5 px-3 text-slate-600 text-[11px]">
+                        {req.department || "Engine"} / <span className="font-medium text-slate-700">{req.requested_by || req.requester_name}</span>
+                      </td>
+                      <td className="py-2.5 px-3">
+                        <span className={`text-[9.5px] font-mono font-bold px-2 py-0.5 rounded uppercase ${
+                          req.urgency === "CRITICAL" ? "bg-red-100 text-red-700 border border-red-200" :
+                          req.urgency === "HIGH" ? "bg-amber-100 text-amber-800 border border-amber-200" :
+                          "bg-slate-100 text-slate-600"
+                        }`}>
+                          {req.urgency || "NORMAL"}
+                        </span>
+                      </td>
+                      <td className="py-2.5 px-3 font-mono text-slate-700">
+                        {req.items ? req.items.length : 0} Item Suku Cadang
+                      </td>
+                      <td className="py-2.5 px-3">
+                        <span className={`text-[10px] font-mono font-bold border px-2 py-0.5 rounded-full ${statusClass}`}>
+                          {req.status}
+                        </span>
+                      </td>
+                      <td className="py-2.5 px-3 text-right">
+                        <button 
+                          onClick={() => {
+                            if (onProcessTUG5) {
+                              onProcessTUG5(req);
+                            } else {
+                              onNavigateTab("material-requests");
+                            }
+                          }}
+                          className="px-2.5 py-1 bg-blue-600 hover:bg-blue-500 active:bg-blue-700 text-white text-[10px] font-mono font-bold rounded-lg cursor-pointer transition-all shadow-xs"
+                        >
+                          Proses / Approve TUG 5 &rarr;
+                        </button>
+                      </td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          )}
+        </div>
+      </section>
+
+      {/* Grid: Low Stock Alarms & Live Operations Audit Trail */}
       <div className="grid grid-cols-1 lg:grid-cols-5 gap-6">
         
-        {/* Critical Low Stock Alarms list */}
-        <section className="lg:col-span-3 bg-white border border-slate-200 rounded-md p-4 flex flex-col shadow-xs">
-          <div className="flex items-center justify-between pb-3 border-b border-slate-150 mb-3">
-            <h4 className="text-xs font-bold font-display uppercase tracking-widest text-red-650 flex items-center gap-1.5">
-              <span className="w-2 h-2 rounded-full bg-red-650 animate-pulse"></span>
-              REORDER LEVEL ALARMS
+        {/* Critical Low Stock Alarms */}
+        <section className="lg:col-span-3 bg-white border border-slate-200/90 rounded-2xl p-5 flex flex-col shadow-xs">
+          <div className="flex items-center justify-between pb-3.5 border-b border-slate-150 mb-3">
+            <h4 className="text-xs font-bold font-display uppercase tracking-widest text-red-600 flex items-center gap-2">
+              <span className="w-2.5 h-2.5 rounded-full bg-red-600 animate-pulse" />
+              REORDER LEVEL ALARMS (PERINGATAN STOK MINIMUM)
             </h4>
-            <span className="text-[10px] bg-slate-100 text-slate-600 px-2 py-0.5 rounded font-mono font-bold uppercase">
-              {summary.lowStockAlerts.length} Critical Parts
+            <span className="text-[10px] bg-red-50 text-red-700 border border-red-200 px-2.5 py-0.5 rounded-full font-mono font-bold uppercase">
+              {summary.lowStockAlerts.length} Item Kritis
             </span>
           </div>
 
-          <div className="flex-1 overflow-auto max-h-64 divide-y divide-slate-100">
+          <div className="flex-1 overflow-y-auto max-h-[420px] min-h-[300px] divide-y divide-slate-100 pr-2">
             {summary.lowStockAlerts.length === 0 ? (
-              <div className="text-center py-8 text-xs text-slate-500 font-mono italic">
-                ✓ All spare part stock thresholds satisfy minimum safety stock levels
+              <div className="text-center py-10 text-xs text-slate-500 font-mono italic">
+                ✓ Seluruh stok suku cadang gudang aman di atas batas Reorder Point.
               </div>
             ) : (
               summary.lowStockAlerts.map((item) => (
-                <div key={item.id} className="py-2.5 flex items-center justify-between hover:bg-slate-50/50 px-2 rounded">
+                <div key={item.id} className="py-3 flex items-center justify-between hover:bg-slate-50 px-2 rounded-xl transition-colors">
                   <div className="min-w-0 pr-3">
                     <p className="font-bold text-xs text-slate-900 truncate">{item.part_name}</p>
                     <div className="flex items-center gap-2 mt-1">
-                      <span className="text-[10px] font-mono bg-blue-50 text-blue-700 px-1.5 py-0.2 rounded font-medium">
-                        {item.part_number}
+                      <span className="text-[10px] font-mono bg-blue-50 text-blue-700 px-2 py-0.5 rounded font-bold">
+                        PN: {item.part_number}
                       </span>
                       <span className="text-[10px] text-slate-400 font-mono">
                         SKU: {item.sku}
                       </span>
                     </div>
                   </div>
-                  <div className="text-right shrink-0 flex items-center gap-4">
+                  <div className="text-right shrink-0 flex items-center gap-3">
                     <div className="font-mono text-right">
-                      <div className="text-xs text-red-600 font-bold">
-                        Stock: {item.current_stock}
+                      <div className="text-xs text-red-600 font-black">
+                        Stok: {item.current_stock}
                       </div>
-                      <div className="text-[9px] text-slate-400">
+                      <div className="text-[9px] text-slate-400 font-medium">
                         RP Limit: {item.reorder_point}
                       </div>
                     </div>
                     {onQuickOrder && (
                       <button
                         onClick={() => onQuickOrder(item.id)}
-                        className="py-1 px-2.5 bg-blue-600 hover:bg-blue-500 text-white text-[9px] font-bold uppercase rounded font-mono cursor-pointer"
+                        className="py-1.5 px-3 bg-blue-600 hover:bg-blue-500 active:bg-blue-700 text-white text-[10px] font-bold uppercase rounded-lg font-mono cursor-pointer shadow-xs transition-all"
                       >
                         Quick Order
                       </button>
@@ -758,47 +820,49 @@ export default function DashboardView({
           </div>
         </section>
 
-        {/* Audit Trail Logging traces */}
-        <section className="lg:col-span-2 bg-slate-900 text-white border border-slate-800 rounded-md p-4 flex flex-col shadow-lg">
-          <div className="flex items-center justify-between pb-3 border-b border-slate-800 mb-3">
-            <h4 className="text-xs font-bold font-display uppercase tracking-widest text-slate-300">
-              Operations Audit Trail
+        {/* Realtime Operations Audit Trail Feed */}
+        <section className="lg:col-span-2 bg-slate-900 text-white border border-slate-800 rounded-2xl p-5 flex flex-col shadow-xl">
+          <div className="flex items-center justify-between pb-3.5 border-b border-slate-800 mb-3">
+            <h4 className="text-xs font-bold font-display uppercase tracking-widest text-slate-200 flex items-center gap-2">
+              <Activity className="w-4 h-4 text-emerald-400" />
+              OPERATIONS AUDIT TRAIL LOGS
             </h4>
             <span 
               onClick={() => onNavigateTab("ledger")}
-              className="text-[9px] text-blue-400 font-bold uppercase cursor-pointer hover:underline"
+              className="text-[10px] text-blue-400 hover:text-blue-300 font-bold uppercase cursor-pointer hover:underline font-mono"
             >
-              Verify Ledger Trail
+              Ledger Trail &rarr;
             </span>
           </div>
 
-          <div className="flex-1 overflow-y-auto max-h-64 space-y-3 font-mono text-[10.5px]">
+          <div className="flex-1 overflow-y-auto max-h-[420px] min-h-[300px] space-y-2.5 font-mono text-[10.5px] pr-2 dark-scrollbar">
             {summary.recentActivities.length === 0 ? (
-              <div className="text-center py-8 text-xs text-slate-500 italic">
-                No system activity log logged.
+              <div className="text-center py-10 text-xs text-slate-500 italic">
+                Belum ada catatan aktivitas log sistem.
               </div>
             ) : (
               summary.recentActivities.map((log) => {
                 const colors = 
-                  log.module === "Auth" ? "text-blue-400" 
-                  : log.module === "Receiving" ? "text-green-400"
-                  : log.module === "Dispatch" ? "text-orange-400"
-                  : log.module === "Approvals" ? "text-amber-400"
-                  : "text-purple-400";
+                  log.module === "Auth" ? "text-blue-400 bg-blue-500/10 border-blue-500/30" 
+                  : log.module === "Receiving" ? "text-emerald-400 bg-emerald-500/10 border-emerald-500/30"
+                  : log.module === "Dispatch" ? "text-amber-400 bg-amber-500/10 border-amber-500/30"
+                  : log.module === "Approvals" ? "text-indigo-400 bg-indigo-500/10 border-indigo-500/30"
+                  : "text-purple-400 bg-purple-500/10 border-purple-500/30";
 
                 return (
-                  <div key={log.id} className="pb-1.5 border-b border-slate-800/60 flex flex-col gap-0.5">
+                  <div key={log.id} className="p-3 rounded-xl bg-slate-850/90 border border-slate-800 hover:border-slate-700/80 transition-all flex flex-col gap-1.5 shadow-sm">
                     <div className="flex justify-between items-center">
-                      <span className={`font-bold uppercase ${colors}`}>
+                      <span className={`font-bold uppercase text-[9px] px-2 py-0.5 rounded-md border ${colors}`}>
                         [{log.module}] {log.action}
                       </span>
-                      <span className="text-[9px] text-slate-500">
+                      <span className="text-[10px] text-slate-400 font-mono flex items-center gap-1">
+                        <Clock className="w-3 h-3 text-slate-500" />
                         {new Date(log.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
                       </span>
                     </div>
-                    <p className="text-slate-300 font-sans leading-tight mt-0.5">{log.description}</p>
-                    <div className="flex justify-between text-[8.5px] text-slate-500 tracking-wider">
-                      <span>Operator: {log.username}</span>
+                    <p className="text-slate-200 font-sans text-xs leading-normal mt-0.5 font-medium">{log.description}</p>
+                    <div className="flex justify-between text-[9px] text-slate-400 tracking-wider font-mono pt-1 border-t border-slate-800/60">
+                      <span>Operator: <strong className="text-slate-200">{log.username}</strong></span>
                       <span className="italic">Role: {log.role}</span>
                     </div>
                   </div>

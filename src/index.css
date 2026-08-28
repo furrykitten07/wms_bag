@@ -15,12 +15,22 @@ body {
 
 /* Custom Web Print Styling for Printable Warehouse Documents */
 @media print {
-  body, html {
+  @page {
+    size: A4 portrait;
+    margin: 8mm 10mm;
+  }
+  
+  html, body, #root, #root > div, body > div {
     background: white !important;
     color: black !important;
     height: auto !important;
+    min-height: auto !important;
+    max-height: none !important;
     overflow: visible !important;
+    position: static !important;
+    display: block !important;
   }
+
   .no-print {
     display: none !important;
   }
@@ -32,25 +42,107 @@ body {
     box-shadow: none !important;
     padding: 0 !important;
     margin: 0 !important;
+    overflow: visible !important;
+    height: auto !important;
+    max-height: none !important;
   }
   .print-document-overlay {
-    position: absolute !important;
-    top: 0 !important;
-    left: 0 !important;
+    position: static !important;
+    inset: auto !important;
+    top: auto !important;
+    left: auto !important;
     width: 100% !important;
     height: auto !important;
+    min-height: auto !important;
+    max-height: none !important;
     background: transparent !important;
     display: block !important;
     padding: 0 !important;
     margin: 0 !important;
     overflow: visible !important;
+    box-shadow: none !important;
   }
   .print-document-overlay > div {
+    position: static !important;
     border: none !important;
     box-shadow: none !important;
     width: 100% !important;
     max-width: 100% !important;
+    height: auto !important;
+    min-height: auto !important;
+    max-height: none !important;
     margin: 0 !important;
     padding: 0 !important;
+    overflow: visible !important;
+    border-radius: 0 !important;
+    display: block !important;
   }
+  #printable-area {
+    position: static !important;
+    overflow: visible !important;
+    max-height: none !important;
+    height: auto !important;
+    min-height: auto !important;
+    padding: 0 !important;
+    margin: 0 !important;
+    background: white !important;
+    display: block !important;
+  }
+  #printable-area > div {
+    position: static !important;
+    max-height: none !important;
+    height: auto !important;
+    min-height: auto !important;
+    padding: 0 !important;
+    margin: 0 !important;
+    box-shadow: none !important;
+    border: none !important;
+    width: 100% !important;
+    max-width: 100% !important;
+    overflow: visible !important;
+    display: block !important;
+  }
+  .no-print-break, .signature-container {
+    page-break-inside: avoid !important;
+    break-inside: avoid !important;
+    break-inside: avoid-page !important;
+    display: block !important;
+  }
+  table {
+    page-break-inside: auto;
+    width: 100% !important;
+    border-collapse: collapse !important;
+  }
+  tr {
+    page-break-inside: avoid !important;
+    break-inside: avoid !important;
+    page-break-after: auto;
+  }
+  th, td {
+    padding: 4px 6px !important;
+    font-size: 10px !important;
+  }
+}
+
+/* Custom Sleek Scrollbars */
+::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+::-webkit-scrollbar-thumb {
+  background: #cbd5e1;
+  border-radius: 9999px;
+}
+::-webkit-scrollbar-thumb:hover {
+  background: #94a3b8;
+}
+
+.dark-scrollbar::-webkit-scrollbar-thumb {
+  background: #334155;
+}
+.dark-scrollbar::-webkit-scrollbar-thumb:hover {
+  background: #475569;
 }

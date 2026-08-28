@@ -45,6 +45,8 @@ export default function UsersManagementView({
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [editingUser, setEditingUser] = useState<UserType | null>(null);
   
+  const [activeSubTab, setActiveSubTab] = useState<"users" | "roles">("users");
+  
   // Action dropdown state
   const [activeActionId, setActiveActionId] = useState<string | null>(null);
 
@@ -182,6 +184,34 @@ export default function UsersManagementView({
             Super Admin
           </span>
         );
+      case UserRole.WAREHOUSE_STAFF:
+        return (
+          <span className="inline-flex items-center gap-1 bg-emerald-50 text-emerald-800 px-2.5 py-0.5 rounded-full text-[10px] font-bold border border-emerald-200 uppercase tracking-wider">
+            <UsersRound className="w-3 h-3 text-emerald-600" />
+            Petugas Gudang
+          </span>
+        );
+      case UserRole.VERIFIER_RENDALHAR:
+        return (
+          <span className="inline-flex items-center gap-1 bg-sky-50 text-sky-800 px-2.5 py-0.5 rounded-full text-[10px] font-bold border border-sky-200 uppercase tracking-wider">
+            <CheckCircle className="w-3 h-3 text-sky-600" />
+            Verifikator Rendalhar (L1)
+          </span>
+        );
+      case UserRole.LOGISTICS_MANAGER:
+        return (
+          <span className="inline-flex items-center gap-1 bg-amber-50 text-amber-800 px-2.5 py-0.5 rounded-full text-[10px] font-bold border border-amber-200 uppercase tracking-wider">
+            <Briefcase className="w-3 h-3 text-amber-600" />
+            Manager Logistik
+          </span>
+        );
+      case UserRole.VP_RENDALHAR:
+        return (
+          <span className="inline-flex items-center gap-1 bg-indigo-50 text-indigo-700 px-2.5 py-0.5 rounded-full text-[10px] font-bold border border-indigo-200 uppercase tracking-wider">
+            <Shield className="w-3 h-3 text-indigo-600" />
+            VP RENDALHAR
+          </span>
+        );
       case UserRole.SUPERINTENDENT:
         return (
           <span className="inline-flex items-center gap-1 bg-purple-50 text-purple-700 px-2.5 py-0.5 rounded-full text-[10px] font-bold border border-purple-200 uppercase tracking-wider">
@@ -223,7 +253,7 @@ export default function UsersManagementView({
             <h1 className="text-base font-bold text-slate-900 uppercase tracking-tight">Database User & Role Management</h1>
           </div>
           <p className="text-[11px] text-slate-500 mt-1">
-            Kelola data autentikasi, hak akses, password, dan pengaturan role pengguna sistem logistik internal.
+            Kelola data autentikasi, hak akses, password, dan pengaturan role pengguna sistem logistik internal PT. Pelayaran Bahtera Adhiguna.
           </p>
         </div>
         
@@ -236,198 +266,330 @@ export default function UsersManagementView({
         </button>
       </div>
 
-      {/* Control panel & Filtering */}
-      <div className="bg-slate-50 border-b border-slate-200 p-4 shrink-0 flex flex-col md:flex-row items-center justify-between gap-4">
-        <div className="relative w-full md:w-96">
-          <Search className="absolute left-3 top-2.5 w-4 h-4 text-slate-400" />
-          <input
-            type="text"
-            value={search}
-            onChange={(e) => setSearch(e.target.value)}
-            placeholder="Cari berdasarkan nama, username, email, role..."
-            className="w-full bg-white border border-slate-300 rounded-lg pl-9 pr-4 py-2 text-xs text-slate-800 placeholder-slate-400 focus:outline-none focus:ring-1 focus:ring-blue-500 focus:border-blue-500"
-          />
-        </div>
+      {/* Sub-Tab Navigation Bar */}
+      <div className="flex border-b border-slate-200 bg-white px-6 shrink-0">
+        <button
+          type="button"
+          onClick={() => setActiveSubTab("users")}
+          className={`py-3 px-5 font-sans font-black text-xs uppercase tracking-wider flex items-center gap-2 border-b-2 transition-all cursor-pointer ${
+            activeSubTab === "users"
+              ? "border-blue-600 text-blue-600 bg-blue-50/40"
+              : "border-transparent text-slate-500 hover:text-slate-800"
+          }`}
+        >
+          <UsersRound className="w-4 h-4" />
+          <span>Daftar Akun Pengguna ({users.length})</span>
+        </button>
 
-        <div className="text-[11px] text-slate-500 font-mono">
-          Menampilkan <span className="font-bold text-slate-800">{filteredUsers.length}</span> user di dalam database
-        </div>
+        <button
+          type="button"
+          onClick={() => setActiveSubTab("roles")}
+          className={`py-3 px-5 font-sans font-black text-xs uppercase tracking-wider flex items-center gap-2 border-b-2 transition-all cursor-pointer ${
+            activeSubTab === "roles"
+              ? "border-indigo-600 text-indigo-600 bg-indigo-50/40"
+              : "border-transparent text-slate-500 hover:text-slate-800"
+          }`}
+        >
+          <Shield className="w-4 h-4 text-indigo-600" />
+          <span>Matriks Role & Hak Akses System</span>
+        </button>
       </div>
 
-      {/* Grid / Table list of Users with TUG 10 styling */}
-      <div className="flex-1 overflow-y-auto p-6 bg-slate-100 flex flex-col">
-        <div className="bg-white border border-slate-200 rounded-xl shadow-xs overflow-hidden flex flex-col flex-1 min-h-0">
-          <div className="overflow-x-auto flex-1 min-h-0">
-            <table className="w-full text-left border-collapse">
-              <thead>
-                <tr className="border-b border-slate-200 bg-slate-50 text-[10px] font-black uppercase text-slate-500 tracking-wider">
-                  <th className="px-6 py-3.5 text-center w-12">No</th>
-                  <th className="px-6 py-3.5">Nama & Detail Akun</th>
-                  <th className="px-6 py-3.5">Username</th>
-                  <th className="px-6 py-3.5">Email</th>
-                  <th className="px-6 py-3.5">Role Sistem</th>
-                  <th className="px-6 py-3.5 w-44">Password</th>
-                  <th className="px-6 py-3.5 text-center w-36">Aksi</th>
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-slate-150 text-xs">
-                {paginatedUsers.length === 0 ? (
-                  <tr>
-                    <td colSpan={7} className="px-6 py-12 text-center text-slate-400 font-medium">
-                      Tidak ada user yang ditemukan cocok dengan pencarian Anda.
-                    </td>
-                  </tr>
-                ) : (
-                  paginatedUsers.map((user, idx) => {
-                    const isPasswordVisible = !!visiblePasswords[user.id];
-                    const isDropdownOpen = activeActionId === user.id;
+      {activeSubTab === "users" ? (
+        <>
+          {/* Control panel & Filtering */}
+          <div className="bg-slate-50 border-b border-slate-200 p-4 shrink-0 flex flex-col md:flex-row items-center justify-between gap-4">
+            <div className="relative w-full md:w-96">
+              <Search className="absolute left-3 top-2.5 w-4 h-4 text-slate-400" />
+              <input
+                type="text"
+                value={search}
+                onChange={(e) => setSearch(e.target.value)}
+                placeholder="Cari berdasarkan nama, username, email, role..."
+                className="w-full bg-white border border-slate-300 rounded-lg pl-9 pr-4 py-2 text-xs text-slate-800 placeholder-slate-400 focus:outline-none focus:ring-1 focus:ring-blue-500 focus:border-blue-500"
+              />
+            </div>
 
-                    return (
-                      <tr key={user.id} className="hover:bg-slate-50/50 transition-colors">
-                        <td className="px-6 py-4 text-center text-slate-500 font-mono font-bold">
-                          {(userPage - 1) * usersPerPage + idx + 1}
-                        </td>
-                        <td className="px-6 py-4">
-                          <div className="flex items-center gap-3">
-                            <div className="w-8 h-8 rounded-full bg-slate-100 border border-slate-200 flex items-center justify-center font-bold text-slate-600 shrink-0">
-                              {user.name.charAt(0).toUpperCase()}
-                            </div>
-                            <div>
-                              <div className="font-bold text-slate-800 flex items-center gap-1.5">
-                                {user.name}
-                                {user.id === currentUser.id && (
-                                  <span className="bg-blue-100 text-blue-800 text-[9px] px-1.5 py-0.2 rounded font-black font-mono tracking-wider uppercase">
-                                    YOU
-                                  </span>
-                                )}
-                              </div>
-                              <div className="text-[10px] text-slate-400 font-mono mt-0.5">{user.id}</div>
-                            </div>
-                          </div>
-                        </td>
-                        <td className="px-6 py-4 font-mono font-bold text-slate-700">
-                          @{user.username}
-                        </td>
-                        <td className="px-6 py-4 text-slate-600">
-                          {user.email}
-                        </td>
-                        <td className="px-6 py-4">
-                          {getRoleBadge(user.role)}
-                        </td>
-                        <td className="px-6 py-4">
-                          <div className="flex items-center gap-2 font-mono text-xs text-slate-800 bg-slate-50 px-2 py-1 rounded border border-slate-200 max-w-max">
-                            <Lock className="w-3 h-3 text-slate-400" />
-                            <span>
-                              {isPasswordVisible ? (user.password || "admin123") : "••••••••"}
-                            </span>
-                            <button
-                              type="button"
-                              onClick={() => togglePasswordVisibility(user.id)}
-                              className="text-slate-400 hover:text-slate-600 transition-colors cursor-pointer ml-1"
-                              title={isPasswordVisible ? "Sembunyikan Password" : "Tampilkan Password"}
-                            >
-                              {isPasswordVisible ? <EyeOff className="w-3.5 h-3.5" /> : <Eye className="w-3.5 h-3.5" />}
-                            </button>
-                          </div>
-                        </td>
-                        <td className="px-6 py-4 text-center relative" onClick={(e) => e.stopPropagation()}>
-                          <div className="flex items-center justify-center">
-                            <div className="relative inline-block text-left">
-                              <button
-                                type="button"
-                                onClick={(e) => {
-                                  e.stopPropagation();
-                                  setActiveActionId(isDropdownOpen ? null : user.id);
-                                }}
-                                className="inline-flex items-center justify-center gap-1.5 px-3 py-1.5 bg-slate-900 text-white hover:bg-blue-600 rounded-lg text-[10px] font-bold uppercase tracking-wider shadow-xs transition-all duration-200 cursor-pointer border border-slate-800"
-                              >
-                                <span>Actions</span>
-                                <ChevronDown className="w-3 h-3" />
-                              </button>
-
-                              {isDropdownOpen && (
-                                <>
-                                  <div 
-                                    className="fixed inset-0 z-10" 
-                                    onClick={(e) => {
-                                      e.stopPropagation();
-                                      setActiveActionId(null);
-                                    }}
-                                  />
-                                  <div className="absolute right-0 mt-1.5 w-44 bg-white border border-slate-250 rounded-lg shadow-xl z-50 overflow-hidden text-left py-1 text-slate-700 animate-in fade-in duration-100 ring-1 ring-black/5">
-                                    <button
-                                      type="button"
-                                      onClick={(e) => {
-                                        e.stopPropagation();
-                                        setActiveActionId(null);
-                                        openEditModal(user);
-                                      }}
-                                      className="w-full px-4 py-2 text-xs font-semibold hover:bg-slate-100 text-slate-800 flex items-center gap-2 cursor-pointer transition-colors text-left"
-                                    >
-                                      <Edit3 className="w-3.5 h-3.5 text-amber-500" />
-                                      <span>Edit User</span>
-                                    </button>
-
-                                    <button
-                                      type="button"
-                                      disabled={user.id === currentUser.id || user.username === "superadmin"}
-                                      onClick={(e) => {
-                                        e.stopPropagation();
-                                        setActiveActionId(null);
-                                        handleDeleteClick(user);
-                                      }}
-                                      className={`w-full px-4 py-2 text-xs font-semibold flex items-center gap-2 transition-colors text-left ${
-                                        user.id === currentUser.id || user.username === "superadmin"
-                                          ? "text-slate-300 cursor-not-allowed"
-                                          : "hover:bg-slate-100 text-rose-700 cursor-pointer"
-                                      }`}
-                                    >
-                                      <Trash2 className="w-3.5 h-3.5 text-rose-500" />
-                                      <span>Hapus User</span>
-                                    </button>
-                                  </div>
-                                </>
-                              )}
-                            </div>
-                          </div>
-                        </td>
-                      </tr>
-                    );
-                  })
-                )}
-              </tbody>
-            </table>
-          </div>
-
-          {/* STRETCHED CARD PAGINATION BAR - EXACTLY LIKE TUG 10 / SPK DESIGN */}
-          <div className="bg-white border-t border-slate-200 px-6 py-4 flex items-center justify-between font-mono text-[11px] font-bold shrink-0 shadow-2xs">
-            <span className="text-slate-400 uppercase tracking-widest leading-none text-[10px] font-black">
-              TOTAL REKOR DATA: {filteredUsers.length} USER
-            </span>
-
-            <div className="flex items-center gap-1">
-              <button
-                disabled={userPage === 1}
-                onClick={() => setUserPage(p => Math.max(1, p - 1))}
-                className="px-3 py-1.5 rounded-lg border border-slate-200 text-slate-600 disabled:opacity-40 hover:bg-slate-50 transition-colors cursor-pointer disabled:cursor-not-allowed"
-              >
-                Sebelumnya
-              </button>
-              <span className="px-3 py-1.5 text-slate-500">
-                Halaman {userPage} dari {totalPages}
-              </span>
-              <button
-                disabled={userPage === totalPages}
-                onClick={() => setUserPage(p => Math.min(totalPages, p + 1))}
-                className="px-3 py-1.5 rounded-lg border border-slate-200 text-slate-600 disabled:opacity-40 hover:bg-slate-50 transition-colors cursor-pointer disabled:cursor-not-allowed"
-              >
-                Selanjutnya
-              </button>
+            <div className="text-[11px] text-slate-500 font-mono">
+              Menampilkan <span className="font-bold text-slate-800">{filteredUsers.length}</span> user di dalam database
             </div>
           </div>
 
+          {/* Grid / Table list of Users */}
+          <div className="flex-1 overflow-y-auto p-6 bg-slate-100 flex flex-col">
+            <div className="bg-white border border-slate-200 rounded-xl shadow-xs overflow-hidden flex flex-col flex-1 min-h-0">
+              <div className="overflow-x-auto flex-1 min-h-0">
+                <table className="w-full text-left border-collapse">
+                  <thead>
+                    <tr className="border-b border-slate-200 bg-slate-50 text-[10px] font-black uppercase text-slate-500 tracking-wider">
+                      <th className="px-6 py-3.5 text-center w-12">No</th>
+                      <th className="px-6 py-3.5">Nama & Detail Akun</th>
+                      <th className="px-6 py-3.5">Username</th>
+                      <th className="px-6 py-3.5">Email</th>
+                      <th className="px-6 py-3.5">Role Sistem</th>
+                      <th className="px-6 py-3.5 w-44">Password</th>
+                      <th className="px-6 py-3.5 text-center w-36">Aksi</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-slate-150 text-xs">
+                    {paginatedUsers.length === 0 ? (
+                      <tr>
+                        <td colSpan={7} className="px-6 py-12 text-center text-slate-400 font-medium">
+                          Tidak ada user yang ditemukan cocok dengan pencarian Anda.
+                        </td>
+                      </tr>
+                    ) : (
+                      paginatedUsers.map((user, idx) => {
+                        const isPasswordVisible = !!visiblePasswords[user.id];
+                        const isDropdownOpen = activeActionId === user.id;
+
+                        return (
+                          <tr key={user.id} className="hover:bg-slate-50/50 transition-colors">
+                            <td className="px-6 py-4 text-center text-slate-500 font-mono font-bold">
+                              {(userPage - 1) * usersPerPage + idx + 1}
+                            </td>
+                            <td className="px-6 py-4">
+                              <div className="flex items-center gap-3">
+                                <div className="w-8 h-8 rounded-full bg-slate-100 border border-slate-200 flex items-center justify-center font-bold text-slate-600 shrink-0">
+                                  {user.name.charAt(0).toUpperCase()}
+                                </div>
+                                <div>
+                                  <div className="font-bold text-slate-800 flex items-center gap-1.5">
+                                    {user.name}
+                                    {user.id === currentUser.id && (
+                                      <span className="bg-blue-100 text-blue-800 text-[9px] px-1.5 py-0.2 rounded font-black font-mono tracking-wider uppercase">
+                                        YOU
+                                      </span>
+                                    )}
+                                  </div>
+                                  <div className="text-[10px] text-slate-400 font-mono mt-0.5">{user.id}</div>
+                                </div>
+                              </div>
+                            </td>
+                            <td className="px-6 py-4 font-mono font-bold text-slate-700">
+                              @{user.username}
+                            </td>
+                            <td className="px-6 py-4 text-slate-600 font-mono text-[11px]">
+                              {user.email}
+                            </td>
+                            <td className="px-6 py-4">
+                              {getRoleBadge(user.role)}
+                            </td>
+                            <td className="px-6 py-4">
+                              <div className="flex items-center gap-2 font-mono text-xs text-slate-800 bg-slate-50 px-2 py-1 rounded border border-slate-200 max-w-max">
+                                <Lock className="w-3 h-3 text-slate-400" />
+                                <span>
+                                  {isPasswordVisible ? (user.password || "admin123") : "••••••••"}
+                                </span>
+                                <button
+                                  type="button"
+                                  onClick={() => togglePasswordVisibility(user.id)}
+                                  className="text-slate-400 hover:text-slate-600 transition-colors cursor-pointer ml-1"
+                                  title={isPasswordVisible ? "Sembunyikan Password" : "Tampilkan Password"}
+                                >
+                                  {isPasswordVisible ? <EyeOff className="w-3.5 h-3.5" /> : <Eye className="w-3.5 h-3.5" />}
+                                </button>
+                              </div>
+                            </td>
+                            <td className="px-6 py-4 text-center relative" onClick={(e) => e.stopPropagation()}>
+                              <div className="flex items-center justify-center">
+                                <div className="relative inline-block text-left">
+                                  <button
+                                    type="button"
+                                    onClick={(e) => {
+                                      e.stopPropagation();
+                                      setActiveActionId(isDropdownOpen ? null : user.id);
+                                    }}
+                                    className="inline-flex items-center justify-center gap-1.5 px-3 py-1.5 bg-slate-900 text-white hover:bg-blue-600 rounded-lg text-[10px] font-bold uppercase tracking-wider shadow-xs transition-all duration-200 cursor-pointer border border-slate-800"
+                                  >
+                                    <span>Actions</span>
+                                    <ChevronDown className="w-3 h-3" />
+                                  </button>
+
+                                  {isDropdownOpen && (
+                                    <>
+                                      <div 
+                                        className="fixed inset-0 z-10" 
+                                        onClick={(e) => {
+                                          e.stopPropagation();
+                                          setActiveActionId(null);
+                                        }}
+                                      />
+                                      <div className="absolute right-0 mt-1.5 w-44 bg-white border border-slate-250 rounded-lg shadow-xl z-50 overflow-hidden text-left py-1 text-slate-700 animate-in fade-in duration-100 ring-1 ring-black/5">
+                                        <button
+                                          type="button"
+                                          onClick={(e) => {
+                                            e.stopPropagation();
+                                            setActiveActionId(null);
+                                            openEditModal(user);
+                                          }}
+                                          className="w-full px-4 py-2 text-xs font-semibold hover:bg-slate-100 text-slate-800 flex items-center gap-2 cursor-pointer transition-colors text-left"
+                                        >
+                                          <Edit3 className="w-3.5 h-3.5 text-amber-500" />
+                                          <span>Edit User</span>
+                                        </button>
+
+                                        <button
+                                          type="button"
+                                          disabled={user.id === currentUser.id || user.username === "superadmin"}
+                                          onClick={(e) => {
+                                            e.stopPropagation();
+                                            setActiveActionId(null);
+                                            handleDeleteClick(user);
+                                          }}
+                                          className={`w-full px-4 py-2 text-xs font-semibold flex items-center gap-2 transition-colors text-left ${
+                                            user.id === currentUser.id || user.username === "superadmin"
+                                              ? "text-slate-300 cursor-not-allowed"
+                                              : "hover:bg-slate-100 text-rose-700 cursor-pointer"
+                                          }`}
+                                        >
+                                          <Trash2 className="w-3.5 h-3.5 text-rose-500" />
+                                          <span>Hapus User</span>
+                                        </button>
+                                      </div>
+                                    </>
+                                  )}
+                                </div>
+                              </div>
+                            </td>
+                          </tr>
+                        );
+                      })
+                    )}
+                  </tbody>
+                </table>
+              </div>
+
+              {/* CARD PAGINATION BAR */}
+              <div className="bg-white border-t border-slate-200 px-6 py-4 flex items-center justify-between font-mono text-[11px] font-bold shrink-0 shadow-2xs">
+                <span className="text-slate-400 uppercase tracking-widest leading-none text-[10px] font-black">
+                  TOTAL REKOR DATA: {filteredUsers.length} USER
+                </span>
+
+                <div className="flex items-center gap-1">
+                  <button
+                    disabled={userPage === 1}
+                    onClick={() => setUserPage(p => Math.max(1, p - 1))}
+                    className="px-3 py-1.5 rounded-lg border border-slate-200 text-slate-600 disabled:opacity-40 hover:bg-slate-50 transition-colors cursor-pointer disabled:cursor-not-allowed"
+                  >
+                    Sebelumnya
+                  </button>
+                  <span className="px-3 py-1.5 text-slate-500">
+                    Halaman {userPage} dari {totalPages}
+                  </span>
+                  <button
+                    disabled={userPage === totalPages}
+                    onClick={() => setUserPage(p => Math.min(totalPages, p + 1))}
+                    className="px-3 py-1.5 rounded-lg border border-slate-200 text-slate-600 disabled:opacity-40 hover:bg-slate-50 transition-colors cursor-pointer disabled:cursor-not-allowed"
+                  >
+                    Selanjutnya
+                  </button>
+                </div>
+              </div>
+
+            </div>
+          </div>
+        </>
+      ) : (
+        /* Sub-Tab 2: Roles & Privileges Matrix View */
+        <div className="flex-1 overflow-y-auto p-6 bg-slate-100 space-y-6">
+          <div className="bg-white border border-slate-200 rounded-xl p-6 shadow-xs space-y-5">
+            <div className="flex justify-between items-center border-b border-slate-150 pb-4">
+              <div>
+                <h2 className="text-sm font-black font-display text-slate-900 uppercase tracking-tight flex items-center gap-2">
+                  <Shield className="w-5 h-5 text-indigo-600" />
+                  Daftar Role & Matriks Otorisasi Privilege WMS
+                </h2>
+                <p className="text-xs text-slate-500 mt-0.5">
+                  Berikut adalah hirarki role dan batas kewenangan akses tanda tangan digital berjenjang pada sistem WMS PT. Pelayaran Bahtera Adhiguna.
+                </p>
+              </div>
+              <span className="bg-indigo-50 border border-indigo-200 text-indigo-700 px-3 py-1 rounded-lg text-xs font-mono font-bold">
+                6 Status Role Terdaftar
+              </span>
+            </div>
+
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-5">
+              {[
+                {
+                  role: "Petugas Gudang",
+                  user: "Maghfur Muhammad Alfin (alfin)",
+                  badge: "bg-emerald-100 text-emerald-800 border-emerald-300",
+                  desc: "Petugas operasional penerimaan (receiving), pemeriksaan fisik suku cadang, dan penataan lokasi rak gudang.",
+                  privileges: ["Receiving Inbound Suku Cadang", "Check Stock & Opname Gudang", "Print Label & QR Code", "Pengajuan TUG 5/TUG 10"]
+                },
+                {
+                  role: "Staff Gudang",
+                  user: "Ahmad Subarjo (staff_gudang_1)",
+                  badge: "bg-blue-100 text-blue-800 border-blue-300",
+                  desc: "Staff pengeluar barang gudang utama, penyiapan fisik barang TUG 8, dan pengarsipan bukti penerimaan.",
+                  privileges: ["Eksekusi Outbound Dispatch (TUG 8)", "Cetak Surat Jalan & Bon TUG 8", "Management Stok Master", "Opname Fisik Barang"]
+                },
+                {
+                  role: "Verifikator Rendalhar (Level 1)",
+                  user: "Maghfur Muhammad Alfin (alfin)",
+                  badge: "bg-sky-100 text-sky-800 border-sky-300",
+                  desc: "Pemeriksa kelayakan teknis dan verifikator administrasi dokumen TUG 5, TUG 6, TUG 8, dan TUG 10 tahap awal.",
+                  privileges: ["Verifikasi Dokumen Level 1", "TTD Digital Level 1 (Alfin)", "Review SPK & WO Ref", "Export ZIP Batch TUG 6"]
+                },
+                {
+                  role: "Manager Logistik (Level 2)",
+                  user: "Mohamat Emir Ferdian (emir)",
+                  badge: "bg-amber-100 text-amber-800 border-amber-300",
+                  desc: "Pemberi persetujuan operasional pengeluaran logistik, alokasi anggaran barang, dan supervisi gudang.",
+                  privileges: ["Approval Operasional Level 2", "TTD Digital Level 2 (Emir)", "Validasi Anggaran BPP", "Monitoring Realtime Analytics"]
+                },
+                {
+                  role: "VP RENDALHAR (Level 3)",
+                  user: "Sumbono (sumbono)",
+                  badge: "bg-indigo-100 text-indigo-800 border-indigo-300",
+                  desc: "Pejabat pengesahan tertinggi seluruh dokumen logistik kapal PT. Pelayaran Bahtera Adhiguna.",
+                  privileges: ["Pengesahan Akhir Level 3", "TTD Digital Level 3 (Sumbono)", "Status TUG Approved", "Executive Audit Ledger"]
+                },
+                {
+                  role: "Super Admin",
+                  user: "Fikri Haikal (superadmin)",
+                  badge: "bg-rose-100 text-rose-800 border-rose-300",
+                  desc: "Administrator pemilik sistem WMS dengan kewenangan penuh pengelolaan user, MySQL DB, dan audit trail.",
+                  privileges: ["Full System Access", "User Account & Role Management", "Direct Database Persistence", "Bypass Emergency Approval"]
+                }
+              ].map((rItem, idx) => (
+                <div key={idx} className="bg-slate-50 border border-slate-200 rounded-xl p-4 flex flex-col justify-between space-y-3 hover:border-indigo-300 hover:shadow-sm transition-all">
+                  <div>
+                    <div className="flex justify-between items-start">
+                      <span className={`px-2.5 py-1 rounded-full text-[10px] font-black uppercase tracking-wider border ${rItem.badge}`}>
+                        {rItem.role}
+                      </span>
+                      <span className="text-[10px] font-mono font-bold text-slate-400">ID: ROL-0{idx+1}</span>
+                    </div>
+                    <h3 className="text-xs font-bold text-slate-900 mt-2.5">Pejabat / Akun Assigned:</h3>
+                    <p className="text-xs font-mono font-extrabold text-indigo-700 bg-white px-2.5 py-1.5 rounded border border-slate-200 mt-1">
+                      👤 {rItem.user}
+                    </p>
+                    <p className="text-[11px] text-slate-600 leading-relaxed mt-2.5">
+                      {rItem.desc}
+                    </p>
+                  </div>
+
+                  <div className="pt-2 border-t border-slate-200">
+                    <span className="text-[9.5px] font-mono font-bold uppercase tracking-wider text-slate-400 block mb-1.5">
+                      Matriks Otorisasi Privilege:
+                    </span>
+                    <div className="space-y-1">
+                      {rItem.privileges.map((priv, pIdx) => (
+                        <div key={pIdx} className="text-[10.5px] font-medium text-slate-700 flex items-center gap-1.5">
+                          <CheckCircle className="w-3 h-3 text-emerald-600 shrink-0" />
+                          <span>{priv}</span>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                </div>
+              ))}
+            </div>
+          </div>
         </div>
-      </div>
+      )}
 
       {/* CREATE / EDIT MODAL OVERLAY */}
       {isModalOpen && (
@@ -459,16 +621,13 @@ export default function UsersManagementView({
                   <input
                     type="text"
                     required
-                    disabled={!!editingUser}
                     value={formUsername}
                     onChange={(e) => setFormUsername(e.target.value)}
                     placeholder="Contoh: ahmad_gudang"
-                    className="w-full bg-white disabled:bg-slate-50 disabled:text-slate-500 border border-slate-300 rounded-lg pl-7 pr-3 py-1.5 text-xs text-slate-800 font-mono focus:outline-none focus:ring-1 focus:ring-blue-500"
+                    className="w-full bg-white border border-slate-300 rounded-lg pl-7 pr-3 py-1.5 text-xs text-slate-800 font-mono focus:outline-none focus:ring-1 focus:ring-blue-500"
                   />
                 </div>
-                {!editingUser && (
-                  <span className="text-[9px] text-slate-400">Username digunakan untuk masuk (login) ke sistem ini.</span>
-                )}
+                <span className="text-[9px] text-slate-400">Username dapat diubah dan digunakan untuk masuk (login) ke sistem ini.</span>
               </div>
 
               {/* Full Name field */}
@@ -528,8 +687,12 @@ export default function UsersManagementView({
                   onChange={(e) => setFormRole(e.target.value as UserRole)}
                   className="w-full bg-white border border-slate-300 rounded-lg px-2.5 py-1.5 text-xs text-slate-800 focus:outline-none focus:ring-1 focus:ring-blue-500"
                 >
-                  <option value={UserRole.WAREHOUSE_ADMIN}>Warehouse Admin (Staff Gudang)</option>
-                  <option value={UserRole.SUPER_ADMIN}>Super Admin (Pemilik Sistem)</option>
+                  <option value={UserRole.WAREHOUSE_STAFF}>Petugas Gudang (Maghfur Muhammad Alfin)</option>
+                  <option value={UserRole.WAREHOUSE_ADMIN}>Staff Gudang (Ahmad Subarjo)</option>
+                  <option value={UserRole.VERIFIER_RENDALHAR}>Verifikator Rendalhar (Level 1 Approval)</option>
+                  <option value={UserRole.LOGISTICS_MANAGER}>Manager Logistik (Level 2 Approval - Emir)</option>
+                  <option value={UserRole.VP_RENDALHAR}>VP RENDALHAR (Level 3 Pengesahan - Sumbono)</option>
+                  <option value={UserRole.SUPER_ADMIN}>Super Admin (Pemilik Sistem - Fikri Haikal)</option>
                   <option value={UserRole.SUPERINTENDENT}>Superintendent (Pemeriksa / Verifikator TUG)</option>
                   <option value={UserRole.VESSEL_CREW}>Vessel Crew (Kru Kapal)</option>
                 </select>

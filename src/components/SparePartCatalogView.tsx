@@ -47,7 +47,7 @@ const INITIAL_CATALOG_DATA: CatalogItem[] = [
     hierarchy: ["Propulsion System", "Main Engine (Sulzer 9RTA96C)", "Piston Assembly"],
     specification: "Material: Forged Steel Alloy, Diameter: 960mm, Hard-chrome plated grooves",
     manufacturer: "Sulzer Diesel Engines Ltd",
-    vessel_compatibility: "MV Antigravity, MV Oceanic Giant, MV Nusantara Express",
+    vessel_compatibility: "MV. KARTINI BARUNA, MV. INTAN BARUNA, MV. RASUNA BARUNA",
     weight_kg: 485
   },
   {
@@ -60,7 +60,7 @@ const INITIAL_CATALOG_DATA: CatalogItem[] = [
     hierarchy: ["Auxiliary System", "Auxiliary Engine (Yanmar 6EY18AL)", "Turbine Section", "Gaskets"],
     specification: "Material: Graphite with Stainless Steel Grid Insert, Temp: Max 700°C",
     manufacturer: "Yanmar Marine Co., Ltd.",
-    vessel_compatibility: "MV Antigravity, MV Java Pioneer",
+    vessel_compatibility: "MV. ARIMBI BARUNA, MV. MALAHAYATI BARUNA",
     weight_kg: 0.85
   },
   {
@@ -73,7 +73,7 @@ const INITIAL_CATALOG_DATA: CatalogItem[] = [
     hierarchy: ["Propulsion System", "Main Engine (Sulzer 9RTA96C)", "Cylinder Liner", "Lubrication"],
     specification: "Pressure rating: 45 Bar, Material: SUS316 Stainless Steel, Flow Rate: 1.2 L/min",
     manufacturer: "Wärtsilä Switzerland",
-    vessel_compatibility: "MV Antigravity, MV Oceanic Giant",
+    vessel_compatibility: "MV. MEUTIA BARUNA, MV. MARTHA BARUNA",
     weight_kg: 2.1
   },
   {
@@ -86,7 +86,7 @@ const INITIAL_CATALOG_DATA: CatalogItem[] = [
     hierarchy: ["Propulsion System", "Main Engine (Sulzer 9RTA96C)", "Exhaust Valve System"],
     specification: "Material: Nimonic 80A / Stellite-faced seat, Stem length: 1850mm",
     manufacturer: "Sulzer Diesel Engines Ltd",
-    vessel_compatibility: "MV Antigravity, MV Oceanic Giant",
+    vessel_compatibility: "MV. MEUTIA BARUNA, MV. MARTHA BARUNA",
     weight_kg: 142
   },
   {
@@ -112,7 +112,7 @@ const INITIAL_CATALOG_DATA: CatalogItem[] = [
     hierarchy: ["Auxiliary System", "Purifier System", "Vertical Shaft Assembly"],
     specification: "Type: Deep Groove Ball Bearing, Clearance: C3 High Temp, Brand: SKF Explorer",
     manufacturer: "SKF Bearings Global",
-    vessel_compatibility: "MV Antigravity, MV Oceanic Giant, MV Nusantara Express, MV Java Pioneer",
+    vessel_compatibility: "MV. KARTINI BARUNA, MV. INTAN BARUNA, MV. RASUNA BARUNA, MV Java Pioneer",
     weight_kg: 1.2
   },
   {
@@ -125,7 +125,7 @@ const INITIAL_CATALOG_DATA: CatalogItem[] = [
     hierarchy: ["Steering & Deck", "Steering Gear System", "Hydraulic Cylinder Seals"],
     specification: "Material: Fluorocarbon Rubber (Viton), Pressure: Max 250 Bar, Temp: -20°C to 200°C",
     manufacturer: "Mitsubishi Heavy Industries",
-    vessel_compatibility: "MV Antigravity, MV Oceanic Giant",
+    vessel_compatibility: "MV. MEUTIA BARUNA, MV. MARTHA BARUNA",
     weight_kg: 0.35
   },
   {
@@ -138,7 +138,7 @@ const INITIAL_CATALOG_DATA: CatalogItem[] = [
     hierarchy: ["Auxiliary System", "Purifier System", "Clutch Assembly"],
     specification: "Asbestos-free organic lining, Set of 3 blocks with springs",
     manufacturer: "Alfa Laval Marine",
-    vessel_compatibility: "MV Antigravity, MV Java Pioneer",
+    vessel_compatibility: "MV. ARIMBI BARUNA, MV. MALAHAYATI BARUNA",
     weight_kg: 0.45
   },
   {
@@ -164,7 +164,7 @@ const INITIAL_CATALOG_DATA: CatalogItem[] = [
     hierarchy: ["Auxiliary System", "Boiler Steam System", "Instrumentation"],
     specification: "Scale: 0-16 Bar, Connection: 1/2 inch NPT Lower Mount, Case: Stainless Steel filled with Glycerin",
     manufacturer: "WIKA Instruments",
-    vessel_compatibility: "MV Antigravity, MV Oceanic Giant, MV Nusantara Express",
+    vessel_compatibility: "MV. KARTINI BARUNA, MV. INTAN BARUNA, MV. RASUNA BARUNA",
     weight_kg: 0.7
   },
   {
@@ -190,7 +190,7 @@ const INITIAL_CATALOG_DATA: CatalogItem[] = [
     hierarchy: ["Electrical & Automation", "Shaft Generator", "Grounding Brush Holder"],
     specification: "Grade: High copper-graphite, Dimensions: 32x40x60mm, Qty: 4 brushes per set",
     manufacturer: "Morgan Advanced Materials",
-    vessel_compatibility: "MV Antigravity, MV Oceanic Giant",
+    vessel_compatibility: "MV. MEUTIA BARUNA, MV. MARTHA BARUNA",
     weight_kg: 0.25
   },
   {
@@ -216,7 +216,7 @@ const INITIAL_CATALOG_DATA: CatalogItem[] = [
     hierarchy: ["Auxiliary System", "Auxiliary Engine (Yanmar 6EY18AL)", "Exhaust Gas Sensors"],
     specification: "Sensor type: K-Type (Chromel/Alumel), Length: 350mm, Cable: Steel braided 2m",
     manufacturer: "Yanmar Marine Co., Ltd.",
-    vessel_compatibility: "MV Antigravity, MV Java Pioneer",
+    vessel_compatibility: "MV. ARIMBI BARUNA, MV. MALAHAYATI BARUNA",
     weight_kg: 0.3
   },
   {
@@ -229,7 +229,7 @@ const INITIAL_CATALOG_DATA: CatalogItem[] = [
     hierarchy: ["Auxiliary System", "Starting Air Compressor", "Air Receiver Safety"],
     specification: "Set Pressure: 30.0 Bar, Inlet size: DN50 Flanged, Body: Cast Steel",
     manufacturer: "Seetru Safety Valves Ltd",
-    vessel_compatibility: "MV Antigravity, MV Oceanic Giant, MV Nusantara Express",
+    vessel_compatibility: "MV. KARTINI BARUNA, MV. INTAN BARUNA, MV. RASUNA BARUNA",
     weight_kg: 14.5
   },
   {
@@ -242,7 +242,7 @@ const INITIAL_CATALOG_DATA: CatalogItem[] = [
     hierarchy: ["Environmental System", "Oily Water Separator", "Control Valves"],
     specification: "Material: Neoprene with Nylon reinforcement, Diameter: 180mm, Pre-punched 8 holes",
     manufacturer: "RWO Environmental Systems",
-    vessel_compatibility: "MV Antigravity, MV Oceanic Giant",
+    vessel_compatibility: "MV. MEUTIA BARUNA, MV. MARTHA BARUNA",
     weight_kg: 0.15
   },
   {
@@ -255,7 +255,7 @@ const INITIAL_CATALOG_DATA: CatalogItem[] = [
     hierarchy: ["Auxiliary System", "Auxiliary Engine (Yanmar 6EY18AL)", "Fuel Injection Valve"],
     specification: "Coating: DLC, Holes: 6 x 0.28mm, Opening pressure: 280 Bar",
     manufacturer: "Yanmar Marine Co., Ltd.",
-    vessel_compatibility: "MV Antigravity, MV Java Pioneer",
+    vessel_compatibility: "MV. ARIMBI BARUNA, MV. MALAHAYATI BARUNA",
     weight_kg: 0.18
   },
   {
@@ -281,7 +281,7 @@ const INITIAL_CATALOG_DATA: CatalogItem[] = [
     hierarchy: ["Auxiliary System", "Auxiliary Engine (Yanmar 6EY18AL)", "Piston Rings"],
     specification: "3 Rings per cylinder: 1st Keystone-barrel, 2nd Taper-faced, 3rd Slotted coil spring loaded",
     manufacturer: "Yanmar Marine Co., Ltd.",
-    vessel_compatibility: "MV Antigravity, MV Java Pioneer",
+    vessel_compatibility: "MV. ARIMBI BARUNA, MV. MALAHAYATI BARUNA",
     weight_kg: 1.1
   },
   {
@@ -895,7 +895,7 @@ export default function SparePartCatalogView() {
                   </label>
                   <input
                     type="text"
-                    placeholder="Contoh: MV Antigravity, MV Java Pioneer"
+                    placeholder="Contoh: MV. ARIMBI BARUNA, MV. MALAHAYATI BARUNA"
                     value={newVesselCompatibility}
                     onChange={(e) => setNewVesselCompatibility(e.target.value)}
                     className="w-full bg-slate-50 border border-slate-250 rounded-lg text-xs px-3 py-2 font-medium text-slate-800 focus:outline-none focus:ring-1 focus:ring-blue-500"
@@ -1155,7 +1155,7 @@ export default function SparePartCatalogView() {
                       </label>
                       <input
                         type="text"
-                        placeholder="Contoh: MV Antigravity, MV Oceanic Giant"
+                        placeholder="Contoh: MV. MEUTIA BARUNA, MV. MARTHA BARUNA"
                         value={editItemForm.vessel_compatibility || ""}
                         onChange={(e) => setEditItemForm({ ...editItemForm, vessel_compatibility: e.target.value })}
                         className="w-full bg-slate-50 border border-slate-250 rounded-lg text-xs px-3 py-2 font-medium text-slate-800 focus:outline-none focus:ring-1 focus:ring-blue-500"

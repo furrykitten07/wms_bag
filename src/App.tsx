@@ -27,8 +27,10 @@ import {
   MaterialRequest,
   MaterialRequestStatus,
   MaterialReturn,
-  MaterialReturnStatus
+  MaterialReturnStatus,
+  DigitalSignature
 } from "./types.js";
+import { ChevronRight } from "lucide-react";
 
 // Import modular sub-components
 import Sidebar from "./components/Sidebar.js";
@@ -43,9 +45,11 @@ import LoginView from "./components/LoginView.js";
 import ReportsView from "./components/ReportsView.js";
 import SPKView from "./components/SPKView.js";
 import MaterialRequestView from "./components/MaterialRequestView.js";
+import MaterialRequestTUG6View from "./components/MaterialRequestTUG6View.js";
 import MaterialReturnView from "./components/MaterialReturnView.js";
 import SparePartCatalogView from "./components/SparePartCatalogView.js";
 import UsersManagementView from "./components/UsersManagementView.js";
+import SignatureManagementView from "./components/SignatureManagementView.js";
 
 import { AlertCircle, RefreshCw, Layers } from "lucide-react";
 
@@ -62,6 +66,9 @@ export default function App() {
   const [currentUser, setCurrentUser] = useState<User | null>(null);
   const [isAuthenticated, setIsAuthenticated] = useState<boolean>(false);
 
+  // Navigation Auto Open Request Detail State
+  const [autoOpenMRId, setAutoOpenMRId] = useState<string | null>(null);
+
   // In-Memory dynamic DB tables
   const [parts, setParts] = useState<SparePart[]>([]);
   const [locations, setLocations] = useState<WarehouseLocation[]>([]);
@@ -73,7 +80,9 @@ export default function App() {
   const [ledger, setLedger] = useState<MovementLedgerEntry[]>([]);
   const [spkList, setSpkList] = useState<SPKWorkOrder[]>([]);
   const [materialRequests, setMaterialRequests] = useState<MaterialRequest[]>([]);
+  const [materialRequestsTUG6, setMaterialRequestsTUG6] = useState<MaterialRequest[]>([]);
   const [materialReturns, setMaterialReturns] = useState<MaterialReturn[]>([]);
+  const [signatures, setSignatures] = useState<DigitalSignature[]>([]);
   
   // Dashboard summary combined calculations
   const [summary, setSummary] = useState<any>({
@@ -89,7 +98,7 @@ export default function App() {
   // Printable Document Modal State
   const [printDoc, setPrintDoc] = useState<{
     isOpen: boolean;
-    type: "bon" | "surat_jalan" | "manifest" | "stock_report" | "mutation_report" | "tug5" | "tug10";
+    type: "bon" | "surat_jalan" | "manifest" | "stock_report" | "mutation_report" | "spk_report" | "tug5" | "tug6" | "tug10";
     data?: any;
     inventoryList?: SparePart[];
     mutationList?: any[];
@@ -113,16 +122,17 @@ export default function App() {
       const usrList = await api.getUsers();
       setSimulatedUsers(usrList);
       
-      const savedUser = localStorage.getItem("wms_username");
-      if (savedUser) {
-        const matchedUser = usrList.find(u => u.username === savedUser);
-        if (matchedUser) {
-          setCurrentUser(matchedUser);
-          setCurrentUserHeader(matchedUser.username);
-          setIsAuthenticated(true);
-        } else {
-          setIsAuthenticated(false);
-        }
+      let savedUser = localStorage.getItem("wms_username");
+      if (!savedUser) {
+        savedUser = "superadmin";
+        localStorage.setItem("wms_username", "superadmin");
+      }
+      
+      const matchedUser = usrList.find(u => u.username === savedUser) || usrList[0];
+      if (matchedUser) {
+        setCurrentUser(matchedUser);
+        setCurrentUserHeader(matchedUser.username);
+        setIsAuthenticated(true);
       } else {
         setIsAuthenticated(false);
       }
@@ -134,10 +144,8 @@ export default function App() {
       const vendList = await api.getVendors();
       setVendors(vendList);
 
-      // 3. Fire transactions synchronizer
-      if (savedUser) {
-        await syncAllTables();
-      }
+      // 3. Fire transactions synchronizer for all tables
+      await syncAllTables();
     } catch (err: any) {
       console.error(err);
       setError(err.message || "Could not successfully establish handshake with Express WMS Engine");
@@ -185,8 +193,14 @@ export default function App() {
       const mrData = await api.getMaterialRequests();
       setMaterialRequests(mrData);
 
+      const mrTUG6Data = await api.getMaterialRequestsTUG6();
+      setMaterialRequestsTUG6(mrTUG6Data);
+
       const returnsData = await api.getMaterialReturns();
       setMaterialReturns(returnsData);
+
+      const sigsData = await api.getSignatures();
+      setSignatures(sigsData);
 
       const usrList = await api.getUsers();
       setSimulatedUsers(usrList);
@@ -201,6 +215,27 @@ export default function App() {
     } catch(err: any) {
       console.error("Synch tables failed:", err);
     }
+  };
+
+  // Digital Signatures Action Handlers
+  const handleAddSignature = async (data: Partial<DigitalSignature>) => {
+    await api.createSignature(data);
+    await syncAllTables();
+  };
+
+  const handleUpdateSignature = async (id: string, data: Partial<DigitalSignature>) => {
+    await api.updateSignature(id, data);
+    await syncAllTables();
+  };
+
+  const handleDeleteSignature = async (id: string) => {
+    await api.deleteSignature(id);
+    await syncAllTables();
+  };
+
+  const handleResetDefaultSignatures = async () => {
+    await api.resetDefaultSignatures();
+    await syncAllTables();
   };
 
   // Auth triggers
@@ -362,6 +397,16 @@ export default function App() {
     await syncAllTables();
   };
 
+  const handleDeleteReceiving = async (id: string) => {
+    try {
+      await api.deleteReceiving(id);
+      await syncAllTables();
+    } catch (err: any) {
+      console.error(err);
+      alert(err.message || "Gagal menghapus data penerimaan");
+    }
+  };
+
   // DISPATCH ACTION: LOGISTICS ADVANCEMENT & STOCK RESERVATION EXCLUSION
   const handleUpdateDispatch = async (
     id: string, 
@@ -374,6 +419,16 @@ export default function App() {
   const handleCreateDispatch = async (data: Partial<OutboundDispatch>) => {
     await api.createDispatch(data);
     await syncAllTables();
+  };
+
+  const handleDeleteDispatch = async (id: string) => {
+    try {
+      await api.deleteDispatch(id);
+      await syncAllTables();
+    } catch (err: any) {
+      console.error(err);
+      alert(err.message || "Gagal menghapus data pengeluaran");
+    }
   };
 
   // REQUISITIONS ACTION: VESSEL CREW SUBMITS SUPPLY ORDER
@@ -491,6 +546,64 @@ export default function App() {
     });
   };
 
+  // Material Request (TUG 6) Event Handlers
+  const handleCreateMaterialRequestTUG6 = async (data: Partial<MaterialRequest>) => {
+    try {
+      await api.createMaterialRequestTUG6(data);
+      await syncAllTables();
+    } catch (err: any) {
+      console.error(err);
+      alert(err.message || "Failed to create TUG 6 material request");
+    }
+  };
+
+  const handleCreateMaterialRequestTUG6Batch = async (data: Partial<MaterialRequest>[]) => {
+    try {
+      await api.createMaterialRequestTUG6Batch(data);
+      await syncAllTables();
+    } catch (err: any) {
+      console.error(err);
+      alert(err.message || "Failed to batch create TUG 6 material requests");
+    }
+  };
+
+  const handleUpdateMaterialRequestTUG6 = async (id: string, data: Partial<MaterialRequest>) => {
+    try {
+      await api.updateMaterialRequestTUG6(id, data);
+      await syncAllTables();
+    } catch (err: any) {
+      console.error(err);
+      alert(err.message || "Failed to update TUG 6 material request");
+    }
+  };
+
+  const handleDeleteMaterialRequestTUG6 = async (id: string) => {
+    try {
+      await api.deleteMaterialRequestTUG6(id);
+      await syncAllTables();
+    } catch (err: any) {
+      console.error(err);
+      alert(err.message || "Failed to delete TUG 6 material request");
+    }
+  };
+
+  const handleLogMR6Action = async (id: string, action: "Printed" | "Downloaded") => {
+    try {
+      await api.logMaterialRequestTUG6Action(id, action);
+      await syncAllTables();
+    } catch (err: any) {
+      console.error(err);
+    }
+  };
+
+  const handlePreviewTUG6 = (request: MaterialRequest) => {
+    setPrintDoc({
+      isOpen: true,
+      type: "tug6",
+      data: request
+    });
+  };
+
   // Material Return (TUG 10) Event Handlers
   const handleCreateMaterialReturn = async (data: Partial<MaterialReturn>) => {
     try {
@@ -534,7 +647,7 @@ export default function App() {
   if (loading && !currentUser && localStorage.getItem("wms_username")) {
     return (
       <div className="min-h-screen bg-slate-900 flex flex-col items-center justify-center text-white p-6 font-mono selection:bg-rose-500">
-        <RefreshCw className="w-10 h-10 text-blue-500 animate-spin mb-4" />
+        <div className="w-10 h-10 border-4 border-blue-500 border-t-transparent rounded-full animate-spin mb-4" />
         <h2 className="text-sm font-bold uppercase tracking-widest text-slate-300">MARE-WMS SYSTEM RECONCILING</h2>
         <p className="text-[10px] text-slate-500 mt-2 uppercase tracking-wide">Syncing local data structures with backend in-memory databases...</p>
       </div>
@@ -564,7 +677,7 @@ export default function App() {
   }
 
   return (
-    <div className="h-screen flex flex-col bg-slate-50 text-slate-850 overflow-hidden font-sans">
+    <div className="h-screen flex flex-col bg-slate-50 text-slate-850 overflow-hidden print:h-auto print:overflow-visible font-sans">
       
       {/* Main UI Layout wrapper (hides during browser print) */}
       <div className="flex-1 flex flex-col overflow-hidden no-print">
@@ -592,12 +705,151 @@ export default function App() {
         {/* Active Application tab switches */}
         <main className="flex-1 flex flex-col overflow-hidden bg-slate-50 relative">
           
+          {/* Interactive Per-TUG Digital Signature Notification Banner */}
+          {currentUser && (() => {
+            const u = (currentUser.username || "").toLowerCase();
+            const r = (currentUser.role || "").toLowerCase();
+            
+            // Check if document needs ANY signature in the 3-level approval hierarchy
+            const isPending = (doc: any) => {
+              if (!doc || doc.status === "Rejected") return false;
+              return !doc.alfin_signed || !doc.emir_signed || !doc.sumbono_signed;
+            };
+
+            // Check if action is specifically waiting on current user's level
+            const isActionRequiredForMe = (doc: any) => {
+              if (!doc || doc.status === "Rejected") return false;
+              if (u.includes("alfin") || r.includes("verifikator") || r.includes("petugas")) return !doc.alfin_signed;
+              if (u.includes("emir") || r.includes("manager")) return doc.alfin_signed && !doc.emir_signed;
+              if (u.includes("sumbono") || r.includes("vp")) return doc.emir_signed && !doc.sumbono_signed;
+              return !doc.alfin_signed || !doc.emir_signed || !doc.sumbono_signed;
+            };
+
+            const tug5 = (materialRequests || []).filter(isPending).length;
+            const tug6 = (materialRequestsTUG6 || []).filter(isPending).length;
+            const tug8 = (dispatchList || []).filter(isPending).length;
+            const tug10 = (materialReturns || []).filter(isPending).length;
+            const total = tug5 + tug6 + tug8 + tug10;
+
+            const myTug5Action = (materialRequests || []).filter(isActionRequiredForMe).length;
+            const myTug6Action = (materialRequestsTUG6 || []).filter(isActionRequiredForMe).length;
+            const myTug8Action = (dispatchList || []).filter(isActionRequiredForMe).length;
+            const myTug10Action = (materialReturns || []).filter(isActionRequiredForMe).length;
+            const myTotalAction = myTug5Action + myTug6Action + myTug8Action + myTug10Action;
+
+            return (
+              <div className="bg-slate-900 text-white px-5 py-2.5 flex flex-col md:flex-row items-start md:items-center justify-between gap-3 border-b border-slate-800 shadow-md shrink-0 font-sans">
+                <div className="flex items-center gap-2.5">
+                  <div className="p-2 bg-amber-500/20 text-amber-400 rounded-lg border border-amber-500/30 text-base animate-pulse">
+                    ✍️
+                  </div>
+                  <div>
+                    <div className="flex items-center gap-2">
+                      <span className="text-xs font-bold text-slate-200">
+                        Pemberitahuan TTD Digital Berjenjang — Login Sebagai: <strong className="text-amber-300 font-black">{currentUser.name}</strong> ({currentUser.role})
+                      </span>
+                    </div>
+                    <p className="text-[11px] text-slate-300 font-mono mt-0.5">
+                      {total > 0 ? (
+                        <span className="text-amber-300 font-bold">
+                          ⚠️ PERHATIAN: Terdapat {total} Dokumen TUG yang belum lengkap TTD Digital.
+                          {myTotalAction > 0 && (
+                            <span className="text-emerald-400 font-black ml-1.5 underline decoration-emerald-400">
+                              ({myTotalAction} Dokumen Siap Anda Setujui)
+                            </span>
+                          )}
+                        </span>
+                      ) : (
+                        <span className="text-emerald-400 font-bold">
+                          ✓ Seluruh Dokumen TUG telah lengkap diverifikasi & ditandatangani secara digital.
+                        </span>
+                      )}
+                    </p>
+                  </div>
+                </div>
+
+                {/* Dedicated TUG Breakdown Quick Action Pills */}
+                <div className="flex items-center gap-2 flex-wrap">
+                  <button
+                    onClick={() => setCurrentTab("material-requests")}
+                    className={`px-3 py-1.5 rounded-lg font-mono font-bold text-xs flex items-center gap-1.5 transition-all cursor-pointer shadow-xs border ${
+                      tug5 > 0
+                        ? "bg-blue-600 hover:bg-blue-500 text-white border-blue-400 ring-2 ring-blue-500/50"
+                        : "bg-slate-800 text-slate-400 border-slate-700 hover:bg-slate-750"
+                    }`}
+                  >
+                    <span>📄 TUG 5 Permintaan</span>
+                    <span className={`text-[10px] px-1.5 py-0.2 rounded-full font-black ${tug5 > 0 ? "bg-amber-400 text-slate-950 font-black" : "bg-slate-700 text-slate-400"}`}>
+                      {tug5 > 0 ? `${tug5} PENDING TTD` : "✓ Complete"}
+                    </span>
+                  </button>
+
+                  <button
+                    onClick={() => setCurrentTab("material-requests-tug6")}
+                    className={`px-3 py-1.5 rounded-lg font-mono font-bold text-xs flex items-center gap-1.5 transition-all cursor-pointer shadow-xs border ${
+                      tug6 > 0
+                        ? "bg-purple-600 hover:bg-purple-500 text-white border-purple-400 ring-2 ring-purple-500/50"
+                        : "bg-slate-800 text-slate-400 border-slate-700 hover:bg-slate-750"
+                    }`}
+                  >
+                    <span>📑 TUG 6 Requisition</span>
+                    <span className={`text-[10px] px-1.5 py-0.2 rounded-full font-black ${tug6 > 0 ? "bg-amber-400 text-slate-950 font-black" : "bg-slate-700 text-slate-400"}`}>
+                      {tug6 > 0 ? `${tug6} PENDING TTD` : "✓ Complete"}
+                    </span>
+                  </button>
+
+                  <button
+                    onClick={() => setCurrentTab("dispatch")}
+                    className={`px-3 py-1.5 rounded-lg font-mono font-bold text-xs flex items-center gap-1.5 transition-all cursor-pointer shadow-xs border ${
+                      tug8 > 0
+                        ? "bg-amber-600 hover:bg-amber-500 text-white border-amber-400 ring-2 ring-amber-500/50"
+                        : "bg-slate-800 text-slate-400 border-slate-700 hover:bg-slate-750"
+                    }`}
+                  >
+                    <span>🚚 TUG 8 Dispatch</span>
+                    <span className={`text-[10px] px-1.5 py-0.2 rounded-full font-black ${tug8 > 0 ? "bg-amber-400 text-slate-950 font-black" : "bg-slate-700 text-slate-400"}`}>
+                      {tug8 > 0 ? `${tug8} PENDING TTD` : "✓ Complete"}
+                    </span>
+                  </button>
+
+                  <button
+                    onClick={() => setCurrentTab("material-returns")}
+                    className={`px-3 py-1.5 rounded-lg font-mono font-bold text-xs flex items-center gap-1.5 transition-all cursor-pointer shadow-xs border ${
+                      tug10 > 0
+                        ? "bg-emerald-600 hover:bg-emerald-500 text-white border-emerald-400 ring-2 ring-emerald-500/50"
+                        : "bg-slate-800 text-slate-400 border-slate-700 hover:bg-slate-800"
+                    }`}
+                  >
+                    <span>🔄 TUG 10 Pengembalian</span>
+                    <span className={`text-[10px] px-1.5 py-0.2 rounded-full font-black ${tug10 > 0 ? "bg-amber-400 text-slate-950 font-black" : "bg-slate-700 text-slate-400"}`}>
+                      {tug10 > 0 ? `${tug10} PENDING TTD` : "✓ Complete"}
+                    </span>
+                  </button>
+                </div>
+              </div>
+            );
+          })()}
+          
           {/* Dashboard Tab */}
           {currentTab === "dashboard" && (
             <DashboardView 
-              summary={summary}
+              summary={{
+                ...summary,
+                tug5Count: materialRequests.length,
+                tug6Count: materialRequestsTUG6.length,
+                tug8Count: dispatchList.length,
+                tug10Count: materialReturns.length
+              }}
+              materialRequests={materialRequests}
+              materialRequestsTUG6={materialRequestsTUG6}
+              dispatches={dispatchList}
+              materialReturns={materialReturns}
               onQuickOrder={handleQuickOrder}
               onNavigateTab={setCurrentTab}
+              onProcessTUG5={(req) => {
+                setAutoOpenMRId(req.id);
+                setCurrentTab("material-requests");
+              }}
               onRefresh={syncAllTables}
               loading={loading}
             />
@@ -634,6 +886,7 @@ export default function App() {
               role={currentUser!.role}
               onAddReceiving={handleAddReceiving}
               onVerifyReceiving={handleVerifyReceiving}
+              onDeleteReceiving={handleDeleteReceiving}
               onPreviewDocument={(rec) => {
                 setPrintDoc({
                   isOpen: true,
@@ -651,9 +904,13 @@ export default function App() {
               role={currentUser!.role}
               onUpdateDispatch={handleUpdateDispatch}
               onCreateDispatch={handleCreateDispatch}
+              onDeleteDispatch={handleDeleteDispatch}
               onPreviewDocument={handleOpenDispatchDoc}
               parts={parts}
               requests={materialRequests}
+              requestsTUG6={materialRequestsTUG6}
+              onPreviewTUG5={(req) => setPrintDoc({ isOpen: true, type: "tug5", data: req })}
+              onPreviewTUG6={(req) => setPrintDoc({ isOpen: true, type: "tug6", data: req })}
               spkList={spkList}
               onUpdateSPK={handleUpdateSPK}
               materialReturns={materialReturns}
@@ -683,11 +940,16 @@ export default function App() {
             />
           )}
 
-          {/* Integrated Stock Reports (Keluar Masuk) */}
+          {/* Integrated Stock Reports (Keluar Masuk & Per SPK TUG) */}
           {currentTab === "reports" && (
             <ReportsView 
               movements={ledger}
               parts={parts}
+              receivingList={receivingList}
+              dispatchList={dispatchList}
+              spkList={spkList}
+              materialRequests={materialRequests}
+              materialReturns={materialReturns}
               onPrintReport={(filteredMovements, stats, timeFilter) => {
                 setPrintDoc({
                   isOpen: true,
@@ -695,6 +957,13 @@ export default function App() {
                   mutationList: filteredMovements,
                   stats,
                   timeFilter
+                });
+              }}
+              onPrintSPKReport={(spkData) => {
+                setPrintDoc({
+                  isOpen: true,
+                  type: "spk_report",
+                  data: spkData
                 });
               }}
             />
@@ -713,6 +982,26 @@ export default function App() {
               onLogMRAction={handleLogMRAction}
               onPreviewTUG5={handlePreviewTUG5}
               spkList={spkList}
+              autoOpenMRId={autoOpenMRId}
+              onClearAutoOpenMRId={() => setAutoOpenMRId(null)}
+              signatures={signatures}
+            />
+          )}
+
+          {/* Material Requests TUG 6 Form Generator */}
+          {currentTab === "material-requests-tug6" && (
+            <MaterialRequestTUG6View 
+              requests={materialRequestsTUG6}
+              parts={parts}
+              currentUser={currentUser!}
+              onCreateRequest={handleCreateMaterialRequestTUG6}
+              onCreateRequestBatch={handleCreateMaterialRequestTUG6Batch}
+              onUpdateRequest={handleUpdateMaterialRequestTUG6}
+              onDeleteRequest={handleDeleteMaterialRequestTUG6}
+              onLogMRAction={handleLogMR6Action}
+              onPreviewTUG6={handlePreviewTUG6}
+              spkList={spkList}
+              signatures={signatures}
             />
           )}
 
@@ -744,6 +1033,17 @@ export default function App() {
             />
           )}
 
+          {/* Digital Signatures Management */}
+          {currentTab === "signature-management" && (
+            <SignatureManagementView 
+              signatures={signatures}
+              onAddSignature={handleAddSignature}
+              onUpdateSignature={handleUpdateSignature}
+              onDeleteSignature={handleDeleteSignature}
+              onResetDefaults={handleResetDefaultSignatures}
+            />
+          )}
+
         </main>
       </div>
       </div>
@@ -758,6 +1058,7 @@ export default function App() {
           stats={printDoc.stats}
           timeFilter={printDoc.timeFilter}
           spkList={spkList}
+          signatures={signatures}
           onClose={() => setPrintDoc({ isOpen: false, type: "stock_report" })}
         />
       )}

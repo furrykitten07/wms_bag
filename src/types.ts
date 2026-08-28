@@ -5,7 +5,11 @@
 
 export enum UserRole {
   SUPER_ADMIN = "Super Admin",
+  WAREHOUSE_STAFF = "Petugas Gudang",
   WAREHOUSE_ADMIN = "Warehouse Admin",
+  VERIFIER_RENDALHAR = "Verifikator Rendalhar",
+  LOGISTICS_MANAGER = "Manager Logistik",
+  VP_RENDALHAR = "VP RENDALHAR",
   SUPERINTENDENT = "Superintendent",
   VESSEL_CREW = "Vessel Crew",
 }
@@ -115,6 +119,7 @@ export enum ReceivingStatus {
   ACCEPTED = "Accepted",
   PARTIAL_REJECT = "Partial Reject",
   FULL_REJECT = "Full Reject",
+  VERIFIED = "Verified",
 }
 
 export interface InboundReceiving {
@@ -130,7 +135,7 @@ export interface InboundReceiving {
     qty_ordered: number;
     qty_received: number;
     qty_rejected: number;
-    qc_status: "Verified" | "Rejected" | "Pending";
+    qc_status: "Verified" | "Rejected" | "Pending" | "Approved";
     reject_reason?: string;
   }>;
   status: ReceivingStatus;
@@ -139,6 +144,7 @@ export interface InboundReceiving {
   photo_evidence_url?: string;
   signature_data_url?: string;
   received_date: string;
+  created_at?: string;
   created_by: string;
 }
 
@@ -151,13 +157,14 @@ export enum DispatchStatus {
   DRAFT = "Draft",
   READY_TO_DISPATCH = "Ready To Dispatch",
   COMPLETED = "Completed",
+  IN_TRANSIT = "In Transit",
 }
 
 export interface OutboundDispatch {
   id: string;
-  request_reference: string; // Vessel request ID or Sales/WMS code
+  request_reference?: string; // Vessel request ID or Sales/WMS code
   vessel_name: string;
-  consignee: string;
+  consignee?: string;
   items: Array<{
     spare_part_id: string;
     spare_part_name: string;
@@ -172,25 +179,37 @@ export interface OutboundDispatch {
   }>;
   status: DispatchStatus;
   courier_name?: string;
+  transporter_name?: string;
   tracking_number?: string;
   manifest_number?: string;
   surat_jalan_number?: string;
   bon_pengeluaran_number?: string;
   dispatch_date?: string;
+  created_at?: string;
   created_by: string;
   dispatch_number?: string;
   tug8_number?: string;
   warehouse_name?: string;
+  warehouse_origin?: string;
+  vehicle_number?: string;
+  driver_name?: string;
+  driver_phone?: string;
+  source_type?: string;
   delivery_destination?: string;
+  destination_port?: string;
   notes?: string;
   driver_pic?: string;
   work_order_ref?: string;
+  spk_id?: string;
+  spk_number?: string;
   account_code?: string;
   function_code?: string;
 }
 
 export enum RequestUrgency {
   NORMAL = "Normal",
+  HIGH = "High",
+  LOW = "Low",
   URGENT = "Urgent",
   CRITICAL = "Critical",
 }
@@ -289,9 +308,11 @@ export interface MaterialRequestItem {
   spare_part_name: string;
   part_number: string;
   unit: string;
-  avg_monthly_usage: number; // Pemakaian rata-rata per bulan
+  avg_monthly_usage?: number; // Pemakaian rata-rata per bulan
   remaining_stock: number; // Sisa Persediaan
   requested_qty: number; // Permintaan
+  approved_qty?: number; // Jumlah yang disetujui
+  unit_price?: number; // Harga satuan
   notes?: string; // Keterangan
   item_status?: "Arrived" | "Pending" | "Returned"; // Status kedatangan barang
 }
@@ -299,19 +320,32 @@ export interface MaterialRequestItem {
 export interface MaterialRequest {
   id: string;
   request_number: string;
-  request_date: string;
-  requester_name: string;
+  request_date?: string;
+  requester_name?: string;
   vessel_name: string;
-  warehouse_name: string;
-  delivery_address: string;
-  work_order_ref: string; // Perintah Kerja
-  account_code: string; // Kode Akun
-  function_code: string; // Fungsi
+  warehouse_name?: string;
+  delivery_address?: string;
+  work_order_ref?: string; // Perintah Kerja
+  account_code?: string; // Kode Akun
+  function_code?: string; // Fungsi
   remarks?: string;
   status: MaterialRequestStatus;
   items: MaterialRequestItem[];
-  created_at: string;
-  updated_at: string;
+  created_at?: string;
+  updated_at?: string;
+  tug5_number?: string;
+  tug6_number?: string;
+  tug_type?: "TUG5" | "TUG6";
+  department?: string;
+  requested_by?: string;
+  urgency?: RequestUrgency | string;
+  spk_number?: string;
+  spk_id?: string;
+  tug_number?: string;
+  destination_port?: string;
+  warehouse?: string;
+  created_by?: string;
+  notes?: string;
 }
 
 export interface MRActivityLog {
@@ -331,9 +365,9 @@ export interface MaterialReturnItem {
   part_number: string;
   part_name: string;
   unit: string;
-  qty_issued: number;
-  qty_used: number;
-  qty_returnable: number;
+  qty_issued?: number;
+  qty_used?: number;
+  qty_returnable?: number;
   qty_returned: number;
   notes?: string;
 }
@@ -343,11 +377,12 @@ export interface MaterialReturn {
   return_number: string;
   return_date: string;
   vessel_name: string;
-  warehouse_name: string;
-  spk_number: string;
-  work_order_number: string;
-  dispatch_reference: string; // TUG 8 dispatch reference
-  return_reason: string;
+  warehouse_name?: string;
+  spk_number?: string;
+  spk_id?: string;
+  work_order_number?: string;
+  dispatch_reference?: string; // TUG 8 dispatch reference
+  return_reason?: string;
   notes?: string;
   status: MaterialReturnStatus;
   items: MaterialReturnItem[];
@@ -358,5 +393,16 @@ export interface MaterialReturn {
   account_code?: string;
   function_code?: string;
 }
+
+export interface DigitalSignature {
+  id: string;
+  role_title: string; // e.g. "Manager Logistik", "VP RENDALHAR", "Kepala Gudang", "Captain", "Staff Admin Logistik"
+  user_name: string; // e.g. "Mohamat Emir Ferdian", "Sumbono", "Capt. H. Wijaya"
+  signature_url: string; // Base64 image data URL or image URL
+  notes?: string;
+  created_at: string;
+  updated_at: string;
+}
+
 
 

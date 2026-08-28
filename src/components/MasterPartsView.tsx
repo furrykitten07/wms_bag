@@ -141,7 +141,7 @@ export default function MasterPartsView({
       alternative_part_number: "",
       category: "Main Engine Parts",
       vendor_id: vendors[0]?.id || "vnd-1",
-      vessel_compatibility: "MV Ocean Voyager",
+      vessel_compatibility: "MV. KARTINI BARUNA",
       unit: "PCS",
       brand: "",
       maker: "",
@@ -1057,7 +1057,7 @@ export default function MasterPartsView({
                   value={partForm.vessel_compatibility || ""}
                   onChange={(e) => setPartForm({ ...partForm, vessel_compatibility: e.target.value })}
                   className="w-full bg-slate-50 border border-slate-250 rounded text-xs px-2.5 py-1.5"
-                  placeholder="e.g. MV Ocean Voyager, MV Antigravity Star"
+                  placeholder="e.g. MV. KARTINI BARUNA, MV. INTAN BARUNA"
                 />
               </div>
 

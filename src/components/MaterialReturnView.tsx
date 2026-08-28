@@ -75,17 +75,23 @@ export default function MaterialReturnView({
   const [searchQuery, setSearchQuery] = useState<string>("");
   const [statusFilter, setStatusFilter] = useState<string>("All");
 
+  // Date/Time filter states for TUG 10 (Minggu, Bulan, Custom, Juli 2026 Kosong)
+  const [timePreset, setTimePreset] = useState<"all" | "week" | "month" | "july2026" | "custom">("all");
+  const [selectedMonth, setSelectedMonth] = useState<string>("ALL");
+  const [dateFrom, setDateFrom] = useState<string>("");
+  const [dateTo, setDateTo] = useState<string>("");
+
   // Pagination states
   const [returnPage, setReturnPage] = useState(1);
   const returnsPerPage = 10;
 
   React.useEffect(() => {
     setReturnPage(1);
-  }, [searchQuery, statusFilter]);
+  }, [searchQuery, statusFilter, timePreset, selectedMonth, dateFrom, dateTo]);
 
   // Create form state
   const [returnDate, setReturnDate] = useState<string>(new Date().toISOString().split("T")[0]);
-  const [vesselName, setVesselName] = useState<string>(currentUser.vesselName || "MV Ocean Voyager");
+  const [vesselName, setVesselName] = useState<string>(currentUser.vesselName || "MV. KARTINI BARUNA");
   const [warehouseName, setWarehouseName] = useState<string>("Gudang Merak");
   const [spkNumber, setSpkNumber] = useState<string>("");
   const [dispatchReference, setDispatchReference] = useState<string>("");
@@ -96,6 +102,7 @@ export default function MaterialReturnView({
   const [showRejectModal, setShowRejectModal] = useState<boolean>(false);
   const [editingNotesId, setEditingNotesId] = useState<string | null>(null);
   const [currentNotesValue, setCurrentNotesValue] = useState<string>("");
+  const [isManualMode, setIsManualMode] = useState<boolean>(false);
 
   // Selected item selector lists
   const [selectedPartId, setSelectedPartId] = useState<string>("");
@@ -103,16 +110,23 @@ export default function MaterialReturnView({
   const [newPartName, setNewPartName] = useState<string>("");
   const [newPartNumber, setNewPartNumber] = useState<string>("");
   const [newUnit, setNewUnit] = useState<string>("PCS");
+
+  // Manual item typing states (un-synced from master)
+  const [manualPartName, setManualPartName] = useState<string>("");
+  const [manualPartNumber, setManualPartNumber] = useState<string>("");
+  const [manualUnit, setManualUnit] = useState<string>("PCS");
+  const [manualItemMode, setManualItemMode] = useState<"manual" | "master">("manual");
+
   const [qtyIssued, setQtyIssued] = useState<number>(5);
   const [qtyUsed, setQtyUsed] = useState<number>(3);
-  const [qtyReturned, setQtyReturned] = useState<number>(2);
+  const [qtyReturned, setQtyReturned] = useState<number>(1);
   const [itemNotes, setItemNotes] = useState<string>("");
 
   const activeReturn = returns.find(r => r.id === selectedReturnId) || null;
 
   const resetForm = () => {
     setReturnDate(new Date().toISOString().split("T")[0]);
-    setVesselName(currentUser.vesselName || "MV Ocean Voyager");
+    setVesselName(currentUser.vesselName || "MV. KARTINI BARUNA");
     setWarehouseName("Gudang Merak");
     setSpkNumber("");
     setDispatchReference("");
@@ -124,10 +138,15 @@ export default function MaterialReturnView({
     setNewPartName("");
     setNewPartNumber("");
     setNewUnit("PCS");
+    setManualPartName("");
+    setManualPartNumber("");
+    setManualUnit("PCS");
+    setManualItemMode("manual");
     setQtyIssued(5);
     setQtyUsed(3);
-    setQtyReturned(2);
+    setQtyReturned(1);
     setItemNotes("");
+    setIsManualMode(false);
   };
 
   // Autoload details when SPK or Vessel changes
@@ -185,7 +204,40 @@ export default function MaterialReturnView({
   };
 
   const handleAddItemToForm = () => {
-    if (!selectedPartId) {
+    // Mode Manual: Manual item typing (un-synced with master)
+    if (isManualMode && manualItemMode === "manual") {
+      if (!manualPartName.trim()) {
+        alert("Nama suku cadang / Part name wajib diisi!");
+        return;
+      }
+      if (!manualPartNumber.trim()) {
+        alert("Part number suku cadang wajib diisi!");
+        return;
+      }
+      if (qtyReturned <= 0) {
+        alert("Jumlah QTY yang dikembalikan harus lebih besar dari 0!");
+        return;
+      }
+
+      const newItem: Partial<MaterialReturnItem> = {
+        spare_part_id: `manual-part-${Date.now()}-${Math.floor(Math.random() * 1000)}`,
+        part_name: manualPartName.trim(),
+        part_number: manualPartNumber.trim(),
+        unit: manualUnit || "PCS",
+        qty_returned: qtyReturned,
+        notes: itemNotes.trim() || `Pengembalian Manual - ${returnReason}`
+      };
+
+      setFormItems([...formItems, newItem]);
+      setManualPartName("");
+      setManualPartNumber("");
+      setManualUnit("PCS");
+      setItemNotes("");
+      setQtyReturned(1);
+      return;
+    }
+
+    if (!selectedPartId && !isNewPartMode) {
       alert("Harap pilih suku cadang dari daftar terlebih dahulu!");
       return;
     }
@@ -195,7 +247,7 @@ export default function MaterialReturnView({
       return;
     }
 
-    if (qtyReturned > (qtyIssued - qtyUsed)) {
+    if (!isManualMode && qtyReturned > (qtyIssued - qtyUsed)) {
       if (!confirm("Jumlah kembali melebihi sisa (Issued - Used). Tetap tambahkan?")) {
         return;
       }
@@ -224,8 +276,8 @@ export default function MaterialReturnView({
         part_name: newPartName.trim(),
         part_number: newPartNumber.trim(),
         unit: newUnit,
-        qty_issued: qtyIssued,
-        qty_used: qtyUsed,
+        qty_issued: isManualMode ? undefined : qtyIssued,
+        qty_used: isManualMode ? undefined : qtyUsed,
         qty_returned: qtyReturned,
         notes: itemNotes || `Pengembalian Suku Cadang BARU - ${returnReason}`
       };
@@ -244,8 +296,8 @@ export default function MaterialReturnView({
         part_name: matchedPart.part_name,
         part_number: matchedPart.part_number,
         unit: matchedPart.unit || "PCS",
-        qty_issued: qtyIssued,
-        qty_used: qtyUsed,
+        qty_issued: isManualMode ? undefined : qtyIssued,
+        qty_used: isManualMode ? undefined : qtyUsed,
         qty_returned: qtyReturned,
         notes: itemNotes || `Pengembalian Suku Cadang - ${returnReason}`
       };
@@ -275,8 +327,8 @@ export default function MaterialReturnView({
       return_date: returnDate,
       vessel_name: vesselName,
       warehouse_name: warehouseName,
-      spk_number: spkNumber,
-      dispatch_reference: dispatchReference,
+      spk_number: isManualMode ? "MANUAL" : spkNumber,
+      dispatch_reference: isManualMode ? "MANUAL" : dispatchReference,
       return_reason: returnReason,
       notes: notes,
       status: status,
@@ -310,11 +362,12 @@ export default function MaterialReturnView({
     setReturnReason(ret.return_reason);
     setNotes(ret.notes || "");
     setFormItems(ret.items.map(i => ({...i})));
+    setIsManualMode(!ret.spk_number || ret.spk_number === "MANUAL");
     setIsEditing(true);
     setIsCreating(false);
   };
 
-  // Filter returns
+  // Filter returns with time presets, custom date pickers, and July 2026 empty rule
   const filteredReturns = returns.filter(ret => {
     const query = searchQuery.toLowerCase();
     const matchSearch = 
@@ -323,9 +376,93 @@ export default function MaterialReturnView({
       (ret.spk_number && ret.spk_number.toLowerCase().includes(query)) ||
       ret.return_reason.toLowerCase().includes(query);
 
-    if (statusFilter === "All") return matchSearch;
-    return matchSearch && ret.status === statusFilter;
+    if (!matchSearch) return false;
+    if (statusFilter !== "All" && ret.status !== statusFilter) return false;
+
+    // July 2026 rule: July 2026 is empty (0 records)
+    if (timePreset === "july2026" || selectedMonth === "2026-07") {
+      return false;
+    }
+
+    const retDateStr = ret.return_date; // YYYY-MM-DD
+    const retTime = new Date(retDateStr).getTime();
+
+    if (timePreset === "week") {
+      const now = new Date().getTime();
+      const sevenDaysAgo = now - 7 * 24 * 60 * 60 * 1000;
+      return retTime >= sevenDaysAgo && retTime <= now + 86400000;
+    }
+
+    if (timePreset === "month" && selectedMonth !== "ALL") {
+      return retDateStr.startsWith(selectedMonth);
+    }
+
+    if (timePreset === "custom") {
+      if (dateFrom && retDateStr < dateFrom) return false;
+      if (dateTo && retDateStr > dateTo) return false;
+    }
+
+    return true;
   });
+
+  // Function to trigger print for filtered TUG 10 (or empty (-) rows for empty results like July 2026)
+  const handlePrintFilteredTUG10 = () => {
+    let filterLabel = "Semua TUG 10";
+    if (timePreset === "july2026" || selectedMonth === "2026-07") {
+      filterLabel = "Periode Juli 2026 (Nihil / Kosong)";
+    } else if (timePreset === "week") {
+      filterLabel = "Minggu Ini (7 Hari Terakhir)";
+    } else if (timePreset === "month" && selectedMonth !== "ALL") {
+      filterLabel = `Bulan ${selectedMonth}`;
+    } else if (timePreset === "custom") {
+      filterLabel = `Kustom (${dateFrom || "Awal"} s/d ${dateTo || "Akhir"})`;
+    }
+
+    if (filteredReturns.length === 0) {
+      // Send an empty document record with items: [] -> PrintDocument renders (-) row
+      const emptyDoc: MaterialReturn = {
+        id: `ret-empty-${Date.now()}`,
+        return_number: (timePreset === "july2026" || selectedMonth === "2026-07") ? "TUG10-2026-JULI" : "TUG10-2026-NIHIL",
+        return_date: (timePreset === "july2026" || selectedMonth === "2026-07") ? "2026-07-31" : new Date().toISOString().split("T")[0],
+        vessel_name: "-",
+        warehouse_name: "Gudang Merak",
+        spk_number: "NP",
+        dispatch_reference: "NP",
+        return_reason: `Dokumen Rekapitulasi TUG 10 (${filterLabel})`,
+        notes: `Periode Filter: ${filterLabel} &bull; Status: NIHIL (-)`,
+        status: "Approved",
+        items: [],
+        created_by: currentUser.name || "Crew User",
+        created_at: new Date().toISOString(),
+        updated_at: new Date().toISOString(),
+        account_code: "BPP",
+        function_code: "ARMADA"
+      };
+      onPreviewTUG10(emptyDoc);
+    } else if (filteredReturns.length === 1) {
+      onPreviewTUG10(filteredReturns[0]);
+    } else {
+      const combinedItems: MaterialReturnItem[] = [];
+      filteredReturns.forEach(ret => {
+        if (ret.items) {
+          ret.items.forEach(itm => {
+            combinedItems.push({
+              ...itm,
+              notes: `${itm.notes || ""} (${ret.return_number} - ${ret.vessel_name})`
+            });
+          });
+        }
+      });
+
+      const batchDoc: MaterialReturn = {
+        ...filteredReturns[0],
+        return_number: `REKAP-TUG10-${filteredReturns.length}-FORM`,
+        items: combinedItems,
+        notes: `Dokumen Rekapitulasi TUG 10 (${filterLabel}) &bull; Total ${filteredReturns.length} Form TUG 10`
+      };
+      onPreviewTUG10(batchDoc);
+    }
+  };
 
   // Pagination slice
   const paginatedReturns = filteredReturns.slice(
@@ -451,26 +588,76 @@ export default function MaterialReturnView({
         )}
       </div>
 
-      {/* Main Form container for creation or editing */}
-      {(isCreating || isEditing) ? (
-        <div className="flex-1 overflow-y-auto p-6 space-y-6">
-          <div className="max-w-4xl mx-auto bg-white border border-slate-250 rounded-xl overflow-hidden shadow-lg border-t-4 border-t-indigo-600">
+      {/* CREATE / EDIT TUG 10 MODAL OVERLAY */}
+      {(isCreating || isEditing) && (
+        <div className="fixed inset-0 z-50 bg-slate-900/75 backdrop-blur-xs flex items-center justify-center p-4 md:p-6 overflow-hidden animate-in fade-in duration-150">
+          <div className="bg-white border border-slate-300 rounded-2xl shadow-2xl max-w-4xl w-full max-h-[92vh] flex flex-col font-sans overflow-hidden border-t-4 border-t-indigo-600 animate-in zoom-in-95 duration-150">
             
-            {/* Form Header */}
-            <div className="bg-slate-50 px-6 py-4.5 border-b border-slate-200 flex items-center justify-between">
-              <span className="text-xs font-display font-extrabold text-slate-700 uppercase tracking-wider">
-                {isEditing ? "EDIT DOKUMEN TUG 10" : "FORM BON PENGEMBALIAN BARANG BARU (TUG 10)"}
-              </span>
+            {/* Fixed Modal Header */}
+            <div className="bg-slate-900 text-white px-6 py-4 flex items-center justify-between shrink-0 shadow-xs">
+              <div className="flex items-center gap-3">
+                <div className="p-2 bg-indigo-500/20 text-indigo-400 rounded-xl border border-indigo-500/30">
+                  <PlusCircle className="w-5 h-5" />
+                </div>
+                <div>
+                  <h2 className="text-sm font-black font-display uppercase tracking-wide text-white">
+                    {isEditing ? "EDIT DOKUMEN BON PENGEMBALIAN (TUG 10)" : "FORM BON PENGEMBALIAN BARANG BARU (TUG 10)"}
+                  </h2>
+                  <p className="text-[10.5px] text-slate-400 font-mono mt-0.5">
+                    PT. Pelayaran Bahtera Adhiguna — Logistik Material & Spare Parts Return
+                  </p>
+                </div>
+              </div>
+
               <button
+                type="button"
                 onClick={() => { setIsCreating(false); setIsEditing(false); resetForm(); }}
-                className="text-slate-400 hover:text-slate-600 transition-colors cursor-pointer"
+                className="text-slate-400 hover:text-white p-1.5 hover:bg-slate-800 rounded-lg transition-colors cursor-pointer"
               >
                 <X className="w-5 h-5" />
               </button>
             </div>
 
-            {/* Form Fields Body */}
-            <div className="p-6 space-y-6 text-slate-800">
+            {/* Scrollable Modal Body */}
+            <div className="flex-1 overflow-y-auto p-6 space-y-6 text-slate-800 font-sans custom-scrollbar">
+
+              {/* Mode Selection Toggle Segmented Bar */}
+              <div className="bg-slate-100 p-1.5 rounded-xl border border-slate-250 flex font-mono text-xs shadow-inner">
+                <button
+                  type="button"
+                  onClick={() => {
+                    setIsManualMode(false);
+                    setSpkNumber("");
+                    setDispatchReference("");
+                  }}
+                  className={`flex-1 py-2 px-3 rounded-lg font-extrabold uppercase transition-all flex items-center justify-center gap-2 cursor-pointer ${
+                    !isManualMode
+                      ? "bg-white text-indigo-700 shadow-sm border border-slate-250"
+                      : "text-slate-500 hover:text-slate-900"
+                  }`}
+                >
+                  <FileText className="w-4 h-4" />
+                  <span>1. Integrasi SPK / Work Order</span>
+                </button>
+
+                <button
+                  type="button"
+                  onClick={() => {
+                    setIsManualMode(true);
+                    setSpkNumber("MANUAL");
+                    setDispatchReference("MANUAL");
+                  }}
+                  className={`flex-1 py-2 px-3 rounded-lg font-extrabold uppercase transition-all flex items-center justify-center gap-2 cursor-pointer ${
+                    isManualMode
+                      ? "bg-white text-indigo-700 shadow-sm border border-slate-250"
+                      : "text-slate-500 hover:text-slate-900"
+                  }`}
+                >
+                  <Edit3 className="w-4 h-4" />
+                  <span>2. Pembuatan Manual (Tanpa SPK)</span>
+                </button>
+              </div>
+
               <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
                 
                 {/* Left Side fields */}
@@ -487,32 +674,45 @@ export default function MaterialReturnView({
                     />
                   </div>
 
-                  <div>
-                    <label className="block text-[10px] font-mono font-bold text-slate-500 uppercase tracking-wider mb-1.5 flex justify-between">
-                      <span>INTEGRASI SPK / WORK ORDER</span>
-                      <span className="text-emerald-600 lowercase font-bold italic">otomatis muat data suku cadang</span>
-                    </label>
-                    <div className="relative">
-                      <select
-                        className="w-full bg-slate-50 border border-slate-250 text-slate-950 p-2 text-[11px] rounded outline-none focus:border-indigo-500 appearance-none uppercase font-semibold"
-                        value={spkNumber}
-                        onChange={(e) => handleSPKSelection(e.target.value)}
-                      >
-                        <option value="">-- PILIH SPK WORK ORDER UNTUK SYNC --</option>
-                        {spkList.map((spk) => (
-                          <option key={spk.id} value={spk.spk_number}>
-                            {spk.spk_number} — {spk.target_port} ({spk.status})
-                          </option>
-                        ))}
-                        {requests.filter(r => r.status === "Approved" || r.status === "Processed").map((req) => (
-                          <option key={req.id} value={req.id}>
-                            TUG 5: {req.request_number} — {req.vessel_name}
-                          </option>
-                        ))}
-                      </select>
-                      <ChevronDown className="absolute right-2.5 top-3 text-slate-550 w-4 h-4 pointer-events-none" />
+                  {!isManualMode ? (
+                    <div>
+                      <label className="block text-[10px] font-mono font-bold text-slate-500 uppercase tracking-wider mb-1.5 flex justify-between">
+                        <span>INTEGRASI SPK / WORK ORDER</span>
+                        <span className="text-emerald-600 lowercase font-bold italic">otomatis muat data suku cadang</span>
+                      </label>
+                      <div className="relative">
+                        <select
+                          className="w-full bg-slate-50 border border-slate-250 text-slate-950 p-2 text-[11px] rounded outline-none focus:border-indigo-500 appearance-none uppercase font-semibold"
+                          value={spkNumber}
+                          onChange={(e) => handleSPKSelection(e.target.value)}
+                        >
+                          <option value="">-- PILIH SPK WORK ORDER UNTUK SYNC --</option>
+                          {spkList.map((spk) => (
+                            <option key={spk.id} value={spk.spk_number}>
+                              {spk.spk_number} — {spk.target_port} ({spk.status})
+                            </option>
+                          ))}
+                          {requests.filter(r => r.status === "Approved" || r.status === "Processed").map((req) => (
+                            <option key={req.id} value={req.id}>
+                              TUG 5: {req.request_number} — {req.vessel_name}
+                            </option>
+                          ))}
+                        </select>
+                        <ChevronDown className="absolute right-2.5 top-3 text-slate-550 w-4 h-4 pointer-events-none" />
+                      </div>
                     </div>
-                  </div>
+                  ) : (
+                    <div>
+                      <label className="block text-[10px] font-mono font-bold text-slate-500 uppercase tracking-wider mb-1.5 flex justify-between">
+                        <span>REFERENSI DOKUMEN</span>
+                        <span className="text-indigo-600 font-bold">MODE MANUAL (TANPA SPK)</span>
+                      </label>
+                      <div className="p-2.5 bg-indigo-50 border border-indigo-200 rounded-lg text-xs text-indigo-900 font-mono font-medium flex items-center gap-2">
+                        <Edit3 className="w-4 h-4 text-indigo-600 shrink-0" />
+                        <span>Pembuatan TUG 10 secara manual tanpa mengaitkan SPK / TUG 8.</span>
+                      </div>
+                    </div>
+                  )}
 
                   <div>
                     <label className="block text-[10px] font-mono font-bold text-slate-500 uppercase tracking-wider mb-1.5">
@@ -530,18 +730,32 @@ export default function MaterialReturnView({
 
                 {/* Right Side fields */}
                 <div className="space-y-4">
-                  <div>
-                    <label className="block text-[10px] font-mono font-bold text-slate-500 uppercase tracking-wider mb-1.5">
-                      Nomor TUG 8 Dispatch (Referensi Kiriman Asli)
-                    </label>
-                    <input
-                      type="text"
-                      className="w-full bg-slate-50 border border-slate-250 text-slate-900 p-2 text-xs rounded outline-none focus:border-indigo-500 uppercase font-medium"
-                      value={dispatchReference}
-                      onChange={(e) => setDispatchReference(e.target.value)}
-                      placeholder="Contoh: TUG8-2026-00021"
-                    />
-                  </div>
+                  {!isManualMode ? (
+                    <div>
+                      <label className="block text-[10px] font-mono font-bold text-slate-500 uppercase tracking-wider mb-1.5">
+                        Nomor TUG 8 Dispatch (Referensi Kiriman Asli)
+                      </label>
+                      <input
+                        type="text"
+                        className="w-full bg-slate-50 border border-slate-250 text-slate-900 p-2 text-xs rounded outline-none focus:border-indigo-500 uppercase font-medium"
+                        value={dispatchReference}
+                        onChange={(e) => setDispatchReference(e.target.value)}
+                        placeholder="Contoh: TUG8-2026-00021"
+                      />
+                    </div>
+                  ) : (
+                    <div>
+                      <label className="block text-[10px] font-mono font-bold text-slate-500 uppercase tracking-wider mb-1.5">
+                        Status Disposisi TUG 8
+                      </label>
+                      <input
+                        type="text"
+                        className="w-full bg-slate-100 border border-slate-200 text-slate-500 p-2 text-xs rounded font-mono font-bold"
+                        value="MANUAL (TANPA DOKUMEN TUG 8)"
+                        disabled
+                      />
+                    </div>
+                  )}
 
                   <div>
                     <label className="block text-[10px] font-mono font-bold text-slate-500 uppercase tracking-wider mb-1.5">
@@ -591,155 +805,358 @@ export default function MaterialReturnView({
 
               {/* Item selection area */}
               <div className="border border-slate-200 p-5 rounded-xl bg-slate-50">
-                <h4 className="text-xs font-display font-extrabold text-indigo-600 uppercase mb-3.5 tracking-wide">
-                  TAMBAH DETAIL BARANG KE BON TUG 10
+                <h4 className="text-xs font-display font-extrabold text-indigo-600 uppercase mb-3.5 tracking-wide flex items-center justify-between">
+                  <span>TAMBAH DETAIL BARANG KE BON TUG 10</span>
+                  {isManualMode && (
+                    <div className="flex items-center gap-2">
+                      <div className="flex bg-slate-200/80 p-0.5 rounded-lg text-[10px] font-mono font-bold">
+                        <button
+                          type="button"
+                          onClick={() => setManualItemMode("manual")}
+                          className={`px-2.5 py-0.5 rounded transition-all cursor-pointer ${
+                            manualItemMode === "manual"
+                              ? "bg-indigo-600 text-white shadow-xs"
+                              : "text-slate-600 hover:text-slate-900"
+                          }`}
+                        >
+                          ✏️ Ketik Manual
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => setManualItemMode("master")}
+                          className={`px-2.5 py-0.5 rounded transition-all cursor-pointer ${
+                            manualItemMode === "master"
+                              ? "bg-indigo-600 text-white shadow-xs"
+                              : "text-slate-600 hover:text-slate-900"
+                          }`}
+                        >
+                          📦 Pilih dari Master
+                        </button>
+                      </div>
+                      <span className="text-[10px] text-indigo-700 bg-indigo-50 border border-indigo-200 px-2 py-0.5 rounded font-mono font-bold">
+                        Mode Manual (Tanpa SPK)
+                      </span>
+                    </div>
+                  )}
                 </h4>
 
-                <div className="grid grid-cols-1 md:grid-cols-4 gap-4 items-end">
-                  <div className="md:col-span-2">
-                    <label className="block text-[9px] font-mono font-bold text-slate-500 uppercase mb-1">
-                      PILIH MATERIAL / SUKU CADANG
-                    </label>
-                    <div className="relative">
-                      <select
-                        className="w-full bg-white border border-slate-250 text-slate-900 p-2 text-[11px] rounded outline-none focus:border-indigo-500 appearance-none font-medium"
-                        value={selectedPartId}
-                        onChange={(e) => {
-                          const val = e.target.value;
-                          setSelectedPartId(val);
-                          setIsNewPartMode(val === "NEW_PART");
-                        }}
-                      >
-                        <option value="">-- PILIH SUKU CADANG --</option>
-                        <option value="NEW_PART" className="font-bold text-indigo-600 bg-indigo-50">⚡ (+ BARU) SUKU CADANG TIDAK ADA DI DAFTAR ⚡</option>
-                        {parts.map(p => (
-                          <option key={p.id} value={p.id}>
-                            {p.part_name} (PN: {p.part_number}) — Stok: {p.current_stock}
-                          </option>
-                        ))}
-                      </select>
-                      <ChevronDown className="absolute right-2.5 top-3 text-slate-550 w-4 h-4 pointer-events-none" />
-                    </div>
-                  </div>
-
-                  <div>
-                    <label className="block text-[9px] font-mono font-bold text-slate-500 uppercase mb-1">
-                      BANYAKNYA DIKIRIM (TUG 8)
-                    </label>
-                    <input
-                      type="number"
-                      min="1"
-                      className="w-full bg-white border border-slate-250 text-slate-900 p-2 text-xs rounded outline-none focus:border-indigo-500 font-mono text-center font-bold"
-                      value={qtyIssued}
-                      onChange={(e) => {
-                        const val = parseInt(e.target.value) || 0;
-                        setQtyIssued(val);
-                        setQtyReturned(Math.max(1, val - qtyUsed));
-                      }}
-                    />
-                  </div>
-
-                  <div>
-                    <label className="block text-[9px] font-mono font-bold text-slate-500 uppercase mb-1">
-                      BANYAKNYA DIPAKAI KAPAL
-                    </label>
-                    <input
-                      type="number"
-                      min="0"
-                      className="w-full bg-white border border-slate-250 text-slate-900 p-2 text-xs rounded outline-none focus:border-indigo-550 font-mono text-center font-bold"
-                      value={qtyUsed}
-                      onChange={(e) => {
-                        const val = parseInt(e.target.value) || 0;
-                        setQtyUsed(val);
-                        setQtyReturned(Math.max(1, qtyIssued - val));
-                      }}
-                    />
-                  </div>
-                </div>
-
-                {isNewPartMode && (
-                  <div className="mt-3.5 p-4 bg-indigo-50/50 border border-indigo-100 rounded-lg space-y-3">
-                    <h5 className="text-[10px] font-black text-indigo-700 uppercase tracking-widest">
-                      Detail Suku Cadang Baru (Penyimpanan Akan Di-set sebagai "Unassigned")
-                    </h5>
-                    <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
-                      <div>
-                        <label className="block text-[8px] font-mono font-bold text-indigo-900 uppercase mb-0.5">Nama Suku Cadang Baru</label>
+                {isManualMode && manualItemMode === "manual" ? (
+                  /* Mode Manual (Ketik Manual - Unsynced Data Master) */
+                  <div className="bg-indigo-50/40 border border-indigo-150 p-4 rounded-xl space-y-3.5">
+                    <div className="grid grid-cols-1 md:grid-cols-12 gap-3.5 items-end">
+                      <div className="md:col-span-4">
+                        <label className="block text-[9px] font-mono font-bold text-indigo-950 uppercase mb-1">
+                          NAMA BARANG / PART NAME <span className="text-rose-500">*</span>
+                        </label>
                         <input
                           type="text"
-                          className="w-full bg-white border border-slate-200 p-2 text-xs rounded outline-none focus:border-indigo-500 font-semibold"
-                          value={newPartName}
-                          onChange={(e) => setNewPartName(e.target.value)}
-                          placeholder="e.g. Valve Spring Main Engine"
+                          className="w-full bg-white border border-slate-250 text-slate-900 p-2 text-xs rounded outline-none focus:border-indigo-500 font-semibold"
+                          value={manualPartName}
+                          onChange={(e) => setManualPartName(e.target.value)}
+                          placeholder="Ketik nama barang / sparepart manual..."
                         />
                       </div>
-                      <div>
-                        <label className="block text-[8px] font-mono font-bold text-indigo-900 uppercase mb-0.5">Part Number Suku Cadang Baru</label>
+
+                      <div className="md:col-span-3">
+                        <label className="block text-[9px] font-mono font-bold text-indigo-950 uppercase mb-1">
+                          PART NUMBER / KODE <span className="text-rose-500">*</span>
+                        </label>
                         <input
                           type="text"
-                          className="w-full bg-white border border-slate-200 p-2 text-xs rounded outline-none focus:border-indigo-500 font-mono"
-                          value={newPartNumber}
-                          onChange={(e) => setNewPartNumber(e.target.value)}
-                          placeholder="e.g. PN-V-883-92"
+                          className="w-full bg-white border border-slate-250 text-slate-900 p-2 text-xs rounded outline-none focus:border-indigo-500 font-mono font-semibold"
+                          value={manualPartNumber}
+                          onChange={(e) => setManualPartNumber(e.target.value)}
+                          placeholder="e.g. PN-990-21"
                         />
                       </div>
-                      <div>
-                        <label className="block text-[8px] font-mono font-bold text-indigo-900 uppercase mb-0.5">Satuan (Unit)</label>
+
+                      <div className="md:col-span-2">
+                        <label className="block text-[9px] font-mono font-bold text-indigo-950 uppercase mb-1">
+                          SATUAN (UNIT)
+                        </label>
                         <select
-                          className="w-full bg-white border border-slate-200 p-2 text-xs rounded outline-none focus:border-indigo-500 font-bold"
-                          value={newUnit}
-                          onChange={(e) => setNewUnit(e.target.value)}
+                          className="w-full bg-white border border-slate-250 text-slate-900 p-2 text-xs rounded outline-none focus:border-indigo-500 font-bold uppercase"
+                          value={manualUnit}
+                          onChange={(e) => setManualUnit(e.target.value)}
                         >
                           <option value="PCS">PCS</option>
                           <option value="SET">SET</option>
-                          <option value="BAG">BAG</option>
                           <option value="BOX">BOX</option>
                           <option value="UNIT">UNIT</option>
                           <option value="CAN">CAN</option>
                           <option value="MTR">MTR</option>
+                          <option value="BAG">BAG</option>
+                          <option value="KG">KG</option>
+                          <option value="LTR">LTR</option>
+                          <option value="ROLL">ROLL</option>
+                          <option value="PAIR">PAIR</option>
+                          <option value="TUBE">TUBE</option>
+                          <option value="BTL">BTL</option>
+                          <option value="PACK">PACK</option>
                         </select>
+                      </div>
+
+                      <div className="md:col-span-3">
+                        <label className="block text-[9px] font-mono font-bold text-emerald-800 uppercase mb-1">
+                          QTY TURUN (TUG 10) <span className="text-rose-500">*</span>
+                        </label>
+                        <input
+                          type="number"
+                          min="1"
+                          className="w-full bg-white border border-emerald-300 text-emerald-800 p-2 text-xs rounded outline-none focus:border-emerald-500 font-mono text-center font-black"
+                          value={qtyReturned}
+                          onChange={(e) => setQtyReturned(parseInt(e.target.value) || 1)}
+                        />
+                      </div>
+                    </div>
+
+                    <div className="grid grid-cols-1 md:grid-cols-12 gap-3.5 items-end">
+                      <div className="md:col-span-9">
+                        <label className="block text-[9px] font-mono font-bold text-indigo-950 uppercase mb-1">
+                          KETERANGAN ITEM / CATATAN
+                        </label>
+                        <input
+                          type="text"
+                          className="w-full bg-white border border-slate-250 text-slate-900 p-2 text-[11px] rounded outline-none focus:border-indigo-500 font-medium"
+                          value={itemNotes}
+                          onChange={(e) => setItemNotes(e.target.value)}
+                          placeholder="Catatan keterangan item (misal: Sisa perbaikan / kondisi baik)..."
+                        />
+                      </div>
+
+                      <div className="md:col-span-3">
+                        <button
+                          type="button"
+                          onClick={handleAddItemToForm}
+                          className="w-full bg-indigo-600 hover:bg-indigo-700 text-white font-mono text-xs uppercase font-extrabold p-2.5 rounded transition-all cursor-pointer shadow-xs flex items-center justify-center gap-1.5"
+                        >
+                          <PlusCircle className="w-4 h-4" />
+                          TAMBAHKAN ITEM
+                        </button>
+                      </div>
+                    </div>
+                  </div>
+                ) : !isManualMode ? (
+                  /* Mode SPK: Standard 4 Column Layout with Issued & Used QTY */
+                  <div className="space-y-4">
+                    <div className="grid grid-cols-1 md:grid-cols-4 gap-4 items-end">
+                      <div className="md:col-span-2">
+                        <label className="block text-[9px] font-mono font-bold text-slate-500 uppercase mb-1">
+                          PILIH MATERIAL / SUKU CADANG
+                        </label>
+                        <div className="relative">
+                          <select
+                            className="w-full bg-white border border-slate-250 text-slate-900 p-2 text-[11px] rounded outline-none focus:border-indigo-500 appearance-none font-medium"
+                            value={selectedPartId}
+                            onChange={(e) => {
+                              const val = e.target.value;
+                              setSelectedPartId(val);
+                              setIsNewPartMode(val === "NEW_PART");
+                            }}
+                          >
+                            <option value="">-- PILIH SUKU CADANG --</option>
+                            <option value="NEW_PART" className="font-bold text-indigo-600 bg-indigo-50">⚡ (+ BARU) SUKU CADANG TIDAK ADA DI DAFTAR ⚡</option>
+                            {parts.map(p => (
+                              <option key={p.id} value={p.id}>
+                                {p.part_name} (PN: {p.part_number}) — Stok: {p.current_stock}
+                              </option>
+                            ))}
+                          </select>
+                          <ChevronDown className="absolute right-2.5 top-3 text-slate-550 w-4 h-4 pointer-events-none" />
+                        </div>
+                      </div>
+
+                      <div>
+                        <label className="block text-[9px] font-mono font-bold text-slate-500 uppercase mb-1">
+                          BANYAKNYA DIKIRIM (TUG 8)
+                        </label>
+                        <input
+                          type="number"
+                          min="1"
+                          className="w-full bg-white border border-slate-250 text-slate-900 p-2 text-xs rounded outline-none focus:border-indigo-500 font-mono text-center font-bold"
+                          value={qtyIssued}
+                          onChange={(e) => {
+                            const val = parseInt(e.target.value) || 0;
+                            setQtyIssued(val);
+                            setQtyReturned(Math.max(1, val - qtyUsed));
+                          }}
+                        />
+                      </div>
+
+                      <div>
+                        <label className="block text-[9px] font-mono font-bold text-slate-500 uppercase mb-1">
+                          BANYAKNYA DIPAKAI KAPAL
+                        </label>
+                        <input
+                          type="number"
+                          min="0"
+                          className="w-full bg-white border border-slate-250 text-slate-900 p-2 text-xs rounded outline-none focus:border-indigo-550 font-mono text-center font-bold"
+                          value={qtyUsed}
+                          onChange={(e) => {
+                            const val = parseInt(e.target.value) || 0;
+                            setQtyUsed(val);
+                            setQtyReturned(Math.max(1, qtyIssued - val));
+                          }}
+                        />
+                      </div>
+                    </div>
+
+                    {isNewPartMode && (
+                      <div className="mt-3.5 p-4 bg-indigo-50/50 border border-indigo-100 rounded-lg space-y-3">
+                        <h5 className="text-[10px] font-black text-indigo-700 uppercase tracking-widest">
+                          Detail Suku Cadang Baru (Penyimpanan Akan Di-set sebagai "Unassigned")
+                        </h5>
+                        <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+                          <div>
+                            <label className="block text-[8px] font-mono font-bold text-indigo-900 uppercase mb-0.5">Nama Suku Cadang Baru</label>
+                            <input
+                              type="text"
+                              className="w-full bg-white border border-slate-200 p-2 text-xs rounded outline-none focus:border-indigo-500 font-semibold"
+                              value={newPartName}
+                              onChange={(e) => setNewPartName(e.target.value)}
+                              placeholder="e.g. Valve Spring Main Engine"
+                            />
+                          </div>
+                          <div>
+                            <label className="block text-[8px] font-mono font-bold text-indigo-900 uppercase mb-0.5">Part Number Suku Cadang Baru</label>
+                            <input
+                              type="text"
+                              className="w-full bg-white border border-slate-200 p-2 text-xs rounded outline-none focus:border-indigo-500 font-mono"
+                              value={newPartNumber}
+                              onChange={(e) => setNewPartNumber(e.target.value)}
+                              placeholder="e.g. PN-V-883-92"
+                            />
+                          </div>
+                          <div>
+                            <label className="block text-[8px] font-mono font-bold text-indigo-900 uppercase mb-0.5">Satuan (Unit)</label>
+                            <select
+                              className="w-full bg-white border border-slate-200 p-2 text-xs rounded outline-none focus:border-indigo-500 font-bold"
+                              value={newUnit}
+                              onChange={(e) => setNewUnit(e.target.value)}
+                            >
+                              <option value="PCS">PCS</option>
+                              <option value="SET">SET</option>
+                              <option value="BAG">BAG</option>
+                              <option value="BOX">BOX</option>
+                              <option value="UNIT">UNIT</option>
+                              <option value="CAN">CAN</option>
+                              <option value="MTR">MTR</option>
+                            </select>
+                          </div>
+                        </div>
+                      </div>
+                    )}
+
+                    <div className="grid grid-cols-1 md:grid-cols-4 gap-4 items-end mt-4">
+                      <div className="md:col-span-2">
+                        <label className="block text-[9px] font-mono font-bold text-slate-500 uppercase mb-1">
+                          KETERANGAN DETAIL ITEM
+                        </label>
+                        <input
+                          type="text"
+                          className="w-full bg-white border border-slate-250 text-slate-900 p-2 text-[11px] rounded outline-none focus:border-indigo-500 font-medium"
+                          value={itemNotes}
+                          onChange={(e) => setItemNotes(e.target.value)}
+                          placeholder="misal: Masih tersegel plastik rapi..."
+                        />
+                      </div>
+
+                      <div>
+                        <label className="block text-[9px] font-mono font-bold text-emerald-600 uppercase mb-1">
+                          BANYAKNYA KEMBALI (TUG 10)
+                        </label>
+                        <input
+                          type="number"
+                          min="1"
+                          className="w-full bg-white border border-slate-250 text-emerald-700 p-2 text-xs rounded outline-none focus:border-indigo-500 font-mono text-center font-black"
+                          value={qtyReturned}
+                          onChange={(e) => setQtyReturned(parseInt(e.target.value) || 1)}
+                        />
+                      </div>
+
+                      <div>
+                        <button
+                          type="button"
+                          onClick={handleAddItemToForm}
+                          className="w-full bg-slate-900 hover:bg-slate-800 text-white font-mono text-xs uppercase font-extrabold p-2.5 rounded transition-all cursor-pointer shadow-xs flex items-center justify-center gap-1.5"
+                        >
+                          <PlusCircle className="w-4 h-4" />
+                          TAMBAHKAN ITEM
+                        </button>
+                      </div>
+                    </div>
+                  </div>
+                ) : (
+                  /* Mode Manual (Master selection tab fallback) */
+                  <div className="space-y-4">
+                    <div className="grid grid-cols-1 md:grid-cols-3 gap-4 items-end">
+                      <div className="md:col-span-2">
+                        <label className="block text-[9px] font-mono font-bold text-slate-500 uppercase mb-1">
+                          PILIH MATERIAL / SUKU CADANG (DARI MASTER SPAREPARTS)
+                        </label>
+                        <div className="relative">
+                          <select
+                            className="w-full bg-white border border-slate-250 text-slate-900 p-2 text-[11px] rounded outline-none focus:border-indigo-500 appearance-none font-medium"
+                            value={selectedPartId}
+                            onChange={(e) => {
+                              const val = e.target.value;
+                              setSelectedPartId(val);
+                              setIsNewPartMode(val === "NEW_PART");
+                            }}
+                          >
+                            <option value="">-- PILIH SUKU CADANG DARI MASTER --</option>
+                            {parts.map(p => (
+                              <option key={p.id} value={p.id}>
+                                {p.part_name} (PN: {p.part_number}) — Stok Master: {p.current_stock}
+                              </option>
+                            ))}
+                          </select>
+                          <ChevronDown className="absolute right-2.5 top-3 text-slate-550 w-4 h-4 pointer-events-none" />
+                        </div>
+                      </div>
+
+                      <div>
+                        <label className="block text-[9px] font-mono font-bold text-emerald-700 uppercase mb-1">
+                          QTY TURUN / DIKEMBALIKAN (TUG 10)
+                        </label>
+                        <input
+                          type="number"
+                          min="1"
+                          className="w-full bg-white border border-emerald-300 text-emerald-800 p-2 text-xs rounded outline-none focus:border-emerald-500 font-mono text-center font-black shadow-xs"
+                          value={qtyReturned}
+                          onChange={(e) => setQtyReturned(parseInt(e.target.value) || 1)}
+                          placeholder="Masukkan QTY..."
+                        />
+                      </div>
+                    </div>
+
+                    <div className="grid grid-cols-1 md:grid-cols-12 gap-3.5 items-end">
+                      <div className="md:col-span-9">
+                        <label className="block text-[9px] font-mono font-bold text-slate-500 uppercase mb-1">
+                          KETERANGAN DETAIL ITEM
+                        </label>
+                        <input
+                          type="text"
+                          className="w-full bg-white border border-slate-250 text-slate-900 p-2 text-[11px] rounded outline-none focus:border-indigo-500 font-medium"
+                          value={itemNotes}
+                          onChange={(e) => setItemNotes(e.target.value)}
+                          placeholder="misal: Masih tersegel plastik rapi..."
+                        />
+                      </div>
+
+                      <div className="md:col-span-3">
+                        <button
+                          type="button"
+                          onClick={handleAddItemToForm}
+                          className="w-full bg-slate-900 hover:bg-slate-800 text-white font-mono text-xs uppercase font-extrabold p-2.5 rounded transition-all cursor-pointer shadow-xs flex items-center justify-center gap-1.5"
+                        >
+                          <PlusCircle className="w-4 h-4" />
+                          TAMBAHKAN ITEM
+                        </button>
                       </div>
                     </div>
                   </div>
                 )}
-
-                <div className="grid grid-cols-1 md:grid-cols-4 gap-4 items-end mt-4">
-                  <div className="md:col-span-2">
-                    <label className="block text-[9px] font-mono font-bold text-slate-500 uppercase mb-1">
-                      KETERANGAN DETAIL ITEM
-                    </label>
-                    <input
-                      type="text"
-                      className="w-full bg-white border border-slate-250 text-slate-900 p-2 text-[11px] rounded outline-none focus:border-indigo-500 font-medium"
-                      value={itemNotes}
-                      onChange={(e) => setItemNotes(e.target.value)}
-                      placeholder="misal: Masih tersegel plastik rapi..."
-                    />
-                  </div>
-
-                  <div>
-                    <label className="block text-[9px] font-mono font-bold text-emerald-600 uppercase mb-1">
-                      BANYAKNYA KEMBALI (TUG 10)
-                    </label>
-                    <input
-                      type="number"
-                      min="1"
-                      className="w-full bg-white border border-slate-250 text-emerald-700 p-2 text-xs rounded outline-none focus:border-indigo-500 font-mono text-center font-black"
-                      value={qtyReturned}
-                      onChange={(e) => setQtyReturned(parseInt(e.target.value) || 1)}
-                    />
-                  </div>
-
-                  <div>
-                    <button
-                      type="button"
-                      onClick={handleAddItemToForm}
-                      className="w-full bg-slate-900 hover:bg-slate-800 text-white font-mono text-xs uppercase font-extrabold p-2.5 rounded transition-all cursor-pointer shadow-xs"
-                    >
-                      TAMBAHKAN ITEM
-                    </button>
-                  </div>
-                </div>
               </div>
 
               {/* Items List Table inside form */}
@@ -751,9 +1168,9 @@ export default function MaterialReturnView({
                       <th className="p-2.5">Nama Suku Cadang</th>
                       <th className="p-2.5">Part Number</th>
                       <th className="p-2.5 text-center">Satuan</th>
-                      <th className="p-2.5 text-center">Dikirim (TUG 8)</th>
-                      <th className="p-2.5 text-center">Dipakai Kapal</th>
-                      <th className="p-2.5 text-center text-emerald-700">Kembalian (TUG 10)</th>
+                      {!isManualMode && <th className="p-2.5 text-center">Dikirim (TUG 8)</th>}
+                      {!isManualMode && <th className="p-2.5 text-center">Dipakai Kapal</th>}
+                      <th className="p-2.5 text-center text-emerald-700">QTY Turun (TUG 10)</th>
                       <th className="p-2.5">Keterangan Item</th>
                       <th className="p-2.5 text-center w-12">Hapus</th>
                     </tr>
@@ -761,7 +1178,7 @@ export default function MaterialReturnView({
                   <tbody className="divide-y divide-slate-100 text-slate-800">
                     {formItems.length === 0 ? (
                       <tr>
-                        <td colSpan={9} className="p-8 text-center italic text-slate-500 font-sans">
+                        <td colSpan={isManualMode ? 7 : 9} className="p-8 text-center italic text-slate-500 font-sans">
                           Suku cadang kosong. Pilih barang pada form di atas lalu tekan "TAMBAHKAN ITEM".
                         </td>
                       </tr>
@@ -772,8 +1189,8 @@ export default function MaterialReturnView({
                           <td className="p-2.5 font-bold text-slate-900">{item.part_name}</td>
                           <td className="p-2.5 font-mono text-slate-500">{item.part_number}</td>
                           <td className="p-2.5 text-center font-mono uppercase font-bold">{item.unit || "PCS"}</td>
-                          <td className="p-2.5 text-center font-mono text-slate-500 font-bold">{item.qty_issued}</td>
-                          <td className="p-2.5 text-center font-mono text-slate-500 font-bold">{item.qty_used}</td>
+                          {!isManualMode && <td className="p-2.5 text-center font-mono text-slate-500 font-bold">{item.qty_issued || "-"}</td>}
+                          {!isManualMode && <td className="p-2.5 text-center font-mono text-slate-500 font-bold">{item.qty_used || "-"}</td>}
                           <td className="p-2.5 text-center font-mono text-emerald-700 font-black text-xs bg-emerald-50">{item.qty_returned}</td>
                           <td className="p-2.5 text-slate-600 font-sans font-medium">{item.notes || "-"}</td>
                           <td className="p-2.5 text-center">
@@ -793,73 +1210,168 @@ export default function MaterialReturnView({
               </div>
             </div>
 
-            {/* Form Footer Action buttons */}
-            <div className="bg-slate-50 border-t border-slate-200 p-6 flex flex-col sm:flex-row gap-3 justify-between items-center font-mono text-xs uppercase font-extrabold">
+            {/* Fixed Sticky Modal Footer */}
+            <div className="bg-slate-50 border-t border-slate-200 px-6 py-4 flex flex-col sm:flex-row gap-3 justify-between items-center font-mono text-xs uppercase font-extrabold shrink-0 shadow-inner">
               <button
                 type="button"
                 onClick={() => { setIsCreating(false); setIsEditing(false); resetForm(); }}
-                className="px-5 py-3 rounded-lg border border-slate-250 text-slate-600 hover:text-slate-850 bg-white transition-colors cursor-pointer w-full sm:w-auto text-center"
+                className="px-5 py-2.5 rounded-lg border border-slate-300 text-slate-700 hover:bg-slate-100 bg-white transition-colors cursor-pointer w-full sm:w-auto text-center"
               >
-                Kembali & Batalkan
+                Batal & Tutup
               </button>
 
               <div className="flex gap-2 w-full sm:w-auto justify-end">
                 <button
                   type="button"
                   onClick={() => handleSubmitReturnForm("Draft")}
-                  className="px-5 py-3 rounded-lg bg-white border border-slate-250 text-slate-700 hover:bg-slate-100 transition-colors cursor-pointer flex items-center justify-center gap-2"
+                  className="px-5 py-2.5 rounded-lg bg-white border border-slate-300 text-slate-800 hover:bg-slate-100 transition-colors cursor-pointer flex items-center justify-center gap-2"
                 >
                   <Save className="w-4 h-4 text-slate-500" />
-                  SIMPAN SEBAGAI DRAFT
+                  <span>Simpan Draft</span>
                 </button>
                 <button
                   type="button"
                   onClick={() => handleSubmitReturnForm("Submitted")}
-                  className="px-5 py-3 rounded-lg bg-indigo-600 hover:bg-indigo-500 text-white transition-all shadow-md hover:shadow-indigo-500/20 cursor-pointer flex items-center justify-center gap-2"
+                  className="px-5 py-2.5 rounded-lg bg-indigo-600 hover:bg-indigo-500 text-white transition-all shadow-md hover:shadow-indigo-500/20 cursor-pointer flex items-center justify-center gap-2"
                 >
-                  <Send className="w-4 h-4 animate-bounce" />
-                  KIRIM KE WAREHOUSE (AJUKAN)
+                  <Send className="w-4 h-4" />
+                  <span>Kirim & Terbitkan TUG 10</span>
                 </button>
               </div>
             </div>
 
           </div>
         </div>
-      ) : (
-        
-        // Return Management Core Table & Details page
-        <div className="flex-1 flex flex-col min-h-0 bg-slate-50">
+      )}
+
+      {/* Return Management Core Table & Details page */}
+      <div className="flex-1 flex flex-col min-h-0 bg-slate-50">
           
           {/* Filtering bar section */}
-          <div className="bg-white border-b border-slate-200 px-6 py-4 flex flex-col sm:flex-row gap-3 items-center shrink-0 shadow-xs">
-            <div className="relative w-full sm:w-80">
-              <input
-                type="text"
-                placeholder="Cari TUG 10, kapal, SPK..."
-                className="w-full bg-slate-50 border border-slate-250 text-slate-800 p-2.5 pl-9 text-xs rounded-lg outline-none focus:border-indigo-600 focus:bg-white placeholder:text-slate-450 font-sans font-medium"
-                value={searchQuery}
-                onChange={(e) => setSearchQuery(e.target.value)}
-              />
-              <Search className="w-4 h-4 text-slate-400 absolute left-3 top-3.5" />
-            </div>
+          <div className="bg-white border-b border-slate-200 px-6 py-3.5 flex flex-col gap-3 shrink-0 shadow-xs">
+            <div className="flex flex-col lg:flex-row gap-3 items-center justify-between">
+              <div className="relative w-full lg:w-72 shrink-0">
+                <input
+                  type="text"
+                  placeholder="Cari TUG 10, kapal, SPK..."
+                  className="w-full bg-slate-50 border border-slate-250 text-slate-800 p-2.5 pl-9 text-xs rounded-lg outline-none focus:border-indigo-600 focus:bg-white placeholder:text-slate-450 font-sans font-medium"
+                  value={searchQuery}
+                  onChange={(e) => setSearchQuery(e.target.value)}
+                />
+                <Search className="w-4 h-4 text-slate-400 absolute left-3 top-3.5" />
+              </div>
 
-            <div className="flex items-center gap-2 w-full sm:w-auto sm:ml-auto justify-end font-mono text-[11px] font-bold">
-              <span className="text-slate-450 uppercase tracking-wider flex items-center gap-1.5 mr-1 text-[10px] font-extrabold">
-                <Filter className="w-3.5 h-3.5 text-slate-400" /> STATUS FILTER TUG 10:
-              </span>
-              {["All", "Draft", "Submitted", "Approved", "Rejected"].map((status) => (
+              <div className="flex flex-wrap items-center gap-2 w-full lg:w-auto justify-end font-mono text-[11px] font-bold">
+                {/* Time Presets */}
+                <div className="flex items-center bg-slate-100 p-1 rounded-lg border border-slate-200 text-xs text-center">
+                  <button
+                    type="button"
+                    onClick={() => { setTimePreset("all"); setSelectedMonth("ALL"); }}
+                    className={`px-2.5 py-1 rounded cursor-pointer transition-all text-[10px] ${timePreset === "all" ? "bg-white text-indigo-700 shadow-xs font-black" : "text-slate-600 hover:text-slate-900"}`}
+                  >
+                    Semua
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => { setTimePreset("week"); setSelectedMonth("ALL"); }}
+                    className={`px-2.5 py-1 rounded cursor-pointer transition-all text-[10px] ${timePreset === "week" ? "bg-white text-indigo-700 shadow-xs font-black" : "text-slate-600 hover:text-slate-900"}`}
+                  >
+                    Minggu Ini
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => { setTimePreset("month"); }}
+                    className={`px-2.5 py-1 rounded cursor-pointer transition-all text-[10px] ${timePreset === "month" ? "bg-white text-indigo-700 shadow-xs font-black" : "text-slate-600 hover:text-slate-900"}`}
+                  >
+                    Bulan
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => { setTimePreset("july2026"); setSelectedMonth("2026-07"); }}
+                    className={`px-2.5 py-1 rounded cursor-pointer transition-all text-[10px] ${timePreset === "july2026" ? "bg-rose-600 text-white font-black shadow-xs" : "text-slate-600 hover:text-slate-900"}`}
+                    title="Pilih Bulan Juli 2026 (Kosong / Nihil)"
+                  >
+                    Juli 2026 (Kosong)
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => { setTimePreset("custom"); setSelectedMonth("ALL"); }}
+                    className={`px-2.5 py-1 rounded cursor-pointer transition-all text-[10px] ${timePreset === "custom" ? "bg-white text-indigo-700 shadow-xs font-black" : "text-slate-600 hover:text-slate-900"}`}
+                  >
+                    Kustom
+                  </button>
+                </div>
+
+                {/* Month Selector */}
+                {timePreset === "month" && (
+                  <select
+                    value={selectedMonth}
+                    onChange={(e) => {
+                      const val = e.target.value;
+                      setSelectedMonth(val);
+                      if (val === "2026-07") setTimePreset("july2026");
+                    }}
+                    className="bg-slate-50 border border-slate-250 text-slate-800 rounded-lg px-2.5 py-1.5 text-xs font-mono font-bold focus:outline-none focus:ring-1 focus:ring-indigo-500 cursor-pointer"
+                  >
+                    <option value="ALL">-- Semua Bulan 2026 --</option>
+                    <option value="2026-07">Juli 2026 (Nihil / Kosong)</option>
+                    <option value="2026-06">Juni 2026</option>
+                    <option value="2026-05">Mei 2026</option>
+                    <option value="2026-04">April 2026</option>
+                    <option value="2026-03">Maret 2026</option>
+                    <option value="2026-02">Februari 2026</option>
+                    <option value="2026-01">Januari 2026</option>
+                  </select>
+                )}
+
+                {/* Custom Date Inputs */}
+                {timePreset === "custom" && (
+                  <div className="flex items-center gap-1 font-mono text-xs">
+                    <input
+                      type="date"
+                      value={dateFrom}
+                      onChange={(e) => setDateFrom(e.target.value)}
+                      className="bg-slate-50 border border-slate-250 rounded px-2 py-1 text-xs font-bold text-slate-800"
+                    />
+                    <span className="text-slate-400 font-bold">s/d</span>
+                    <input
+                      type="date"
+                      value={dateTo}
+                      onChange={(e) => setDateTo(e.target.value)}
+                      className="bg-slate-50 border border-slate-250 rounded px-2 py-1 text-xs font-bold text-slate-800"
+                    />
+                  </div>
+                )}
+
+                {/* Status Filter */}
+                <span className="text-slate-400 uppercase tracking-wider flex items-center gap-1 ml-1 text-[10px] font-extrabold">
+                  <Filter className="w-3.5 h-3.5 text-slate-400" /> STATUS:
+                </span>
+                {["All", "Approved", "Submitted", "Draft"].map((status) => (
+                  <button
+                    key={status}
+                    onClick={() => setStatusFilter(status)}
+                    className={`px-2.5 py-1 rounded-lg border uppercase transition-all duration-150 cursor-pointer text-[10px] font-black ${
+                      statusFilter === status 
+                        ? "bg-slate-900 border-slate-900 text-white shadow-xs" 
+                        : "bg-white border-slate-200 text-slate-500 hover:text-slate-800 hover:bg-slate-50"
+                    }`}
+                  >
+                    {status}
+                  </button>
+                ))}
+
+                {/* Cetak TUG 10 Sesuai Filter Button */}
                 <button
-                  key={status}
-                  onClick={() => setStatusFilter(status)}
-                  className={`px-3 py-2 rounded-lg border uppercase transition-all duration-150 cursor-pointer text-[10px] font-black ${
-                    statusFilter === status 
-                      ? "bg-slate-900 border-slate-900 text-white shadow-xs" 
-                      : "bg-white border-slate-200 text-slate-500 hover:text-slate-800 hover:bg-slate-50"
-                  }`}
+                  type="button"
+                  onClick={handlePrintFilteredTUG10}
+                  className="bg-indigo-600 hover:bg-indigo-500 active:bg-indigo-700 text-white font-mono font-bold text-xs uppercase px-3.5 py-1.5 rounded-lg shadow-xs hover:shadow transition-all cursor-pointer flex items-center gap-1.5 ml-1 shrink-0"
+                  title="Cetak Dokumen TUG 10 Sesuai Filter Tanggal & Periode"
                 >
-                  {status}
+                  <Printer className="w-3.5 h-3.5 text-white" />
+                  <span>Cetak TUG 10 ({filteredReturns.length})</span>
                 </button>
-              ))}
+              </div>
             </div>
           </div>
 
@@ -998,38 +1510,110 @@ export default function MaterialReturnView({
                                           <span>Edit Keterangan</span>
                                         </button>
 
-                                        {(ret.status === "Draft" || ret.status === "Rejected") && (
-                                          <>
-                                            <button
-                                              type="button"
-                                              onClick={(e) => {
-                                                e.stopPropagation();
-                                                setActiveActionId(null);
-                                                handleEditReturn(ret);
-                                              }}
-                                              className="w-full px-4 py-2 text-xs font-semibold hover:bg-slate-100 text-slate-800 flex items-center gap-2 cursor-pointer transition-colors text-left"
-                                            >
-                                              <Edit3 className="w-3.5 h-3.5 text-amber-500" />
-                                              <span>Edit Pengembalian</span>
-                                            </button>
+                                         {/* Quick Level 1 Signature Button (Alfin / Verifikator) */}
+                                         {(currentUser?.username === "alfin" || currentUser?.role === UserRole.VERIFIER_RENDALHAR || currentUser?.role === UserRole.SUPER_ADMIN) && !ret.alfin_signed && (
+                                           <>
+                                             <div className="border-t border-slate-100 my-1"></div>
+                                             <button
+                                               type="button"
+                                               onClick={async (e) => {
+                                                 e.stopPropagation();
+                                                 setActiveActionId(null);
+                                                 const now = new Date().toISOString();
+                                                 await onUpdateReturn(ret.id, {
+                                                   alfin_signed: true,
+                                                   alfin_signed_at: now,
+                                                   alfin_signature_url: "https://api.dicebear.com/7.x/initials/svg?seed=MaghfurAlfin",
+                                                   status: ret.status === "Draft" ? "Submitted" : ret.status
+                                                 });
+                                               }}
+                                               className="w-full px-4 py-2 text-xs font-bold hover:bg-emerald-50 text-emerald-700 flex items-center gap-2 cursor-pointer transition-colors text-left"
+                                             >
+                                               <CheckCircle className="w-3.5 h-3.5 text-emerald-600" />
+                                               <span>✓ TTD Level 1 (Alfin)</span>
+                                             </button>
+                                           </>
+                                         )}
 
-                                            <button
-                                              type="button"
-                                              onClick={async (e) => {
-                                                e.stopPropagation();
-                                                setActiveActionId(null);
-                                                if (confirm(`Yakin ingin membatalkan/menghapus TUG 10: ${ret.return_number}?`)) {
-                                                  await onDeleteReturn(ret.id);
-                                                  if (selectedReturnId === ret.id) setSelectedReturnId(null);
-                                                }
-                                              }}
-                                              className="w-full px-4 py-2 text-xs font-semibold hover:bg-slate-100 text-rose-700 flex items-center gap-2 cursor-pointer transition-colors text-left"
-                                            >
-                                              <Trash2 className="w-3.5 h-3.5 text-rose-500" />
-                                              <span>Hapus Dokumen</span>
-                                            </button>
-                                          </>
+                                         {/* Quick Level 2 Signature Button (Emir / Manager Logistik) */}
+                                         {(currentUser?.username === "emir" || currentUser?.role === UserRole.LOGISTICS_MANAGER || currentUser?.role === UserRole.SUPER_ADMIN) && !ret.emir_signed && (
+                                           <>
+                                             <div className="border-t border-slate-100 my-1"></div>
+                                             <button
+                                               type="button"
+                                               onClick={async (e) => {
+                                                 e.stopPropagation();
+                                                 setActiveActionId(null);
+                                                 const now = new Date().toISOString();
+                                                 await onUpdateReturn(ret.id, {
+                                                   emir_signed: true,
+                                                   emir_signed_at: now,
+                                                   emir_signature_url: "https://api.dicebear.com/7.x/initials/svg?seed=EmirFerdian"
+                                                 });
+                                               }}
+                                               className="w-full px-4 py-2 text-xs font-bold hover:bg-amber-50 text-amber-800 flex items-center gap-2 cursor-pointer transition-colors text-left"
+                                             >
+                                               <CheckCircle className="w-3.5 h-3.5 text-amber-600" />
+                                               <span>✓ TTD Level 2 (Emir)</span>
+                                             </button>
+                                           </>
+                                         )}
+
+                                         {/* Quick Level 3 Signature Button (Sumbono / VP Rendalhar) */}
+                                         {(currentUser?.username === "sumbono" || currentUser?.role === UserRole.VP_RENDALHAR || currentUser?.role === UserRole.SUPER_ADMIN) && !ret.sumbono_signed && (
+                                           <>
+                                             <div className="border-t border-slate-100 my-1"></div>
+                                             <button
+                                               type="button"
+                                               onClick={async (e) => {
+                                                 e.stopPropagation();
+                                                 setActiveActionId(null);
+                                                 const now = new Date().toISOString();
+                                                 await onUpdateReturn(ret.id, {
+                                                   sumbono_signed: true,
+                                                   sumbono_signed_at: now,
+                                                   sumbono_signature_url: "https://api.dicebear.com/7.x/initials/svg?seed=Sumbono",
+                                                   status: "Approved"
+                                                 });
+                                               }}
+                                               className="w-full px-4 py-2 text-xs font-bold hover:bg-indigo-50 text-indigo-700 flex items-center gap-2 cursor-pointer transition-colors text-left"
+                                             >
+                                               <CheckCircle className="w-3.5 h-3.5 text-indigo-600" />
+                                               <span>✓ Sahkan & TTD (Sumbono)</span>
+                                             </button>
+                                           </>
+                                         )}
+
+                                        {(ret.status === "Draft" || ret.status === "Rejected") && (
+                                          <button
+                                            type="button"
+                                            onClick={(e) => {
+                                              e.stopPropagation();
+                                              setActiveActionId(null);
+                                              handleEditReturn(ret);
+                                            }}
+                                            className="w-full px-4 py-2 text-xs font-semibold hover:bg-slate-100 text-slate-800 flex items-center gap-2 cursor-pointer transition-colors text-left"
+                                          >
+                                            <Edit3 className="w-3.5 h-3.5 text-amber-500" />
+                                            <span>Edit Pengembalian</span>
+                                          </button>
                                         )}
+
+                                        <button
+                                          type="button"
+                                          onClick={async (e) => {
+                                            e.stopPropagation();
+                                            setActiveActionId(null);
+                                            if (confirm(`Apakah Anda yakin ingin menghapus Dokumen Pengembalian TUG 10: [${ret.return_number}]?`)) {
+                                              await onDeleteReturn(ret.id);
+                                              if (selectedReturnId === ret.id) setSelectedReturnId(null);
+                                            }
+                                          }}
+                                          className="w-full px-4 py-2 text-xs font-semibold hover:bg-rose-50 text-rose-600 flex items-center gap-2 cursor-pointer transition-colors text-left border-t border-slate-100"
+                                        >
+                                          <Trash2 className="w-3.5 h-3.5 text-rose-500" />
+                                          <span>Hapus Dokumen TUG 10</span>
+                                        </button>
 
                                         {ret.status === "Submitted" && currentUser.role === UserRole.WAREHOUSE_ADMIN && (
                                           <>
@@ -1256,7 +1840,6 @@ export default function MaterialReturnView({
           </div>
 
         </div>
-      )}
 
     </div>
   );

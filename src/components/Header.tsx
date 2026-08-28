@@ -15,18 +15,18 @@ interface HeaderProps {
 export default function Header({ currentUser, onLogout }: HeaderProps) {
   return (
     <header className="h-14 bg-slate-900 text-white flex items-center justify-between px-6 shrink-0 font-sans shadow-md border-b border-slate-800">
-      
+
       {/* Brand & Vessel Identity Icon */}
       <div className="flex items-center gap-3">
-        <div className="w-9 h-9 bg-blue-600 rounded flex items-center justify-center font-display font-black text-xl text-white shadow-md shadow-blue-500/10">
-          <Anchor className="w-5 h-5 text-white" />
+        <div className="bg-white p-1 rounded-md flex items-center justify-center shadow-md shrink-0">
+          <img src="/bag-logo.jpg" alt="BAg Logo" className="h-7 w-auto object-contain" />
         </div>
         <div className="flex flex-col leading-none">
-          <span className="text-sm font-bold tracking-tight font-display uppercase text-white flex items-center gap-1.5">
-            BAG - LOGISTICS
+          <span className="text-sm font-bold tracking-tight font-display text-white flex items-center gap-1.5">
+            BAg - Logistics
             <span className="bg-blue-500/20 text-blue-400 text-[8px] font-mono px-1 rounded font-bold">WMS</span>
           </span>
-          <span className="text-[10px] text-slate-400 font-mono tracking-wider uppercase">Maritime Stock & Supplies Backup</span>
+          <span className="text-[12px] text-slate-400 font-mono tracking-wider ">Maritime Logistics and Spares Warehouse</span>
         </div>
       </div>
 
@@ -47,7 +47,7 @@ export default function Header({ currentUser, onLogout }: HeaderProps) {
 
         {/* Beautiful minimalist Logout action */}
         {onLogout && (
-          <button 
+          <button
             onClick={onLogout}
             title="Keluar (Logout)"
             className="flex items-center gap-1.5 px-3 py-2 bg-slate-850 hover:bg-rose-950/60 hover:text-rose-300 text-slate-300 border border-slate-750 hover:border-rose-900/40 transition-all rounded text-[10px] uppercase font-mono tracking-wider cursor-pointer"

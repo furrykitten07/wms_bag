@@ -29,7 +29,8 @@ import {
   TrendingUp,
   SlidersHorizontal,
   FolderArchive,
-  ChevronDown
+  ChevronDown,
+  Trash2
 } from "lucide-react";
 import { OutboundDispatch, DispatchStatus, UserRole, SparePart, MaterialRequest, SPKWorkOrder, MaterialReturn } from "../types.js";
 
@@ -41,10 +42,14 @@ interface DispatchViewProps {
   onCreateDispatch: (data: Partial<OutboundDispatch>) => Promise<any>;
   onPreviewDocument: (type: "bon" | "surat_jalan" | "manifest", data: OutboundDispatch) => void;
   requests?: MaterialRequest[];
+  requestsTUG6?: MaterialRequest[];
+  onPreviewTUG5?: (req: MaterialRequest) => void;
+  onPreviewTUG6?: (req: MaterialRequest) => void;
   spkList?: SPKWorkOrder[];
   onUpdateSPK?: (id: string, spkData: Partial<SPKWorkOrder>) => Promise<any>;
   materialReturns?: MaterialReturn[];
   onUpdateReturn?: (id: string, update: Partial<MaterialReturn>) => Promise<any>;
+  onDeleteDispatch?: (id: string) => Promise<any>;
 }
 
 export default function DispatchView({
@@ -55,10 +60,14 @@ export default function DispatchView({
   onCreateDispatch,
   onPreviewDocument,
   requests = [],
+  requestsTUG6 = [],
+  onPreviewTUG5,
+  onPreviewTUG6,
   spkList = [],
   onUpdateSPK,
   materialReturns = [],
-  onUpdateReturn
+  onUpdateReturn,
+  onDeleteDispatch
 }: DispatchViewProps) {
   const [activeTab, setActiveTab] = useState<"queue" | "archive">("queue");
   const [activeActionId, setActiveActionId] = useState<string | null>(null);
@@ -66,13 +75,19 @@ export default function DispatchView({
   const [statusFilter, setStatusFilter] = useState("All");
   const [vesselFilter, setVesselFilter] = useState("All");
 
+  // Date/Time Filter states for Outbound Dispatch (TUG 8)
+  const [timePreset, setTimePreset] = useState<"all" | "week" | "month" | "july2026" | "custom">("all");
+  const [selectedMonth, setSelectedMonth] = useState<string>("ALL");
+  const [dateFrom, setDateFrom] = useState<string>("");
+  const [dateTo, setDateTo] = useState<string>("");
+
   // Outbound Pagination states
   const [dspPage, setDspPage] = useState(1);
   const dspPerPage = 6;
 
   React.useEffect(() => {
     setDspPage(1);
-  }, [search, statusFilter, vesselFilter, activeTab]);
+  }, [search, statusFilter, vesselFilter, activeTab, timePreset, selectedMonth, dateFrom, dateTo]);
 
   const [selectedDispatch, setSelectedDispatch] = useState<OutboundDispatch | null>(null);
 
@@ -121,7 +136,7 @@ export default function DispatchView({
             qty_dispatched: isSent ? (itm.requested_qty || 1) : 0,
             qty_remaining: isSent ? 0 : (itm.requested_qty || 1),
             unit: itm.unit || "PCS",
-            unit_price: (itm as any).unit_price || 150000,
+            unit_price: (itm as any).unit_price !== undefined ? Number((itm as any).unit_price) : 0,
             notes: (itm.item_status === "Pending" ? "[BELUM DATANG] " : itm.item_status === "Returned" ? "[DIRETUR] " : "") + (itm.notes || "")
           };
         });
@@ -150,7 +165,7 @@ export default function DispatchView({
             qty_dispatched: itm.qty_returned,
             qty_remaining: 0,
             unit: itm.unit || "PCS",
-            unit_price: (itm as any).unit_price || 150000,
+            unit_price: (itm as any).unit_price !== undefined ? Number((itm as any).unit_price) : 0,
             notes: `[TRANSFER DARI KAPAL ${selectedReturn.vessel_name.toUpperCase()}] ` + (itm.notes || "")
           };
         });
@@ -233,11 +248,6 @@ export default function DispatchView({
           setIsLoading(false);
           return;
         }
-        if (!targetVesselName.trim()) {
-          alert("Silakan masukkan Nama Kapal Tujuan Transfer.");
-          setIsLoading(false);
-          return;
-        }
         const selectedReturn = materialReturns.find(r => r.id === selectedTug10Id);
         if (!selectedReturn) {
           alert("Dokumen TUG 10 tidak ditemukan.");
@@ -245,15 +255,17 @@ export default function DispatchView({
           return;
         }
 
+        const vTarget = targetVesselName.trim() || `Kapal Penerima (ex-${selectedReturn.vessel_name})`;
+
         const payload: Partial<OutboundDispatch> = {
           request_reference: selectedReturn.return_number,
-          vessel_name: targetVesselName.trim(),
-          warehouse_name: wName,
-          delivery_destination: dDest,
+          vessel_name: vTarget,
+          warehouse_name: wName || selectedReturn.warehouse_name || "GUDANG PENURUNAN",
+          delivery_destination: dDest || "Target Vessel Side",
           notes: notesText,
-          courier_name: cName,
-          tracking_number: tNumber,
-          driver_pic: dPic,
+          courier_name: cName || "Internal Cargo",
+          tracking_number: tNumber || "-",
+          driver_pic: dPic || "-",
           work_order_ref: selectedReturn.work_order_number || selectedReturn.spk_number || "",
           account_code: selectedReturn.account_code || "BPP",
           function_code: selectedReturn.function_code || "ARMADA",
@@ -268,7 +280,7 @@ export default function DispatchView({
           await onUpdateReturn(selectedReturn.id, {
             status: "Completed",
             dispatch_reference: dispNum,
-            notes: (selectedReturn.notes || "") + `\n[SINKRONISASI] Ditransfer ke kapal ${targetVesselName} dengan TUG 8: ${dispNum}`
+            notes: (selectedReturn.notes || "") + `\n[SINKRONISASI] Ditransfer ke kapal ${vTarget} dengan TUG 8: ${dispNum}`
           });
         }
 
@@ -285,7 +297,7 @@ export default function DispatchView({
         setWName("GUDANG UTAMA");
         setDDest("Port Agent / Vessel Side");
 
-        alert(`Transfer Antar Kapal Berhasil!\n\nDokumen Pengiriman TUG 8 telah terbit untuk kapal ${targetVesselName.trim()} dan terhubung dengan penurunan barang kapal ${selectedReturn.vessel_name} (TUG 10: ${selectedReturn.return_number}).\nStatus dokumen TUG 10 otomatis diubah menjadi COMPLETED.`);
+        alert(`Transfer Antar Kapal Berhasil!\n\nDokumen Pengiriman TUG 8 telah terbit untuk kapal ${vTarget} dan terhubung dengan penurunan barang kapal ${selectedReturn.vessel_name} (TUG 10: ${selectedReturn.return_number}).\nStatus dokumen TUG 10 otomatis diubah menjadi COMPLETED.`);
       }
     } catch (err: any) {
       alert("Gagal membuat pengiriman: " + err.message);
@@ -347,6 +359,59 @@ export default function DispatchView({
     }
   };
 
+  // Helper to match item dates against current timePreset / date filters
+  const isDateInFilter = (dateStr?: string) => {
+    if (!dateStr) return false;
+    if (timePreset === "all") return true;
+    if (timePreset === "july2026" || selectedMonth === "2026-07") {
+      return dateStr.startsWith("2026-07");
+    }
+    if (timePreset === "week") {
+      const now = new Date().getTime();
+      const dTime = new Date(dateStr).getTime();
+      return !isNaN(dTime) && (now - dTime) <= 7 * 24 * 60 * 60 * 1000;
+    }
+    if (timePreset === "month" && selectedMonth !== "ALL") {
+      return dateStr.startsWith(selectedMonth);
+    }
+    if (timePreset === "custom") {
+      if (dateFrom && dateStr < dateFrom) return false;
+      if (dateTo && dateStr > dateTo) return false;
+      return true;
+    }
+    return true;
+  };
+
+  // Filtered TUG 5 requests
+  const filteredTug5List = React.useMemo(() => {
+    return requests.filter(r => {
+      const dateVal = r.request_date || r.created_at?.split("T")[0] || "";
+      const matchesSearch = search === "" || 
+        r.request_number.toLowerCase().includes(search.toLowerCase()) || 
+        (r.tug5_number && r.tug5_number.toLowerCase().includes(search.toLowerCase())) ||
+        r.vessel_name.toLowerCase().includes(search.toLowerCase()) ||
+        (r.work_order_ref && r.work_order_ref.toLowerCase().includes(search.toLowerCase()));
+      const matchesVessel = vesselFilter === "All" || r.vessel_name === vesselFilter;
+      return matchesSearch && matchesVessel && isDateInFilter(dateVal);
+    });
+  }, [requests, search, vesselFilter, timePreset, selectedMonth, dateFrom, dateTo]);
+
+  // Filtered TUG 6 requests
+  const filteredTug6List = React.useMemo(() => {
+    const list = (requestsTUG6 && requestsTUG6.length > 0) ? requestsTUG6 : requests.filter(r => (r as any).tug_type === "TUG6");
+    return list.filter(r => {
+      const dateVal = r.request_date || r.created_at?.split("T")[0] || "";
+      const matchesSearch = search === "" || 
+        r.request_number.toLowerCase().includes(search.toLowerCase()) || 
+        (r.tug6_number && r.tug6_number.toLowerCase().includes(search.toLowerCase())) ||
+        (r.tug5_number && r.tug5_number.toLowerCase().includes(search.toLowerCase())) ||
+        r.vessel_name.toLowerCase().includes(search.toLowerCase()) ||
+        (r.work_order_ref && r.work_order_ref.toLowerCase().includes(search.toLowerCase()));
+      const matchesVessel = vesselFilter === "All" || r.vessel_name === vesselFilter;
+      return matchesSearch && matchesVessel && isDateInFilter(dateVal);
+    });
+  }, [requestsTUG6, requests, search, vesselFilter, timePreset, selectedMonth, dateFrom, dateTo]);
+
   // Extract unique lists of vessels for filters
   const uniqueVessels = Array.from(new Set(dispatchList.map(d => d.vessel_name))).filter(Boolean);
 
@@ -363,8 +428,181 @@ export default function DispatchView({
     const matchesStatus = statusFilter === "All" || d.status === statusFilter;
     const matchesVessel = vesselFilter === "All" || d.vessel_name === vesselFilter;
 
-    return isQueue && matchesSearch && matchesStatus && matchesVessel;
+    // Time filter evaluation
+    const dDate = (d as any).dispatch_date || d.created_at?.split("T")[0] || d.created_at || "";
+    const matchesTime = isDateInFilter(dDate);
+
+    return isQueue && matchesSearch && matchesStatus && matchesVessel && matchesTime;
   });
+
+  const handlePrintFilteredTUG5 = () => {
+    let filterLabel = "Semua TUG 5";
+    if (timePreset === "july2026" || selectedMonth === "2026-07") filterLabel = "Periode Juli 2026";
+    else if (timePreset === "week") filterLabel = "7 Hari Terakhir";
+    else if (timePreset === "month" && selectedMonth !== "ALL") filterLabel = `Bulan ${selectedMonth}`;
+    else if (timePreset === "custom") filterLabel = `Kustom (${dateFrom || "Awal"} s/d ${dateTo || "Akhir"})`;
+
+    if (filteredTug5List.length === 0) {
+      const emptyDoc: MaterialRequest = {
+        id: `tug5-empty-${Date.now()}`,
+        request_number: "MR-2026-NIHIL",
+        tug5_number: "TUG5-2026-NIHIL",
+        vessel_name: "-",
+        request_date: dateFrom || new Date().toISOString().split("T")[0],
+        requester_name: "-",
+        warehouse_name: "Gudang Merak",
+        delivery_address: "Pelabuhan Merak, Cilegon, Banten",
+        work_order_ref: "WO-REF",
+        account_code: "BPP",
+        function_code: "ARMADA",
+        remarks: `Dokumen Rekapitulasi TUG 5 (${filterLabel} - NIHIL)`,
+        status: "Approved",
+        items: [],
+        created_at: new Date().toISOString(),
+        updated_at: new Date().toISOString()
+      };
+      if (onPreviewTUG5) onPreviewTUG5(emptyDoc);
+      else onPreviewDocument("tug5" as any, emptyDoc as any);
+    } else if (filteredTug5List.length === 1) {
+      if (onPreviewTUG5) onPreviewTUG5(filteredTug5List[0]);
+      else onPreviewDocument("tug5" as any, filteredTug5List[0] as any);
+    } else {
+      const combinedItems: any[] = [];
+      filteredTug5List.forEach(req => {
+        if (req.items) {
+          req.items.forEach(itm => {
+            combinedItems.push({
+              ...itm,
+              notes: `${itm.notes || ""} (${req.tug5_number || req.request_number} - ${req.vessel_name})`
+            });
+          });
+        }
+      });
+
+      const vessels = Array.from(new Set(filteredTug5List.map(r => r.vessel_name).filter(Boolean)));
+      const combinedDoc: MaterialRequest = {
+        ...filteredTug5List[0],
+        request_number: `REKAP-TUG5-${filteredTug5List.length}-FORM`,
+        tug5_number: `TUG5-REKAP-${filteredTug5List.length}`,
+        vessel_name: vessels.length > 0 ? (vessels.length > 3 ? `${vessels.slice(0, 3).join(", ")} (+${vessels.length - 3} Kapal)` : vessels.join(" / ")) : "-",
+        items: combinedItems,
+        remarks: `Dokumen Rekapitulasi TUG 5 (${filterLabel}) • Total ${filteredTug5List.length} Form TUG 5`
+      };
+      if (onPreviewTUG5) onPreviewTUG5(combinedDoc);
+      else onPreviewDocument("tug5" as any, combinedDoc as any);
+    }
+  };
+
+  const handlePrintFilteredTUG6 = () => {
+    let filterLabel = "Semua TUG 6";
+    if (timePreset === "july2026" || selectedMonth === "2026-07") filterLabel = "Periode Juli 2026";
+    else if (timePreset === "week") filterLabel = "7 Hari Terakhir";
+    else if (timePreset === "month" && selectedMonth !== "ALL") filterLabel = `Bulan ${selectedMonth}`;
+    else if (timePreset === "custom") filterLabel = `Kustom (${dateFrom || "Awal"} s/d ${dateTo || "Akhir"})`;
+
+    if (filteredTug6List.length === 0) {
+      const emptyDoc: MaterialRequest = {
+        id: `tug6-empty-${Date.now()}`,
+        request_number: "MR6-2026-NIHIL",
+        tug6_number: "TUG6-2026-NIHIL",
+        tug5_number: "TUG6-2026-NIHIL",
+        vessel_name: "-",
+        request_date: dateFrom || new Date().toISOString().split("T")[0],
+        requester_name: "-",
+        warehouse_name: "Gudang Merak",
+        delivery_address: "Pelabuhan Merak, Cilegon, Banten",
+        work_order_ref: "WO-REF",
+        account_code: "BPP",
+        function_code: "ARMADA",
+        remarks: `Dokumen Rekapitulasi TUG 6 (${filterLabel} - NIHIL)`,
+        status: "Approved",
+        items: [],
+        created_at: new Date().toISOString(),
+        updated_at: new Date().toISOString()
+      };
+      if (onPreviewTUG6) onPreviewTUG6(emptyDoc);
+      else onPreviewDocument("tug6" as any, emptyDoc as any);
+    } else if (filteredTug6List.length === 1) {
+      if (onPreviewTUG6) onPreviewTUG6(filteredTug6List[0]);
+      else onPreviewDocument("tug6" as any, filteredTug6List[0] as any);
+    } else {
+      const combinedItems: any[] = [];
+      filteredTug6List.forEach(req => {
+        if (req.items) {
+          req.items.forEach(itm => {
+            combinedItems.push({
+              ...itm,
+              notes: `${itm.notes || ""} (${req.tug6_number || req.tug5_number || req.request_number} - ${req.vessel_name})`
+            });
+          });
+        }
+      });
+
+      const vessels = Array.from(new Set(filteredTug6List.map(r => r.vessel_name).filter(Boolean)));
+      const combinedDoc: MaterialRequest = {
+        ...filteredTug6List[0],
+        request_number: `REKAP-TUG6-${filteredTug6List.length}-FORM`,
+        tug6_number: `TUG6-REKAP-${filteredTug6List.length}`,
+        tug5_number: `TUG6-REKAP-${filteredTug6List.length}`,
+        vessel_name: vessels.length > 0 ? (vessels.length > 3 ? `${vessels.slice(0, 3).join(", ")} (+${vessels.length - 3} Kapal)` : vessels.join(" / ")) : "-",
+        items: combinedItems,
+        remarks: `Dokumen Rekapitulasi TUG 6 (${filterLabel}) • Total ${filteredTug6List.length} Form TUG 6`
+      };
+      if (onPreviewTUG6) onPreviewTUG6(combinedDoc);
+      else onPreviewDocument("tug6" as any, combinedDoc as any);
+    }
+  };
+
+  const handlePrintFilteredTUG8 = () => {
+    if (filtered.length === 0) {
+      const periodLabel = (timePreset === "july2026" || selectedMonth === "2026-07") ? "Juli 2026" : selectedMonth !== "ALL" ? `Bulan ${selectedMonth}` : "Periode Terpilih";
+      const emptyDoc: OutboundDispatch = {
+        id: `empty-tug8-${Date.now()}`,
+        dispatch_number: (timePreset === "july2026" || selectedMonth === "2026-07") ? "TUG8-2026-JULI" : "TUG8-2026-NIHIL",
+        tug8_number: (timePreset === "july2026" || selectedMonth === "2026-07") ? "BPB-2026-JULI" : "BPB-2026-NIHIL",
+        request_reference: "MANUAL",
+        vessel_name: "-",
+        warehouse_name: "GUDANG MERAK CENTRAL",
+        delivery_destination: "Port Agent / Vessel Side",
+        courier_name: "INTERNAL CARGO TRANSIT",
+        tracking_number: "-",
+        driver_pic: "-",
+        work_order_ref: "WO-MECH-99",
+        account_code: "BPP",
+        function_code: "ARMADA",
+        status: DispatchStatus.COMPLETED,
+        notes: `Dokumen Rekapitulasi TUG 8 (${periodLabel} - NIHIL)`,
+        items: [],
+        created_by: "Staff Dispatch",
+        created_at: (timePreset === "july2026" || selectedMonth === "2026-07") ? "2026-07-31" : new Date().toISOString()
+      };
+      onPreviewDocument("bon", emptyDoc);
+    } else if (filtered.length === 1) {
+      onPreviewDocument("bon", filtered[0]);
+    } else {
+      const combinedItems: any[] = [];
+      filtered.forEach(dsp => {
+        if (dsp.items) {
+          dsp.items.forEach(itm => {
+            combinedItems.push({
+              ...itm,
+              notes: `${itm.notes || ""} (${dsp.dispatch_number || dsp.tug8_number || "TUG8"} - ${dsp.vessel_name})`
+            });
+          });
+        }
+      });
+      const vessels = Array.from(new Set(filtered.map(d => d.vessel_name).filter(Boolean)));
+      const combinedDoc: OutboundDispatch = {
+        ...filtered[0],
+        dispatch_number: `REKAP-TUG8-${filtered.length}-ITEMS`,
+        tug8_number: `BPB-REKAP-${filtered.length}`,
+        vessel_name: vessels.length > 0 ? (vessels.length > 3 ? `${vessels.slice(0, 3).join(", ")} (+${vessels.length - 3} Kapal)` : vessels.join(" / ")) : "-",
+        items: combinedItems,
+        notes: `Rekapitulasi gabungan ${filtered.length} dokumen TUG 8`
+      };
+      onPreviewDocument("bon", combinedDoc);
+    }
+  };
 
   const dspTotalPages = Math.ceil(filtered.length / dspPerPage) || 1;
   const paginatedDsp = filtered.slice((dspPage - 1) * dspPerPage, dspPage * dspPerPage);
@@ -503,6 +741,123 @@ export default function DispatchView({
                 <option key={v} value={v}>{v}</option>
               ))}
             </select>
+          </div>
+
+          {/* Time Presets */}
+          <div className="flex items-center bg-slate-100 p-1 rounded-lg border border-slate-200 text-xs text-center">
+            <button
+              type="button"
+              onClick={() => { setTimePreset("all"); setSelectedMonth("ALL"); }}
+              className={`px-2.5 py-1 rounded cursor-pointer transition-all text-[10px] ${timePreset === "all" ? "bg-white text-blue-700 shadow-xs font-black" : "text-slate-600 hover:text-slate-900"}`}
+            >
+              Semua
+            </button>
+            <button
+              type="button"
+              onClick={() => { setTimePreset("week"); setSelectedMonth("ALL"); }}
+              className={`px-2.5 py-1 rounded cursor-pointer transition-all text-[10px] ${timePreset === "week" ? "bg-white text-blue-700 shadow-xs font-black" : "text-slate-600 hover:text-slate-900"}`}
+            >
+              Minggu Ini
+            </button>
+            <button
+              type="button"
+              onClick={() => { setTimePreset("month"); }}
+              className={`px-2.5 py-1 rounded cursor-pointer transition-all text-[10px] ${timePreset === "month" ? "bg-white text-blue-700 shadow-xs font-black" : "text-slate-600 hover:text-slate-900"}`}
+            >
+              Bulan
+            </button>
+            <button
+              type="button"
+              onClick={() => { setTimePreset("july2026"); setSelectedMonth("2026-07"); }}
+              className={`px-2.5 py-1 rounded cursor-pointer transition-all text-[10px] ${timePreset === "july2026" ? "bg-rose-600 text-white font-black shadow-xs" : "text-slate-600 hover:text-slate-900"}`}
+              title="Pilih Periode Juli 2026"
+            >
+              Juli 2026
+            </button>
+            <button
+              type="button"
+              onClick={() => { setTimePreset("custom"); setSelectedMonth("ALL"); }}
+              className={`px-2.5 py-1 rounded cursor-pointer transition-all text-[10px] ${timePreset === "custom" ? "bg-white text-blue-700 shadow-xs font-black" : "text-slate-600 hover:text-slate-900"}`}
+            >
+              Kustom
+            </button>
+          </div>
+
+          {/* Month Selector */}
+          {timePreset === "month" && (
+            <select
+              value={selectedMonth}
+              onChange={(e) => {
+                const val = e.target.value;
+                setSelectedMonth(val);
+                if (val === "2026-07") setTimePreset("july2026");
+              }}
+              className="bg-slate-50 border border-slate-250 text-slate-800 rounded-lg px-2.5 py-1.5 text-xs font-mono font-bold focus:outline-none focus:ring-1 focus:ring-blue-500 cursor-pointer"
+            >
+              <option value="ALL">-- Semua Bulan 2026 --</option>
+              <option value="2026-07">Juli 2026</option>
+              <option value="2026-06">Juni 2026</option>
+              <option value="2026-05">Mei 2026</option>
+              <option value="2026-04">April 2026</option>
+              <option value="2026-03">Maret 2026</option>
+              <option value="2026-02">Februari 2026</option>
+              <option value="2026-01">Januari 2026</option>
+            </select>
+          )}
+
+          {/* Custom Date Inputs */}
+          {timePreset === "custom" && (
+            <div className="flex items-center gap-1 font-mono text-xs">
+              <input
+                type="date"
+                value={dateFrom}
+                onChange={(e) => setDateFrom(e.target.value)}
+                className="bg-slate-50 border border-slate-250 rounded px-2 py-1 text-xs font-bold text-slate-800"
+              />
+              <span className="text-slate-400 font-bold">s/d</span>
+              <input
+                type="date"
+                value={dateTo}
+                onChange={(e) => setDateTo(e.target.value)}
+                className="bg-slate-50 border border-slate-250 rounded px-2 py-1 text-xs font-bold text-slate-800"
+              />
+            </div>
+          )}
+
+          {/* Print Buttons Area */}
+          <div className="flex items-center gap-1.5 ml-1 shrink-0">
+            {/* Cetak TUG 5 Button */}
+            <button
+              type="button"
+              onClick={handlePrintFilteredTUG5}
+              className="bg-indigo-600 hover:bg-indigo-500 active:bg-indigo-700 text-white font-mono font-bold text-xs uppercase px-3 py-1.5 rounded-lg shadow-xs hover:shadow transition-all cursor-pointer flex items-center gap-1.5"
+              title="Cetak Dokumen TUG 5 Sesuai Rentang Waktu / Filter"
+            >
+              <Printer className="w-3.5 h-3.5 text-white" />
+              <span>Cetak TUG 5 ({filteredTug5List.length})</span>
+            </button>
+
+            {/* Cetak TUG 6 Button */}
+            <button
+              type="button"
+              onClick={handlePrintFilteredTUG6}
+              className="bg-emerald-600 hover:bg-emerald-500 active:bg-emerald-700 text-white font-mono font-bold text-xs uppercase px-3 py-1.5 rounded-lg shadow-xs hover:shadow transition-all cursor-pointer flex items-center gap-1.5"
+              title="Cetak Dokumen TUG 6 Sesuai Rentang Waktu / Filter"
+            >
+              <Printer className="w-3.5 h-3.5 text-white" />
+              <span>Cetak TUG 6 ({filteredTug6List.length})</span>
+            </button>
+
+            {/* Cetak TUG 8 Button */}
+            <button
+              type="button"
+              onClick={handlePrintFilteredTUG8}
+              className="bg-blue-600 hover:bg-blue-500 active:bg-blue-700 text-white font-mono font-bold text-xs uppercase px-3 py-1.5 rounded-lg shadow-xs hover:shadow transition-all cursor-pointer flex items-center gap-1.5"
+              title="Cetak Dokumen TUG 8 Sesuai Rentang Waktu / Filter"
+            >
+              <Printer className="w-3.5 h-3.5 text-white" />
+              <span>Cetak TUG 8 ({filtered.length})</span>
+            </button>
           </div>
 
         </div>
@@ -677,7 +1032,85 @@ export default function DispatchView({
                                     </button>
                                   )}
 
-                                  <div className="border-t border-slate-100 my-1"></div>
+                                   {/* Quick Level 1 Signature Button (Alfin / Verifikator) */}
+                                   {(currentUser?.username === "alfin" || currentUser?.role === UserRole.VERIFIER_RENDALHAR || currentUser?.role === UserRole.SUPER_ADMIN) && !item.alfin_signed && (
+                                     <>
+                                       <div className="border-t border-slate-100 my-1"></div>
+                                       <button
+                                         type="button"
+                                         onClick={async (e) => {
+                                           e.stopPropagation();
+                                           setActiveActionId(null);
+                                           const now = new Date().toISOString();
+                                           if (onUpdateDispatch) {
+                                             await onUpdateDispatch(item.id, {
+                                               alfin_signed: true,
+                                               alfin_signed_at: now,
+                                               alfin_signature_url: "https://api.dicebear.com/7.x/initials/svg?seed=MaghfurAlfin"
+                                             });
+                                           }
+                                         }}
+                                         className="w-full px-4 py-2 text-xs font-bold hover:bg-emerald-50 text-emerald-700 flex items-center gap-2 cursor-pointer transition-colors text-left"
+                                       >
+                                         <CheckCircle className="w-3.5 h-3.5 text-emerald-600" />
+                                         <span>✓ TTD Level 1 (Alfin)</span>
+                                       </button>
+                                     </>
+                                   )}
+
+                                   {/* Quick Level 2 Signature Button (Emir / Manager Logistik) */}
+                                   {(currentUser?.username === "emir" || currentUser?.role === UserRole.LOGISTICS_MANAGER || currentUser?.role === UserRole.SUPER_ADMIN) && !item.emir_signed && (
+                                     <>
+                                       <div className="border-t border-slate-100 my-1"></div>
+                                       <button
+                                         type="button"
+                                         onClick={async (e) => {
+                                           e.stopPropagation();
+                                           setActiveActionId(null);
+                                           const now = new Date().toISOString();
+                                           if (onUpdateDispatch) {
+                                             await onUpdateDispatch(item.id, {
+                                               emir_signed: true,
+                                               emir_signed_at: now,
+                                               emir_signature_url: "https://api.dicebear.com/7.x/initials/svg?seed=EmirFerdian"
+                                             });
+                                           }
+                                         }}
+                                         className="w-full px-4 py-2 text-xs font-bold hover:bg-amber-50 text-amber-800 flex items-center gap-2 cursor-pointer transition-colors text-left"
+                                       >
+                                         <CheckCircle className="w-3.5 h-3.5 text-amber-600" />
+                                         <span>✓ TTD Level 2 (Emir)</span>
+                                       </button>
+                                     </>
+                                   )}
+
+                                   {/* Quick Level 3 Signature Button (Sumbono / VP Rendalhar) */}
+                                   {(currentUser?.username === "sumbono" || currentUser?.role === UserRole.VP_RENDALHAR || currentUser?.role === UserRole.SUPER_ADMIN) && !item.sumbono_signed && (
+                                     <>
+                                       <div className="border-t border-slate-100 my-1"></div>
+                                       <button
+                                         type="button"
+                                         onClick={async (e) => {
+                                           e.stopPropagation();
+                                           setActiveActionId(null);
+                                           const now = new Date().toISOString();
+                                           if (onUpdateDispatch) {
+                                             await onUpdateDispatch(item.id, {
+                                               sumbono_signed: true,
+                                               sumbono_signed_at: now,
+                                               sumbono_signature_url: "https://api.dicebear.com/7.x/initials/svg?seed=Sumbono"
+                                             });
+                                           }
+                                         }}
+                                         className="w-full px-4 py-2 text-xs font-bold hover:bg-indigo-50 text-indigo-700 flex items-center gap-2 cursor-pointer transition-colors text-left"
+                                       >
+                                         <CheckCircle className="w-3.5 h-3.5 text-indigo-600" />
+                                         <span>✓ Sahkan & TTD (Sumbono)</span>
+                                       </button>
+                                     </>
+                                   )}
+
+                                   <div className="border-t border-slate-100 my-1"></div>
 
                                   <button
                                     type="button"
@@ -704,6 +1137,23 @@ export default function DispatchView({
                                     <Printer className="w-3.5 h-3.5 text-emerald-500" />
                                     <span>Cetak Surat Jalan</span>
                                   </button>
+
+                                  {onDeleteDispatch && (
+                                    <button
+                                      type="button"
+                                      onClick={async (e) => {
+                                        e.stopPropagation();
+                                        setActiveActionId(null);
+                                        if (confirm(`Apakah Anda yakin ingin menghapus data Pengeluaran Barang TUG 8 [${item.tug8_number || item.bon_pengeluaran_number || item.id}]?`)) {
+                                          await onDeleteDispatch(item.id);
+                                        }
+                                      }}
+                                      className="w-full px-4 py-2 text-xs font-semibold hover:bg-rose-50 text-rose-600 flex items-center gap-2 cursor-pointer transition-colors text-left border-t border-slate-100"
+                                    >
+                                      <Trash2 className="w-3.5 h-3.5 text-rose-500" />
+                                      <span>Hapus Data TUG 8</span>
+                                    </button>
+                                  )}
                                 </div>
                               </>
                             )}
@@ -1314,20 +1764,25 @@ export default function DispatchView({
                         <select
                           value={selectedTug10Id}
                           onChange={(e) => setSelectedTug10Id(e.target.value)}
-                          required={dispatchSource === "tug10"}
                           className="w-full bg-white border border-slate-300 rounded-lg text-xs px-3 py-2.5 font-bold text-slate-800 focus:outline-none focus:ring-1 focus:ring-emerald-500"
                         >
                           <option value="">-- SILAKAN PILIH DOKUMEN TUG 10 --</option>
-                          {materialReturns
-                            .filter(r => r.status === "Approved" || r.status === "Completed")
-                            .map(r => (
-                              <option key={r.id} value={r.id}>
-                                [{r.return_number}] - Dari Kapal: {r.vessel_name} ({r.items.length} item)
-                              </option>
-                            ))}
+                          {materialReturns.length === 0 ? (
+                            <option disabled value="">Tidak ada dokumen TUG 10 tersedia</option>
+                          ) : (
+                            materialReturns.map(r => {
+                              const isManual = !r.spk_number || r.spk_number === "MANUAL";
+                              const modeLabel = isManual ? "MANUAL (TANPA SPK)" : `SPK: ${r.spk_number}`;
+                              return (
+                                <option key={r.id} value={r.id}>
+                                  [{r.return_number}] - Dari Kapal: {r.vessel_name} ({modeLabel} &bull; Status: {r.status} &bull; {r.items.length} item)
+                                </option>
+                              );
+                            })
+                          )}
                         </select>
                         <span className="text-[9.5px] text-slate-400 block mt-1.5">
-                          Memilih TUG 10 akan mensinkronisasikan daftar barang penurunan untuk ditransfer ke kapal baru.
+                          Memuat seluruh dokumen TUG 10 (manual tanpa SPK maupun tersinkron SPK).
                         </span>
                       </div>
 
@@ -1339,12 +1794,11 @@ export default function DispatchView({
                           type="text"
                           value={targetVesselName}
                           onChange={(e) => setTargetVesselName(e.target.value)}
-                          required={dispatchSource === "tug10"}
-                          placeholder="Contoh: MV Ocean Voyager"
+                          placeholder="Contoh: MV. KARTINI BARUNA (opsional)"
                           className="w-full bg-white border border-slate-300 rounded-lg text-xs px-3 py-2.5 font-bold text-slate-800 focus:outline-none focus:ring-1 focus:ring-emerald-500"
                         />
                         <span className="text-[9.5px] text-slate-400 block mt-1.5">
-                          Tuliskan nama kapal penerima baru untuk suku cadang transfer ini.
+                          Nama kapal penerima transfer baru (otomatis terisi jika dikosongkan).
                         </span>
                       </div>
                     </div>
@@ -1427,43 +1881,46 @@ export default function DispatchView({
 
                 {/* Section 2: Detail Transporter & Expedisi */}
                 <div className="border border-slate-200 p-4.5 rounded-xl space-y-4">
-                  <div className="flex items-center gap-2 text-slate-800 border-b border-slate-100 pb-2">
-                    <Truck className="w-4 h-4 text-blue-600" />
-                    <span className="text-xs font-black font-mono uppercase tracking-wider">
-                      2. Informasi Pengiriman & Transporter
+                  <div className="flex items-center justify-between border-b border-slate-100 pb-2">
+                    <div className="flex items-center gap-2 text-slate-800">
+                      <Truck className="w-4 h-4 text-blue-600" />
+                      <span className="text-xs font-black font-mono uppercase tracking-wider">
+                        2. Informasi Pengiriman & Transporter
+                      </span>
+                    </div>
+                    <span className="text-[10px] text-slate-500 bg-slate-100 border border-slate-200 px-2 py-0.5 rounded font-mono font-bold">
+                      Opsional / Tidak Wajib
                     </span>
                   </div>
 
                   <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
                     <div>
                       <label className="text-[10px] font-bold text-slate-550 uppercase block mb-1">
-                        Nama Gudang Pengirim
+                        Nama Gudang Pengirim (Opsional)
                       </label>
                       <input
                         type="text"
                         value={wName}
                         onChange={(e) => setWName(e.target.value)}
                         placeholder="GUDANG UTAMA"
-                        required
                         className="w-full bg-slate-50 border border-slate-250 rounded-md text-xs px-3 py-2 font-semibold text-slate-800 focus:outline-none focus:ring-1 focus:ring-blue-500"
                       />
                     </div>
                     <div>
                       <label className="text-[10px] font-bold text-slate-550 uppercase block mb-1">
-                        Alamat / Pelabuhan Tujuan
+                        Alamat / Pelabuhan Tujuan (Opsional)
                       </label>
                       <input
                         type="text"
                         value={dDest}
                         onChange={(e) => setDDest(e.target.value)}
                         placeholder="Port Agent / Vessel Side"
-                        required
                         className="w-full bg-slate-50 border border-slate-250 rounded-md text-xs px-3 py-2 font-semibold text-slate-800 focus:outline-none focus:ring-1 focus:ring-blue-500"
                       />
                     </div>
                     <div>
                       <label className="text-[10px] font-bold text-slate-550 uppercase block mb-1">
-                        Ekspedisi / Courier Name
+                        Ekspedisi / Courier Name (Opsional)
                       </label>
                       <input
                         type="text"
@@ -1478,7 +1935,7 @@ export default function DispatchView({
                   <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                     <div>
                       <label className="text-[10px] font-bold text-slate-550 uppercase block mb-1">
-                        No. Kendaraan / No. Resi Tracking
+                        No. Kendaraan / No. Resi Tracking (Opsional)
                       </label>
                       <input
                         type="text"
@@ -1490,7 +1947,7 @@ export default function DispatchView({
                     </div>
                     <div>
                       <label className="text-[10px] font-bold text-slate-550 uppercase block mb-1">
-                        Driver / PIC Transporter
+                        Driver / PIC Transporter (Opsional)
                       </label>
                       <input
                         type="text"
@@ -1504,7 +1961,7 @@ export default function DispatchView({
 
                   <div>
                     <label className="text-[10px] font-bold text-slate-550 uppercase block mb-1">
-                      Catatan / Keterangan Tambahan
+                      Catatan / Keterangan Tambahan (Opsional)
                     </label>
                     <textarea
                       value={notesText}

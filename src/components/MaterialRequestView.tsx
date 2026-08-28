@@ -28,7 +28,8 @@ import {
   ArrowLeft,
   X,
   ChevronDown,
-  Edit3
+  Edit3,
+  Archive
 } from "lucide-react";
 import { 
   User as UserType, 
@@ -37,8 +38,10 @@ import {
   MaterialRequest, 
   MaterialRequestItem, 
   MaterialRequestStatus,
-  SPKWorkOrder
+  SPKWorkOrder,
+  DigitalSignature
 } from "../types.js";
+import BatchPrintZipModal from "./BatchPrintZipModal.js";
 
 interface MaterialRequestViewProps {
   requests: MaterialRequest[];
@@ -51,6 +54,9 @@ interface MaterialRequestViewProps {
   onLogMRAction: (id: string, action: "Printed" | "Downloaded") => Promise<void>;
   onPreviewTUG5: (request: MaterialRequest) => void;
   spkList?: SPKWorkOrder[];
+  autoOpenMRId?: string | null;
+  onClearAutoOpenMRId?: () => void;
+  signatures?: DigitalSignature[];
 }
 
 export default function MaterialRequestView({
@@ -63,15 +69,34 @@ export default function MaterialRequestView({
   onDeleteRequest,
   onLogMRAction,
   onPreviewTUG5,
-  spkList = []
+  spkList = [],
+  autoOpenMRId,
+  onClearAutoOpenMRId,
+  signatures = []
 }: MaterialRequestViewProps) {
   const [selectedMRId, setSelectedMRId] = useState<string | null>(null);
   const [activeActionId, setActiveActionId] = useState<string | null>(null);
   const [isCreating, setIsCreating] = useState<boolean>(false);
   const [isEditing, setIsEditing] = useState<boolean>(false);
   const [isDetailsOpen, setIsDetailsOpen] = useState<boolean>(false);
+  const [isBatchZipModalOpen, setIsBatchZipModalOpen] = useState<boolean>(false);
   const [searchQuery, setSearchQuery] = useState<string>("");
   const [statusFilter, setStatusFilter] = useState<string>("All");
+
+  React.useEffect(() => {
+    if (autoOpenMRId) {
+      const target = requests.find(
+        r => r.id === autoOpenMRId || r.request_number === autoOpenMRId || r.tug5_number === autoOpenMRId
+      );
+      if (target) {
+        setSelectedMRId(target.id);
+        setIsDetailsOpen(true);
+        if (onClearAutoOpenMRId) {
+          onClearAutoOpenMRId();
+        }
+      }
+    }
+  }, [autoOpenMRId, requests]);
 
   // TUG 5 (Material Requests) Pagination states
   const [tugPage, setTugPage] = useState(1);
@@ -83,7 +108,7 @@ export default function MaterialRequestView({
 
   // Create form state
   const [requestDate, setRequestDate] = useState<string>(new Date().toISOString().split("T")[0]);
-  const [vesselName, setVesselName] = useState<string>(currentUser.vesselName || "MV Ocean Voyager");
+  const [vesselName, setVesselName] = useState<string>(currentUser.vesselName || "MV. KARTINI BARUNA");
   const [warehouseName, setWarehouseName] = useState<string>("Gudang Merak");
   const [deliveryAddress, setDeliveryAddress] = useState<string>("");
   const [workOrderRef, setWorkOrderRef] = useState<string>("");
@@ -102,7 +127,7 @@ export default function MaterialRequestView({
 
   const resetForm = () => {
     setRequestDate(new Date().toISOString().split("T")[0]);
-    setVesselName(currentUser.vesselName || "MV Ocean Voyager");
+    setVesselName(currentUser.vesselName || "MV. KARTINI BARUNA");
     setWarehouseName("Gudang Merak");
     setDeliveryAddress("");
     setWorkOrderRef("");
@@ -165,7 +190,7 @@ export default function MaterialRequestView({
           });
         });
 
-        const primaryVessel = spk.vessels[0]?.vessel_name || "MV Ocean Voyager";
+        const primaryVessel = spk.vessels[0]?.vessel_name || "MV. KARTINI BARUNA";
         const cargoAddress = `Pelabuhan Target: ${spk.target_port || "Pelabuhan Merak Mas, Cilegon"}`;
 
         return {
@@ -341,11 +366,34 @@ export default function MaterialRequestView({
 
   // Filter requests
   const filteredRequests = requests.filter(mr => {
-    const matchesSearch = 
-      mr.request_number.toLowerCase().includes(searchQuery.toLowerCase()) ||
-      mr.vessel_name.toLowerCase().includes(searchQuery.toLowerCase()) ||
-      mr.requester_name.toLowerCase().includes(searchQuery.toLowerCase()) ||
-      (mr.work_order_ref && mr.work_order_ref.toLowerCase().includes(searchQuery.toLowerCase()));
+    const q = searchQuery.toLowerCase().trim();
+    if (!q) {
+      if (statusFilter === "All") return true;
+      return mr.status === statusFilter;
+    }
+
+    const matchesHeader = 
+      mr.request_number.toLowerCase().includes(q) ||
+      (mr.tug5_number && mr.tug5_number.toLowerCase().includes(q)) ||
+      (mr.tug6_number && mr.tug6_number.toLowerCase().includes(q)) ||
+      (mr.tug_number && mr.tug_number.toLowerCase().includes(q)) ||
+      (mr.spk_number && mr.spk_number.toLowerCase().includes(q)) ||
+      (mr.spk_id && mr.spk_id.toLowerCase().includes(q)) ||
+      mr.vessel_name.toLowerCase().includes(q) ||
+      (mr.requester_name && mr.requester_name.toLowerCase().includes(q)) ||
+      (mr.requested_by && mr.requested_by.toLowerCase().includes(q)) ||
+      (mr.created_by && mr.created_by.toLowerCase().includes(q)) ||
+      (mr.work_order_ref && mr.work_order_ref.toLowerCase().includes(q)) ||
+      (mr.remarks && mr.remarks.toLowerCase().includes(q)) ||
+      (mr.notes && mr.notes.toLowerCase().includes(q));
+
+    const matchesItems = mr.items && mr.items.some(item => 
+      (item.spare_part_name && item.spare_part_name.toLowerCase().includes(q)) ||
+      (item.part_number && item.part_number.toLowerCase().includes(q)) ||
+      (item.notes && item.notes.toLowerCase().includes(q))
+    );
+
+    const matchesSearch = matchesHeader || matchesItems;
     
     if (statusFilter === "All") return matchesSearch;
     return mr.status === statusFilter && matchesSearch;
@@ -357,21 +405,53 @@ export default function MaterialRequestView({
   const tugTotalPages = Math.ceil(filteredRequests.length / tugPerPage);
   const paginatedRequests = filteredRequests.slice((tugPage - 1) * tugPerPage, tugPage * tugPerPage);
 
-  const getStatusBadge = (status: MaterialRequestStatus) => {
-    switch (status) {
-      case "Draft":
-        return <span className="bg-slate-100 text-slate-700 px-2.5 py-1 rounded-full text-[10px] font-bold border border-slate-300 uppercase">Draft</span>;
-      case "Submitted":
-        return <span className="bg-blue-50 text-blue-700 px-2.5 py-1 rounded-full text-[10px] font-bold border border-blue-200 uppercase animate-pulse">Submitted</span>;
-      case "Approved":
-        return <span className="bg-emerald-50 text-emerald-800 px-2.5 py-1 rounded-full text-[10px] font-bold border border-emerald-300 uppercase">Approved</span>;
-      case "Rejected":
-        return <span className="bg-rose-50 text-rose-700 px-2.5 py-1 rounded-full text-[10px] font-bold border border-rose-300 uppercase">Rejected</span>;
-      case "Processed":
-        return <span className="bg-amber-55 text-amber-900 px-2.5 py-1 rounded-full text-[10px] font-bold border border-amber-300 uppercase">Processed</span>;
-      default:
-        return null;
+  const renderApprovalStatus = (mr: MaterialRequest) => {
+    const signed: string[] = [];
+    const missing: string[] = [];
+
+    if (mr.alfin_signed) signed.push("Alfin"); else missing.push("Alfin");
+    if (mr.emir_signed) signed.push("Emir"); else missing.push("Emir");
+    if (mr.sumbono_signed) signed.push("Sumbono"); else missing.push("Sumbono");
+
+    if (signed.length === 3) {
+      return (
+        <div className="flex flex-col items-center gap-0.5">
+          <span className="bg-emerald-100 text-emerald-800 border border-emerald-300 px-2.5 py-0.5 rounded-full text-[10px] font-black uppercase tracking-wider shadow-2xs">
+            ✓ Approved (Full L1-L3)
+          </span>
+          <span className="text-[9px] text-emerald-700 font-mono font-bold">
+            TTD: Alfin, Emir, Sumbono
+          </span>
+        </div>
+      );
     }
+
+    if (signed.length > 0) {
+      return (
+        <div className="flex flex-col items-center gap-0.5">
+          <span className="bg-blue-100 text-blue-800 border border-blue-300 px-2.5 py-0.5 rounded-full text-[9.5px] font-bold uppercase tracking-wider">
+            ⏳ Disetujui ({signed.length}/3)
+          </span>
+          <span className="text-[9px] text-emerald-700 font-mono font-bold">
+            ✓ Acc: {signed.join(", ")}
+          </span>
+          <span className="text-[9px] text-amber-700 font-mono font-bold">
+            ⏳ Belum: {missing.join(", ")}
+          </span>
+        </div>
+      );
+    }
+
+    return (
+      <div className="flex flex-col items-center gap-0.5">
+        <span className="bg-amber-100 text-amber-800 border border-amber-300 px-2.5 py-0.5 rounded-full text-[9.5px] font-bold uppercase tracking-wider">
+          ⏳ Menunggu TTD (0/3)
+        </span>
+        <span className="text-[9px] text-rose-600 font-mono font-bold">
+          ❌ Belum: Alfin, Emir, Sumbono
+        </span>
+      </div>
+    );
   };
 
   return (
@@ -382,7 +462,7 @@ export default function MaterialRequestView({
         <div>
           <h1 className="text-base font-display font-black text-slate-900 uppercase tracking-tight flex items-center gap-2.5">
             <FileSpreadsheet className="w-5 h-5 text-emerald-600" />
-            Daftar Permintaan Barang-Barang (TUG 5)
+            Daftar Permintaan Barang-Barang (Material Umum)
           </h1>
           <p className="text-xs text-slate-500 mt-1 font-sans font-medium">
             Sistem pengajuan logistik kapal PT. Pelayaran Bahtera Adhiguna. Ajukan, setujui, dan unduh form cetak TUG 5 resmi.
@@ -390,6 +470,14 @@ export default function MaterialRequestView({
         </div>
         
         <div className="flex flex-col sm:flex-row gap-2.5 shrink-0">
+          <button
+            onClick={() => setIsBatchZipModalOpen(true)}
+            className="px-4 py-3 bg-blue-50 border border-blue-200 hover:bg-blue-100 text-blue-700 font-bold text-xs uppercase rounded-lg flex items-center justify-center gap-2 transition-all shadow-xs cursor-pointer"
+          >
+            <Archive className="w-4 h-4 text-blue-600" />
+            <span>Export ZIP Batch TUG 5</span>
+          </button>
+
           <button
             onClick={handleSyncSPK}
             disabled={isSyncing}
@@ -495,7 +583,7 @@ export default function MaterialRequestView({
                         </span>
                       </td>
                       <td className="py-4.5 px-6 font-mono text-rose-600 font-bold text-[11.5px]">{mr.work_order_ref || "-"}</td>
-                      <td className="py-4.5 px-6">{getStatusBadge(mr.status)}</td>
+                      <td className="py-4.5 px-6">{renderApprovalStatus(mr)}</td>
                       <td className="py-4.5 px-6 text-right no-print relative">
                         <div className="flex items-center justify-end">
                           <div className="relative inline-block text-left">
@@ -549,8 +637,8 @@ export default function MaterialRequestView({
                                     </button>
                                   )}
 
-                                  {["Draft", "Submitted"].includes(mr.status) && 
-                                   [UserRole.SUPER_ADMIN, UserRole.WAREHOUSE_ADMIN, UserRole.SUPERINTENDENT].includes(currentUser.role) && (
+                                  {/* Quick Level 1 Signature Button (Alfin / Verifikator) */}
+                                  {(currentUser.username === "alfin" || currentUser.role === UserRole.VERIFIER_RENDALHAR || currentUser.role === UserRole.SUPER_ADMIN) && !mr.alfin_signed && (
                                     <>
                                       <div className="border-t border-slate-100 my-1"></div>
                                       <button
@@ -558,14 +646,67 @@ export default function MaterialRequestView({
                                         onClick={async (e) => {
                                           e.stopPropagation();
                                           setActiveActionId(null);
-                                          if (confirm(`Approve Material Request ${mr.request_number} & generate TUG 5?`)) {
-                                            await onUpdateRequest(mr.id, { status: "Approved" });
-                                          }
+                                          const now = new Date().toISOString();
+                                          await onUpdateRequest(mr.id, {
+                                            alfin_signed: true,
+                                            alfin_signed_at: now,
+                                            alfin_signature_url: "https://api.dicebear.com/7.x/initials/svg?seed=MaghfurAlfin",
+                                            status: mr.status === "Draft" ? "Submitted" : mr.status
+                                          });
                                         }}
                                         className="w-full px-4 py-2 text-xs font-bold hover:bg-emerald-50 text-emerald-700 flex items-center gap-2 cursor-pointer transition-colors text-left"
                                       >
                                         <CheckCircle className="w-3.5 h-3.5 text-emerald-600" />
-                                        <span>Approve</span>
+                                        <span>✓ TTD Level 1 (Alfin)</span>
+                                      </button>
+                                    </>
+                                  )}
+
+                                  {/* Quick Level 2 Signature Button (Emir / Manager Logistik) */}
+                                  {(currentUser.username === "emir" || currentUser.role === UserRole.LOGISTICS_MANAGER || currentUser.role === UserRole.SUPER_ADMIN) && !mr.emir_signed && (
+                                    <>
+                                      <div className="border-t border-slate-100 my-1"></div>
+                                      <button
+                                        type="button"
+                                        onClick={async (e) => {
+                                          e.stopPropagation();
+                                          setActiveActionId(null);
+                                          const now = new Date().toISOString();
+                                          await onUpdateRequest(mr.id, {
+                                            emir_signed: true,
+                                            emir_signed_at: now,
+                                            emir_signature_url: "https://api.dicebear.com/7.x/initials/svg?seed=EmirFerdian"
+                                          });
+                                        }}
+                                        className="w-full px-4 py-2 text-xs font-bold hover:bg-amber-50 text-amber-800 flex items-center gap-2 cursor-pointer transition-colors text-left"
+                                      >
+                                        <CheckCircle className="w-3.5 h-3.5 text-amber-600" />
+                                        <span>✓ TTD Level 2 (Emir)</span>
+                                      </button>
+                                    </>
+                                  )}
+
+                                  {/* Quick Level 3 Signature Button (Sumbono / VP Rendalhar) */}
+                                  {(currentUser.username === "sumbono" || currentUser.role === UserRole.VP_RENDALHAR || currentUser.role === UserRole.SUPER_ADMIN) && !mr.sumbono_signed && (
+                                    <>
+                                      <div className="border-t border-slate-100 my-1"></div>
+                                      <button
+                                        type="button"
+                                        onClick={async (e) => {
+                                          e.stopPropagation();
+                                          setActiveActionId(null);
+                                          const now = new Date().toISOString();
+                                          await onUpdateRequest(mr.id, {
+                                            sumbono_signed: true,
+                                            sumbono_signed_at: now,
+                                            sumbono_signature_url: "https://api.dicebear.com/7.x/initials/svg?seed=Sumbono",
+                                            status: "Approved"
+                                          });
+                                        }}
+                                        className="w-full px-4 py-2 text-xs font-bold hover:bg-indigo-50 text-indigo-700 flex items-center gap-2 cursor-pointer transition-colors text-left"
+                                      >
+                                        <CheckCircle className="w-3.5 h-3.5 text-indigo-600" />
+                                        <span>✓ Sahkan & TTD (Sumbono)</span>
                                       </button>
                                     </>
                                   )}
@@ -590,26 +731,7 @@ export default function MaterialRequestView({
                                     </>
                                   )}
 
-                                  {/* Warehouse completion shortcut */}
-                                  {mr.status === "Approved" && (currentUser.role === UserRole.WAREHOUSE_ADMIN || currentUser.role === UserRole.SUPER_ADMIN) && (
-                                    <>
-                                      <div className="border-t border-slate-100 my-1"></div>
-                                      <button
-                                        type="button"
-                                        onClick={async (e) => {
-                                          e.stopPropagation();
-                                          setActiveActionId(null);
-                                          if (confirm(`Tandai request ${mr.request_number} ini telah diproses (Dispatched / Dikirim)?`)) {
-                                            await onUpdateRequest(mr.id, { status: "Processed" });
-                                          }
-                                        }}
-                                        className="w-full px-4 py-2 text-xs font-bold hover:bg-amber-50 text-amber-700 flex items-center gap-2 cursor-pointer transition-colors text-left"
-                                      >
-                                        <CheckCircle className="w-3.5 h-3.5 text-amber-500" />
-                                        <span>Selesaikan Kirim</span>
-                                      </button>
-                                    </>
-                                  )}
+
 
                                   {true && (
                                     <>
@@ -896,6 +1018,148 @@ export default function MaterialRequestView({
                 </div>
               </div>
 
+              {/* 3-Level Approval & Signature Stepper */}
+              <div className="bg-slate-900 text-white rounded-xl p-4 border border-slate-800 space-y-3 mt-4">
+                <div className="flex justify-between items-center border-b border-slate-800 pb-2.5">
+                  <span className="text-xs font-black font-display uppercase tracking-wider text-slate-200 flex items-center gap-2">
+                    <ShieldCheck className="w-4 h-4 text-emerald-400" />
+                    Status Persetujuan Berjenjang & Tanda Tangan Digital (3-Level TTD)
+                  </span>
+                  <span className="text-[10px] font-mono bg-slate-800 text-slate-300 px-2 py-0.5 rounded border border-slate-700 font-bold uppercase">
+                    Document Status: {activeMR.status}
+                  </span>
+                </div>
+
+                <div className="grid grid-cols-1 md:grid-cols-3 gap-3 pt-1">
+                  
+                  {/* LEVEL 1: ALFIN (VERIFIKATOR RENDALHAR) */}
+                  <div className={`p-3.5 rounded-xl border flex flex-col justify-between ${activeMR.alfin_signed ? 'bg-emerald-950/40 border-emerald-500/40 text-emerald-100' : 'bg-slate-800/80 border-slate-700 text-slate-300'}`}>
+                    <div>
+                      <div className="flex justify-between items-center text-[10px] font-mono text-slate-400">
+                        <span>LEVEL 1: VERIFIKATOR</span>
+                        {activeMR.alfin_signed ? (
+                          <span className="bg-emerald-500/20 text-emerald-400 px-2 py-0.5 rounded border border-emerald-500/40 font-bold flex items-center gap-1">✓ SIGNED</span>
+                        ) : (
+                          <span className="bg-amber-500/20 text-amber-400 px-2 py-0.5 rounded border border-amber-500/40 font-bold">⏳ PENDING</span>
+                        )}
+                      </div>
+                      <div className="font-bold text-xs text-white mt-1.5">Maghfur Muhammad Alfin</div>
+                      <div className="text-[10px] text-slate-400">Verifikator Rendalhar</div>
+                    </div>
+
+                    {activeMR.alfin_signed ? (
+                      <div className="mt-3 pt-2 border-t border-emerald-500/30 text-[9.5px] font-mono text-emerald-300">
+                        ✓ TTD Digital dibubuhkan: {activeMR.alfin_signed_at ? new Date(activeMR.alfin_signed_at).toLocaleString("id-ID") : "Terverifikasi"}
+                      </div>
+                    ) : (currentUser.username === "alfin" || currentUser.role === UserRole.VERIFIER_RENDALHAR || currentUser.role === UserRole.SUPER_ADMIN) ? (
+                      <button
+                        onClick={async () => {
+                          const now = new Date().toISOString();
+                          await onUpdateRequest(activeMR.id, {
+                            alfin_signed: true,
+                            alfin_signed_at: now,
+                            alfin_signature_url: "https://api.dicebear.com/7.x/initials/svg?seed=MaghfurAlfin",
+                            status: activeMR.status === "Draft" ? "Submitted" : activeMR.status
+                          });
+                        }}
+                        className="mt-3 w-full py-2 bg-emerald-600 hover:bg-emerald-500 text-white font-bold text-xs rounded-lg transition-all flex items-center justify-center gap-1.5 cursor-pointer shadow-sm"
+                      >
+                        <CheckCircle className="w-3.5 h-3.5" />
+                        Setujui & TTD (Alfin)
+                      </button>
+                    ) : (
+                      <div className="mt-3 text-[9.5px] text-slate-400 font-mono italic">
+                        🔒 Memerlukan login akun <strong>alfin</strong> (Verifikator Rendalhar)
+                      </div>
+                    )}
+                  </div>
+
+                  {/* LEVEL 2: EMIR (MANAGER LOGISTIK) */}
+                  <div className={`p-3.5 rounded-xl border flex flex-col justify-between ${activeMR.emir_signed ? 'bg-emerald-950/40 border-emerald-500/40 text-emerald-100' : 'bg-slate-800/80 border-slate-700 text-slate-300'}`}>
+                    <div>
+                      <div className="flex justify-between items-center text-[10px] font-mono text-slate-400">
+                        <span>LEVEL 2: MANAGER LOGISTIK</span>
+                        {activeMR.emir_signed ? (
+                          <span className="bg-emerald-500/20 text-emerald-400 px-2 py-0.5 rounded border border-emerald-500/40 font-bold flex items-center gap-1">✓ SIGNED</span>
+                        ) : (
+                          <span className="bg-amber-500/20 text-amber-400 px-2 py-0.5 rounded border border-amber-500/40 font-bold">⏳ PENDING</span>
+                        )}
+                      </div>
+                      <div className="font-bold text-xs text-white mt-1.5">Mohamat Emir Ferdian</div>
+                      <div className="text-[10px] text-slate-400">Manager Logistik</div>
+                    </div>
+
+                    {activeMR.emir_signed ? (
+                      <div className="mt-3 pt-2 border-t border-emerald-500/30 text-[9.5px] font-mono text-emerald-300">
+                        ✓ TTD Digital dibubuhkan: {activeMR.emir_signed_at ? new Date(activeMR.emir_signed_at).toLocaleString("id-ID") : "Terverifikasi"}
+                      </div>
+                    ) : (currentUser.username === "emir" || currentUser.role === UserRole.LOGISTICS_MANAGER || currentUser.role === UserRole.SUPER_ADMIN) ? (
+                      <button
+                        onClick={async () => {
+                          const now = new Date().toISOString();
+                          await onUpdateRequest(activeMR.id, {
+                            emir_signed: true,
+                            emir_signed_at: now,
+                            emir_signature_url: "https://api.dicebear.com/7.x/initials/svg?seed=EmirFerdian"
+                          });
+                        }}
+                        className="mt-3 w-full py-2 bg-amber-600 hover:bg-amber-500 text-white font-bold text-xs rounded-lg transition-all flex items-center justify-center gap-1.5 cursor-pointer shadow-sm"
+                      >
+                        <CheckCircle className="w-3.5 h-3.5" />
+                        Setujui & TTD (Emir)
+                      </button>
+                    ) : (
+                      <div className="mt-3 text-[9.5px] text-slate-400 font-mono italic">
+                        🔒 Memerlukan login akun <strong>emir</strong> (Manager Logistik)
+                      </div>
+                    )}
+                  </div>
+
+                  {/* LEVEL 3: SUMBONO (VP RENDALHAR) */}
+                  <div className={`p-3.5 rounded-xl border flex flex-col justify-between ${activeMR.sumbono_signed ? 'bg-emerald-950/40 border-emerald-500/40 text-emerald-100' : 'bg-slate-800/80 border-slate-700 text-slate-300'}`}>
+                    <div>
+                      <div className="flex justify-between items-center text-[10px] font-mono text-slate-400">
+                        <span>LEVEL 3: VP RENDALHAR</span>
+                        {activeMR.sumbono_signed ? (
+                          <span className="bg-emerald-500/20 text-emerald-400 px-2 py-0.5 rounded border border-emerald-500/40 font-bold flex items-center gap-1">✓ SIGNED</span>
+                        ) : (
+                          <span className="bg-amber-500/20 text-amber-400 px-2 py-0.5 rounded border border-amber-500/40 font-bold">⏳ PENDING</span>
+                        )}
+                      </div>
+                      <div className="font-bold text-xs text-white mt-1.5">Sumbono</div>
+                      <div className="text-[10px] text-slate-400">VP Rendalhar</div>
+                    </div>
+
+                    {activeMR.sumbono_signed ? (
+                      <div className="mt-3 pt-2 border-t border-emerald-500/30 text-[9.5px] font-mono text-emerald-300">
+                        ✓ TTD Digital dibubuhkan: {activeMR.sumbono_signed_at ? new Date(activeMR.sumbono_signed_at).toLocaleString("id-ID") : "Disahkan"}
+                      </div>
+                    ) : (currentUser.username === "sumbono" || currentUser.role === UserRole.VP_RENDALHAR || currentUser.role === UserRole.SUPER_ADMIN) ? (
+                      <button
+                        onClick={async () => {
+                          const now = new Date().toISOString();
+                          await onUpdateRequest(activeMR.id, {
+                            sumbono_signed: true,
+                            sumbono_signed_at: now,
+                            sumbono_signature_url: "https://api.dicebear.com/7.x/initials/svg?seed=Sumbono",
+                            status: "Approved"
+                          });
+                        }}
+                        className="mt-3 w-full py-2 bg-indigo-600 hover:bg-indigo-500 text-white font-bold text-xs rounded-lg transition-all flex items-center justify-center gap-1.5 cursor-pointer shadow-sm"
+                      >
+                        <CheckCircle className="w-3.5 h-3.5" />
+                        Sahkan & TTD (Sumbono)
+                      </button>
+                    ) : (
+                      <div className="mt-3 text-[9.5px] text-slate-400 font-mono italic">
+                        🔒 Memerlukan login akun <strong>sumbono</strong> (VP Rendalhar)
+                      </div>
+                    )}
+                  </div>
+
+                </div>
+              </div>
+
             </div>
 
             {/* Modal Bottom Actions Footer */}
@@ -1059,7 +1323,7 @@ export default function MaterialRequestView({
                         type="text"
                         value={vesselName}
                         onChange={(e) => setVesselName(e.target.value)}
-                        placeholder="MV Ocean Voyager"
+                        placeholder="MV. KARTINI BARUNA"
                         className="w-full bg-white border border-slate-250 rounded-lg text-xs px-3 py-2 font-bold text-slate-800 focus:outline-none focus:ring-1 focus:ring-emerald-500"
                       />
                     </div>
@@ -1515,6 +1779,15 @@ export default function MaterialRequestView({
           </div>
         </div>
       )}
+
+      {/* Batch Print ZIP Modal for TUG 5 */}
+      <BatchPrintZipModal
+        isOpen={isBatchZipModalOpen}
+        type="tug5"
+        requests={requests}
+        signatures={signatures}
+        onClose={() => setIsBatchZipModalOpen(false)}
+      />
 
     </div>
   );

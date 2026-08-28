@@ -18,7 +18,8 @@ import {
   FileText, 
   Bell, 
   UsersRound,
-  ShieldCheck
+  ShieldCheck,
+  FileSignature
 } from "lucide-react";
 import { UserRole, User } from "../types.js";
 
@@ -139,6 +140,27 @@ export default function Sidebar({
         </button>
 
         <button
+          onClick={() => setCurrentTab("material-requests-tug6")}
+          className={`flex items-center justify-between px-3 py-2.5 rounded-md text-xs font-semibold tracking-tight transition-all duration-150 ${
+            currentTab === "material-requests-tug6" 
+              ? "bg-white text-indigo-600 border border-slate-200 shadow-xs font-bold" 
+              : "text-slate-650 hover:bg-slate-200/70 hover:text-slate-900"
+          }`}
+        >
+          <div className="flex items-center gap-2.5">
+            <FileText className={`w-4 h-4 ${currentTab === "material-requests-tug6" ? "text-indigo-500" : "text-slate-400"} shrink-0`} />
+            <span className="truncate">Permintaan Barang</span>
+          </div>
+          <span className={`px-2 py-0.5 rounded text-[8px] font-mono font-bold uppercase shrink-0 tracking-wider ${
+            currentTab === "material-requests-tug6" 
+              ? "bg-indigo-100 text-indigo-800 border border-indigo-200/40" 
+              : "bg-slate-200 text-slate-500"
+          }`}>
+            TUG 6
+          </span>
+        </button>
+
+        <button
           onClick={() => setCurrentTab("receiving")}
           className={`flex items-center justify-between px-3 py-2.5 rounded-md text-xs font-semibold tracking-tight transition-all duration-150 ${
             currentTab === "receiving" 
@@ -243,6 +265,20 @@ export default function Sidebar({
               <div className="flex items-center gap-2.5">
                 <UsersRound className={`w-4 h-4 ${currentTab === "users-management" ? "text-blue-500" : "text-slate-400"} shrink-0`} />
                 <span>Database User & Role</span>
+              </div>
+            </button>
+
+            <button
+              onClick={() => setCurrentTab("signature-management")}
+              className={`flex items-center justify-between px-3 py-2.5 rounded-md text-xs font-semibold tracking-tight transition-all duration-150 ${
+                currentTab === "signature-management" 
+                  ? "bg-white text-blue-600 border border-slate-200 shadow-xs font-bold" 
+                  : "text-slate-650 hover:bg-slate-200/70 hover:text-slate-900"
+              }`}
+            >
+              <div className="flex items-center gap-2.5">
+                <FileSignature className={`w-4 h-4 ${currentTab === "signature-management" ? "text-blue-500" : "text-slate-400"} shrink-0`} />
+                <span>Tanda Tangan Digital</span>
               </div>
             </button>
           </>

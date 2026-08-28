@@ -721,7 +721,7 @@ export default function SPKView({
                         value={vForm.vessel_name}
                         onChange={(e) => handleVesselNameChange(vIdx, e.target.value)}
                         className="w-full max-w-md bg-white border border-slate-250 rounded text-xs px-2.5 py-1.5 font-bold"
-                        placeholder="e.g. MV Ocean Voyager"
+                        placeholder="e.g. MV. KARTINI BARUNA"
                       />
                     </div>
 

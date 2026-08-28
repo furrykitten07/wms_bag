@@ -17,7 +17,8 @@ import {
   Camera, 
   Truck,
   ArrowDownLeft,
-  ChevronDown
+  ChevronDown,
+  Trash2
 } from "lucide-react";
 import { InboundReceiving, ReceivingStatus, SparePart, UserRole } from "../types.js";
 
@@ -28,6 +29,7 @@ interface ReceivingViewProps {
   onAddReceiving: (rec: Partial<InboundReceiving>) => Promise<any>;
   onVerifyReceiving: (id: string, update: { status: ReceivingStatus; items: any[]; reject_reason?: string; return_note_num?: string; signature_data_url?: string }) => Promise<any>;
   onPreviewDocument: (rec: InboundReceiving) => void;
+  onDeleteReceiving?: (id: string) => Promise<any>;
 }
 
 export default function ReceivingView({
@@ -36,7 +38,8 @@ export default function ReceivingView({
   role,
   onAddReceiving,
   onVerifyReceiving,
-  onPreviewDocument
+  onPreviewDocument,
+  onDeleteReceiving
 }: ReceivingViewProps) {
   const [search, setSearch] = useState("");
   const [activeActionId, setActiveActionId] = useState<string | null>(null);
@@ -410,6 +413,23 @@ export default function ReceivingView({
                                       >
                                         <Eye className="w-3.5 h-3.5 text-slate-550" />
                                         <span>View Slip</span>
+                                      </button>
+                                    )}
+
+                                    {onDeleteReceiving && (
+                                      <button
+                                        type="button"
+                                        onClick={async (e) => {
+                                          e.stopPropagation();
+                                          setActiveActionId(null);
+                                          if (confirm(`Apakah Anda yakin ingin menghapus data Penerimaan Barang PO [${item.purchase_order_num}]?`)) {
+                                            await onDeleteReceiving(item.id);
+                                          }
+                                        }}
+                                        className="w-full px-4 py-2 text-xs font-semibold hover:bg-rose-50 text-rose-600 flex items-center gap-2 cursor-pointer transition-colors text-left border-t border-slate-100"
+                                      >
+                                        <Trash2 className="w-3.5 h-3.5 text-rose-500" />
+                                        <span>Hapus Data</span>
                                       </button>
                                     )}
                                   </div>

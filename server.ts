@@ -6,6 +6,7 @@
 import express from "express";
 import path from "path";
 import { createServer as createViteServer } from "vite";
+import { initDatabase, isDbConnected, getPool, seedDatabase } from "./db.js";
 import { 
   User, 
   UserRole, 
@@ -32,6 +33,15 @@ import {
   MaterialReturn,
   MaterialReturnStatus
 } from "./src/types.js";
+import { 
+  demoSpareParts, 
+  demoSPKs, 
+  demoMaterialRequests, 
+  demoMaterialRequestsTUG6,
+  demoDispatches, 
+  demoReceiving, 
+  demoMaterialReturns 
+} from "./src/demoSeedData.js";
 
 const app = express();
 const PORT = 3000;
@@ -42,12 +52,11 @@ app.use(express.json());
 
 const users: User[] = [
   { id: "usr-1", username: "superadmin", name: "Fikri Haikal (Superadmin)", email: "superadmin@maritime-logistics.com", role: UserRole.SUPER_ADMIN, password: "admin123" },
-  { id: "usr-2", username: "staff_gudang_1", name: "Ahmad Subarjo (Staff 1)", email: "ahmad.subarjo@maritime-logistics.com", role: UserRole.WAREHOUSE_ADMIN, password: "admin123" },
-  { id: "usr-3", username: "staff_gudang_2", name: "Taufik Hidayat (Staff 2)", email: "taufik.hidayat@maritime-logistics.com", role: UserRole.WAREHOUSE_ADMIN, password: "admin123" },
-  { id: "usr-4", username: "admin", name: "System Admin Alias", email: "admin@maritime-logistics.com", role: UserRole.SUPER_ADMIN, password: "admin123" },
-  { id: "usr-5", username: "supt_marine", name: "Capt. H. Wijaya", email: "wijaya.h@maritime-logistics.com", role: UserRole.SUPERINTENDENT, password: "admin123" },
-  { id: "usr-6", username: "crew_voyager", name: "Anto Wijaya", email: "voyager.chief@maritime-crew.com", role: UserRole.VESSEL_CREW, vesselName: "MV Ocean Voyager", password: "admin123" },
-  { id: "usr-7", username: "crew_dawn", name: "Siti Rahma", email: "dawn.chief@maritime-crew.com", role: UserRole.VESSEL_CREW, vesselName: "MV Pacific Dawn", password: "admin123" }
+  { id: "usr-2", username: "staff_gudang_1", name: "Ahmad Subarjo (Staff Gudang)", email: "ahmad.subarjo@maritime-logistics.com", role: UserRole.WAREHOUSE_ADMIN, password: "admin123" },
+  { id: "usr-3", username: "alfin", name: "Maghfur Muhammad Alfin", email: "alfin.rendalhar@maritime-logistics.com", role: UserRole.WAREHOUSE_STAFF, password: "admin123" },
+  { id: "usr-4", username: "emir", name: "Mohamat Emir Ferdian", email: "emir.ferdian@maritime-logistics.com", role: UserRole.LOGISTICS_MANAGER, password: "admin123" },
+  { id: "usr-5", username: "sumbono", name: "Sumbono", email: "sumbono@maritime-logistics.com", role: UserRole.VP_RENDALHAR, password: "admin123" },
+  { id: "usr-6", username: "crew_voyager", name: "Anto Wijaya", email: "voyager.chief@maritime-crew.com", role: UserRole.VESSEL_CREW, vesselName: "MV. KARTINI BARUNA", password: "admin123" }
 ];
 
 const vendors: Vendor[] = [
@@ -69,143 +78,14 @@ let locations: WarehouseLocation[] = [
   { id: "loc-9", code: "C3", warehouse: "Jakarta HQ Warehouse", zone: "Zone C (High level, 2m+, Use Ladder!)", rack: "Rack C", shelf: "Level 3 (High)", bin: "C3-H" }
 ];
 
-const spareParts: SparePart[] = [
-  {
-    id: "sp-1",
-    sku: "SKU-ME-PST-05",
-    part_number: "MAN-560-1282",
-    part_name: "Piston Ring Set (2 Stroke Main Engine)",
-    alternative_part_number: "ALT-MAN-560X",
-    category: "Main Engine Parts",
-    vendor_id: "vnd-2",
-    vessel_compatibility: "MV Ocean Voyager, MV Antigravity Star",
-    unit: "SET",
-    brand: "MAN",
-    maker: "MAN Energy Solutions",
-    minimum_stock: 4,
-    maximum_stock: 12,
-    reorder_point: 6,
-    current_stock: 5, // Triggers Low Stock Alert
-    reserved_stock: 1,
-    location_id: "loc-1",
-    barcode: "AN8911282",
-    qr_code: "QR_MAN_560_1282",
-    image_url: "",
-    description: "Cylinder liners sealing piston rings for S50ME-C main engine. Chrome-ceramic coated for extreme wear resistance.",
-    created_by: "System Admin",
-    updated_by: "wh_jkt",
-    created_at: "2026-01-10T08:00:00Z",
-    updated_at: "2026-06-10T12:00:00Z"
-  },
-  {
-    id: "sp-2",
-    sku: "SKU-TC-BLD-12",
-    part_number: "WRT-TC-BL-982",
-    part_name: "Turbocharger Rotor Blade (TPL65)",
-    alternative_part_number: "ALT-W-TPL65",
-    category: "Turbocharger Parts",
-    vendor_id: "vnd-1",
-    vessel_compatibility: "MV Ocean Voyager, MV Pacific Dawn",
-    unit: "PCS",
-    brand: "Wärtsilä",
-    maker: "Wärtsilä",
-    minimum_stock: 2,
-    maximum_stock: 6,
-    reorder_point: 3,
-    current_stock: 1, // Triggers Alert!
-    reserved_stock: 0,
-    location_id: "loc-2",
-    barcode: "AN9218321",
-    qr_code: "QR_WRT_TC_BL_982",
-    image_url: "",
-    description: "High performance nickel-alloy rotor blades for AUX generator turbocharger. Operational safety component.",
-    created_by: "System Admin",
-    updated_by: "wh_jkt",
-    created_at: "2026-02-15T09:30:00Z",
-    updated_at: "2026-06-05T14:20:00Z"
-  },
-  {
-    id: "sp-3",
-    sku: "SKU-PP-IMP-44",
-    part_number: "JMS-PP-IM-773",
-    part_name: "Bilge Pump Bronze Impeller (120 m3/h)",
-    alternative_part_number: "ALT-BILGE-IM-120",
-    category: "Pump Spares",
-    vendor_id: "vnd-4",
-    vessel_compatibility: "All Vessels",
-    unit: "PCS",
-    brand: "JMS",
-    maker: "Jakarta Maritime Sparepart Ind.",
-    minimum_stock: 3,
-    maximum_stock: 10,
-    reorder_point: 5,
-    current_stock: 8,
-    reserved_stock: 2,
-    location_id: "loc-3",
-    barcode: "AN7312933",
-    qr_code: "QR_JMS_PP_IM_773",
-    image_url: "",
-    description: "Cast bronze wear resistant impeller for centrifugal ballast and bilge pump operation.",
-    created_by: "System Admin",
-    updated_by: "wh_jkt",
-    created_at: "2026-03-01T10:15:00Z",
-    updated_at: "2026-06-11T02:00:00Z"
-  },
-  {
-    id: "sp-4",
-    sku: "SKU-EL-CB-250",
-    part_number: "WRT-EL-CB-400A",
-    part_name: "Molded Case Circuit Breaker 400A 3-Phase",
-    alternative_part_number: "ALT-EL-CB400",
-    category: "Electrical Equipment",
-    vendor_id: "vnd-1",
-    vessel_compatibility: "MV Pacific Dawn",
-    unit: "SET",
-    brand: "Schneider Marine",
-    maker: "Wärtsilä OEM",
-    minimum_stock: 1,
-    maximum_stock: 4,
-    reorder_point: 2,
-    current_stock: 3,
-    reserved_stock: 0,
-    location_id: "loc-4",
-    barcode: "AN3481231",
-    qr_code: "QR_WRT_EL_CB_400A",
-    image_url: "",
-    description: "Main Switchboard class-approved 400A circuit breaker, shock, and marine-vibration certified.",
-    created_by: "System Admin",
-    updated_by: "wh_jkt",
-    created_at: "2026-04-10T11:45:00Z",
-    updated_at: "2026-04-10T11:45:00Z"
-  },
-  {
-    id: "sp-5",
-    sku: "SKU-ME-VAL-09",
-    part_number: "MAN-ME-EX-002",
-    part_name: "Exhaust Valve Spindle DN120",
-    alternative_part_number: "ALT-MAN-EX-SPINDLE",
-    category: "Main Engine Parts",
-    vendor_id: "vnd-2",
-    vessel_compatibility: "MV Ocean Voyager",
-    unit: "PCS",
-    brand: "MAN",
-    maker: "MAN Energy Solutions",
-    minimum_stock: 2,
-    maximum_stock: 5,
-    reorder_point: 3,
-    current_stock: 4,
-    reserved_stock: 1,
-    location_id: "loc-1",
-    barcode: "AN5412983",
-    qr_code: "QR_MAN_EX_002",
-    image_url: "",
-    description: "Main Engine Exhaust valve spindle made of high temperature nimonic alloy.",
-    created_by: "System Admin",
-    updated_by: "wh_jkt",
-    created_at: "2026-05-02T13:10:00Z",
-    updated_at: "2026-05-02T13:10:00Z"
-  }
-];
+// Synchronized in-memory demo data arrays (Anchored to Jan-Jun 2026, July 2026 empty)
+let spareParts: SparePart[] = demoSpareParts;
+let spkRequests: SPKWorkOrder[] = demoSPKs;
+let materialRequests: MaterialRequest[] = demoMaterialRequests;
+let materialRequestsTUG6: MaterialRequest[] = demoMaterialRequestsTUG6;
+let dispatch: OutboundDispatch[] = demoDispatches;
+let receiving: InboundReceiving[] = demoReceiving;
+let materialReturns: MaterialReturn[] = demoMaterialReturns;
 
 const ledger: MovementLedgerEntry[] = [
   {
@@ -223,501 +103,20 @@ const ledger: MovementLedgerEntry[] = [
     reference_number: "ADJ-2026-001",
     remarks: "Initial seed stock counting and registration verify",
     transaction_date: "2026-06-01T08:00:00Z",
-    created_by: "Budi Santoso"
-  },
-  {
-    id: "mvt-2",
-    transaction_type: TransactionType.RECEIVING,
-    spare_part_id: "sp-3",
-    spare_part_name: "Bilge Pump Bronze Impeller (120 m3/h)",
-    part_number: "JMS-PP-IM-773",
-    source_location: "Vendor: VND-JMS-04",
-    destination_location: "WH-JKT-B-R03-S01-B10",
-    qty_in: 8,
-    qty_out: 0,
-    before_stock: 0,
-    after_stock: 8,
-    reference_number: "PO-2026-99011",
-    remarks: "Inbound delivery verifying. Standard QA/QC passed.",
-    transaction_date: "2026-06-11T02:00:00Z",
-    created_by: "Budi Santoso"
+    created_by: "Fikri Haikal (Superadmin)"
   }
 ];
 
-let spkRequests: SPKWorkOrder[] = [
-  {
-    id: "spk-1",
-    spk_number: "SPK-2026-0001",
-    target_port: "Pelabuhan Tanjung Priok, Jakarta",
-    status: "Pending Picking",
-    created_at: "2026-06-11T10:00:00Z",
-    created_by: "Budi Santoso",
-    remarks: "Alokasi cepat untuk kesiapan kapal berlayar minggu ini.",
-    vessels: [
-      {
-        vessel_name: "MV Ocean Voyager",
-        items: [
-          {
-            spare_part_id: "sp-1",
-            spare_part_name: "Piston Ring Set (2 Stroke Main Engine)",
-            part_number: "MAN-560-1282",
-            qty_to_pick: 2,
-            unit: "SET"
-          },
-          {
-            spare_part_id: "sp-2",
-            spare_part_name: "Turbocharger Rotor Blade (TPL65)",
-            part_number: "WRT-TC-BL-982",
-            qty_to_pick: 1,
-            unit: "PCS"
-          }
-        ]
-      },
-      {
-        vessel_name: "MV Pacific Dawn",
-        items: [
-          {
-            spare_part_id: "sp-3",
-            spare_part_name: "Bilge Pump Bronze Impeller (120 m3/h)",
-            part_number: "JMS-PP-IM-773",
-            qty_to_pick: 1,
-            unit: "PCS"
-          }
-        ]
-      }
-    ]
-  },
-  {
-    id: "spk-2",
-    spk_number: "SPK-2026-0002",
-    target_port: "Pelabuhan Tanjung Perak, Surabaya",
-    status: "Picking in Progress",
-    created_at: "2026-06-12T11:15:00Z",
-    created_by: "Ahmad Yani",
-    remarks: "Suku cadang kelistrikan darurat untuk auxiliary switchboard.",
-    vessels: [
-      {
-        vessel_name: "MV Pacific Dawn",
-        items: [
-          {
-            spare_part_id: "sp-4",
-            spare_part_name: "Molded Case Circuit Breaker 400A 3-Phase",
-            part_number: "WRT-EL-CB-400A",
-            qty_to_pick: 1,
-            unit: "SET"
-          }
-        ]
-      }
-    ]
-  },
-  {
-    id: "spk-3",
-    spk_number: "SPK-2026-0003",
-    target_port: "Pelabuhan Belawan, Medan",
-    status: "Picked & Ready",
-    created_at: "2026-06-14T09:30:00Z",
-    created_by: "Budi Santoso",
-    remarks: "Item sudah dilakukan check list fisik, tinggal menunggu dispatch armada.",
-    vessels: [
-      {
-        vessel_name: "MV Sumatra Star",
-        items: [
-          {
-            spare_part_id: "sp-3",
-            spare_part_name: "Bilge Pump Bronze Impeller (120 m3/h)",
-            part_number: "JMS-PP-IM-773",
-            qty_to_pick: 3,
-            unit: "PCS"
-          }
-        ]
-      }
-    ]
-  },
-  {
-    id: "spk-4",
-    spk_number: "SPK-2026-0004",
-    target_port: "Pelabuhan Makassar, Sulawesi",
-    status: "Dispatched",
-    created_at: "2026-06-15T14:45:00Z",
-    created_by: "Sumbono",
-    remarks: "Telah diantar menggunakan ekspedisi Bahtera Cargo.",
-    vessels: [
-      {
-        vessel_name: "MV Celebes Express",
-        items: [
-          {
-            spare_part_id: "sp-1",
-            spare_part_name: "Piston Ring Set (2 Stroke Main Engine)",
-            part_number: "MAN-560-1282",
-            qty_to_pick: 4,
-            unit: "SET"
-          }
-        ]
-      }
-    ]
-  },
-  {
-    id: "spk-5",
-    spk_number: "SPK-2026-0005",
-    target_port: "Pelabuhan Tanjung Priok, Jakarta",
-    status: "Pending Picking",
-    created_at: "2026-06-18T10:00:00Z",
-    created_by: "Mohamat Emir Ferdian",
-    remarks: "Mohon diperiksa kembali kesesuaian serial part number.",
-    vessels: [
-      {
-        vessel_name: "MV Ocean Voyager",
-        items: [
-          {
-            spare_part_id: "sp-2",
-            spare_part_name: "Turbocharger Rotor Blade (TPL65)",
-            part_number: "WRT-TC-BL-982",
-            qty_to_pick: 2,
-            unit: "PCS"
-          }
-        ]
-      }
-    ]
-  },
-  {
-    id: "spk-6",
-    spk_number: "SPK-2026-0006",
-    target_port: "Pelabuhan Balikpapan, Kalimantan",
-    status: "Pending Picking",
-    created_at: "2026-06-20T16:20:00Z",
-    created_by: "Ahmad Yani",
-    remarks: "Pengadaan rutin triwulan armada tanker timur.",
-    vessels: [
-      {
-        vessel_name: "MV Borneo Glory",
-        items: [
-          {
-            spare_part_id: "sp-3",
-            spare_part_name: "Bilge Pump Bronze Impeller (120 m3/h)",
-            part_number: "JMS-PP-IM-773",
-            qty_to_pick: 2,
-            unit: "PCS"
-          },
-          {
-            spare_part_id: "sp-4",
-            spare_part_name: "Molded Case Circuit Breaker 400A 3-Phase",
-            part_number: "WRT-EL-CB-400A",
-            qty_to_pick: 1,
-            unit: "SET"
-          }
-        ]
-      }
-    ]
-  }
-];
-
-const receiving: InboundReceiving[] = [
-  {
-    id: "rec-1",
-    purchase_order_num: "PO-2026-99011",
-    delivery_note_num: "DN-JMS-10821",
-    vendor_id: "vnd-4",
-    vendor_name: "Jakarta Maritime Sparepart Ind.",
-    items: [
-      {
-        spare_part_id: "sp-3",
-        spare_part_name: "Bilge Pump Bronze Impeller (120 m3/h)",
-        part_number: "JMS-PP-IM-773",
-        qty_ordered: 8,
-        qty_received: 8,
-        qty_rejected: 0,
-        qc_status: "Verified"
-      }
-    ],
-    status: ReceivingStatus.ACCEPTED,
-    received_date: "2026-06-11T01:45:00Z",
-    created_by: "Budi Santoso"
-  },
-  {
-    id: "rec-2",
-    purchase_order_num: "PO-2026-99022",
-    delivery_note_num: "DN-MAN-44510",
-    vendor_id: "vnd-2",
-    vendor_name: "MAN Energy Solutions SE",
-    items: [
-      {
-        spare_part_id: "sp-1",
-        spare_part_name: "Piston Ring Set (2 Stroke Main Engine)",
-        part_number: "MAN-560-1282",
-        qty_ordered: 5,
-        qty_received: 4,
-        qty_rejected: 1,
-        qc_status: "Rejected",
-        reject_reason: "Physical coating scratch on 1 ring unit set"
-      }
-    ],
-    status: ReceivingStatus.PARTIAL_REJECT,
-    reject_reason: "One item damaged during sea freight handling",
-    return_note_num: "RET-2026-004",
-    photo_evidence_url: "",
-    received_date: "2026-06-10T11:00:00Z",
-    created_by: "Budi Santoso"
-  },
-  {
-    id: "rec-3",
-    purchase_order_num: "PO-2026-99049",
-    delivery_note_num: "DN-WRT-9002",
-    vendor_id: "vnd-1",
-    vendor_name: "Wärtsilä Marine Power Systems",
-    items: [
-      {
-        spare_part_id: "sp-2",
-        spare_part_name: "Turbocharger Rotor Blade (TPL65)",
-        part_number: "WRT-TC-BL-982",
-        qty_ordered: 4,
-        qty_received: 4,
-        qty_rejected: 0,
-        qc_status: "Pending"
-      }
-    ],
-    status: ReceivingStatus.PENDING,
-    received_date: "2026-06-11T08:00:00Z",
-    created_by: "Budi Santoso"
-  }
-];
-
-const requests: VesselRequest[] = [
-  {
-    id: "req-1",
-    request_number: "REQ-2026-05-Voyager",
-    vessel_name: "MV Ocean Voyager",
-    requester_name: "Chief Eng. Anto Wijaya",
-    urgency: RequestUrgency.URGENT,
-    items: [
-      {
-        spare_part_id: "sp-1",
-        spare_part_name: "Piston Ring Set (2 Stroke Main Engine)",
-        part_number: "MAN-560-1282",
-        qty_requested: 1,
-        unit: "SET"
-      },
-      {
-        spare_part_id: "sp-3",
-        spare_part_name: "Bilge Pump Bronze Impeller (120 m3/h)",
-        part_number: "JMS-PP-IM-773",
-        qty_requested: 2,
-        unit: "PCS"
-      }
-    ],
-    status: RequestStatus.APPROVED,
-    remarks: "Crucial upcoming engine overhaul scheduled at Yokohama Port.",
-    created_at: "2026-06-08T09:00:00Z",
-    approved_by: "Capt. H. Wijaya",
-    approved_at: "2026-06-08T14:30:00Z"
-  },
-  {
-    id: "req-2",
-    request_number: "REQ-2026-08-Dawn",
-    vessel_name: "MV Pacific Dawn",
-    requester_name: "Chief Eng. Siti Rahma",
-    urgency: RequestUrgency.CRITICAL,
-    items: [
-      {
-        spare_part_id: "sp-2",
-        spare_part_name: "Turbocharger Rotor Blade (TPL65)",
-        part_number: "WRT-TC-BL-982",
-        qty_requested: 1,
-        unit: "PCS"
-      }
-    ],
-    status: RequestStatus.SUBMITTED,
-    remarks: "Auxiliary generator 2 suffered turbine high temperature vibration. Extremely critical.",
-    created_at: "2026-06-11T05:30:00Z"
-  }
-];
-
-const materialRequests: MaterialRequest[] = [
-  {
-    id: "mr-1",
-    request_number: "MR-2026-000001",
-    request_date: "2026-06-12",
-    requester_name: "Chief Eng. Anto Wijaya",
-    vessel_name: "MV Ocean Voyager",
-    warehouse_name: "Jakarta HQ Warehouse",
-    delivery_address: "Dermaga 115, Tanjung Priok, North Jakarta",
-    work_order_ref: "WO-OVERHAUL-M1",
-    account_code: "ACC-5400-ENG",
-    function_code: "FNC-PERBEKALAN-01",
-    remarks: "Permintaan spare parts kritis untuk overhaul piston mesin utama nomor 3.",
-    status: "Approved",
-    items: [
-      {
-        spare_part_id: "sp-1",
-        spare_part_name: "Piston Ring Set (2 Stroke Main Engine)",
-        part_number: "MAN-560-1282",
-        unit: "SET",
-        avg_monthly_usage: 2,
-        remaining_stock: 5,
-        requested_qty: 2,
-        notes: "Ganti silinder 3"
-      },
-      {
-        spare_part_id: "sp-5",
-        spare_part_name: "Exhaust Valve Spindle DN120",
-        part_number: "MAN-ME-EX-002",
-        unit: "PCS",
-        avg_monthly_usage: 1,
-        remaining_stock: 4,
-        requested_qty: 1,
-        notes: "Suku cadang cadangan"
-      }
-    ],
-    created_at: "2026-06-12T09:00:00Z",
-    updated_at: "2026-06-12T10:15:00Z"
-  },
-  {
-    id: "mr-2",
-    request_number: "MR-2026-000002",
-    request_date: "2026-06-15",
-    requester_name: "Siti Rahma",
-    vessel_name: "MV Pacific Dawn",
-    warehouse_name: "Jakarta HQ Warehouse",
-    delivery_address: "Tanjung Perak, Surabaya, East Java",
-    work_order_ref: "WO-ELEC-S04",
-    account_code: "ACC-3200-ELEC",
-    function_code: "FNC-PERBEKALAN-02",
-    remarks: "Molded Case Circuit Breaker 400A untuk cadangan panel navigasi.",
-    status: "Submitted",
-    items: [
-      {
-        spare_part_id: "sp-4",
-        spare_part_name: "Molded Case Circuit Breaker 400A 3-Phase",
-        part_number: "WRT-EL-CB-400A",
-        unit: "SET",
-        avg_monthly_usage: 1,
-        remaining_stock: 3,
-        requested_qty: 1,
-        notes: "Urgent"
-      }
-    ],
-    created_at: "2026-06-15T14:20:00Z",
-    updated_at: "2026-06-15T14:20:00Z"
-  },
-  {
-    id: "mr-3",
-    request_number: "MR-2026-000003",
-    request_date: "2026-06-16",
-    requester_name: "Chief Eng. Anto Wijaya",
-    vessel_name: "MV Ocean Voyager",
-    warehouse_name: "Jakarta HQ Warehouse",
-    delivery_address: "Dermaga 115, Tanjung Priok, North Jakarta",
-    work_order_ref: "WO-PUMP-B09",
-    account_code: "ACC-5400-PUMP",
-    function_code: "FNC-PERBEKALAN-01",
-    remarks: "Impeller ballast pump cor bronze.",
-    status: "Draft",
-    items: [
-      {
-        spare_part_id: "sp-3",
-        spare_part_name: "Bilge Pump Bronze Impeller (120 m3/h)",
-        part_number: "JMS-PP-IM-773",
-        unit: "PCS",
-        avg_monthly_usage: 1,
-        remaining_stock: 8,
-        requested_qty: 2,
-        notes: "Draft draf"
-      }
-    ],
-    created_at: "2026-06-16T18:00:00Z",
-    updated_at: "2026-06-16T18:00:00Z"
-  }
-];
-
-const dispatch: OutboundDispatch[] = [
-  {
-    id: "dsp-1",
-    request_reference: "REQ-2026-05-Voyager",
-    vessel_name: "MV Ocean Voyager",
-    consignee: "Agent Terminal 2 Yokohama, Japan",
-    items: [
-      {
-        spare_part_id: "sp-1",
-        spare_part_name: "Piston Ring Set (2 Stroke Main Engine)",
-        part_number: "MAN-560-1282",
-        qty_requested: 1,
-        qty_dispatched: 1,
-        unit: "SET",
-        unit_price: 3400
-      },
-      {
-        spare_part_id: "sp-3",
-        spare_part_name: "Bilge Pump Bronze Impeller (120 m3/h)",
-        part_number: "JMS-PP-IM-773",
-        qty_requested: 2,
-        qty_dispatched: 2,
-        unit: "PCS",
-        unit_price: 850
-      }
-    ],
-    status: DispatchStatus.WAITING,
-    bon_pengeluaran_number: "BPB-2026-00892",
-    surat_jalan_number: "SJL-2026-0518",
-    manifest_number: "MNF-2026-22119",
-    courier_name: "DHL Maritime Express",
-    tracking_number: "DHM-492193-8B",
-    created_by: "Budi Santoso"
-  }
-];
-
-const approvals: ApprovalTask[] = [
-  {
-    id: "app-1",
-    type: ApprovalType.VESSEL_REQUEST,
-    reference_id: "req-2",
-    reference_number: "REQ-2026-08-Dawn",
-    vessel_or_area: "MV Pacific Dawn",
-    requester_name: "Chief Eng. Siti Rahma",
-    requested_date: "2026-06-11T05:30:00Z",
-    summary: "1x Turbocharger Rotor Blade (TPL65) - CRITICAL URGENCY",
-    status: "Pending",
-    remarks: ""
-  }
-];
-
-const materialReturns: MaterialReturn[] = [
-  {
-    id: "ret-1",
-    return_number: "TUG10-2026-000001",
-    return_date: "2026-06-15",
-    vessel_name: "MV Ocean Voyager",
-    warehouse_name: "Jakarta HQ Warehouse",
-    spk_number: "SPK-2026-0001",
-    work_order_number: "WO-OVERHAUL-M1",
-    dispatch_reference: "SJL-2026-0518",
-    return_reason: "Kelebihan estimasi saat pekerjaan overhaul piston",
-    notes: "Item belum dipakai dan masih dalam kondisi tersegel pabrik.",
-    status: "Approved",
-    items: [
-      {
-        spare_part_id: "sp-1",
-        part_number: "MAN-560-1282",
-        part_name: "Piston Ring Set (2 Stroke Main Engine)",
-        unit: "SET",
-        qty_issued: 2,
-        qty_used: 1,
-        qty_returnable: 1,
-        qty_returned: 1,
-        notes: "Kondisi baru sangat baik"
-      }
-    ],
-    created_by: "Budi Santoso",
-    created_at: "2026-06-15T09:00:00Z",
-    updated_at: "2026-06-15T09:15:00Z"
-  }
-];
+const requests: VesselRequest[] = [];
+const approvals: ApprovalTask[] = [];
 
 const auditLogs: AuditLog[] = [
   {
     id: "lg-1",
-    action: "Login Success",
-    module: "Auth",
-    description: "User admin successfully logged in with role Super Admin",
-    username: "admin",
+    action: "Seed Demo State",
+    module: "System",
+    description: "Database initialized with 100+ synchronized records across 7 WMS modules",
+    username: "superadmin",
     role: UserRole.SUPER_ADMIN,
     timestamp: "2026-06-11T08:00:00Z"
   },
@@ -795,11 +194,22 @@ function createLedgerEntry(
 // --- API ENDPOINTS ---
 
 // AUTH & USERS
-app.get("/api/users", (req, res) => {
+app.get("/api/users", async (req, res) => {
+  if (isDbConnected()) {
+    try {
+      const pool = getPool();
+      if (pool) {
+        const [rows]: any = await pool.query("SELECT * FROM users ORDER BY created_at ASC");
+        return res.json(rows);
+      }
+    } catch (err: any) {
+      console.error("❌ [MySQL DB] Failed to fetch users:", err.message);
+    }
+  }
   res.json(users);
 });
 
-app.post("/api/users", (req, res) => {
+app.post("/api/users", async (req, res) => {
   const userHeader = req.headers["x-user-username"] as string;
   const currentUserObj = users.find(u => u.username === userHeader);
   if (!currentUserObj || currentUserObj.role !== UserRole.SUPER_ADMIN) {
@@ -825,16 +235,32 @@ app.post("/api/users", (req, res) => {
     name: name.trim(),
     email: email.trim(),
     role: role as UserRole,
-    vesselName: role === UserRole.VESSEL_CREW ? (vesselName ? vesselName.trim() : "MV Ocean Voyager") : undefined,
+    vesselName: role === UserRole.VESSEL_CREW ? (vesselName ? vesselName.trim() : "MV. KARTINI BARUNA") : undefined,
     password: password ? password.trim() : "admin123"
   };
 
   users.push(newUser);
+
+  if (isDbConnected()) {
+    try {
+      const pool = getPool();
+      if (pool) {
+        await pool.query(
+          "INSERT INTO users (id, username, name, email, role, password, vessel_name) VALUES (?, ?, ?, ?, ?, ?, ?)",
+          [newUser.id, newUser.username, newUser.name, newUser.email, newUser.role, newUser.password, newUser.vesselName || null]
+        );
+        console.log(`✅ [MySQL DB] Saved new user '${newUser.username}' into MySQL database!`);
+      }
+    } catch (err: any) {
+      console.error("❌ [MySQL DB] Failed to save user:", err.message);
+    }
+  }
+
   createAudit("Created User", "Users Management", `Created user ${newUser.username} (${newUser.role})`, userHeader);
   res.status(201).json(newUser);
 });
 
-app.put("/api/users/:id", (req, res) => {
+app.put("/api/users/:id", async (req, res) => {
   const userHeader = req.headers["x-user-username"] as string;
   const currentUserObj = users.find(u => u.username === userHeader);
   if (!currentUserObj || currentUserObj.role !== UserRole.SUPER_ADMIN) {
@@ -866,16 +292,32 @@ app.put("/api/users/:id", (req, res) => {
     name: name !== undefined ? name.trim() : oldUser.name,
     email: email !== undefined ? email.trim() : oldUser.email,
     role: role !== undefined ? role as UserRole : oldUser.role,
-    vesselName: role === UserRole.VESSEL_CREW ? (vesselName !== undefined ? vesselName.trim() : (oldUser.vesselName || "MV Ocean Voyager")) : undefined,
+    vesselName: role === UserRole.VESSEL_CREW ? (vesselName !== undefined ? vesselName.trim() : (oldUser.vesselName || "MV. KARTINI BARUNA")) : undefined,
     password: password !== undefined ? password.trim() : oldUser.password
   };
 
   users[idx] = updatedUser;
+
+  if (isDbConnected()) {
+    try {
+      const pool = getPool();
+      if (pool) {
+        await pool.query(
+          "UPDATE users SET username = ?, name = ?, email = ?, role = ?, password = ?, vessel_name = ? WHERE id = ?",
+          [updatedUser.username, updatedUser.name, updatedUser.email, updatedUser.role, updatedUser.password, updatedUser.vesselName || null, id]
+        );
+        console.log(`✅ [MySQL DB] Updated user '${updatedUser.username}' in MySQL database!`);
+      }
+    } catch (err: any) {
+      console.error("❌ [MySQL DB] Failed to update user:", err.message);
+    }
+  }
+
   createAudit("Updated User", "Users Management", `Updated user details/role for ${updatedUser.username}`, userHeader);
   res.json(updatedUser);
 });
 
-app.delete("/api/users/:id", (req, res) => {
+app.delete("/api/users/:id", async (req, res) => {
   const userHeader = req.headers["x-user-username"] as string;
   const currentUserObj = users.find(u => u.username === userHeader);
   if (!currentUserObj || currentUserObj.role !== UserRole.SUPER_ADMIN) {
@@ -902,6 +344,19 @@ app.delete("/api/users/:id", (req, res) => {
   }
 
   users.splice(idx, 1);
+
+  if (isDbConnected()) {
+    try {
+      const pool = getPool();
+      if (pool) {
+        await pool.query("DELETE FROM users WHERE id = ?", [id]);
+        console.log(`✅ [MySQL DB] Deleted user '${id}' from MySQL database!`);
+      }
+    } catch (err: any) {
+      console.error("❌ [MySQL DB] Failed to delete user:", err.message);
+    }
+  }
+
   createAudit("Deleted User", "Users Management", `Deleted user account ${targetUser.username}`, userHeader);
   res.json({ success: true, id });
 });
@@ -930,6 +385,114 @@ app.get("/api/auth/me", (req, res) => {
   const username = req.headers["x-user-username"] || "admin";
   const user = users.find(u => u.username === username) || users[0];
   res.json(user);
+});
+
+// DIGITAL SIGNATURES ENDPOINTS
+let signatures: any[] = [
+  { id: "sig-1", role_title: "Chief Engineer (Pembuat TUG 5 / TUG 10)", user_name: "Anto Wijaya", signature_url: "https://api.dicebear.com/7.x/initials/svg?seed=AntoWijaya", notes: "Tanda tangan resmi Chief Engineer Armada Kapal" },
+  { id: "sig-2", role_title: "Verifikator Rendalhar (Level 1 Approval)", user_name: "Maghfur Muhammad Alfin", signature_url: "https://api.dicebear.com/7.x/initials/svg?seed=MaghfurAlfin", notes: "Tanda tangan verifikasi dokumen Rendalhar Level 1" },
+  { id: "sig-3", role_title: "Manager Logistik (Level 2 Approval)", user_name: "Mohamat Emir Ferdian", signature_url: "https://api.dicebear.com/7.x/initials/svg?seed=EmirFerdian", notes: "Tanda tangan persetujuan operasional logistik Level 2" },
+  { id: "sig-4", role_title: "VP Rendalhar (Level 3 Pengesahan)", user_name: "Sumbono", signature_url: "https://api.dicebear.com/7.x/initials/svg?seed=Sumbono", notes: "Tanda tangan pengesahan VP Rendalhar Level 3" },
+  { id: "sig-5", role_title: "Staff Gudang (Penerima / Pengeluar TUG 8)", user_name: "Ahmad Subarjo", signature_url: "https://api.dicebear.com/7.x/initials/svg?seed=AhmadSubarjo", notes: "Tanda tangan verifikasi fisik gudang utama" }
+];
+
+app.get("/api/signatures", async (req, res) => {
+  if (isDbConnected()) {
+    try {
+      const pool = getPool();
+      if (pool) {
+        const [rows]: any = await pool.query("SELECT * FROM digital_signatures ORDER BY created_at ASC");
+        if (rows.length > 0) return res.json(rows);
+      }
+    } catch (err: any) {
+      console.error("❌ [MySQL DB] Failed to fetch digital_signatures:", err.message);
+    }
+  }
+  res.json(signatures);
+});
+
+app.post("/api/signatures", async (req, res) => {
+  const userHeader = req.headers["x-user-username"] as string;
+  const { role_title, user_name, signature_url, notes } = req.body;
+  const newSig = {
+    id: `sig-${Date.now()}`,
+    role_title: role_title || "Role Kustom",
+    user_name: user_name || "Nama Kustom",
+    signature_url: signature_url || "",
+    notes: notes || "",
+    created_at: new Date().toISOString(),
+    updated_at: new Date().toISOString()
+  };
+
+  signatures.push(newSig);
+
+  if (isDbConnected()) {
+    try {
+      const pool = getPool();
+      if (pool) {
+        await pool.query(
+          "INSERT INTO digital_signatures (id, role_title, user_name, signature_url, notes) VALUES (?, ?, ?, ?, ?)",
+          [newSig.id, newSig.role_title, newSig.user_name, newSig.signature_url, newSig.notes]
+        );
+        console.log(`✅ [MySQL DB] Saved new digital signature '${newSig.user_name}' into MySQL database!`);
+      }
+    } catch (err: any) {
+      console.error("❌ [MySQL DB] Failed to save digital_signature:", err.message);
+    }
+  }
+
+  createAudit("Create Signature", "Digital Signatures", `Created digital signature for ${newSig.user_name} (${newSig.role_title})`, userHeader);
+  res.json(newSig);
+});
+
+app.put("/api/signatures/:id", async (req, res) => {
+  const userHeader = req.headers["x-user-username"] as string;
+  const { id } = req.params;
+  const idx = signatures.findIndex(s => s.id === id);
+  if (idx !== -1) {
+    signatures[idx] = { ...signatures[idx], ...req.body, updated_at: new Date().toISOString() };
+    if (isDbConnected()) {
+      try {
+        const pool = getPool();
+        if (pool) {
+          await pool.query(
+            "UPDATE digital_signatures SET role_title = ?, user_name = ?, signature_url = ?, notes = ? WHERE id = ?",
+            [signatures[idx].role_title, signatures[idx].user_name, signatures[idx].signature_url, signatures[idx].notes, id]
+          );
+          console.log(`✅ [MySQL DB] Updated digital signature '${signatures[idx].user_name}' in MySQL database!`);
+        }
+      } catch (err: any) {
+        console.error("❌ [MySQL DB] Failed to update digital_signature:", err.message);
+      }
+    }
+    createAudit("Update Signature", "Digital Signatures", `Updated digital signature for ${signatures[idx].user_name}`, userHeader);
+    return res.json(signatures[idx]);
+  }
+  res.status(404).json({ error: "Signature not found" });
+});
+
+app.delete("/api/signatures/:id", async (req, res) => {
+  const userHeader = req.headers["x-user-username"] as string;
+  const { id } = req.params;
+  const idx = signatures.findIndex(s => s.id === id);
+  if (idx !== -1) {
+    const name = signatures[idx].user_name;
+    signatures.splice(idx, 1);
+    if (isDbConnected()) {
+      try {
+        const pool = getPool();
+        if (pool) {
+          await pool.query("DELETE FROM digital_signatures WHERE id = ?", [id]);
+          console.log(`✅ [MySQL DB] Deleted digital signature '${id}' from MySQL database!`);
+        }
+      } catch (err: any) {
+        console.error("❌ [MySQL DB] Failed to delete digital_signature:", err.message);
+      }
+    }
+    createAudit("Delete Signature", "Digital Signatures", `Deleted digital signature for ${name}`, userHeader);
+    return res.json({ success: true, id });
+  }
+  res.status(404).json({ error: "Signature not found" });
 });
 
 // SPARE PARTS (MASTER DATA)
@@ -967,7 +530,7 @@ app.get("/api/inventory", (req, res) => {
   res.json(filtered);
 });
 
-app.post("/api/inventory", (req, res) => {
+app.post("/api/inventory", async (req, res) => {
   const userHeader = req.headers["x-user-username"] as string;
   const itemData = req.body;
   
@@ -989,7 +552,7 @@ app.post("/api/inventory", (req, res) => {
     reorder_point: Number(itemData.reorder_point || 4),
     current_stock: Number(itemData.current_stock || 0),
     reserved_stock: 0,
-    location_id: itemData.location_id || "WH-JKT-A-R01-S01-B01",
+    location_id: itemData.location_id || "loc-1",
     barcode: itemData.barcode || `BC-${Math.floor(Math.random() * 900000) + 100000}`,
     qr_code: `QR_${itemData.part_number || "BC"}`,
     description: itemData.description,
@@ -1000,6 +563,37 @@ app.post("/api/inventory", (req, res) => {
   };
 
   spareParts.push(newItem);
+
+  if (isDbConnected()) {
+    try {
+      const pool = getPool();
+      if (pool) {
+        const qrCodeVal = newItem.qr_code || newItem.part_number || newItem.sku;
+        const qrUrlVal = newItem.qr_url || `https://api.qrserver.com/v1/create-qr-code/?size=250x250&data=${encodeURIComponent(newItem.sku || newItem.part_number)}`;
+        const qrSlugVal = newItem.qr_slug || newItem.sku;
+        const barcodeVal = newItem.barcode || newItem.sku || newItem.id;
+
+        await pool.query(
+          `INSERT INTO spare_parts (
+            id, sku, part_number, alternative_part_number, part_name, category, vendor_id,
+            vessel_compatibility, unit, brand, maker, minimum_stock, maximum_stock,
+            reorder_point, current_stock, reserved_stock, location_id, barcode, qr_code, qr_url, qr_slug, description
+          ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+          [
+            newItem.id, newItem.sku, newItem.part_number, newItem.alternative_part_number || null,
+            newItem.part_name, newItem.category, newItem.vendor_id || null,
+            Array.isArray(newItem.vessel_compatibility) ? JSON.stringify(newItem.vessel_compatibility) : (newItem.vessel_compatibility || null),
+            newItem.unit, newItem.brand || null, newItem.maker || null, newItem.minimum_stock,
+            newItem.maximum_stock, newItem.reorder_point, newItem.current_stock, 0,
+            newItem.location_id || null, barcodeVal, qrCodeVal, qrUrlVal, qrSlugVal, newItem.description || null
+          ]
+        );
+        console.log(`✅ [MySQL DB] Saved new spare part '${newItem.part_name}' into MySQL database!`);
+      }
+    } catch (err: any) {
+      console.error("❌ [MySQL DB] Failed to save spare_part:", err.message);
+    }
+  }
 
   // Register into Ledger as stock adjustment init
   if (newItem.current_stock > 0) {
@@ -1018,7 +612,7 @@ app.post("/api/inventory", (req, res) => {
   res.status(201).json(newItem);
 });
 
-app.put("/api/inventory/:id", (req, res) => {
+app.put("/api/inventory/:id", async (req, res) => {
   const userHeader = req.headers["x-user-username"] as string;
   const { id } = req.params;
   const updateData = req.body;
@@ -1042,6 +636,35 @@ app.put("/api/inventory/:id", (req, res) => {
   };
 
   spareParts[itemIdx] = updatedItem;
+
+  if (isDbConnected()) {
+    try {
+      const pool = getPool();
+      if (pool) {
+        const qrCodeVal = updatedItem.qr_code || updatedItem.part_number || updatedItem.sku;
+        const qrUrlVal = updatedItem.qr_url || `https://api.qrserver.com/v1/create-qr-code/?size=250x250&data=${encodeURIComponent(updatedItem.sku || updatedItem.part_number)}`;
+        const qrSlugVal = updatedItem.qr_slug || updatedItem.sku;
+        const barcodeVal = updatedItem.barcode || updatedItem.sku || updatedItem.id;
+
+        await pool.query(
+          `UPDATE spare_parts SET 
+            part_name = ?, part_number = ?, category = ?, current_stock = ?,
+            unit = ?, reorder_point = ?, minimum_stock = ?, maximum_stock = ?,
+            barcode = ?, qr_code = ?, qr_url = ?, qr_slug = ?
+           WHERE id = ?`,
+          [
+            updatedItem.part_name, updatedItem.part_number, updatedItem.category,
+            updatedItem.current_stock, updatedItem.unit, updatedItem.reorder_point,
+            updatedItem.minimum_stock, updatedItem.maximum_stock,
+            barcodeVal, qrCodeVal, qrUrlVal, qrSlugVal, id
+          ]
+        );
+        console.log(`✅ [MySQL DB] Updated spare part '${updatedItem.part_name}' in MySQL database!`);
+      }
+    } catch (err: any) {
+      console.error("❌ [MySQL DB] Failed to update spare_part:", err.message);
+    }
+  }
 
   // If manual stock was adjusted directly
   if (beforeStock !== targetStock) {
@@ -1075,7 +698,7 @@ app.put("/api/inventory/:id", (req, res) => {
   res.json(updatedItem);
 });
 
-app.delete("/api/inventory/:id", (req, res) => {
+app.delete("/api/inventory/:id", async (req, res) => {
   const userHeader = req.headers["x-user-username"] as string;
   const { id } = req.params;
   const itemIdx = spareParts.findIndex(p => p.id === id);
@@ -1085,6 +708,19 @@ app.delete("/api/inventory/:id", (req, res) => {
   }
   const part = spareParts[itemIdx];
   spareParts.splice(itemIdx, 1);
+
+  if (isDbConnected()) {
+    try {
+      const pool = getPool();
+      if (pool) {
+        await pool.query("DELETE FROM spare_parts WHERE id = ?", [id]);
+        console.log(`✅ [MySQL DB] Deleted spare part '${id}' from MySQL database!`);
+      }
+    } catch (err: any) {
+      console.error("❌ [MySQL DB] Failed to delete spare_part:", err.message);
+    }
+  }
+
   createAudit("Delete Spare Part", "Inventory", `Deleted spare part item ${part.part_name}`, userHeader);
   res.json({ success: true, message: `Spare part ${part.part_name} deleted successfully` });
 });
@@ -1336,6 +972,19 @@ app.put("/api/receiving/:id", (req, res) => {
   res.json(updatedRec);
 });
 
+app.delete("/api/receiving/:id", (req, res) => {
+  const userHeader = req.headers["x-user-username"] as string;
+  const { id } = req.params;
+  const idx = receiving.findIndex(r => r.id === id);
+  if (idx === -1) {
+    return res.status(404).json({ error: "Receiving entry not found" });
+  }
+  const removedRec = receiving[idx];
+  receiving.splice(idx, 1);
+  createAudit("Delete Inbound", "Receiving", `Deleted receiving order PO ${removedRec.purchase_order_num}`, userHeader);
+  res.json({ success: true, id });
+});
+
 // DISPATCH (OUTBOUND)
 app.get("/api/dispatch", (req, res) => {
   res.json(dispatch);
@@ -1516,6 +1165,43 @@ app.post("/api/dispatch/:id/action-log", (req, res) => {
   res.json({ success: true });
 });
 
+app.delete("/api/dispatch/:id", (req, res) => {
+  const userHeader = req.headers["x-user-username"] as string;
+  const { id } = req.params;
+  const idx = dispatch.findIndex(d => d.id === id);
+  if (idx === -1) {
+    return res.status(404).json({ error: "Dispatch record not found" });
+  }
+  const removedDsp = dispatch[idx];
+  dispatch.splice(idx, 1);
+  createAudit("Delete Dispatch", "Dispatch", `Deleted dispatch document ${removedDsp.bon_pengeluaran_number || removedDsp.dispatch_number || id}`, userHeader);
+  res.json({ success: true, id });
+});
+
+app.post("/api/demo/seed", (req, res) => {
+  const userHeader = req.headers["x-user-username"] as string;
+  spareParts = [...demoSpareParts];
+  spkRequests = [...demoSPKs];
+  materialRequests = [...demoMaterialRequests];
+  dispatch = [...demoDispatches];
+  receiving = [...demoReceiving];
+  materialReturns = [...demoMaterialReturns];
+  
+  createAudit("Seed Demo Data", "System", `Re-populated demo database with 100+ synchronized records across 7 WMS modules`, userHeader || "superadmin");
+  res.json({ 
+    success: true, 
+    counts: {
+      spareParts: spareParts.length,
+      spkRequests: spkRequests.length,
+      materialRequests: materialRequests.length,
+      dispatch: dispatch.length,
+      receiving: receiving.length,
+      materialReturns: materialReturns.length,
+      total: spareParts.length + spkRequests.length + materialRequests.length + dispatch.length + receiving.length + materialReturns.length
+    }
+  });
+});
+
 // --- MATERIAL REQUEST & TUG 5 SYSTEM ---
 app.get("/api/material-requests", (req, res) => {
   res.json(materialRequests);
@@ -1545,7 +1231,7 @@ app.post("/api/material-requests", (req, res) => {
     request_number: requestNumber,
     request_date: body.request_date || new Date().toISOString().split("T")[0],
     requester_name: userObj.name || body.requester_name || "Crew User",
-    vessel_name: userObj.vesselName || body.vessel_name || "MV Ocean Voyager",
+    vessel_name: userObj.vesselName || body.vessel_name || "MV. KARTINI BARUNA",
     warehouse_name: body.warehouse_name || "Jakarta HQ Warehouse",
     delivery_address: body.delivery_address || "",
     work_order_ref: body.work_order_ref || "",
@@ -1612,7 +1298,7 @@ app.post("/api/material-requests/batch", (req, res) => {
       request_number: requestNumber,
       request_date: doc.request_date || new Date().toISOString().split("T")[0],
       requester_name: userObj.name || doc.requester_name || "Crew User",
-      vessel_name: doc.vessel_name || userObj.vesselName || "MV Ocean Voyager",
+      vessel_name: doc.vessel_name || userObj.vesselName || "MV. KARTINI BARUNA",
       warehouse_name: doc.warehouse_name || "Jakarta HQ Warehouse",
       delivery_address: doc.delivery_address || "",
       work_order_ref: doc.work_order_ref || "",
@@ -1837,12 +1523,228 @@ app.post("/api/material-requests/:id/action-log", (req, res) => {
   res.json({ success: true });
 });
 
+// --- MATERIAL REQUESTS TUG 6 ENDPOINTS ---
+app.get("/api/material-requests-tug6", (req, res) => {
+  res.json(materialRequestsTUG6);
+});
+
+app.post("/api/material-requests-tug6", (req, res) => {
+  const userHeader = req.headers["x-user-username"] as string;
+  const userObj = users.find(u => u.username === userHeader) || users[3];
+  const body = req.body;
+
+  const currentYear = new Date().getFullYear();
+  const sameYearMRs = materialRequestsTUG6.filter(m => m.request_number.startsWith(`MR6-${currentYear}`));
+  let nextSeqStr = "000001";
+  if (sameYearMRs.length > 0) {
+    const seqs = sameYearMRs.map(m => {
+      const partsNum = m.request_number.split("-");
+      return Number(partsNum[partsNum.length - 1] || 0);
+    });
+    const maxSeq = Math.max(...seqs);
+    nextSeqStr = String(maxSeq + 1).padStart(6, "0");
+  }
+  const requestNumber = `MR6-${currentYear}-${nextSeqStr}`;
+
+  const newMR: MaterialRequest = {
+    id: `mr6-${Date.now()}`,
+    request_number: requestNumber,
+    request_date: body.request_date || new Date().toISOString().split("T")[0],
+    requester_name: userObj.name || body.requester_name || "Crew User",
+    vessel_name: userObj.vesselName || body.vessel_name || "MV. KARTINI BARUNA",
+    warehouse_name: body.warehouse_name || "Jakarta HQ Warehouse",
+    delivery_address: body.delivery_address || "",
+    work_order_ref: body.work_order_ref || "",
+    account_code: body.account_code || "",
+    function_code: body.function_code || "",
+    remarks: body.remarks || "",
+    status: (body.status as MaterialRequestStatus) || "Draft",
+    tug_type: "TUG6",
+    tug6_number: `TUG6-${currentYear}-${nextSeqStr.slice(-3)}`,
+    items: (body.items || []).map((itm: any) => {
+      const sp = spareParts.find(p => p.id === itm.spare_part_id);
+      return {
+        spare_part_id: itm.spare_part_id,
+        spare_part_name: sp ? sp.part_name : itm.spare_part_name,
+        part_number: sp ? sp.part_number : itm.part_number,
+        unit: sp ? sp.unit : (itm.unit || "PCS"),
+        avg_monthly_usage: itm.avg_monthly_usage !== undefined ? Number(itm.avg_monthly_usage) : (sp ? 1 : 0),
+        remaining_stock: sp ? sp.current_stock : Number(itm.remaining_stock || 0),
+        requested_qty: Number(itm.requested_qty || 1),
+        notes: itm.notes || ""
+      };
+    }),
+    created_at: new Date().toISOString(),
+    updated_at: new Date().toISOString()
+  };
+
+  materialRequestsTUG6.unshift(newMR);
+  
+  createAudit(
+    newMR.status === "Submitted" ? "Submit Request" : "Create Request",
+    "Material Requests TUG 6",
+    `${newMR.status === "Submitted" ? "Submitted" : "Created Draft of"} TUG 6 Request ${newMR.request_number}`,
+    userHeader
+  );
+
+  res.status(201).json(newMR);
+});
+
+app.post("/api/material-requests-tug6/batch", (req, res) => {
+  const userHeader = req.headers["x-user-username"] as string;
+  const userObj = users.find(u => u.username === userHeader) || users[3];
+  const itemsArray = req.body;
+
+  if (!Array.isArray(itemsArray)) {
+    return res.status(400).json({ error: "Body must be an array of requests" });
+  }
+
+  const createdRequests: MaterialRequest[] = [];
+  const currentYear = new Date().getFullYear();
+
+  for (const doc of itemsArray) {
+    const sameYearMRs = [...materialRequestsTUG6, ...createdRequests].filter(m => m.request_number.startsWith(`MR6-${currentYear}`));
+    let nextSeqStr = "000001";
+    if (sameYearMRs.length > 0) {
+      const seqs = sameYearMRs.map(m => {
+        const partsNum = m.request_number.split("-");
+        return Number(partsNum[partsNum.length - 1] || 0);
+      });
+      const maxSeq = Math.max(...seqs);
+      nextSeqStr = String(maxSeq + 1).padStart(6, "0");
+    }
+    const requestNumber = `MR6-${currentYear}-${nextSeqStr}`;
+
+    const newMR: MaterialRequest = {
+      id: `mr6-${Date.now()}-${Math.random().toString(36).substring(2, 9)}`,
+      request_number: requestNumber,
+      request_date: doc.request_date || new Date().toISOString().split("T")[0],
+      requester_name: userObj.name || doc.requester_name || "Crew User",
+      vessel_name: doc.vessel_name || userObj.vesselName || "MV. KARTINI BARUNA",
+      warehouse_name: doc.warehouse_name || "Jakarta HQ Warehouse",
+      delivery_address: doc.delivery_address || "",
+      work_order_ref: doc.work_order_ref || "",
+      account_code: doc.account_code || "",
+      function_code: doc.function_code || "",
+      remarks: doc.remarks || "",
+      status: (doc.status as MaterialRequestStatus) || "Draft",
+      tug_type: "TUG6",
+      tug6_number: `TUG6-${currentYear}-${nextSeqStr.slice(-3)}`,
+      items: (doc.items || []).map((itm: any) => {
+        const sp = spareParts.find(p => p.id === itm.spare_part_id || p.part_number === itm.part_number);
+        return {
+          spare_part_id: sp ? sp.id : itm.spare_part_id,
+          spare_part_name: sp ? sp.part_name : itm.spare_part_name,
+          part_number: sp ? sp.part_number : itm.part_number,
+          unit: sp ? sp.unit : (itm.unit || "PCS"),
+          avg_monthly_usage: itm.avg_monthly_usage !== undefined ? Number(itm.avg_monthly_usage) : (sp ? 1 : 0),
+          remaining_stock: sp ? sp.current_stock : Number(itm.remaining_stock || 0),
+          requested_qty: Number(itm.requested_qty || 1),
+          notes: itm.notes || ""
+        };
+      }),
+      created_at: new Date().toISOString(),
+      updated_at: new Date().toISOString()
+    };
+
+    createdRequests.push(newMR);
+  }
+
+  for (const newMR of createdRequests) {
+    materialRequestsTUG6.unshift(newMR);
+  }
+
+  res.status(201).json(createdRequests);
+});
+
+app.put("/api/material-requests-tug6/:id", (req, res) => {
+  const userHeader = req.headers["x-user-username"] as string;
+  const { id } = req.params;
+  const body = req.body;
+
+  const idx = materialRequestsTUG6.findIndex(mr => mr.id === id);
+  if (idx === -1) {
+    res.status(404).json({ error: "Material Request TUG 6 not found" });
+    return;
+  }
+
+  const oldMR = materialRequestsTUG6[idx];
+  const updatedMR: MaterialRequest = {
+    ...oldMR,
+    request_date: body.request_date || oldMR.request_date,
+    vessel_name: body.vessel_name || oldMR.vessel_name,
+    warehouse_name: body.warehouse_name || oldMR.warehouse_name,
+    delivery_address: body.delivery_address !== undefined ? body.delivery_address : oldMR.delivery_address,
+    work_order_ref: body.work_order_ref !== undefined ? body.work_order_ref : oldMR.work_order_ref,
+    account_code: body.account_code !== undefined ? body.account_code : oldMR.account_code,
+    function_code: body.function_code !== undefined ? body.function_code : oldMR.function_code,
+    remarks: body.remarks !== undefined ? body.remarks : oldMR.remarks,
+    status: (body.status as MaterialRequestStatus) || oldMR.status,
+    items: body.items ? body.items.map((itm: any) => ({
+      spare_part_id: itm.spare_part_id,
+      spare_part_name: itm.spare_part_name,
+      part_number: itm.part_number,
+      unit: itm.unit,
+      avg_monthly_usage: itm.avg_monthly_usage,
+      remaining_stock: itm.remaining_stock,
+      requested_qty: itm.requested_qty,
+      notes: itm.notes || "",
+      item_status: itm.item_status || "Pending"
+    })) : oldMR.items,
+    updated_at: new Date().toISOString()
+  };
+
+  materialRequestsTUG6[idx] = updatedMR;
+  res.json(updatedMR);
+});
+
+app.delete("/api/material-requests-tug6/:id", (req, res) => {
+  const { id } = req.params;
+  const idx = materialRequestsTUG6.findIndex(mr => mr.id === id);
+  if (idx === -1) {
+    return res.status(404).json({ error: "Material Request TUG 6 not found" });
+  }
+  const removed = materialRequestsTUG6[idx];
+  materialRequestsTUG6.splice(idx, 1);
+  res.json({ success: true, id });
+});
+
+app.post("/api/material-requests-tug6/:id/action-log", (req, res) => {
+  const userHeader = req.headers["x-user-username"] as string;
+  const { id } = req.params;
+  const { action } = req.body;
+
+  const mr = materialRequestsTUG6.find(m => m.id === id);
+  if (!mr) {
+    res.status(404).json({ error: "Material Request TUG 6 not found" });
+    return;
+  }
+
+  createAudit(action, "Material Requests TUG 6", `Printed or Downloaded TUG 6 form for ${mr.request_number}`, userHeader);
+  res.json({ success: true });
+});
+
 // --- MATERIAL RETURN & TUG 10 SYSTEM ---
-app.get("/api/material-returns", (req, res) => {
+app.get("/api/material-returns", async (req, res) => {
+  if (isDbConnected()) {
+    try {
+      const pool = getPool();
+      if (pool) {
+        const [rows]: any = await pool.query("SELECT * FROM material_returns ORDER BY created_at DESC");
+        const parsed = rows.map((r: any) => ({
+          ...r,
+          items: typeof r.items === "string" ? JSON.parse(r.items) : (r.items || [])
+        }));
+        return res.json(parsed);
+      }
+    } catch (err: any) {
+      console.error("❌ [MySQL DB] Failed to fetch material_returns:", err.message);
+    }
+  }
   res.json(materialReturns);
 });
 
-app.post("/api/material-returns", (req, res) => {
+app.post("/api/material-returns", async (req, res) => {
   const userHeader = req.headers["x-user-username"] as string;
   const body = req.body;
 
@@ -1855,7 +1757,7 @@ app.post("/api/material-returns", (req, res) => {
     id: `ret-${Date.now()}`,
     return_number: returnNum,
     return_date: body.return_date || new Date().toISOString().split("T")[0],
-    vessel_name: body.vessel_name,
+    vessel_name: body.vessel_name || "MV. KARTINI BARUNA",
     warehouse_name: body.warehouse_name || "Jakarta HQ Warehouse",
     spk_number: body.spk_number || "NP",
     work_order_number: body.work_order_number || "NP",
@@ -1883,6 +1785,36 @@ app.post("/api/material-returns", (req, res) => {
 
   materialReturns.unshift(newReturn);
 
+  if (isDbConnected()) {
+    try {
+      const pool = getPool();
+      if (pool) {
+        await pool.query(
+          `INSERT INTO material_returns (
+            id, return_number, vessel_name, spk_id, spk_number, return_date,
+            account_code, function_code, status, items, created_by
+          ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+          [
+            newReturn.id,
+            newReturn.return_number,
+            newReturn.vessel_name,
+            body.spk_id || null,
+            newReturn.spk_number || null,
+            newReturn.return_date,
+            newReturn.account_code || "BPP",
+            newReturn.function_code || "ARMADA",
+            newReturn.status,
+            JSON.stringify(newReturn.items || []),
+            newReturn.created_by || "Chief Engineer"
+          ]
+        );
+        console.log(`✅ [MySQL DB] Saved new TUG 10 return '${newReturn.return_number}' into MySQL database!`);
+      }
+    } catch (err: any) {
+      console.error("❌ [MySQL DB] Failed to save material_return:", err.message);
+    }
+  }
+
   createAudit(
     "Create Return",
     "Material Returns",
@@ -1893,7 +1825,7 @@ app.post("/api/material-returns", (req, res) => {
   res.json(newReturn);
 });
 
-app.put("/api/material-returns/:id", (req, res) => {
+app.put("/api/material-returns/:id", async (req, res) => {
   const userHeader = req.headers["x-user-username"] as string;
   const { id } = req.params;
   const body = req.body;
@@ -2007,10 +1939,37 @@ app.put("/api/material-returns/:id", (req, res) => {
   }
 
   materialReturns[idx] = updatedReturn;
+
+  if (isDbConnected()) {
+    try {
+      const pool = getPool();
+      if (pool) {
+        await pool.query(
+          `UPDATE material_returns SET 
+            vessel_name = ?, return_date = ?, status = ?, items = ?,
+            account_code = ?, function_code = ?
+           WHERE id = ?`,
+          [
+            updatedReturn.vessel_name,
+            updatedReturn.return_date,
+            updatedReturn.status,
+            JSON.stringify(updatedReturn.items || []),
+            updatedReturn.account_code || "BPP",
+            updatedReturn.function_code || "ARMADA",
+            id
+          ]
+        );
+        console.log(`✅ [MySQL DB] Updated TUG 10 return '${updatedReturn.return_number}' in MySQL database!`);
+      }
+    } catch (err: any) {
+      console.error("❌ [MySQL DB] Failed to update material_return:", err.message);
+    }
+  }
+
   res.json(updatedReturn);
 });
 
-app.delete("/api/material-returns/:id", (req, res) => {
+app.delete("/api/material-returns/:id", async (req, res) => {
   const userHeader = req.headers["x-user-username"] as string;
   const { id } = req.params;
 
@@ -2021,6 +1980,18 @@ app.delete("/api/material-returns/:id", (req, res) => {
 
   const removed = materialReturns[idx];
   materialReturns.splice(idx, 1);
+
+  if (isDbConnected()) {
+    try {
+      const pool = getPool();
+      if (pool) {
+        await pool.query("DELETE FROM material_returns WHERE id = ?", [id]);
+        console.log(`✅ [MySQL DB] Deleted TUG 10 return '${id}' from MySQL database!`);
+      }
+    } catch (err: any) {
+      console.error("❌ [MySQL DB] Failed to delete material_return:", err.message);
+    }
+  }
 
   createAudit(
     "Delete Return",
@@ -2060,7 +2031,7 @@ app.post("/api/requests", (req, res) => {
   const newRequest: VesselRequest = {
     id: `req-${Date.now()}`,
     request_number: `REQ-2026-${Date.now().toString().slice(-4)}-${(userObj.vesselName || "Unknown").replace(/\s+/g, '')}`,
-    vessel_name: userObj.vesselName || body.vessel_name || "MV Ocean Voyager",
+    vessel_name: userObj.vesselName || body.vessel_name || "MV. KARTINI BARUNA",
     requester_name: userObj.name || "Vessel Crew Operator",
     urgency: (body.urgency as RequestUrgency) || RequestUrgency.NORMAL,
     items: body.items.map((itm: any) => {
@@ -2217,7 +2188,16 @@ app.get("/api/audit", (req, res) => {
 app.get("/api/dashboard/summary", (req, res) => {
   const totalParts = spareParts.length;
   const lowStockParts = spareParts.filter(p => p.current_stock <= p.reorder_point).length;
-  const pendingApprovalsCount = approvals.filter(a => a.status === "Pending").length;
+  
+  const pendingTug5List = materialRequests.filter(m => 
+    m.status === "Submitted" || 
+    m.status === "Draft" || 
+    (m.status as any) === "Processing" || 
+    (m.status as any) === "Pending" ||
+    (m.status as any) === "Pending Approval"
+  );
+
+  const pendingApprovalsCount = pendingTug5List.length;
   const activeDispatchesCount = dispatch.filter(d => d.status !== DispatchStatus.DELIVERED).length;
   const totalReceivingCount = receiving.length;
 
@@ -2227,6 +2207,7 @@ app.get("/api/dashboard/summary", (req, res) => {
     pendingApprovalsCount,
     activeDispatchesCount,
     totalReceivingCount,
+    pendingMaterialRequests: pendingTug5List,
     lowStockAlerts: spareParts.filter(p => p.current_stock <= p.reorder_point).map(p => ({
       id: p.id,
       part_name: p.part_name,
@@ -2239,9 +2220,33 @@ app.get("/api/dashboard/summary", (req, res) => {
   });
 });
 
+app.get("/api/db/status", (req, res) => {
+  res.json({
+    connected: isDbConnected(),
+    driver: "MySQL 8.0+",
+    database: process.env.DB_NAME || "wms_pt_bag",
+    host: process.env.DB_HOST || "localhost",
+    port: Number(process.env.DB_PORT || 3306)
+  });
+});
+
+app.post("/api/demo/seed", async (req, res) => {
+  try {
+    if (isDbConnected()) {
+      await seedDatabase(true);
+    }
+    createAudit("Seed Demo Data", "System", "Seeded 190+ synchronized demo records into WMS MySQL database", "Superadmin");
+    res.json({ success: true, message: "Seluruh 190+ data demo WMS (TUG 5, TUG 8, TUG 10, SPK, Users, Spareparts) berhasil di-seed ke MySQL & phpMyAdmin!" });
+  } catch (err: any) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
 // --- VITE MIDDLEWARE CONFIG / STATIC SERVE ---
 
 async function startServer() {
+  await initDatabase();
+
   if (process.env.NODE_ENV !== "production") {
     const vite = await createViteServer({
       server: { middlewareMode: true },

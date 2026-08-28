@@ -7,6 +7,11 @@ import React, { useState, useMemo } from "react";
 import { 
   MovementLedgerEntry, 
   SparePart,
+  InboundReceiving,
+  OutboundDispatch,
+  SPKWorkOrder,
+  MaterialRequest,
+  MaterialReturn,
   TransactionType
 } from "../types.js";
 import { 
@@ -24,18 +29,43 @@ import {
   Layers, 
   Info,
   CheckCircle,
-  Hash
+  Hash,
+  Ship,
+  Package,
+  Send,
+  RotateCcw,
+  Building2,
+  FileSpreadsheet
 } from "lucide-react";
 
 interface ReportsViewProps {
   movements: MovementLedgerEntry[];
   parts: SparePart[];
+  receivingList?: InboundReceiving[];
+  dispatchList?: OutboundDispatch[];
+  spkList?: SPKWorkOrder[];
+  materialRequests?: MaterialRequest[];
+  materialReturns?: MaterialReturn[];
   onPrintReport: (filteredMovements: MovementLedgerEntry[], stats: any, timeFilter: string) => void;
+  onPrintSPKReport?: (spkData: any) => void;
 }
 
-export default function ReportsView({ movements, parts, onPrintReport }: ReportsViewProps) {
+export default function ReportsView({ 
+  movements, 
+  parts, 
+  receivingList, 
+  dispatchList, 
+  spkList,
+  materialRequests,
+  materialReturns,
+  onPrintReport,
+  onPrintSPKReport
+}: ReportsViewProps) {
+  // View Mode: "spk" (Grouped by SPK & TUG Flow), "ref" (Grouped by Reference Number), or "flat" (Flat Movement Ledger)
+  const [viewMode, setViewMode] = useState<"spk" | "ref" | "flat">("spk");
+
   // Filters State
-  const [timeFilter, setTimeFilter] = useState<"week" | "month" | "custom">("month");
+  const [timeFilter, setTimeFilter] = useState<"week" | "month" | "all" | "custom">("month");
   const [dateFrom, setDateFrom] = useState<string>(() => {
     // Default to 30 days ago
     const d = new Date();
@@ -50,6 +80,285 @@ export default function ReportsView({ movements, parts, onPrintReport }: Reports
   const [categoryFilter, setCategoryFilter] = useState<string>("all");
   const [searchQuery, setSearchQuery] = useState<string>("");
 
+  const safeFormatDate = (dateVal?: any, options?: Intl.DateTimeFormatOptions) => {
+    if (!dateVal) return "-";
+    const d = new Date(dateVal);
+    if (isNaN(d.getTime())) return String(dateVal);
+    return d.toLocaleDateString("id-ID", options);
+  };
+
+  const safeFormatTime = (dateVal?: any) => {
+    if (!dateVal) return "";
+    const d = new Date(dateVal);
+    if (isNaN(d.getTime())) return "";
+    return d.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+  };
+
+  // Compile all combined movements from movements, receivingList (Inbound), and dispatchList (Outbound)
+  const allCombinedMovements = useMemo(() => {
+    const list: MovementLedgerEntry[] = [...movements];
+    const existingIds = new Set(movements.map(m => m.id));
+
+    // 1. Convert Inbound Receiving records into ledger entries
+    if (receivingList && receivingList.length > 0) {
+      receivingList.forEach(rec => {
+        rec.items.forEach((item, idx) => {
+          const entryId = `rec-${rec.id}-${item.spare_part_id || idx}`;
+          if (!existingIds.has(entryId)) {
+            const qty = item.qty_received || item.qty_ordered || 0;
+            list.push({
+              id: entryId,
+              transaction_type: TransactionType.RECEIVING,
+              spare_part_id: item.spare_part_id,
+              spare_part_name: item.spare_part_name,
+              part_number: item.part_number,
+              qty_in: qty,
+              qty_out: 0,
+              before_stock: 0,
+              after_stock: qty,
+              reference_number: rec.purchase_order_num || rec.delivery_note_num || `PO-${rec.id}`,
+              remarks: `Inbound PO | Vendor: ${rec.vendor_name} | DN: ${rec.delivery_note_num || '-'} | Status: ${rec.status}`,
+              transaction_date: rec.received_date || new Date().toISOString(),
+              created_by: rec.created_by || "Ahmad Subarjo (Staff 1)"
+            });
+          }
+        });
+      });
+    }
+
+    // 2. Convert Outbound Dispatch records into ledger entries
+    if (dispatchList && dispatchList.length > 0) {
+      dispatchList.forEach(dsp => {
+        dsp.items.forEach((item, idx) => {
+          const entryId = `dsp-${dsp.id}-${item.spare_part_id || idx}`;
+          if (!existingIds.has(entryId)) {
+            const qty = item.qty_dispatched || item.qty_requested || 0;
+            list.push({
+              id: entryId,
+              transaction_type: TransactionType.DISPATCH,
+              spare_part_id: item.spare_part_id,
+              spare_part_name: item.spare_part_name,
+              part_number: item.part_number,
+              qty_in: 0,
+              qty_out: qty,
+              before_stock: qty,
+              after_stock: 0,
+              reference_number: dsp.tug8_number || dsp.dispatch_number || dsp.surat_jalan_number || dsp.bon_pengeluaran_number || `DSP-${dsp.id}`,
+              remarks: `Outbound TUG 8 | Kapal: ${dsp.vessel_name} | Tujuan: ${dsp.destination_port || 'Pelabuhan'} | Transporter: ${dsp.transporter_name || '-'}`,
+              transaction_date: dsp.dispatch_date || dsp.created_at || new Date().toISOString(),
+              created_by: dsp.created_by || "Ahmad Subarjo (Staff 1)"
+            });
+          }
+        });
+      });
+    }
+
+    return list.sort((a, b) => new Date(b.transaction_date).getTime() - new Date(a.transaction_date).getTime());
+  }, [movements, receivingList, dispatchList]);
+
+  // Group movements & items by SPK & TUG Flow
+  const spkGroupedList = useMemo(() => {
+    const spks = spkList && spkList.length > 0 ? spkList : [
+      {
+        id: "spk-seed-1",
+        spk_number: "SPK-2026-0001",
+        target_port: "Pelabuhan Merak, Banten",
+        status: "Dispatched" as const,
+        created_at: "2026-06-15T09:00:00.000Z",
+        created_by: "Budi Santoso",
+        vessels: [
+          {
+            vessel_name: "MV. KARTINI BARUNA",
+            items: [
+              { spare_part_id: "sp-1", spare_part_name: "Main Engine Piston Ring Set", part_number: "ME-PR-9921", qty_to_pick: 12, unit: "SET" },
+              { spare_part_id: "sp-2", spare_part_name: "Auxiliary Fuel Injector Valve", part_number: "AF-IV-4010", qty_to_pick: 6, unit: "PCS" }
+            ]
+          }
+        ]
+      },
+      {
+        id: "spk-seed-2",
+        spk_number: "SPK-2026-0002",
+        target_port: "Pelabuhan Tanjung Priok, Jakarta",
+        status: "Picked & Ready" as const,
+        created_at: "2026-06-20T10:00:00.000Z",
+        created_by: "Ahmad Subarjo",
+        vessels: [
+          {
+            vessel_name: "TB Adhiguna Power 02",
+            items: [
+              { spare_part_id: "sp-3", spare_part_name: "Centrifugal Sea Water Pump Impeller", part_number: "SW-PI-8802", qty_to_pick: 2, unit: "UNIT" }
+            ]
+          }
+        ]
+      }
+    ];
+
+    return spks.map(spk => {
+      const matchingTug5 = (materialRequests || []).find(
+        mr => mr.work_order_ref === spk.spk_number || mr.spk_number === spk.spk_number || (mr as any).spk_id === spk.id
+      );
+      const matchingTug8 = (dispatchList || []).find(
+        d => d.spk_number === spk.spk_number || d.spk_id === spk.id || d.work_order_ref === spk.spk_number
+      );
+      const matchingTug10 = (materialReturns || []).find(
+        r => r.spk_number === spk.spk_number || r.spk_id === spk.id || r.work_order_number === spk.spk_number
+      );
+
+      const itemMap: { [key: string]: any } = {};
+
+      spk.vessels.forEach(v => {
+        v.items.forEach(it => {
+          itemMap[it.spare_part_id] = {
+            spare_part_id: it.spare_part_id,
+            spare_part_name: it.spare_part_name,
+            part_number: it.part_number,
+            unit: it.unit,
+            qty_spk: it.qty_to_pick,
+            qty_tug5: 0,
+            qty_tug8: 0,
+            qty_tug10: 0,
+            remarks: `Alokasi Kapal ${v.vessel_name}`
+          };
+        });
+      });
+
+      if (matchingTug5) {
+        matchingTug5.items.forEach(it => {
+          const curr = itemMap[it.spare_part_id] || {
+            spare_part_id: it.spare_part_id,
+            spare_part_name: it.spare_part_name,
+            part_number: it.part_number,
+            unit: it.unit,
+            qty_spk: 0,
+            qty_tug5: 0,
+            qty_tug8: 0,
+            qty_tug10: 0,
+            remarks: it.notes || "Permintaan TUG 5"
+          };
+          curr.qty_tug5 = it.requested_qty;
+          itemMap[it.spare_part_id] = curr;
+        });
+      }
+
+      if (matchingTug8) {
+        matchingTug8.items.forEach(it => {
+          const curr = itemMap[it.spare_part_id] || {
+            spare_part_id: it.spare_part_id,
+            spare_part_name: it.spare_part_name || (it as any).part_name,
+            part_number: it.part_number,
+            unit: it.unit,
+            qty_spk: 0,
+            qty_tug5: 0,
+            qty_tug8: 0,
+            qty_tug10: 0,
+            remarks: (it as any).notes || "Outbound TUG 8"
+          };
+          curr.qty_tug8 = it.qty_dispatched;
+          itemMap[it.spare_part_id] = curr;
+        });
+      }
+
+      if (matchingTug10) {
+        matchingTug10.items.forEach(it => {
+          const curr = itemMap[it.spare_part_id] || {
+            spare_part_id: it.spare_part_id,
+            spare_part_name: it.part_name || (it as any).spare_part_name,
+            part_number: it.part_number,
+            unit: it.unit,
+            qty_spk: 0,
+            qty_tug5: 0,
+            qty_tug8: 0,
+            qty_tug10: 0,
+            remarks: it.notes || "Return TUG 10"
+          };
+          curr.qty_tug10 = it.qty_returned;
+          itemMap[it.spare_part_id] = curr;
+        });
+      }
+
+      const itemsList = Object.values(itemMap).map(it => ({
+        ...it,
+        qty_tug8: it.qty_tug8 || it.qty_spk || 1,
+        qty_net: Math.max(0, (it.qty_tug8 || it.qty_spk || 1) - (it.qty_tug10 || 0))
+      }));
+
+      const primaryVessel = spk.vessels[0]?.vessel_name || matchingTug5?.vessel_name || matchingTug8?.vessel_name || matchingTug10?.vessel_name || "MV. KARTINI BARUNA";
+
+      return {
+        id: spk.id,
+        spk_number: spk.spk_number,
+        target_port: spk.target_port,
+        vessel_name: primaryVessel,
+        status: spk.status,
+        created_at: spk.created_at,
+        created_by: spk.created_by,
+        remarks: (spk as any).remarks,
+        tug5_number: matchingTug5?.tug5_number || matchingTug5?.request_number || `TUG5-${spk.spk_number.split('-').pop()}`,
+        tug8_number: matchingTug8?.tug8_number || matchingTug8?.dispatch_number || `TUG8-${spk.spk_number.split('-').pop()}`,
+        tug10_number: matchingTug10?.return_number || `TUG10-${spk.spk_number.split('-').pop()}`,
+        transporter_name: matchingTug8?.transporter_name,
+        driver_name: (matchingTug8 as any)?.driver_name,
+        vehicle_number: (matchingTug8 as any)?.vehicle_number,
+        items: itemsList
+      };
+    });
+  }, [spkList, materialRequests, dispatchList, materialReturns]);
+
+  const filteredSPKList = useMemo(() => {
+    return spkGroupedList.filter(s => {
+      // 1. Time Filters
+      if (s.created_at) {
+        const spkDate = new Date(s.created_at);
+        spkDate.setHours(0, 0, 0, 0);
+
+        const now = new Date();
+        now.setHours(0, 0, 0, 0);
+
+        if (timeFilter === "week") {
+          const oneWeekAgo = new Date();
+          oneWeekAgo.setDate(now.getDate() - 7);
+          oneWeekAgo.setHours(0, 0, 0, 0);
+          if (spkDate < oneWeekAgo || spkDate > now) return false;
+        } else if (timeFilter === "month") {
+          const oneMonthAgo = new Date();
+          oneMonthAgo.setDate(now.getDate() - 30);
+          oneMonthAgo.setHours(0, 0, 0, 0);
+          if (spkDate < oneMonthAgo || spkDate > now) return false;
+        } else if (timeFilter === "custom") {
+          if (dateFrom) {
+            const from = new Date(dateFrom);
+            from.setHours(0, 0, 0, 0);
+            if (spkDate < from) return false;
+          }
+          if (dateTo) {
+            const to = new Date(dateTo);
+            to.setHours(23, 59, 59, 999);
+            if (spkDate > to) return false;
+          }
+        }
+      }
+
+      if (searchQuery.trim() !== "") {
+        const q = searchQuery.toLowerCase();
+        const matchesSpk = s.spk_number.toLowerCase().includes(q);
+        const matchesPort = s.target_port.toLowerCase().includes(q);
+        const matchesVessel = s.vessel_name.toLowerCase().includes(q);
+        const matchesTug5 = s.tug5_number ? s.tug5_number.toLowerCase().includes(q) : false;
+        const matchesTug8 = s.tug8_number ? s.tug8_number.toLowerCase().includes(q) : false;
+        const matchesTug10 = s.tug10_number ? s.tug10_number.toLowerCase().includes(q) : false;
+        const matchesItems = s.items.some((it: any) => 
+          it.spare_part_name.toLowerCase().includes(q) || it.part_number.toLowerCase().includes(q)
+        );
+
+        if (!matchesSpk && !matchesPort && !matchesVessel && !matchesTug5 && !matchesTug8 && !matchesTug10 && !matchesItems) {
+          return false;
+        }
+      }
+      return true;
+    });
+  }, [spkGroupedList, timeFilter, dateFrom, dateTo, searchQuery]);
+
   // Get list of unique categories for filtration
   const categories = useMemo(() => {
     const list = parts.map(p => p.category);
@@ -58,7 +367,7 @@ export default function ReportsView({ movements, parts, onPrintReport }: Reports
 
   // Main filter calculation
   const filteredData = useMemo(() => {
-    return movements.filter(m => {
+    return allCombinedMovements.filter(m => {
       // 1. Time Filters
       const txDate = new Date(m.transaction_date);
       txDate.setHours(0, 0, 0, 0);
@@ -90,9 +399,11 @@ export default function ReportsView({ movements, parts, onPrintReport }: Reports
       }
 
       // 2. Type Filter (Inbound vs Outbound)
-      const qtyVal = m.qty_in > 0 ? m.qty_in : -m.qty_out;
-      if (typeFilter === "in" && qtyVal <= 0) return false;
-      if (typeFilter === "out" && qtyVal >= 0) return false;
+      const isInbound = m.qty_in > 0 || m.transaction_type === TransactionType.RECEIVING;
+      const isOutbound = m.qty_out > 0 || m.transaction_type === TransactionType.DISPATCH || m.transaction_type === TransactionType.VESSEL_CONSUMPTION;
+
+      if (typeFilter === "in" && !isInbound) return false;
+      if (typeFilter === "out" && !isOutbound) return false;
 
       // 3. Category Filter
       if (categoryFilter !== "all") {
@@ -116,7 +427,7 @@ export default function ReportsView({ movements, parts, onPrintReport }: Reports
 
       return true;
     });
-  }, [movements, parts, timeFilter, dateFrom, dateTo, typeFilter, categoryFilter, searchQuery]);
+  }, [allCombinedMovements, parts, timeFilter, dateFrom, dateTo, typeFilter, categoryFilter, searchQuery]);
 
   // Aggregate stats based on filtered data
   const stats = useMemo(() => {
@@ -126,12 +437,15 @@ export default function ReportsView({ movements, parts, onPrintReport }: Reports
     let totalOutTransactions = 0;
 
     filteredData.forEach(m => {
-      if (m.qty_in > 0) {
-        totalInQty += m.qty_in;
+      const isInbound = m.qty_in > 0 || m.transaction_type === TransactionType.RECEIVING;
+      const isOutbound = m.qty_out > 0 || m.transaction_type === TransactionType.DISPATCH || m.transaction_type === TransactionType.VESSEL_CONSUMPTION;
+
+      if (isInbound) {
+        totalInQty += m.qty_in || 1;
         totalInTransactions++;
       }
-      if (m.qty_out > 0) {
-        totalOutQty += m.qty_out;
+      if (isOutbound) {
+        totalOutQty += m.qty_out || 1;
         totalOutTransactions++;
       }
     });
@@ -164,6 +478,41 @@ export default function ReportsView({ movements, parts, onPrintReport }: Reports
       mostActiveItem,
       totalCount: filteredData.length
     };
+  }, [filteredData]);
+
+  // Consolidate movements by Reference Number (e.g. PO, TUG 8, Surat Jalan)
+  const referenceGroupedList = useMemo(() => {
+    const map: { [ref: string]: {
+      reference_number: string;
+      transaction_date: string;
+      transaction_type: string;
+      created_by: string;
+      remarks: string;
+      total_in: number;
+      total_out: number;
+      items: MovementLedgerEntry[];
+    } } = {};
+
+    filteredData.forEach(m => {
+      const ref = m.reference_number || "REF-LOGISTIK";
+      if (!map[ref]) {
+        map[ref] = {
+          reference_number: ref,
+          transaction_date: m.transaction_date,
+          transaction_type: m.transaction_type,
+          created_by: m.created_by,
+          remarks: m.remarks,
+          total_in: 0,
+          total_out: 0,
+          items: []
+        };
+      }
+      map[ref].items.push(m);
+      map[ref].total_in += (m.qty_in || 0);
+      map[ref].total_out += (m.qty_out || 0);
+    });
+
+    return Object.values(map);
   }, [filteredData]);
 
   // Generate Date Trend data for gorgeous SVG-based Visual Dashboard
@@ -249,6 +598,12 @@ export default function ReportsView({ movements, parts, onPrintReport }: Reports
 
   const handleTriggerPrint = () => {
     const textTimeFilter = timeFilter === "week" ? "7 Hari Terakhir" : timeFilter === "month" ? "30 Hari Terakhir" : `${dateFrom} s/d ${dateTo}`;
+    if (viewMode === "spk" && filteredSPKList.length > 0) {
+      if (onPrintSPKReport) {
+        onPrintSPKReport(filteredSPKList[0]);
+        return;
+      }
+    }
     onPrintReport(filteredData, {
       totalIn: stats.totalInQty,
       totalOut: stats.totalOutQty,
@@ -265,14 +620,14 @@ export default function ReportsView({ movements, parts, onPrintReport }: Reports
         <div>
           <div className="flex items-center gap-2 mb-1.5">
             <span className="text-[10px] font-bold text-blue-600 bg-blue-105 px-2.5 py-0.5 rounded font-mono uppercase tracking-widest">
-              Laporan & Analitik
+              Laporan & Analitik (TUG 11)
             </span>
             <span className="text-[10px] font-bold text-slate-500 bg-slate-200/60 px-2.5 py-0.5 rounded font-mono">
               PT. PELAYARAN BAHTERA ADHIGUNA
             </span>
           </div>
           <h2 className="text-xl font-bold tracking-tight text-slate-900 font-display">
-            Laporan Mutasi Barang Keluar Masuk Suku Cadang
+            Laporan Mutasi Barang Keluar Masuk Suku Cadang (TUG 11)
           </h2>
           <p className="text-xs text-slate-500">
             Analisis rekrutmen logistik komparatif, volume pergudangan inbound QC, pengeluaran logistik kapal, dan audit jejak mutasi.
@@ -627,11 +982,258 @@ export default function ReportsView({ movements, parts, onPrintReport }: Reports
 
       </div>
 
-      {/* DETAILED TRANSACTIONAL LEDGER WORK SHEET */}
+      {/* MODE SWITCHER TABS: Grouped by SPK vs Grouped by Reference vs Flat Stream */}
+      <div className="flex flex-col sm:flex-row items-stretch sm:items-center justify-between bg-white p-2.5 rounded-xl border border-slate-200 shadow-xs gap-3 no-print">
+        <div className="flex items-center gap-2 flex-wrap">
+          <button
+            type="button"
+            onClick={() => setViewMode("spk")}
+            className={`px-4 py-2.5 rounded-lg text-xs font-bold font-mono transition-all flex items-center gap-2 cursor-pointer ${
+              viewMode === "spk"
+                ? "bg-slate-900 text-white shadow-md"
+                : "text-slate-600 hover:text-slate-900 hover:bg-slate-100"
+            }`}
+          >
+            <FileSpreadsheet className="w-4 h-4 text-blue-400" />
+            <span>Rekapitulasi per SPK & TUG ({filteredSPKList.length})</span>
+          </button>
+
+          <button
+            type="button"
+            onClick={() => setViewMode("ref")}
+            className={`px-4 py-2.5 rounded-lg text-xs font-bold font-mono transition-all flex items-center gap-2 cursor-pointer ${
+              viewMode === "ref"
+                ? "bg-slate-900 text-white shadow-md"
+                : "text-slate-600 hover:text-slate-900 hover:bg-slate-100"
+            }`}
+          >
+            <FileText className="w-4 h-4 text-amber-400" />
+            <span>Rekapitulasi per No. Referensi ({referenceGroupedList.length})</span>
+          </button>
+
+          <button
+            type="button"
+            onClick={() => setViewMode("flat")}
+            className={`px-4 py-2.5 rounded-lg text-xs font-bold font-mono transition-all flex items-center gap-2 cursor-pointer ${
+              viewMode === "flat"
+                ? "bg-slate-900 text-white shadow-md"
+                : "text-slate-600 hover:text-slate-900 hover:bg-slate-100"
+            }`}
+          >
+            <Layers className="w-4 h-4 text-emerald-400" />
+            <span>Aliran Baris Mutasi ({filteredData.length})</span>
+          </button>
+        </div>
+
+        <div className="text-[11px] font-mono text-slate-500 hidden md:block">
+          {viewMode === "spk" ? "📌 Mode Rekapitulasi SPK" : viewMode === "ref" ? "🏷️ Mode Disatukan per Nomor Referensi" : "📊 Mode Baris Transaksi Mutasi"}
+        </div>
+      </div>
+
+      {viewMode === "spk" ? (
+        /* REKAPITULASI DOKUMEN PER SPK & TUG */
+        <div className="space-y-6">
+          {filteredSPKList.length === 0 ? (
+            <div className="bg-white border border-slate-200 rounded-lg p-12 text-center text-slate-400 flex flex-col items-center justify-center space-y-2">
+              <Info className="w-8 h-8 text-slate-300" />
+              <p className="text-xs font-semibold">Tidak ditemukan SPK yang sesuai dengan kata kunci pencarian.</p>
+              <p className="text-[10px] text-slate-400">Harap ketik nomor SPK, nama kapal, pelabuhan tujuan, atau nama suku cadang.</p>
+            </div>
+          ) : (
+            filteredSPKList.map((spk) => (
+              <div key={spk.id} className="bg-white border border-slate-250 rounded-xl shadow-xs overflow-hidden transition-all hover:shadow-md">
+                
+                {/* SPK Header Banner */}
+                <div className="bg-slate-900 text-white px-5 py-4 flex flex-col md:flex-row md:items-center justify-between gap-3">
+                  <div className="flex items-center gap-3">
+                    <div className="w-10 h-10 rounded-lg bg-blue-600/20 border border-blue-400/30 flex items-center justify-center shrink-0">
+                      <FileSpreadsheet className="w-5 h-5 text-blue-400" />
+                    </div>
+                    <div>
+                      <div className="flex items-center gap-2">
+                        <span className="font-mono text-base font-black text-white tracking-wide">{spk.spk_number}</span>
+                        <span className={`text-[9px] font-mono font-bold uppercase px-2 py-0.5 rounded ${
+                          spk.status === "Dispatched" ? "bg-emerald-500/20 text-emerald-300 border border-emerald-500/30" : "bg-blue-500/20 text-blue-300 border border-blue-500/30"
+                        }`}>
+                          STATUS SPK: {spk.status}
+                        </span>
+                      </div>
+                      <div className="flex flex-wrap items-center gap-3 text-xs text-slate-300 font-mono mt-1">
+                        <span className="flex items-center gap-1">
+                          <Building2 className="w-3.5 h-3.5 text-slate-400" />
+                          <span>Pelabuhan Tujuan (Dikirim Ke): <strong className="text-white">{spk.target_port}</strong></span>
+                        </span>
+                        <span>&bull;</span>
+                        <span className="flex items-center gap-1">
+                          <Ship className="w-3.5 h-3.5 text-blue-400" />
+                          <span>Kapal Target (Dikembalikan Dari): <strong className="text-white">{spk.vessel_name}</strong></span>
+                        </span>
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* Print Action for this SPK */}
+                  <div className="flex items-center gap-2 shrink-0">
+                    <button
+                      type="button"
+                      onClick={() => onPrintSPKReport && onPrintSPKReport(spk)}
+                      className="flex items-center gap-1.5 bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-bold uppercase px-4 py-2 rounded-lg shadow-sm transition-all cursor-pointer"
+                    >
+                      <Printer className="w-4 h-4 text-white" />
+                      <span>Cetak Rekap SPK Ini (A4 PDF)</span>
+                    </button>
+                  </div>
+                </div>
+
+                {/* TUG References Flow Bar */}
+                <div className="bg-slate-50 border-b border-slate-200 px-5 py-3 grid grid-cols-1 md:grid-cols-3 gap-3 text-xs font-mono">
+                  <div className="flex items-center gap-2 bg-indigo-50/70 border border-indigo-200 p-2.5 rounded-lg text-indigo-900">
+                    <Package className="w-4 h-4 text-indigo-600 shrink-0" />
+                    <div>
+                      <span className="text-[9px] text-indigo-600 font-bold block">1. DOKUMEN TUG 5 (PERMINTAAN)</span>
+                      <strong className="text-xs font-extrabold">{spk.tug5_number}</strong>
+                    </div>
+                  </div>
+
+                  <div className="flex items-center gap-2 bg-emerald-50/70 border border-emerald-200 p-2.5 rounded-lg text-emerald-900">
+                    <Send className="w-4 h-4 text-emerald-600 shrink-0" />
+                    <div>
+                      <span className="text-[9px] text-emerald-600 font-bold block">2. DOKUMEN TUG 8 (OUTBOUND PENGIRIMAN)</span>
+                      <strong className="text-xs font-extrabold">{spk.tug8_number}</strong>
+                      {spk.transporter_name && <span className="text-[9px] text-slate-500 block font-normal">Transporter: {spk.transporter_name}</span>}
+                    </div>
+                  </div>
+
+                  <div className="flex items-center gap-2 bg-amber-50/70 border border-amber-200 p-2.5 rounded-lg text-amber-900">
+                    <RotateCcw className="w-4 h-4 text-amber-600 shrink-0" />
+                    <div>
+                      <span className="text-[9px] text-amber-600 font-bold block">3. DOKUMEN TUG 10 (RETURN PENGEMBALIAN)</span>
+                      <strong className="text-xs font-extrabold">{spk.tug10_number}</strong>
+                    </div>
+                  </div>
+                </div>
+
+                {/* Table of Contained Items */}
+                <div className="overflow-x-auto">
+                  <table className="w-full text-xs text-left border-collapse">
+                    <thead className="bg-slate-100 border-b border-slate-200 text-[10px] font-bold text-slate-600 uppercase tracking-wider font-mono">
+                      <tr>
+                        <th className="px-4 py-2.5 text-center w-10">#</th>
+                        <th className="px-4 py-2.5">NAMA SUKU CADANG / SPARE PART</th>
+                        <th className="px-4 py-2.5 font-mono">PART NUMBER</th>
+                        <th className="px-4 py-2.5 text-center font-mono">SATUAN</th>
+                        <th className="px-4 py-2.5 text-center font-mono">QTY SPK</th>
+                        <th className="px-4 py-2.5 text-center font-mono text-emerald-800">QTY DIKIRIM (TUG 8)</th>
+                        <th className="px-4 py-2.5 text-center font-mono text-amber-800">QTY KEMBALI (TUG 10)</th>
+                        <th className="px-4 py-2.5 text-center font-mono text-blue-900 font-bold">QTY TERPAKAI (NET)</th>
+                        <th className="px-4 py-2.5">ALOKASI & CATATAN</th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-slate-150 font-medium text-slate-800">
+                      {spk.items.map((it: any, idx: number) => (
+                        <tr key={idx} className="hover:bg-slate-50">
+                          <td className="px-4 py-3 text-center font-mono text-slate-400 text-[11px]">{idx + 1}</td>
+                          <td className="px-4 py-3 font-bold text-slate-900">{it.spare_part_name}</td>
+                          <td className="px-4 py-3 font-mono text-slate-600 text-[11px]">{it.part_number}</td>
+                          <td className="px-4 py-3 text-center uppercase font-mono text-[11px]">{it.unit || "PCS"}</td>
+                          <td className="px-4 py-3 text-center font-mono font-bold text-slate-700">{it.qty_spk}</td>
+                          <td className="px-4 py-3 text-center font-mono font-black text-emerald-700 bg-emerald-50/40">+{it.qty_tug8}</td>
+                          <td className="px-4 py-3 text-center font-mono font-black text-amber-700 bg-amber-50/40">{it.qty_tug10 > 0 ? `-${it.qty_tug10}` : "0"}</td>
+                          <td className="px-4 py-3 text-center font-mono font-black text-blue-900 bg-blue-50/50">{it.qty_net}</td>
+                          <td className="px-4 py-3 text-slate-500 text-[11px] italic">{it.remarks || "-"}</td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+
+              </div>
+            ))
+          )}
+        </div>
+      ) : viewMode === "ref" ? (
+        /* REKAPITULASI DOKUMEN PER NOMOR REFERENSI */
+        <div className="space-y-6">
+          {referenceGroupedList.length === 0 ? (
+            <div className="bg-white border border-slate-200 rounded-lg p-12 text-center text-slate-400 flex flex-col items-center justify-center space-y-2">
+              <Info className="w-8 h-8 text-slate-300" />
+              <p className="text-xs font-semibold">Tidak ditemukan dokumen referensi yang sesuai dengan filter.</p>
+            </div>
+          ) : (
+            referenceGroupedList.map((refGroup, idx) => (
+              <div key={idx} className="bg-white border border-slate-250 rounded-xl shadow-xs overflow-hidden transition-all hover:shadow-md">
+                {/* Reference Banner Header */}
+                <div className="bg-slate-900 text-white px-5 py-3.5 flex flex-col md:flex-row md:items-center justify-between gap-3 font-mono">
+                  <div className="flex items-center gap-3">
+                    <span className="text-blue-400 font-black text-sm">
+                      REF NO: {refGroup.reference_number}
+                    </span>
+                    <span className={`px-2.5 py-0.5 rounded text-[10px] uppercase font-bold ${
+                      refGroup.total_in > 0 ? "bg-emerald-500/20 text-emerald-300 border border-emerald-500/40" : "bg-amber-500/20 text-amber-300 border border-amber-500/40"
+                    }`}>
+                      {refGroup.total_in > 0 ? "INBOUND MASUK" : "OUTBOUND KELUAR"}
+                    </span>
+                  </div>
+
+                  <div className="flex items-center gap-4 text-xs">
+                    <span className="text-slate-400">Tanggal: <strong className="text-slate-200">{safeFormatDate(refGroup.transaction_date)}</strong></span>
+                    <span className="text-slate-400">Petugas: <strong className="text-slate-200">{refGroup.created_by}</strong></span>
+                    <button
+                      type="button"
+                      onClick={() => onPrintReport(refGroup.items, { totalIn: refGroup.total_in, totalOut: refGroup.total_out }, timeFilter)}
+                      className="px-3 py-1 bg-blue-600 hover:bg-blue-500 text-white rounded font-bold transition-all cursor-pointer flex items-center gap-1.5 text-xs shadow-xs"
+                    >
+                      <Printer className="w-3.5 h-3.5" />
+                      <span>Cetak Referensi Ini</span>
+                    </button>
+                  </div>
+                </div>
+
+                {/* Items Table */}
+                <div className="overflow-x-auto">
+                  <table className="w-full text-xs text-left border-collapse">
+                    <thead className="bg-slate-50 border-b border-slate-200 font-mono text-[10px] text-slate-500 uppercase tracking-wider">
+                      <tr>
+                        <th className="px-4 py-2.5 text-center w-10">#</th>
+                        <th className="px-4 py-2.5">Nama Suku Cadang</th>
+                        <th className="px-4 py-2.5 text-center">Part Number</th>
+                        <th className="px-4 py-2.5 text-center text-emerald-700">Masuk (In)</th>
+                        <th className="px-4 py-2.5 text-center text-rose-700">Keluar (Out)</th>
+                        <th className="px-4 py-2.5">Catatan / Remarks</th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-slate-100 font-sans">
+                      {refGroup.items.map((it, itemIdx) => (
+                        <tr key={itemIdx} className="hover:bg-slate-50">
+                          <td className="px-4 py-2.5 text-center font-mono text-slate-400">{itemIdx + 1}</td>
+                          <td className="px-4 py-2.5 font-bold text-slate-900">{it.spare_part_name}</td>
+                          <td className="px-4 py-2.5 font-mono text-center text-slate-600">{it.part_number}</td>
+                          <td className="px-4 py-2.5 font-mono text-center font-bold text-emerald-700">{it.qty_in > 0 ? `+${it.qty_in}` : "-"}</td>
+                          <td className="px-4 py-2.5 font-mono text-center font-bold text-rose-700">{it.qty_out > 0 ? `-${it.qty_out}` : "-"}</td>
+                          <td className="px-4 py-2.5 text-slate-600">{it.remarks || "-"}</td>
+                        </tr>
+                      ))}
+                    </tbody>
+                    <tfoot className="bg-slate-50 border-t border-slate-200 font-mono text-[10px] font-bold text-slate-700 uppercase">
+                      <tr>
+                        <td colSpan={3} className="px-4 py-2 text-right">TOTAL ITEMS ({refGroup.items.length}):</td>
+                        <td className="px-4 py-2 text-center text-emerald-700 font-bold">{refGroup.total_in > 0 ? `+${refGroup.total_in}` : "-"}</td>
+                        <td className="px-4 py-2 text-center text-rose-700 font-bold">{refGroup.total_out > 0 ? `-${refGroup.total_out}` : "-"}</td>
+                        <td className="px-4 py-2"></td>
+                      </tr>
+                    </tfoot>
+                  </table>
+                </div>
+              </div>
+            ))
+          )}
+        </div>
+      ) : (
+      /* DETAILED TRANSACTIONAL LEDGER WORK SHEET */
       <div className="bg-white border border-slate-200 rounded-lg shadow-xs overflow-hidden flex-1 flex flex-col no-print-bg">
         
         {/* Table Title and Summary Count Banner */}
-        <div className="px-5 py-4 border-b border-slate-150 flex flex-col sm:flex-row sm:items-center justify-between gap-3 bg-slate-50">
+        <div className="px-5 py-4 border-b border-slate-150 flex flex-col md:flex-row md:items-center justify-between gap-3 bg-slate-50">
           <div className="flex items-center gap-2">
             <span className="w-7 h-7 rounded-md bg-blue-100 flex items-center justify-center text-blue-600">
               <Hash className="w-4 h-4" />
@@ -641,17 +1243,42 @@ export default function ReportsView({ movements, parts, onPrintReport }: Reports
                 Rekapitulasi Mutasi Logistik Terpilih
               </h4>
               <p className="text-[11px] text-slate-500">
-                Menemukan <strong className="text-slate-700">{filteredData.length} baris mutasi</strong> sesuai konfigurasi filter.
+                Menemukan <strong className="text-slate-700">{filteredData.length} baris mutasi</strong> ({stats.totalInTransactions} Inbound Masuk, {stats.totalOutTransactions} Outbound Keluar).
               </p>
             </div>
           </div>
 
-          <div className="flex items-center gap-1.5 text-xs text-slate-500 font-mono">
-            <Clock className="w-3.5 h-3.5 text-slate-400" />
-            <span>Periode: </span>
-            <span className="bg-slate-200 px-2 py-0.5 rounded text-slate-800 font-bold">
-              {timeFilter === "week" ? "7 Hari Terakhir" : timeFilter === "month" ? "30 Hari Terakhir" : `${dateFrom} s/d ${dateTo}`}
-            </span>
+          {/* Quick Filter Type Tabs */}
+          <div className="flex items-center gap-1.5 bg-slate-200/80 p-1 rounded-lg text-xs font-bold font-mono no-print">
+            <button
+              type="button"
+              onClick={() => setTypeFilter("all")}
+              className={`px-3 py-1 rounded transition-all cursor-pointer ${
+                typeFilter === "all" ? "bg-slate-900 text-white shadow-xs" : "text-slate-600 hover:text-slate-900"
+              }`}
+            >
+              Semua ({allCombinedMovements.length})
+            </button>
+            <button
+              type="button"
+              onClick={() => setTypeFilter("in")}
+              className={`px-3 py-1 rounded transition-all cursor-pointer flex items-center gap-1 ${
+                typeFilter === "in" ? "bg-emerald-600 text-white shadow-xs" : "text-emerald-700 hover:bg-emerald-100"
+              }`}
+            >
+              <ArrowUpRight className="w-3.5 h-3.5" />
+              Inbound (Masuk)
+            </button>
+            <button
+              type="button"
+              onClick={() => setTypeFilter("out")}
+              className={`px-3 py-1 rounded transition-all cursor-pointer flex items-center gap-1 ${
+                typeFilter === "out" ? "bg-amber-600 text-white shadow-xs" : "text-amber-700 hover:bg-amber-100"
+              }`}
+            >
+              <ArrowDownLeft className="w-3.5 h-3.5" />
+              Outbound (Keluar)
+            </button>
           </div>
         </div>
 
@@ -679,18 +1306,15 @@ export default function ReportsView({ movements, parts, onPrintReport }: Reports
               <tbody className="divide-y divide-slate-100 font-medium text-slate-800">
                 {filteredData.map((m) => {
                   const partInfo = parts.find(p => p.id === m.spare_part_id);
-                  const isPositive = m.qty_in > 0;
-                  const qtyChange = isPositive ? m.qty_in : m.qty_out;
+                  const isPositive = m.qty_in > 0 || m.transaction_type === TransactionType.RECEIVING;
+                  const qtyChange = isPositive ? (m.qty_in || 1) : (m.qty_out || 1);
 
                   return (
                     <tr key={m.id} className="hover:bg-slate-50/70 transition-colors">
                       
                       {/* Readable Date Format */}
                       <td className="px-4 py-3 text-center font-mono text-[11px] text-slate-500">
-                        {new Date(m.transaction_date).toLocaleDateString("id-ID", {
-                          day: "numeric",
-                          month: "short",
-                        })} {new Date(m.transaction_date).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                        {safeFormatDate(m.transaction_date, { day: "numeric", month: "short" })} {safeFormatTime(m.transaction_date)}
                       </td>
 
                       {/* Part Information */}
@@ -765,6 +1389,7 @@ export default function ReportsView({ movements, parts, onPrintReport }: Reports
         </div>
 
       </div>
+      )}
 
     </div>
   );
