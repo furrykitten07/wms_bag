@@ -52,15 +52,7 @@ export const defaultSignatures: DigitalSignature[] = [
     created_at: "2026-08-01T10:00:00.000Z",
     updated_at: "2026-08-01T10:00:00.000Z"
   },
-  {
-    id: "sig-3",
-    role_title: "Captain",
-    user_name: "Capt. H. Wijaya",
-    signature_url: `data:image/svg+xml;utf8,<svg xmlns="http://www.w3.org/2000/svg" width="220" height="70" viewBox="0 0 220 70"><path d="M 15 35 C 40 10, 55 60, 85 25 C 105 10, 125 50, 155 25 C 175 15, 185 45, 205 30" stroke="%230f172a" stroke-width="2.5" fill="none" stroke-linecap="round"/><path d="M 25 50 L 175 46" stroke="%231e293b" stroke-width="1.8" fill="none" stroke-linecap="round"/><text x="120" y="62" font-family="cursive" font-size="11" font-weight="bold" fill="%23334155">Capt. H. Wijaya</text></svg>`,
-    notes: "Tanda Tangan Pemeriksa Captain Operations",
-    created_at: "2026-08-01T10:00:00.000Z",
-    updated_at: "2026-08-01T10:00:00.000Z"
-  },
+
   {
     id: "sig-4",
     role_title: "Kepala Gudang",
@@ -131,10 +123,9 @@ export function getCurrentUserHeader(): string {
 // Local fallback state
 let localUsers: User[] = [
   { id: "usr-1", username: "superadmin", name: "Fikri Haikal (Superadmin)", email: "superadmin@maritime-logistics.com", role: UserRole.SUPER_ADMIN, password: "admin123" },
-  { id: "usr-2", username: "staff_gudang_1", name: "Ahmad Subarjo (Staff Gudang)", email: "ahmad.subarjo@maritime-logistics.com", role: UserRole.WAREHOUSE_ADMIN, password: "admin123" },
-  { id: "usr-3", username: "emir", name: "Mohamat Emir Ferdian", email: "emir.ferdian@maritime-logistics.com", role: UserRole.LOGISTICS_MANAGER, password: "admin123" },
-  { id: "usr-4", username: "sumbono", name: "Sumbono", email: "sumbono@maritime-logistics.com", role: UserRole.VP_RENDALHAR, password: "admin123" },
-  { id: "usr-5", username: "crew_voyager", name: "Anto Wijaya", email: "voyager.chief@maritime-crew.com", role: UserRole.VESSEL_CREW, vesselName: "MV. KARTINI BARUNA", password: "admin123" }
+  { id: "usr-3", username: "alfin", name: "Maghfur Muhammad Alfin", email: "alfin.rendalhar@maritime-logistics.com", role: UserRole.WAREHOUSE_STAFF, password: "admin123" },
+  { id: "usr-4", username: "emir", name: "Mohamat Emir Ferdian", email: "emir.ferdian@maritime-logistics.com", role: UserRole.LOGISTICS_MANAGER, password: "admin123" },
+  { id: "usr-5", username: "sumbono", name: "Sumbono", email: "sumbono@maritime-logistics.com", role: UserRole.VP_RENDALHAR, password: "admin123" }
 ];
 
 let localVendors: Vendor[] = [

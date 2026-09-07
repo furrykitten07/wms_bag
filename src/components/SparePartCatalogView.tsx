@@ -20,6 +20,8 @@ import {
   Save
 } from "lucide-react";
 
+import { SparePart } from "../types.js";
+
 // Catalog item interface (Removed status field as requested)
 interface CatalogItem {
   id: string;
@@ -33,6 +35,10 @@ interface CatalogItem {
   manufacturer: string;
   vessel_compatibility: string;
   weight_kg: number;
+}
+
+interface SparePartCatalogViewProps {
+  parts?: SparePart[];
 }
 
 // 20 comprehensive initial maritime spare parts
@@ -299,7 +305,7 @@ const INITIAL_CATALOG_DATA: CatalogItem[] = [
   }
 ];
 
-export default function SparePartCatalogView() {
+export default function SparePartCatalogView({ parts = [] }: SparePartCatalogViewProps) {
   // Persistence via localStorage
   const [catalogData, setCatalogData] = useState<CatalogItem[]>(() => {
     const saved = localStorage.getItem("spare_part_catalog_data");
@@ -312,6 +318,45 @@ export default function SparePartCatalogView() {
     }
     return INITIAL_CATALOG_DATA;
   });
+
+  // Helper to fetch live current stock from SPARE PART MASTER
+  const getItemStock = (item: CatalogItem): number => {
+    if (!parts || parts.length === 0) return 0;
+    const matched = parts.find(p => 
+      p.id === item.id || 
+      (p.part_number && item.part_number && p.part_number.trim().toLowerCase() === item.part_number.trim().toLowerCase()) ||
+      (p.sku && item.sku && p.sku.trim().toLowerCase() === item.sku.trim().toLowerCase()) ||
+      (p.part_name && item.part_name && p.part_name.trim().toLowerCase() === item.part_name.trim().toLowerCase())
+    );
+    return matched ? matched.current_stock : 0;
+  };
+
+  // Merge Master Spareparts with local Catalog list so all master parts appear in Catalog
+  const allCatalogItems = useMemo(() => {
+    const existingKeys = new Set(catalogData.map(i => (i.part_number || i.id).trim().toLowerCase()));
+    const masterExtras: CatalogItem[] = [];
+    
+    parts.forEach((p, idx) => {
+      const key = (p.part_number || p.id).trim().toLowerCase();
+      if (!existingKeys.has(key)) {
+        masterExtras.push({
+          id: p.id || `SP-CAT-MASTER-${idx + 1}`,
+          part_name: p.part_name,
+          part_number: p.part_number,
+          sku: p.sku || `SKU-${p.id}`,
+          description: p.description || `${p.part_name} — Suku cadang terdaftar dalam Spare Part Master.`,
+          unit: p.unit || "PCS",
+          hierarchy: [p.category || "Auxiliary System", "Master System", "Engine Parts"],
+          specification: `Rak Penyimpanan: ${p.location_id || 'Depot Utama'}, Limit RP: ${p.reorder_point || 0}`,
+          manufacturer: p.vendor_id || "Vendor Maritim BAg",
+          vessel_compatibility: "Semua Armada Kapal",
+          weight_kg: 1.0
+        });
+      }
+    });
+
+    return [...catalogData, ...masterExtras];
+  }, [catalogData, parts]);
 
   // Save changes to localStorage
   const saveToLocalStorage = (newData: CatalogItem[]) => {
@@ -349,17 +394,17 @@ export default function SparePartCatalogView() {
   // Filter Categories compiled dynamically from data hierarchy roots
   const categories = useMemo(() => {
     const list = new Set<string>();
-    catalogData.forEach(item => {
+    allCatalogItems.forEach(item => {
       if (item.hierarchy && item.hierarchy[0]) {
         list.add(item.hierarchy[0]);
       }
     });
     return ["All", ...Array.from(list)];
-  }, [catalogData]);
+  }, [allCatalogItems]);
 
-  // Apply filters to data (Removed status filter)
+  // Apply filters to data
   const filteredData = useMemo(() => {
-    return catalogData.filter(item => {
+    return allCatalogItems.filter(item => {
       const query = searchQuery.toLowerCase().trim();
       const matchesSearch = !query || 
         item.part_name.toLowerCase().includes(query) ||
@@ -372,7 +417,7 @@ export default function SparePartCatalogView() {
 
       return matchesSearch && matchesCategory;
     });
-  }, [catalogData, searchQuery, selectedCategory]);
+  }, [allCatalogItems, searchQuery, selectedCategory]);
 
   // Pagination logic
   const totalItems = filteredData.length;
@@ -623,18 +668,28 @@ export default function SparePartCatalogView() {
                     {item.description}
                   </p>
 
-                  <div className="grid grid-cols-3 gap-2.5 text-[11px] pt-1.5 border-t border-slate-100">
+                  <div className="grid grid-cols-4 gap-2 text-[11px] pt-1.5 border-t border-slate-100">
                     <div>
-                      <span className="text-slate-400 block uppercase font-mono text-[9px]">Satuan / Unit</span>
-                      <strong className="text-slate-800 font-bold">{item.unit}</strong>
+                      <span className="text-slate-400 block uppercase font-mono text-[9px]">Stok Master</span>
+                      <strong className={`font-extrabold text-[11px] inline-block px-1.5 py-0.5 rounded border ${
+                        getItemStock(item) > 0 
+                          ? "text-emerald-700 bg-emerald-50 border-emerald-200" 
+                          : "text-rose-700 bg-rose-50 border-rose-200"
+                      }`}>
+                        {getItemStock(item)} {item.unit}
+                      </strong>
                     </div>
                     <div>
-                      <span className="text-slate-400 block uppercase font-mono text-[9px]">Berat (Weight)</span>
-                      <strong className="text-slate-800 font-bold">{item.weight_kg} Kg</strong>
+                      <span className="text-slate-400 block uppercase font-mono text-[9px]">Satuan</span>
+                      <strong className="text-slate-800 font-bold block mt-0.5">{item.unit}</strong>
+                    </div>
+                    <div>
+                      <span className="text-slate-400 block uppercase font-mono text-[9px]">Berat</span>
+                      <strong className="text-slate-800 font-bold block mt-0.5">{item.weight_kg} Kg</strong>
                     </div>
                     <div>
                       <span className="text-slate-400 block uppercase font-mono text-[9px]">Pabrikan</span>
-                      <strong className="text-slate-800 font-bold truncate block" title={item.manufacturer}>
+                      <strong className="text-slate-800 font-bold truncate block mt-0.5" title={item.manufacturer}>
                         {item.manufacturer}
                       </strong>
                     </div>
@@ -1260,6 +1315,15 @@ export default function SparePartCatalogView() {
                       </div>
 
                       <div className="border-t border-slate-150 pt-2.5 space-y-1.5 text-xs">
+                        <div className="grid grid-cols-3 bg-emerald-50/80 p-2.5 rounded-lg border border-emerald-200/80 my-1">
+                          <span className="text-emerald-800 font-bold font-mono text-[10px] uppercase flex items-center gap-1">
+                            <Boxes className="w-3.5 h-3.5 text-emerald-600" />
+                            Stok Master (Qty):
+                          </span>
+                          <span className="col-span-2 font-extrabold text-sm text-emerald-800">
+                            {getItemStock(selectedItem)} {selectedItem.unit}
+                          </span>
+                        </div>
                         <div className="grid grid-cols-3">
                           <span className="text-slate-450 font-medium font-mono text-[10px] uppercase">Pabrikan:</span>
                           <span className="col-span-2 font-bold text-slate-800">{selectedItem.manufacturer}</span>

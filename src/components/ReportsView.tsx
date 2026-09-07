@@ -102,7 +102,9 @@ export default function ReportsView({
     // 1. Convert Inbound Receiving records into ledger entries
     if (receivingList && receivingList.length > 0) {
       receivingList.forEach(rec => {
-        rec.items.forEach((item, idx) => {
+        if (!rec || !rec.items) return;
+        (rec.items || []).forEach((item, idx) => {
+          if (!item) return;
           const entryId = `rec-${rec.id}-${item.spare_part_id || idx}`;
           if (!existingIds.has(entryId)) {
             const qty = item.qty_received || item.qty_ordered || 0;
@@ -117,7 +119,7 @@ export default function ReportsView({
               before_stock: 0,
               after_stock: qty,
               reference_number: rec.purchase_order_num || rec.delivery_note_num || `PO-${rec.id}`,
-              remarks: `Inbound PO | Vendor: ${rec.vendor_name} | DN: ${rec.delivery_note_num || '-'} | Status: ${rec.status}`,
+              remarks: `Inbound PO | Vendor: ${rec.vendor_name || '-'} | DN: ${rec.delivery_note_num || '-'} | Status: ${rec.status}`,
               transaction_date: rec.received_date || new Date().toISOString(),
               created_by: rec.created_by || "Ahmad Subarjo (Staff 1)"
             });
@@ -129,7 +131,9 @@ export default function ReportsView({
     // 2. Convert Outbound Dispatch records into ledger entries
     if (dispatchList && dispatchList.length > 0) {
       dispatchList.forEach(dsp => {
-        dsp.items.forEach((item, idx) => {
+        if (!dsp || !dsp.items) return;
+        (dsp.items || []).forEach((item, idx) => {
+          if (!item) return;
           const entryId = `dsp-${dsp.id}-${item.spare_part_id || idx}`;
           if (!existingIds.has(entryId)) {
             const qty = item.qty_dispatched || item.qty_requested || 0;
@@ -144,7 +148,7 @@ export default function ReportsView({
               before_stock: qty,
               after_stock: 0,
               reference_number: dsp.tug8_number || dsp.dispatch_number || dsp.surat_jalan_number || dsp.bon_pengeluaran_number || `DSP-${dsp.id}`,
-              remarks: `Outbound TUG 8 | Kapal: ${dsp.vessel_name} | Tujuan: ${dsp.destination_port || 'Pelabuhan'} | Transporter: ${dsp.transporter_name || '-'}`,
+              remarks: `Outbound TUG 8 | Kapal: ${dsp.vessel_name || '-'} | Tujuan: ${dsp.destination_port || 'Pelabuhan'} | Transporter: ${dsp.transporter_name || '-'}`,
               transaction_date: dsp.dispatch_date || dsp.created_at || new Date().toISOString(),
               created_by: dsp.created_by || "Ahmad Subarjo (Staff 1)"
             });
@@ -158,7 +162,7 @@ export default function ReportsView({
 
   // Group movements & items by SPK & TUG Flow
   const spkGroupedList = useMemo(() => {
-    const spks = spkList && spkList.length > 0 ? spkList : [
+    const spks = (spkList && spkList.length > 0) ? spkList.filter(Boolean) : [
       {
         id: "spk-seed-1",
         spk_number: "SPK-2026-0001",
@@ -195,20 +199,23 @@ export default function ReportsView({
     ];
 
     return spks.map(spk => {
+      if (!spk) return null;
       const matchingTug5 = (materialRequests || []).find(
-        mr => mr.work_order_ref === spk.spk_number || mr.spk_number === spk.spk_number || (mr as any).spk_id === spk.id
+        mr => mr && (mr.work_order_ref === spk.spk_number || mr.spk_number === spk.spk_number || (mr as any).spk_id === spk.id)
       );
       const matchingTug8 = (dispatchList || []).find(
-        d => d.spk_number === spk.spk_number || d.spk_id === spk.id || d.work_order_ref === spk.spk_number
+        d => d && (d.spk_number === spk.spk_number || d.spk_id === spk.id || d.work_order_ref === spk.spk_number)
       );
       const matchingTug10 = (materialReturns || []).find(
-        r => r.spk_number === spk.spk_number || r.spk_id === spk.id || r.work_order_number === spk.spk_number
+        r => r && (r.spk_number === spk.spk_number || r.spk_id === spk.id || r.work_order_number === spk.spk_number)
       );
 
       const itemMap: { [key: string]: any } = {};
 
-      spk.vessels.forEach(v => {
-        v.items.forEach(it => {
+      (spk.vessels || []).forEach(v => {
+        if (!v || !v.items) return;
+        (v.items || []).forEach(it => {
+          if (!it) return;
           itemMap[it.spare_part_id] = {
             spare_part_id: it.spare_part_id,
             spare_part_name: it.spare_part_name,
@@ -218,13 +225,14 @@ export default function ReportsView({
             qty_tug5: 0,
             qty_tug8: 0,
             qty_tug10: 0,
-            remarks: `Alokasi Kapal ${v.vessel_name}`
+            remarks: `Alokasi Kapal ${v.vessel_name || '-'}`
           };
         });
       });
 
-      if (matchingTug5) {
+      if (matchingTug5 && matchingTug5.items) {
         matchingTug5.items.forEach(it => {
+          if (!it) return;
           const curr = itemMap[it.spare_part_id] || {
             spare_part_id: it.spare_part_id,
             spare_part_name: it.spare_part_name,
@@ -241,8 +249,9 @@ export default function ReportsView({
         });
       }
 
-      if (matchingTug8) {
+      if (matchingTug8 && matchingTug8.items) {
         matchingTug8.items.forEach(it => {
+          if (!it) return;
           const curr = itemMap[it.spare_part_id] || {
             spare_part_id: it.spare_part_id,
             spare_part_name: it.spare_part_name || (it as any).part_name,
@@ -259,8 +268,9 @@ export default function ReportsView({
         });
       }
 
-      if (matchingTug10) {
+      if (matchingTug10 && matchingTug10.items) {
         matchingTug10.items.forEach(it => {
+          if (!it) return;
           const curr = itemMap[it.spare_part_id] || {
             spare_part_id: it.spare_part_id,
             spare_part_name: it.part_name || (it as any).spare_part_name,
@@ -283,30 +293,32 @@ export default function ReportsView({
         qty_net: Math.max(0, (it.qty_tug8 || it.qty_spk || 1) - (it.qty_tug10 || 0))
       }));
 
-      const primaryVessel = spk.vessels[0]?.vessel_name || matchingTug5?.vessel_name || matchingTug8?.vessel_name || matchingTug10?.vessel_name || "MV. KARTINI BARUNA";
+      const vList = Array.isArray(spk.vessels) ? spk.vessels : [];
+      const primaryVessel = (vList[0] && vList[0].vessel_name) ? vList[0].vessel_name : (matchingTug5?.vessel_name || matchingTug8?.vessel_name || matchingTug10?.vessel_name || "MV. KARTINI BARUNA");
 
       return {
         id: spk.id,
-        spk_number: spk.spk_number,
-        target_port: spk.target_port,
+        spk_number: spk.spk_number || "SPK-WO",
+        target_port: spk.target_port || "Pelabuhan Merak",
         vessel_name: primaryVessel,
-        status: spk.status,
-        created_at: spk.created_at,
-        created_by: spk.created_by,
-        remarks: (spk as any).remarks,
-        tug5_number: matchingTug5?.tug5_number || matchingTug5?.request_number || `TUG5-${spk.spk_number.split('-').pop()}`,
-        tug8_number: matchingTug8?.tug8_number || matchingTug8?.dispatch_number || `TUG8-${spk.spk_number.split('-').pop()}`,
-        tug10_number: matchingTug10?.return_number || `TUG10-${spk.spk_number.split('-').pop()}`,
+        status: spk.status || "OPEN",
+        created_at: spk.created_at || new Date().toISOString(),
+        created_by: spk.created_by || "Superadmin",
+        remarks: (spk as any).remarks || "",
+        tug5_number: matchingTug5?.tug5_number || matchingTug5?.request_number || `TUG5-${(spk.spk_number || 'WO').split('-').pop()}`,
+        tug8_number: matchingTug8?.tug8_number || matchingTug8?.dispatch_number || `TUG8-${(spk.spk_number || 'WO').split('-').pop()}`,
+        tug10_number: matchingTug10?.return_number || `TUG10-${(spk.spk_number || 'WO').split('-').pop()}`,
         transporter_name: matchingTug8?.transporter_name,
         driver_name: (matchingTug8 as any)?.driver_name,
         vehicle_number: (matchingTug8 as any)?.vehicle_number,
         items: itemsList
       };
-    });
+    }).filter(Boolean);
   }, [spkList, materialRequests, dispatchList, materialReturns]);
 
   const filteredSPKList = useMemo(() => {
-    return spkGroupedList.filter(s => {
+    return spkGroupedList.filter((s): s is NonNullable<typeof s> => {
+      if (!s) return false;
       // 1. Time Filters
       if (s.created_at) {
         const spkDate = new Date(s.created_at);

@@ -126,6 +126,8 @@ export interface InboundReceiving {
   id: string;
   purchase_order_num: string;
   delivery_note_num: string;
+  spk_number?: string;
+  spk_id?: string;
   vendor_id: string;
   vendor_name: string;
   items: Array<{
@@ -137,8 +139,12 @@ export interface InboundReceiving {
     qty_rejected: number;
     qc_status: "Verified" | "Rejected" | "Pending" | "Approved";
     reject_reason?: string;
+    item_matched?: "Sesuai" | "Tidak Sesuai" | boolean;
+    qty_matched_status?: string;
+    keeper_notes?: string;
   }>;
   status: ReceivingStatus;
+  keeper_notes?: string;
   reject_reason?: string;
   return_note_num?: string;
   photo_evidence_url?: string;
@@ -364,7 +370,9 @@ export interface MaterialReturnItem {
   spare_part_id: string;
   part_number: string;
   part_name: string;
+  spare_part_name?: string;
   unit: string;
+  avg_monthly_usage?: number;
   qty_issued?: number;
   qty_used?: number;
   qty_returnable?: number;

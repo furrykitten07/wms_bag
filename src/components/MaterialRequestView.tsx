@@ -19,6 +19,9 @@ import {
   Search, 
   Filter, 
   ChevronRight, 
+  ChevronLeft,
+  ChevronsLeft,
+  ChevronsRight,
   User, 
   Anchor, 
   MapPin, 
@@ -29,7 +32,8 @@ import {
   X,
   ChevronDown,
   Edit3,
-  Archive
+  Archive,
+  ShieldCheck
 } from "lucide-react";
 import { 
   User as UserType, 
@@ -100,10 +104,15 @@ export default function MaterialRequestView({
 
   // TUG 5 (Material Requests) Pagination states
   const [tugPage, setTugPage] = useState(1);
-  const tugPerPage = 10;
+  const [tugPerPage, setTugPerPage] = useState<number>(10);
+
+  // Selected request IDs state for Bulk Delete Checklist
+  const [selectedMRIds, setSelectedMRIds] = useState<string[]>([]);
+  const [isBulkDeleting, setIsBulkDeleting] = useState<boolean>(false);
 
   React.useEffect(() => {
     setTugPage(1);
+    setSelectedMRIds([]);
   }, [searchQuery, statusFilter]);
 
   // Create form state
@@ -124,6 +133,13 @@ export default function MaterialRequestView({
   const [itemNotes, setItemNotes] = useState<string>("");
 
   const activeMR = requests.find(r => r.id === selectedMRId) || null;
+
+  const uLower = (currentUser.username || "").toLowerCase();
+  const rLower = (currentUser.role || "").toLowerCase();
+
+  const isAlfinRole = uLower.includes("alfin") || rLower.includes("verifikator") || rLower.includes("petugas") || rLower.includes("admin") || uLower.includes("superadmin") || rLower.includes("super");
+  const isEmirRole = uLower.includes("emir") || rLower.includes("manager") || rLower.includes("logistik") || uLower.includes("superadmin") || rLower.includes("super");
+  const isSumbonoRole = uLower.includes("sumbono") || rLower.includes("vp") || rLower.includes("rendalhar") || uLower.includes("superadmin") || rLower.includes("super");
 
   const resetForm = () => {
     setRequestDate(new Date().toISOString().split("T")[0]);
@@ -351,7 +367,17 @@ export default function MaterialRequestView({
 
   const handleEditClick = (mr: MaterialRequest) => {
     setSelectedMRId(mr.id);
-    handleStartEdit(mr);
+    setRequestDate(mr.request_date || new Date().toISOString().split("T")[0]);
+    setVesselName(mr.vessel_name || currentUser.vesselName || "MV. KARTINI BARUNA");
+    setWarehouseName(mr.warehouse_name || "Gudang Merak");
+    setDeliveryAddress(mr.delivery_address || "");
+    setWorkOrderRef(mr.work_order_ref || "");
+    setAccountCode(mr.account_code || "BPP");
+    setFunctionCode(mr.function_code || "ARMADA");
+    setRemarks(mr.remarks || "");
+    setFormItems(mr.items || []);
+    setIsEditing(true);
+    setIsCreating(false);
   };
 
   const handleSubmitClick = async (mr: MaterialRequest) => {
@@ -365,21 +391,25 @@ export default function MaterialRequestView({
   };
 
   // Filter requests
-  const filteredRequests = requests.filter(mr => {
+  const filteredRequests = (requests || []).filter(mr => {
+    if (!mr) return false;
     const q = searchQuery.toLowerCase().trim();
     if (!q) {
       if (statusFilter === "All") return true;
       return mr.status === statusFilter;
     }
 
+    const reqNum = mr.request_number || "";
+    const vesName = mr.vessel_name || "";
+
     const matchesHeader = 
-      mr.request_number.toLowerCase().includes(q) ||
+      reqNum.toLowerCase().includes(q) ||
       (mr.tug5_number && mr.tug5_number.toLowerCase().includes(q)) ||
       (mr.tug6_number && mr.tug6_number.toLowerCase().includes(q)) ||
       (mr.tug_number && mr.tug_number.toLowerCase().includes(q)) ||
       (mr.spk_number && mr.spk_number.toLowerCase().includes(q)) ||
       (mr.spk_id && mr.spk_id.toLowerCase().includes(q)) ||
-      mr.vessel_name.toLowerCase().includes(q) ||
+      vesName.toLowerCase().includes(q) ||
       (mr.requester_name && mr.requester_name.toLowerCase().includes(q)) ||
       (mr.requested_by && mr.requested_by.toLowerCase().includes(q)) ||
       (mr.created_by && mr.created_by.toLowerCase().includes(q)) ||
@@ -404,6 +434,53 @@ export default function MaterialRequestView({
   // Computed TUG 5 pagination values
   const tugTotalPages = Math.ceil(filteredRequests.length / tugPerPage);
   const paginatedRequests = filteredRequests.slice((tugPage - 1) * tugPerPage, tugPage * tugPerPage);
+
+  const isAllPageSelected = paginatedRequests.length > 0 && paginatedRequests.every(r => selectedMRIds.includes(r.id));
+  const isSomePageSelected = paginatedRequests.some(r => selectedMRIds.includes(r.id));
+
+  const handleSelectAllPage = (e: React.ChangeEvent<HTMLInputElement>) => {
+    if (e.target.checked) {
+      const pageIds = paginatedRequests.map(r => r.id);
+      const combined = Array.from(new Set([...selectedMRIds, ...pageIds]));
+      setSelectedMRIds(combined);
+    } else {
+      const pageIds = new Set(paginatedRequests.map(r => r.id));
+      setSelectedMRIds(selectedMRIds.filter(id => !pageIds.has(id)));
+    }
+  };
+
+  const handleToggleSelectRow = (id: string, e: React.ChangeEvent<HTMLInputElement>) => {
+    e.stopPropagation();
+    if (e.target.checked) {
+      setSelectedMRIds(prev => [...prev, id]);
+    } else {
+      setSelectedMRIds(prev => prev.filter(item => item !== id));
+    }
+  };
+
+  const handleBulkDelete = async () => {
+    if (selectedMRIds.length === 0) return;
+    const confirmMsg = `Apakah Anda yakin ingin menghapus ${selectedMRIds.length} dokumen TUG 5 yang dichecklist?`;
+    if (!confirm(confirmMsg)) return;
+
+    setIsBulkDeleting(true);
+    const totalToDelete = selectedMRIds.length;
+    try {
+      for (const id of selectedMRIds) {
+        await onDeleteRequest(id);
+      }
+      if (selectedMRId && selectedMRIds.includes(selectedMRId)) {
+        setSelectedMRId(null);
+      }
+      setSelectedMRIds([]);
+      alert(`Berhasil menghapus ${totalToDelete} dokumen TUG 5.`);
+    } catch (err: any) {
+      console.error("Bulk delete error:", err);
+      alert("Terjadi kesalahan saat menghapus dokumen TUG 5.");
+    } finally {
+      setIsBulkDeleting(false);
+    }
+  };
 
   const renderApprovalStatus = (mr: MaterialRequest) => {
     const signed: string[] = [];
@@ -536,10 +613,51 @@ export default function MaterialRequestView({
 
       {/* 3. CORE FLAT TABLE DISPLAY */}
       <div className="flex-1 flex flex-col min-h-0 bg-white">
-        <div className="flex-1 overflow-auto pb-24">
+        
+        {/* Bulk Delete Action Bar */}
+        {selectedMRIds.length > 0 && (
+          <div className="bg-rose-50 border-b border-rose-200 px-6 py-2.5 flex items-center justify-between shadow-xs sticky top-0 z-20">
+            <div className="flex items-center gap-2 font-mono text-xs text-rose-900 font-extrabold">
+              <AlertTriangle className="w-4 h-4 text-rose-600 shrink-0" />
+              <span>Terpilih <span className="bg-rose-200 text-rose-950 px-2 py-0.5 rounded font-black">{selectedMRIds.length}</span> Dokumen TUG 5</span>
+            </div>
+            <div className="flex items-center gap-2 font-mono text-xs">
+              <button
+                type="button"
+                onClick={() => setSelectedMRIds([])}
+                className="px-3 py-1 bg-white border border-rose-200 text-slate-700 hover:bg-slate-50 text-[11px] font-bold rounded-lg cursor-pointer transition-colors"
+              >
+                Batal Pilih
+              </button>
+              <button
+                type="button"
+                disabled={isBulkDeleting}
+                onClick={handleBulkDelete}
+                className="px-4 py-1.5 bg-rose-600 hover:bg-rose-700 active:bg-rose-800 disabled:opacity-50 text-white text-[11px] font-mono font-black uppercase rounded-lg shadow-xs cursor-pointer flex items-center gap-1.5 transition-all"
+              >
+                <Trash2 className="w-3.5 h-3.5" />
+                <span>{isBulkDeleting ? "Menghapus..." : `Hapus (${selectedMRIds.length}) Terpilih`}</span>
+              </button>
+            </div>
+          </div>
+        )}
+
+        <div className="flex-1 overflow-auto">
           <table className="w-full text-left border-collapse min-w-[1200px]">
             <thead>
               <tr className="bg-slate-50 text-slate-700 text-[10px] font-mono uppercase tracking-wider border-b border-slate-200 sticky top-0 z-10">
+                <th className="py-4 px-4 font-black w-12 text-center bg-slate-50">
+                  <input
+                    type="checkbox"
+                    className="w-4 h-4 rounded text-indigo-600 focus:ring-indigo-500 border-slate-300 cursor-pointer accent-indigo-600"
+                    checked={isAllPageSelected}
+                    ref={input => {
+                      if (input) input.indeterminate = !isAllPageSelected && isSomePageSelected;
+                    }}
+                    onChange={handleSelectAllPage}
+                    title="Pilih Semua di Halaman Ini"
+                  />
+                </th>
                 <th className="py-4 px-6 font-black w-16 text-center">NO</th>
                 <th className="py-4 px-6 font-semibold">No. Request</th>
                 <th className="py-4 px-6 font-semibold">Tanggal Pengajuan</th>
@@ -554,19 +672,33 @@ export default function MaterialRequestView({
             <tbody className="divide-y divide-slate-100 text-xs">
               {filteredRequests.length === 0 ? (
                 <tr>
-                  <td colSpan={9} className="py-16 text-center text-slate-400 font-mono text-[11px]">
+                  <td colSpan={10} className="py-16 text-center text-slate-400 font-mono text-[11px]">
                     Tidak ada dokumen permintaan barang TUG 5 yang terekam.
                   </td>
                 </tr>
               ) : (
                 paginatedRequests.map((mr, idx) => {
-                  const dateStr = new Date(mr.request_date).toLocaleDateString("id-ID", { 
+                  const dateStr = mr.request_date ? new Date(mr.request_date).toLocaleDateString("id-ID", { 
                     day: "numeric", 
                     month: "long", 
                     year: "numeric" 
-                  });
+                  }) : "-";
+                  const isSelected = selectedMRIds.includes(mr.id);
                   return (
-                    <tr key={mr.id} className="hover:bg-slate-50/70 transition-colors">
+                    <tr 
+                      key={mr.id} 
+                      className={`transition-colors ${
+                        isSelected ? "bg-rose-50/60" : "hover:bg-slate-50/70"
+                      }`}
+                    >
+                      <td className="py-4.5 px-4 text-center" onClick={(e) => e.stopPropagation()}>
+                        <input
+                          type="checkbox"
+                          className="w-4 h-4 rounded text-indigo-600 focus:ring-indigo-500 border-slate-300 cursor-pointer accent-indigo-600"
+                          checked={isSelected}
+                          onChange={(e) => handleToggleSelectRow(mr.id, e)}
+                        />
+                      </td>
                       <td className="py-4.5 px-6 text-center font-mono text-slate-400 font-bold">{(tugPage - 1) * tugPerPage + idx + 1}</td>
                       <td 
                         onClick={() => handleViewDetails(mr)}
@@ -579,7 +711,7 @@ export default function MaterialRequestView({
                       <td className="py-4.5 px-6 text-slate-700 font-semibold">{mr.requester_name}</td>
                       <td className="py-4.5 px-6 text-center font-mono font-bold">
                         <span className="bg-slate-50 px-3 py-1.5 rounded border border-slate-205 text-slate-700 text-[10px]">
-                          {mr.items.length} Suku Cadang
+                          {(mr.items || []).length} Suku Cadang
                         </span>
                       </td>
                       <td className="py-4.5 px-6 font-mono text-rose-600 font-bold text-[11.5px]">{mr.work_order_ref || "-"}</td>
@@ -638,7 +770,7 @@ export default function MaterialRequestView({
                                   )}
 
                                   {/* Quick Level 1 Signature Button (Alfin / Verifikator) */}
-                                  {(currentUser.username === "alfin" || currentUser.role === UserRole.VERIFIER_RENDALHAR || currentUser.role === UserRole.SUPER_ADMIN) && !mr.alfin_signed && (
+                                  {isAlfinRole && !mr.alfin_signed && (
                                     <>
                                       <div className="border-t border-slate-100 my-1"></div>
                                       <button
@@ -663,7 +795,7 @@ export default function MaterialRequestView({
                                   )}
 
                                   {/* Quick Level 2 Signature Button (Emir / Manager Logistik) */}
-                                  {(currentUser.username === "emir" || currentUser.role === UserRole.LOGISTICS_MANAGER || currentUser.role === UserRole.SUPER_ADMIN) && !mr.emir_signed && (
+                                  {isEmirRole && !mr.emir_signed && (
                                     <>
                                       <div className="border-t border-slate-100 my-1"></div>
                                       <button
@@ -687,7 +819,7 @@ export default function MaterialRequestView({
                                   )}
 
                                   {/* Quick Level 3 Signature Button (Sumbono / VP Rendalhar) */}
-                                  {(currentUser.username === "sumbono" || currentUser.role === UserRole.VP_RENDALHAR || currentUser.role === UserRole.SUPER_ADMIN) && !mr.sumbono_signed && (
+                                  {isSumbonoRole && !mr.sumbono_signed && (
                                     <>
                                       <div className="border-t border-slate-100 my-1"></div>
                                       <button
@@ -780,29 +912,95 @@ export default function MaterialRequestView({
           </table>
         </div>
 
-        {/* Pagination Bar for TUG 5 */}
-        <div id="tug-pagination-bar" className="bg-white border-t border-slate-200 px-6 py-4.5 flex items-center justify-between font-mono text-[11px] font-bold shrink-0 shadow-2xs no-print">
-          <span className="text-slate-450 uppercase tracking-widest leading-none text-[10px] font-black">
-            TOTAL REKOR DATA: {filteredRequests.length} TUG 5
-          </span>
+        {/* Modern Sticky Pagination Bar for TUG 5 */}
+        <div id="tug-pagination-bar" className="bg-white border-t border-slate-200 px-6 py-3 flex flex-col sm:flex-row items-center justify-between gap-3 font-sans text-xs shrink-0 shadow-md sticky bottom-0 z-20 no-print">
+          {/* Left: Record Range Summary & Per Page Selector */}
+          <div className="flex items-center gap-4 text-slate-600 font-medium">
+            <div className="flex items-center gap-2">
+              <span className="text-[11px] font-mono text-slate-500 uppercase font-bold">Baris per halaman:</span>
+              <select
+                value={tugPerPage}
+                onChange={(e) => {
+                  setTugPerPage(Number(e.target.value));
+                  setTugPage(1);
+                }}
+                className="bg-slate-50 border border-slate-250 text-slate-800 text-xs font-bold font-mono rounded-lg px-2 py-1 focus:outline-none focus:ring-1 focus:ring-indigo-500 cursor-pointer"
+              >
+                <option value={5}>5</option>
+                <option value={10}>10</option>
+                <option value={25}>25</option>
+                <option value={50}>50</option>
+                <option value={100}>100</option>
+              </select>
+            </div>
+            <span className="text-slate-300">|</span>
+            <span className="text-[11px] font-mono text-slate-600 font-bold">
+              Menampilkan <span className="text-slate-900 font-black">{filteredRequests.length > 0 ? (tugPage - 1) * tugPerPage + 1 : 0}</span> - <span className="text-slate-900 font-black">{Math.min(tugPage * tugPerPage, filteredRequests.length)}</span> dari <span className="text-slate-900 font-black">{filteredRequests.length}</span> data TUG 5
+            </span>
+          </div>
 
-          <div className="flex items-center gap-1">
+          {/* Right: Page Number Buttons */}
+          <div className="flex items-center gap-1 font-mono">
+            <button
+              disabled={tugPage === 1}
+              onClick={() => setTugPage(1)}
+              className="p-1.5 rounded-lg border border-slate-200 text-slate-600 disabled:opacity-30 hover:bg-slate-100 disabled:hover:bg-transparent transition-all cursor-pointer disabled:cursor-not-allowed"
+              title="Halaman Pertama"
+            >
+              <ChevronsLeft className="w-4 h-4" />
+            </button>
+
             <button
               disabled={tugPage === 1}
               onClick={() => setTugPage(p => Math.max(1, p - 1))}
-              className="px-3 py-1.5 rounded-lg border border-slate-200 text-slate-600 disabled:opacity-40 hover:bg-slate-50 transition-colors cursor-pointer disabled:cursor-not-allowed"
+              className="p-1.5 rounded-lg border border-slate-200 text-slate-600 disabled:opacity-30 hover:bg-slate-100 disabled:hover:bg-transparent transition-all cursor-pointer disabled:cursor-not-allowed flex items-center gap-1 px-2.5 text-xs font-bold"
+              title="Halaman Sebelumnya"
             >
-              Sebelumnya
+              <ChevronLeft className="w-4 h-4" />
+              <span className="hidden md:inline">Sebelumnya</span>
             </button>
-            <span className="px-3 py-1.5 text-slate-500">
-              Halaman {tugPage} dari {tugTotalPages || 1}
-            </span>
+
+            <div className="flex items-center gap-1 px-1">
+              {Array.from({ length: tugTotalPages || 1 }, (_, i) => i + 1)
+                .filter(p => p === 1 || p === tugTotalPages || Math.abs(p - tugPage) <= 1)
+                .map((p, i, arr) => {
+                  const prev = arr[i - 1];
+                  const showEllipsis = prev && p - prev > 1;
+                  return (
+                    <React.Fragment key={p}>
+                      {showEllipsis && <span className="px-1 text-slate-400 font-bold">...</span>}
+                      <button
+                        onClick={() => setTugPage(p)}
+                        className={`w-8 h-8 rounded-lg text-xs font-mono font-bold transition-all cursor-pointer ${
+                          tugPage === p
+                            ? "bg-slate-900 text-white shadow-xs font-black"
+                            : "bg-white border border-slate-200 text-slate-600 hover:bg-slate-100"
+                        }`}
+                      >
+                        {p}
+                      </button>
+                    </React.Fragment>
+                  );
+                })}
+            </div>
+
             <button
-              disabled={tugPage === tugTotalPages || tugTotalPages <= 1}
+              disabled={tugPage >= tugTotalPages || tugTotalPages <= 1}
               onClick={() => setTugPage(p => Math.min(tugTotalPages, p + 1))}
-              className="px-3 py-1.5 rounded-lg border border-slate-200 text-slate-600 disabled:opacity-40 hover:bg-slate-50 transition-colors cursor-pointer disabled:cursor-not-allowed"
+              className="p-1.5 rounded-lg border border-slate-200 text-slate-600 disabled:opacity-30 hover:bg-slate-100 disabled:hover:bg-transparent transition-all cursor-pointer disabled:cursor-not-allowed flex items-center gap-1 px-2.5 text-xs font-bold"
+              title="Halaman Selanjutnya"
             >
-              Selanjutnya
+              <span className="hidden md:inline">Selanjutnya</span>
+              <ChevronRight className="w-4 h-4" />
+            </button>
+
+            <button
+              disabled={tugPage >= tugTotalPages || tugTotalPages <= 1}
+              onClick={() => setTugPage(tugTotalPages)}
+              className="p-1.5 rounded-lg border border-slate-200 text-slate-600 disabled:opacity-30 hover:bg-slate-100 disabled:hover:bg-transparent transition-all cursor-pointer disabled:cursor-not-allowed"
+              title="Halaman Terakhir"
+            >
+              <ChevronsRight className="w-4 h-4" />
             </button>
           </div>
         </div>
@@ -824,10 +1022,10 @@ export default function MaterialRequestView({
                 <div>
                   <h3 className="text-sm font-black font-display text-slate-950 tracking-wider uppercase flex items-center gap-2">
                     {activeMR.request_number}
-                    {getStatusBadge(activeMR.status)}
+                    {renderApprovalStatus(activeMR)}
                   </h3>
                   <p className="text-[10px] text-slate-500 font-mono">
-                    Diajukan: {new Date(activeMR.created_at).toLocaleString("id-ID")}
+                    Diajukan: {activeMR.created_at ? new Date(activeMR.created_at).toLocaleString("id-ID") : "-"}
                   </p>
                 </div>
               </div>
@@ -908,7 +1106,7 @@ export default function MaterialRequestView({
                   </div>
                   <div className="flex justify-between border-b border-slate-100 pb-1 font-mono text-[11px]">
                     <span className="text-slate-400">Tanggal TUG 5:</span>
-                    <span className="text-slate-800 font-semibold">{new Date(activeMR.request_date).toLocaleDateString("id-ID", { day: "numeric", month: "long", year: "numeric" })}</span>
+                    <span className="text-slate-800 font-semibold">{activeMR.request_date ? new Date(activeMR.request_date).toLocaleDateString("id-ID", { day: "numeric", month: "long", year: "numeric" }) : "-"}</span>
                   </div>
                   <div className="flex justify-between border-b border-slate-100 pb-1">
                     <span className="text-slate-400">Kepala Bagian / Pemohon:</span>
@@ -970,7 +1168,7 @@ export default function MaterialRequestView({
                 <h4 className="text-[10px] font-black font-mono uppercase tracking-widest text-slate-500 flex items-center justify-between">
                   <span>RINCIAN DAFTAR MATERIAL SUKU CADANG (TUG 5 CODES)</span>
                   <span className="bg-emerald-50 border border-emerald-200 px-2.5 py-0.5 rounded-full font-bold text-emerald-800 text-[9.5px]">
-                    Daftar {activeMR.items.length} Barang
+                    Daftar {(activeMR.items || []).length} Barang
                   </span>
                 </h4>
 
@@ -990,7 +1188,7 @@ export default function MaterialRequestView({
                       </tr>
                     </thead>
                     <tbody className="divide-y divide-slate-100 text-xs text-slate-800">
-                      {activeMR.items.map((itm, idx) => (
+                      {(activeMR.items || []).map((itm, idx) => (
                         <tr key={idx} className="hover:bg-slate-50/50">
                           <td className="py-2.5 px-4 text-center font-mono text-slate-400 font-bold">{idx + 1}</td>
                           <td className="py-2.5 px-3 text-slate-900 font-bold">{itm.spare_part_name}</td>
@@ -1051,7 +1249,7 @@ export default function MaterialRequestView({
                       <div className="mt-3 pt-2 border-t border-emerald-500/30 text-[9.5px] font-mono text-emerald-300">
                         ✓ TTD Digital dibubuhkan: {activeMR.alfin_signed_at ? new Date(activeMR.alfin_signed_at).toLocaleString("id-ID") : "Terverifikasi"}
                       </div>
-                    ) : (currentUser.username === "alfin" || currentUser.role === UserRole.VERIFIER_RENDALHAR || currentUser.role === UserRole.SUPER_ADMIN) ? (
+                    ) : isAlfinRole ? (
                       <button
                         onClick={async () => {
                           const now = new Date().toISOString();
@@ -1093,7 +1291,7 @@ export default function MaterialRequestView({
                       <div className="mt-3 pt-2 border-t border-emerald-500/30 text-[9.5px] font-mono text-emerald-300">
                         ✓ TTD Digital dibubuhkan: {activeMR.emir_signed_at ? new Date(activeMR.emir_signed_at).toLocaleString("id-ID") : "Terverifikasi"}
                       </div>
-                    ) : (currentUser.username === "emir" || currentUser.role === UserRole.LOGISTICS_MANAGER || currentUser.role === UserRole.SUPER_ADMIN) ? (
+                    ) : isEmirRole ? (
                       <button
                         onClick={async () => {
                           const now = new Date().toISOString();
@@ -1134,7 +1332,7 @@ export default function MaterialRequestView({
                       <div className="mt-3 pt-2 border-t border-emerald-500/30 text-[9.5px] font-mono text-emerald-300">
                         ✓ TTD Digital dibubuhkan: {activeMR.sumbono_signed_at ? new Date(activeMR.sumbono_signed_at).toLocaleString("id-ID") : "Disahkan"}
                       </div>
-                    ) : (currentUser.username === "sumbono" || currentUser.role === UserRole.VP_RENDALHAR || currentUser.role === UserRole.SUPER_ADMIN) ? (
+                    ) : isSumbonoRole ? (
                       <button
                         onClick={async () => {
                           const now = new Date().toISOString();

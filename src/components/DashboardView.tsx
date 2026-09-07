@@ -93,16 +93,17 @@ export default function DashboardView({
 
     return months.map(m => {
       const countTug5 = (materialRequests || []).filter(mr => {
-        if (!mr.request_date) return false;
+        if (!mr || !mr.request_date) return false;
         const d = new Date(mr.request_date);
-        return d.getMonth() === m.monthIdx;
+        return !isNaN(d.getTime()) && d.getMonth() === m.monthIdx;
       }).length;
 
       const countTug8 = (dispatches || []).filter(d => {
+        if (!d) return false;
         const dateStr = d.created_at || d.dispatch_number;
         if (!dateStr) return false;
         const dateObj = new Date(dateStr);
-        return dateObj.getMonth() === m.monthIdx;
+        return !isNaN(dateObj.getTime()) && dateObj.getMonth() === m.monthIdx;
       }).length;
 
       const tug5 = countTug5 > 0 ? countTug5 : m.baseTug5;

@@ -19,6 +19,9 @@ import {
   Search, 
   Filter, 
   ChevronRight, 
+  ChevronLeft,
+  ChevronsLeft,
+  ChevronsRight,
   User, 
   Anchor, 
   MapPin, 
@@ -29,7 +32,8 @@ import {
   X,
   ChevronDown,
   Edit3,
-  RefreshCw
+  RefreshCw,
+  ShieldCheck
 } from "lucide-react";
 import { 
   User as UserType, 
@@ -75,6 +79,13 @@ export default function MaterialReturnView({
   const [searchQuery, setSearchQuery] = useState<string>("");
   const [statusFilter, setStatusFilter] = useState<string>("All");
 
+  const uLower = (currentUser?.username || "").toLowerCase();
+  const rLower = (currentUser?.role || "").toLowerCase();
+
+  const isAlfinRole = uLower.includes("alfin") || rLower.includes("verifikator") || rLower.includes("petugas") || rLower.includes("admin") || uLower.includes("superadmin") || rLower.includes("super");
+  const isEmirRole = uLower.includes("emir") || rLower.includes("manager") || rLower.includes("logistik") || uLower.includes("superadmin") || rLower.includes("super");
+  const isSumbonoRole = uLower.includes("sumbono") || rLower.includes("vp") || rLower.includes("rendalhar") || uLower.includes("superadmin") || rLower.includes("super");
+
   // Date/Time filter states for TUG 10 (Minggu, Bulan, Custom, Juli 2026 Kosong)
   const [timePreset, setTimePreset] = useState<"all" | "week" | "month" | "july2026" | "custom">("all");
   const [selectedMonth, setSelectedMonth] = useState<string>("ALL");
@@ -83,10 +94,15 @@ export default function MaterialReturnView({
 
   // Pagination states
   const [returnPage, setReturnPage] = useState(1);
-  const returnsPerPage = 10;
+  const [returnsPerPage, setReturnsPerPage] = useState<number>(10);
+
+  // Selected return IDs state for Bulk Delete Checklist
+  const [selectedReturnIds, setSelectedReturnIds] = useState<string[]>([]);
+  const [isBulkDeleting, setIsBulkDeleting] = useState<boolean>(false);
 
   React.useEffect(() => {
     setReturnPage(1);
+    setSelectedReturnIds([]);
   }, [searchQuery, statusFilter, timePreset, selectedMonth, dateFrom, dateTo]);
 
   // Create form state
@@ -368,13 +384,17 @@ export default function MaterialReturnView({
   };
 
   // Filter returns with time presets, custom date pickers, and July 2026 empty rule
-  const filteredReturns = returns.filter(ret => {
+  const filteredReturns = (returns || []).filter(ret => {
+    if (!ret) return false;
     const query = searchQuery.toLowerCase();
+    const retNum = ret.return_number || "";
+    const vesName = ret.vessel_name || "";
+    const retReason = ret.return_reason || "";
     const matchSearch = 
-      ret.return_number.toLowerCase().includes(query) ||
-      ret.vessel_name.toLowerCase().includes(query) ||
+      retNum.toLowerCase().includes(query) ||
+      vesName.toLowerCase().includes(query) ||
       (ret.spk_number && ret.spk_number.toLowerCase().includes(query)) ||
-      ret.return_reason.toLowerCase().includes(query);
+      retReason.toLowerCase().includes(query);
 
     if (!matchSearch) return false;
     if (statusFilter !== "All" && ret.status !== statusFilter) return false;
@@ -470,6 +490,53 @@ export default function MaterialReturnView({
     returnPage * returnsPerPage
   );
   const totalPages = Math.ceil(filteredReturns.length / returnsPerPage) || 1;
+
+  const isAllPageSelected = paginatedReturns.length > 0 && paginatedReturns.every(ret => selectedReturnIds.includes(ret.id));
+  const isSomePageSelected = paginatedReturns.some(ret => selectedReturnIds.includes(ret.id));
+
+  const handleSelectAllPage = (e: React.ChangeEvent<HTMLInputElement>) => {
+    if (e.target.checked) {
+      const pageIds = paginatedReturns.map(r => r.id);
+      const combined = Array.from(new Set([...selectedReturnIds, ...pageIds]));
+      setSelectedReturnIds(combined);
+    } else {
+      const pageIds = new Set(paginatedReturns.map(r => r.id));
+      setSelectedReturnIds(selectedReturnIds.filter(id => !pageIds.has(id)));
+    }
+  };
+
+  const handleToggleSelectRow = (id: string, e: React.ChangeEvent<HTMLInputElement>) => {
+    e.stopPropagation();
+    if (e.target.checked) {
+      setSelectedReturnIds(prev => [...prev, id]);
+    } else {
+      setSelectedReturnIds(prev => prev.filter(item => item !== id));
+    }
+  };
+
+  const handleBulkDelete = async () => {
+    if (selectedReturnIds.length === 0) return;
+    const confirmMsg = `Apakah Anda yakin ingin menghapus ${selectedReturnIds.length} dokumen TUG 10 yang dichecklist?`;
+    if (!confirm(confirmMsg)) return;
+
+    setIsBulkDeleting(true);
+    const totalToDelete = selectedReturnIds.length;
+    try {
+      for (const id of selectedReturnIds) {
+        await onDeleteReturn(id);
+      }
+      if (selectedReturnId && selectedReturnIds.includes(selectedReturnId)) {
+        setSelectedReturnId(null);
+      }
+      setSelectedReturnIds([]);
+      alert(`Berhasil menghapus ${totalToDelete} dokumen TUG 10.`);
+    } catch (err: any) {
+      console.error("Bulk delete error:", err);
+      alert("Terjadi kesalahan saat menghapus dokumen TUG 10.");
+    } finally {
+      setIsBulkDeleting(false);
+    }
+  };
 
   return (
     <div className="flex-1 flex flex-col h-full bg-slate-50 border-l border-slate-200">
@@ -1380,10 +1447,51 @@ export default function MaterialReturnView({
             
             {/* Returns List left container - STRETCHES FULL HEIGHT */}
             <div className="flex-1 flex flex-col min-h-0 container-table bg-white">
+              
+              {/* Bulk Delete Action Bar */}
+              {selectedReturnIds.length > 0 && (
+                <div className="bg-rose-50 border-b border-rose-200 px-4 py-2.5 flex items-center justify-between shadow-xs sticky top-0 z-20">
+                  <div className="flex items-center gap-2 font-mono text-xs text-rose-900 font-extrabold">
+                    <AlertTriangle className="w-4 h-4 text-rose-600 shrink-0" />
+                    <span>Terpilih <span className="bg-rose-200 text-rose-950 px-2 py-0.5 rounded font-black">{selectedReturnIds.length}</span> Dokumen TUG 10</span>
+                  </div>
+                  <div className="flex items-center gap-2 font-mono text-xs">
+                    <button
+                      type="button"
+                      onClick={() => setSelectedReturnIds([])}
+                      className="px-3 py-1 bg-white border border-rose-200 text-slate-700 hover:bg-slate-50 text-[11px] font-bold rounded-lg cursor-pointer transition-colors"
+                    >
+                      Batal Pilih
+                    </button>
+                    <button
+                      type="button"
+                      disabled={isBulkDeleting}
+                      onClick={handleBulkDelete}
+                      className="px-4 py-1.5 bg-rose-600 hover:bg-rose-700 active:bg-rose-800 disabled:opacity-50 text-white text-[11px] font-mono font-black uppercase rounded-lg shadow-xs cursor-pointer flex items-center gap-1.5 transition-all"
+                    >
+                      <Trash2 className="w-3.5 h-3.5" />
+                      <span>{isBulkDeleting ? "Menghapus..." : `Hapus (${selectedReturnIds.length}) Terpilih`}</span>
+                    </button>
+                  </div>
+                </div>
+              )}
+
               <div className="flex-1 overflow-y-auto">
                 <table className="w-full text-left border-collapse text-xs">
                   <thead className="bg-slate-50 text-[10px] font-mono font-extrabold text-slate-600 uppercase border-b border-slate-200 sticky top-0 z-10">
                     <tr>
+                      <th className="p-3.5 w-10 text-center bg-slate-50">
+                        <input
+                          type="checkbox"
+                          className="w-4 h-4 rounded text-indigo-600 focus:ring-indigo-500 border-slate-300 cursor-pointer accent-indigo-600"
+                          checked={isAllPageSelected}
+                          ref={input => {
+                            if (input) input.indeterminate = !isAllPageSelected && isSomePageSelected;
+                          }}
+                          onChange={handleSelectAllPage}
+                          title="Pilih Semua di Halaman Ini"
+                        />
+                      </th>
                       <th className="p-3.5 w-10 text-center bg-slate-50">NO</th>
                       <th className="p-3.5">Nomor TUG 10</th>
                       <th className="p-3.5">Tanggal</th>
@@ -1397,23 +1505,34 @@ export default function MaterialReturnView({
                   <tbody className="divide-y divide-slate-100 text-slate-800">
                     {paginatedReturns.length === 0 ? (
                       <tr>
-                        <td colSpan={8} className="p-16 text-center text-slate-400 font-mono text-[11px] bg-slate-50/10">
+                        <td colSpan={9} className="p-16 text-center text-slate-400 font-mono text-[11px] bg-slate-50/10">
                           Tidak ditemukan catatan pengembalian (TUG 10) yang sesuai filter logistik.
                         </td>
                       </tr>
                     ) : (
                       paginatedReturns.map((ret, idx) => {
                         const isCEChecked = activeActionId === ret.id;
+                        const isSelected = selectedReturnIds.includes(ret.id);
                         return (
                           <tr 
                             key={ret.id} 
                             onClick={() => { setSelectedReturnId(ret.id); setIsDetailsOpen(true); }}
                             className={`group cursor-pointer transition-colors ${
-                              selectedReturnId === ret.id 
+                              isSelected
+                                ? "bg-rose-50/60 border-l-2 border-rose-500"
+                                : selectedReturnId === ret.id 
                                 ? "bg-slate-100/70 border-l-2 border-indigo-600" 
                                 : "hover:bg-slate-50"
                             }`}
                           >
+                            <td className="p-3.5 text-center" onClick={(e) => e.stopPropagation()}>
+                              <input
+                                type="checkbox"
+                                className="w-4 h-4 rounded text-indigo-600 focus:ring-indigo-500 border-slate-300 cursor-pointer accent-indigo-600"
+                                checked={isSelected}
+                                onChange={(e) => handleToggleSelectRow(ret.id, e)}
+                              />
+                            </td>
                             <td className="p-3.5 text-center text-slate-500 font-mono font-bold">
                               {(returnPage - 1) * returnsPerPage + idx + 1}
                             </td>
@@ -1509,80 +1628,79 @@ export default function MaterialReturnView({
                                           <FileText className="w-3.5 h-3.5 text-emerald-500" />
                                           <span>Edit Keterangan</span>
                                         </button>
+                                          {/* Quick Level 1 Signature Button (Alfin / Verifikator) */}
+                                          {isAlfinRole && !ret.alfin_signed && (
+                                            <>
+                                              <div className="border-t border-slate-100 my-1"></div>
+                                              <button
+                                                type="button"
+                                                onClick={async (e) => {
+                                                  e.stopPropagation();
+                                                  setActiveActionId(null);
+                                                  const now = new Date().toISOString();
+                                                  await onUpdateReturn(ret.id, {
+                                                    alfin_signed: true,
+                                                    alfin_signed_at: now,
+                                                    alfin_signature_url: "https://api.dicebear.com/7.x/initials/svg?seed=MaghfurAlfin",
+                                                    status: ret.status === "Draft" ? "Submitted" : ret.status
+                                                  });
+                                                }}
+                                                className="w-full px-4 py-2 text-xs font-bold hover:bg-emerald-50 text-emerald-700 flex items-center gap-2 cursor-pointer transition-colors text-left"
+                                              >
+                                                <CheckCircle className="w-3.5 h-3.5 text-emerald-600" />
+                                                <span>✓ TTD Level 1 (Alfin)</span>
+                                              </button>
+                                            </>
+                                          )}
 
-                                         {/* Quick Level 1 Signature Button (Alfin / Verifikator) */}
-                                         {(currentUser?.username === "alfin" || currentUser?.role === UserRole.VERIFIER_RENDALHAR || currentUser?.role === UserRole.SUPER_ADMIN) && !ret.alfin_signed && (
-                                           <>
-                                             <div className="border-t border-slate-100 my-1"></div>
-                                             <button
-                                               type="button"
-                                               onClick={async (e) => {
-                                                 e.stopPropagation();
-                                                 setActiveActionId(null);
-                                                 const now = new Date().toISOString();
-                                                 await onUpdateReturn(ret.id, {
-                                                   alfin_signed: true,
-                                                   alfin_signed_at: now,
-                                                   alfin_signature_url: "https://api.dicebear.com/7.x/initials/svg?seed=MaghfurAlfin",
-                                                   status: ret.status === "Draft" ? "Submitted" : ret.status
-                                                 });
-                                               }}
-                                               className="w-full px-4 py-2 text-xs font-bold hover:bg-emerald-50 text-emerald-700 flex items-center gap-2 cursor-pointer transition-colors text-left"
-                                             >
-                                               <CheckCircle className="w-3.5 h-3.5 text-emerald-600" />
-                                               <span>✓ TTD Level 1 (Alfin)</span>
-                                             </button>
-                                           </>
-                                         )}
+                                          {/* Quick Level 2 Signature Button (Emir / Manager Logistik) */}
+                                          {isEmirRole && !ret.emir_signed && (
+                                            <>
+                                              <div className="border-t border-slate-100 my-1"></div>
+                                              <button
+                                                type="button"
+                                                onClick={async (e) => {
+                                                  e.stopPropagation();
+                                                  setActiveActionId(null);
+                                                  const now = new Date().toISOString();
+                                                  await onUpdateReturn(ret.id, {
+                                                    emir_signed: true,
+                                                    emir_signed_at: now,
+                                                    emir_signature_url: "https://api.dicebear.com/7.x/initials/svg?seed=EmirFerdian"
+                                                  });
+                                                }}
+                                                className="w-full px-4 py-2 text-xs font-bold hover:bg-amber-50 text-amber-800 flex items-center gap-2 cursor-pointer transition-colors text-left"
+                                              >
+                                                <CheckCircle className="w-3.5 h-3.5 text-amber-600" />
+                                                <span>✓ TTD Level 2 (Emir)</span>
+                                              </button>
+                                            </>
+                                          )}
 
-                                         {/* Quick Level 2 Signature Button (Emir / Manager Logistik) */}
-                                         {(currentUser?.username === "emir" || currentUser?.role === UserRole.LOGISTICS_MANAGER || currentUser?.role === UserRole.SUPER_ADMIN) && !ret.emir_signed && (
-                                           <>
-                                             <div className="border-t border-slate-100 my-1"></div>
-                                             <button
-                                               type="button"
-                                               onClick={async (e) => {
-                                                 e.stopPropagation();
-                                                 setActiveActionId(null);
-                                                 const now = new Date().toISOString();
-                                                 await onUpdateReturn(ret.id, {
-                                                   emir_signed: true,
-                                                   emir_signed_at: now,
-                                                   emir_signature_url: "https://api.dicebear.com/7.x/initials/svg?seed=EmirFerdian"
-                                                 });
-                                               }}
-                                               className="w-full px-4 py-2 text-xs font-bold hover:bg-amber-50 text-amber-800 flex items-center gap-2 cursor-pointer transition-colors text-left"
-                                             >
-                                               <CheckCircle className="w-3.5 h-3.5 text-amber-600" />
-                                               <span>✓ TTD Level 2 (Emir)</span>
-                                             </button>
-                                           </>
-                                         )}
-
-                                         {/* Quick Level 3 Signature Button (Sumbono / VP Rendalhar) */}
-                                         {(currentUser?.username === "sumbono" || currentUser?.role === UserRole.VP_RENDALHAR || currentUser?.role === UserRole.SUPER_ADMIN) && !ret.sumbono_signed && (
-                                           <>
-                                             <div className="border-t border-slate-100 my-1"></div>
-                                             <button
-                                               type="button"
-                                               onClick={async (e) => {
-                                                 e.stopPropagation();
-                                                 setActiveActionId(null);
-                                                 const now = new Date().toISOString();
-                                                 await onUpdateReturn(ret.id, {
-                                                   sumbono_signed: true,
-                                                   sumbono_signed_at: now,
-                                                   sumbono_signature_url: "https://api.dicebear.com/7.x/initials/svg?seed=Sumbono",
-                                                   status: "Approved"
-                                                 });
-                                               }}
-                                               className="w-full px-4 py-2 text-xs font-bold hover:bg-indigo-50 text-indigo-700 flex items-center gap-2 cursor-pointer transition-colors text-left"
-                                             >
-                                               <CheckCircle className="w-3.5 h-3.5 text-indigo-600" />
-                                               <span>✓ Sahkan & TTD (Sumbono)</span>
-                                             </button>
-                                           </>
-                                         )}
+                                          {/* Quick Level 3 Signature Button (Sumbono / VP Rendalhar) */}
+                                          {isSumbonoRole && !ret.sumbono_signed && (
+                                            <>
+                                              <div className="border-t border-slate-100 my-1"></div>
+                                              <button
+                                                type="button"
+                                                onClick={async (e) => {
+                                                  e.stopPropagation();
+                                                  setActiveActionId(null);
+                                                  const now = new Date().toISOString();
+                                                  await onUpdateReturn(ret.id, {
+                                                    sumbono_signed: true,
+                                                    sumbono_signed_at: now,
+                                                    sumbono_signature_url: "https://api.dicebear.com/7.x/initials/svg?seed=Sumbono",
+                                                    status: "Approved"
+                                                  });
+                                                }}
+                                                className="w-full px-4 py-2 text-xs font-bold hover:bg-indigo-50 text-indigo-700 flex items-center gap-2 cursor-pointer transition-colors text-left"
+                                              >
+                                                <CheckCircle className="w-3.5 h-3.5 text-indigo-600" />
+                                                <span>✓ Sahkan & TTD (Sumbono)</span>
+                                              </button>
+                                            </>
+                                          )}
 
                                         {(ret.status === "Draft" || ret.status === "Rejected") && (
                                           <button
@@ -1662,29 +1780,95 @@ export default function MaterialReturnView({
                 </table>
               </div>
 
-              {/* STRETCHED CARD PAGINATION BAR - EXACTLY LIKE SPK WORK ORDER DESIGN */}
-              <div className="bg-white border-t border-slate-200 px-6 py-4.5 flex items-center justify-between font-mono text-[11px] font-bold shrink-0 shadow-2xs">
-                <span className="text-slate-450 uppercase tracking-widest leading-none text-[10px] font-black">
-                  TOTAL REKOR DATA: {filteredReturns.length} TUG 10
-                </span>
+              {/* STRETCHED CARD PAGINATION BAR - MODERN STICKY DESIGN */}
+              <div className="bg-white border-t border-slate-200 px-6 py-3 flex flex-col sm:flex-row items-center justify-between gap-3 font-sans text-xs shrink-0 shadow-md sticky bottom-0 z-20 no-print">
+                {/* Left: Record Range Summary & Per Page Selector */}
+                <div className="flex items-center gap-4 text-slate-600 font-medium">
+                  <div className="flex items-center gap-2">
+                    <span className="text-[11px] font-mono text-slate-500 uppercase font-bold">Baris per halaman:</span>
+                    <select
+                      value={returnsPerPage}
+                      onChange={(e) => {
+                        setReturnsPerPage(Number(e.target.value));
+                        setReturnPage(1);
+                      }}
+                      className="bg-slate-50 border border-slate-250 text-slate-800 text-xs font-bold font-mono rounded-lg px-2 py-1 focus:outline-none focus:ring-1 focus:ring-indigo-500 cursor-pointer"
+                    >
+                      <option value={5}>5</option>
+                      <option value={10}>10</option>
+                      <option value={25}>25</option>
+                      <option value={50}>50</option>
+                      <option value={100}>100</option>
+                    </select>
+                  </div>
+                  <span className="text-slate-300">|</span>
+                  <span className="text-[11px] font-mono text-slate-600 font-bold">
+                    Menampilkan <span className="text-slate-900 font-black">{filteredReturns.length > 0 ? (returnPage - 1) * returnsPerPage + 1 : 0}</span> - <span className="text-slate-900 font-black">{Math.min(returnPage * returnsPerPage, filteredReturns.length)}</span> dari <span className="text-slate-900 font-black">{filteredReturns.length}</span> data TUG 10
+                  </span>
+                </div>
 
-                <div className="flex items-center gap-1">
+                {/* Right: Page Number Buttons */}
+                <div className="flex items-center gap-1 font-mono">
+                  <button
+                    disabled={returnPage === 1}
+                    onClick={() => setReturnPage(1)}
+                    className="p-1.5 rounded-lg border border-slate-200 text-slate-600 disabled:opacity-30 hover:bg-slate-100 disabled:hover:bg-transparent transition-all cursor-pointer disabled:cursor-not-allowed"
+                    title="Halaman Pertama"
+                  >
+                    <ChevronsLeft className="w-4 h-4" />
+                  </button>
+
                   <button
                     disabled={returnPage === 1}
                     onClick={() => setReturnPage(p => Math.max(1, p - 1))}
-                    className="px-3 py-1.5 rounded-lg border border-slate-200 text-slate-600 disabled:opacity-40 hover:bg-slate-50 transition-colors cursor-pointer disabled:cursor-not-allowed"
+                    className="p-1.5 rounded-lg border border-slate-200 text-slate-600 disabled:opacity-30 hover:bg-slate-100 disabled:hover:bg-transparent transition-all cursor-pointer disabled:cursor-not-allowed flex items-center gap-1 px-2.5 text-xs font-bold"
+                    title="Halaman Sebelumnya"
                   >
-                    Sebelumnya
+                    <ChevronLeft className="w-4 h-4" />
+                    <span className="hidden md:inline">Sebelumnya</span>
                   </button>
-                  <span className="px-3 py-1.5 text-slate-500">
-                    Halaman {returnPage} dari {totalPages}
-                  </span>
+
+                  <div className="flex items-center gap-1 px-1">
+                    {Array.from({ length: totalPages }, (_, i) => i + 1)
+                      .filter(p => p === 1 || p === totalPages || Math.abs(p - returnPage) <= 1)
+                      .map((p, i, arr) => {
+                        const prev = arr[i - 1];
+                        const showEllipsis = prev && p - prev > 1;
+                        return (
+                          <React.Fragment key={p}>
+                            {showEllipsis && <span className="px-1 text-slate-400 font-bold">...</span>}
+                            <button
+                              onClick={() => setReturnPage(p)}
+                              className={`w-8 h-8 rounded-lg text-xs font-mono font-bold transition-all cursor-pointer ${
+                                returnPage === p
+                                  ? "bg-slate-900 text-white shadow-xs font-black"
+                                  : "bg-white border border-slate-200 text-slate-600 hover:bg-slate-100"
+                              }`}
+                            >
+                              {p}
+                            </button>
+                          </React.Fragment>
+                        );
+                      })}
+                  </div>
+
                   <button
-                    disabled={returnPage === totalPages}
+                    disabled={returnPage >= totalPages}
                     onClick={() => setReturnPage(p => Math.min(totalPages, p + 1))}
-                    className="px-3 py-1.5 rounded-lg border border-slate-200 text-slate-600 disabled:opacity-40 hover:bg-slate-50 transition-colors cursor-pointer disabled:cursor-not-allowed"
+                    className="p-1.5 rounded-lg border border-slate-200 text-slate-600 disabled:opacity-30 hover:bg-slate-100 disabled:hover:bg-transparent transition-all cursor-pointer disabled:cursor-not-allowed flex items-center gap-1 px-2.5 text-xs font-bold"
+                    title="Halaman Selanjutnya"
                   >
-                    Selanjutnya
+                    <span className="hidden md:inline">Selanjutnya</span>
+                    <ChevronRight className="w-4 h-4" />
+                  </button>
+
+                  <button
+                    disabled={returnPage >= totalPages}
+                    onClick={() => setReturnPage(totalPages)}
+                    className="p-1.5 rounded-lg border border-slate-200 text-slate-600 disabled:opacity-30 hover:bg-slate-100 disabled:hover:bg-transparent transition-all cursor-pointer disabled:cursor-not-allowed"
+                    title="Halaman Terakhir"
+                  >
+                    <ChevronsRight className="w-4 h-4" />
                   </button>
                 </div>
               </div>
@@ -1746,6 +1930,98 @@ export default function MaterialReturnView({
                         <span className="text-slate-800 font-extrabold">{activeReturn.dispatch_reference}</span>
                       </div>
                     )}
+                  </div>
+
+                  {/* 3-Level Approval Stepper */}
+                  <div className="bg-slate-900 text-white rounded-xl p-4 border border-slate-800 space-y-3 font-mono">
+                    <div className="flex justify-between items-center border-b border-slate-800 pb-2">
+                      <span className="text-xs font-black font-display uppercase tracking-wider text-slate-200 flex items-center gap-1.5">
+                        <ShieldCheck className="w-4 h-4 text-emerald-400" />
+                        Approval TUG 10 & TTD Digital
+                      </span>
+                    </div>
+
+                    <div className="space-y-2 pt-1">
+                      {/* LEVEL 1: ALFIN */}
+                      <div className={`p-2.5 rounded-lg border text-xs flex items-center justify-between ${activeReturn.alfin_signed ? 'bg-emerald-950/40 border-emerald-500/40 text-emerald-100' : 'bg-slate-800/80 border-slate-700 text-slate-300'}`}>
+                        <div>
+                          <div className="font-bold">L1: Maghfur Alfin (Verifikator)</div>
+                          <div className="text-[9.5px] text-slate-400">
+                            {activeReturn.alfin_signed ? `✓ Signed: ${activeReturn.alfin_signed_at ? new Date(activeReturn.alfin_signed_at).toLocaleDateString("id-ID") : "Terverifikasi"}` : "⏳ Pending Approval"}
+                          </div>
+                        </div>
+                        {!activeReturn.alfin_signed && isAlfinRole && (
+                          <button
+                            type="button"
+                            onClick={async () => {
+                              const now = new Date().toISOString();
+                              await onUpdateReturn(activeReturn.id, {
+                                alfin_signed: true,
+                                alfin_signed_at: now,
+                                alfin_signature_url: "https://api.dicebear.com/7.x/initials/svg?seed=MaghfurAlfin",
+                                status: activeReturn.status === "Draft" ? "Submitted" : activeReturn.status
+                              });
+                            }}
+                            className="px-2.5 py-1 bg-emerald-600 hover:bg-emerald-500 text-white font-bold text-[10px] uppercase rounded cursor-pointer"
+                          >
+                            TTD Alfin
+                          </button>
+                        )}
+                      </div>
+
+                      {/* LEVEL 2: EMIR */}
+                      <div className={`p-2.5 rounded-lg border text-xs flex items-center justify-between ${activeReturn.emir_signed ? 'bg-emerald-950/40 border-emerald-500/40 text-emerald-100' : 'bg-slate-800/80 border-slate-700 text-slate-300'}`}>
+                        <div>
+                          <div className="font-bold">L2: Mohamat Emir (Manager)</div>
+                          <div className="text-[9.5px] text-slate-400">
+                            {activeReturn.emir_signed ? `✓ Signed: ${activeReturn.emir_signed_at ? new Date(activeReturn.emir_signed_at).toLocaleDateString("id-ID") : "Terverifikasi"}` : "⏳ Pending Approval"}
+                          </div>
+                        </div>
+                        {!activeReturn.emir_signed && isEmirRole && (
+                          <button
+                            type="button"
+                            onClick={async () => {
+                              const now = new Date().toISOString();
+                              await onUpdateReturn(activeReturn.id, {
+                                emir_signed: true,
+                                emir_signed_at: now,
+                                emir_signature_url: "https://api.dicebear.com/7.x/initials/svg?seed=EmirFerdian"
+                              });
+                            }}
+                            className="px-2.5 py-1 bg-amber-600 hover:bg-amber-500 text-white font-bold text-[10px] uppercase rounded cursor-pointer"
+                          >
+                            TTD Emir
+                          </button>
+                        )}
+                      </div>
+
+                      {/* LEVEL 3: SUMBONO */}
+                      <div className={`p-2.5 rounded-lg border text-xs flex items-center justify-between ${activeReturn.sumbono_signed ? 'bg-emerald-950/40 border-emerald-500/40 text-emerald-100' : 'bg-slate-800/80 border-slate-700 text-slate-300'}`}>
+                        <div>
+                          <div className="font-bold">L3: Sumbono (VP Rendalhar)</div>
+                          <div className="text-[9.5px] text-slate-400">
+                            {activeReturn.sumbono_signed ? `✓ Signed: ${activeReturn.sumbono_signed_at ? new Date(activeReturn.sumbono_signed_at).toLocaleDateString("id-ID") : "Disahkan"}` : "⏳ Pending Approval"}
+                          </div>
+                        </div>
+                        {!activeReturn.sumbono_signed && isSumbonoRole && (
+                          <button
+                            type="button"
+                            onClick={async () => {
+                              const now = new Date().toISOString();
+                              await onUpdateReturn(activeReturn.id, {
+                                sumbono_signed: true,
+                                sumbono_signed_at: now,
+                                sumbono_signature_url: "https://api.dicebear.com/7.x/initials/svg?seed=Sumbono",
+                                status: "Approved"
+                              });
+                            }}
+                            className="px-2.5 py-1 bg-indigo-600 hover:bg-indigo-500 text-white font-bold text-[10px] uppercase rounded cursor-pointer"
+                          >
+                            TTD Sumbono
+                          </button>
+                        )}
+                      </div>
+                    </div>
                   </div>
 
                   {/* Rejected Reason Banner */}

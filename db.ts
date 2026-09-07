@@ -25,17 +25,29 @@ let pool: mysql.Pool | null = null;
 // Initialize MySQL Pool
 export function getPool() {
   if (!pool) {
-    pool = mysql.createPool({
-      host: DB_HOST,
-      user: DB_USER,
-      password: DB_PASSWORD,
-      database: DB_NAME,
-      port: DB_PORT,
-      waitForConnections: true,
-      connectionLimit: 10,
-      queueLimit: 0,
-      connectTimeout: 5000
-    });
+    if (process.env.DATABASE_URL && (process.env.DATABASE_URL.startsWith("mysql://") || process.env.DATABASE_URL.startsWith("mysql2://"))) {
+      pool = mysql.createPool({
+        uri: process.env.DATABASE_URL,
+        waitForConnections: true,
+        connectionLimit: 10,
+        queueLimit: 0,
+        connectTimeout: 10000,
+        ssl: process.env.DB_SSL === "false" ? undefined : { rejectUnauthorized: false }
+      });
+    } else {
+      pool = mysql.createPool({
+        host: DB_HOST,
+        user: DB_USER,
+        password: DB_PASSWORD,
+        database: DB_NAME,
+        port: DB_PORT,
+        waitForConnections: true,
+        connectionLimit: 10,
+        queueLimit: 0,
+        connectTimeout: 10000,
+        ssl: process.env.DB_SSL === "true" ? { rejectUnauthorized: false } : undefined
+      });
+    }
   }
   return pool;
 }
@@ -196,10 +208,35 @@ export async function initDatabase(): Promise<boolean> {
         remarks TEXT,
         status VARCHAR(50) NOT NULL,
         items JSON NOT NULL,
+        alfin_signed TINYINT(1) DEFAULT 0,
+        alfin_signed_at DATETIME,
+        alfin_signature_url LONGTEXT,
+        emir_signed TINYINT(1) DEFAULT 0,
+        emir_signed_at DATETIME,
+        emir_signature_url LONGTEXT,
+        sumbono_signed TINYINT(1) DEFAULT 0,
+        sumbono_signed_at DATETIME,
+        sumbono_signature_url LONGTEXT,
         created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
         updated_at DATETIME DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
       ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
     `);
+
+    // Ensure signature columns exist if table already created
+    const signatureCols = [
+      "ALTER TABLE material_requests ADD COLUMN alfin_signed TINYINT(1) DEFAULT 0;",
+      "ALTER TABLE material_requests ADD COLUMN alfin_signed_at DATETIME;",
+      "ALTER TABLE material_requests ADD COLUMN alfin_signature_url LONGTEXT;",
+      "ALTER TABLE material_requests ADD COLUMN emir_signed TINYINT(1) DEFAULT 0;",
+      "ALTER TABLE material_requests ADD COLUMN emir_signed_at DATETIME;",
+      "ALTER TABLE material_requests ADD COLUMN emir_signature_url LONGTEXT;",
+      "ALTER TABLE material_requests ADD COLUMN sumbono_signed TINYINT(1) DEFAULT 0;",
+      "ALTER TABLE material_requests ADD COLUMN sumbono_signed_at DATETIME;",
+      "ALTER TABLE material_requests ADD COLUMN sumbono_signature_url LONGTEXT;"
+    ];
+    for (const sql of signatureCols) {
+      try { await dbPool.query(sql); } catch (e) {}
+    }
 
     await dbPool.query(`
       CREATE TABLE IF NOT EXISTS outbound_dispatches (
@@ -299,14 +336,20 @@ export async function seedDatabase(force: boolean = false) {
   if (!dbPool) return;
 
   try {
+    // 0. Purge deleted accounts (Ahmad Subarjo & Anto Wijaya) from MySQL database
+    try {
+      await dbPool.query("DELETE FROM users WHERE username IN ('staff_gudang_1', 'crew_voyager') OR name LIKE '%Ahmad Subarjo%' OR name LIKE '%Anto Wijaya%'");
+      await dbPool.query("DELETE FROM digital_signatures WHERE user_name IN ('Ahmad Subarjo', 'Anto Wijaya')");
+    } catch (err: any) {
+      console.error("ℹ️ [MySQL DB] Purge query:", err.message);
+    }
+
     // 1. Always ensure core system accounts exist in MySQL
     const defaultUsers = [
       { id: "usr-1", username: "superadmin", name: "Fikri Haikal (Superadmin)", email: "superadmin@maritime-logistics.com", role: "Super Admin", password: "admin123", vessel_name: null },
-      { id: "usr-2", username: "staff_gudang_1", name: "Ahmad Subarjo", email: "ahmad.subarjo@maritime-logistics.com", role: "Warehouse Admin", password: "admin123", vessel_name: null },
       { id: "usr-3", username: "alfin", name: "Maghfur Muhammad Alfin", email: "alfin.rendalhar@maritime-logistics.com", role: "Petugas Gudang", password: "admin123", vessel_name: null },
       { id: "usr-4", username: "emir", name: "Mohamat Emir Ferdian", email: "emir.ferdian@maritime-logistics.com", role: "Manager Logistik", password: "admin123", vessel_name: null },
-      { id: "usr-5", username: "sumbono", name: "Sumbono", email: "sumbono@maritime-logistics.com", role: "VP Rendalhar", password: "admin123", vessel_name: null },
-      { id: "usr-6", username: "crew_voyager", name: "Anto Wijaya", email: "voyager.chief@maritime-crew.com", role: "Vessel Crew", password: "admin123", vessel_name: "MV. KARTINI BARUNA" }
+      { id: "usr-5", username: "sumbono", name: "Sumbono", email: "sumbono@maritime-logistics.com", role: "VP Rendalhar", password: "admin123", vessel_name: null }
     ];
     for (const u of defaultUsers) {
       await dbPool.query(
@@ -317,23 +360,25 @@ export async function seedDatabase(force: boolean = false) {
 
     // Check if remaining tables have data
     const [userRows]: any = await dbPool.query("SELECT COUNT(*) as count FROM users");
-    if (userRows[0].count > 6 && !force) {
+    if (userRows[0].count > 4 && !force) {
       console.log("ℹ️ [MySQL DB] Core tables populated. Skipping full auto-seed.");
       return;
     }
 
     // Digital Signatures
     const signatures = [
-      { id: "sig-1", role_title: "Chief Engineer (Pembuat TUG 5 / TUG 10)", user_name: "Anto Wijaya", signature_url: "https://api.dicebear.com/7.x/initials/svg?seed=AntoWijaya", notes: "Tanda tangan resmi Chief Engineer Armada Kapal" },
-      { id: "sig-2", role_title: "Verifikator Rendalhar (Level 1 Approval)", user_name: "Maghfur Muhammad Alfin", signature_url: "https://api.dicebear.com/7.x/initials/svg?seed=MaghfurAlfin", notes: "Tanda tangan verifikasi dokumen Rendalhar Level 1" },
-      { id: "sig-3", role_title: "Manager Logistik (Level 2 Approval)", user_name: "Mohamat Emir Ferdian", signature_url: "https://api.dicebear.com/7.x/initials/svg?seed=EmirFerdian", notes: "Tanda tangan persetujuan operasional logistik Level 2" },
-      { id: "sig-4", role_title: "VP Rendalhar (Level 3 Pengesahan)", user_name: "Sumbono", signature_url: "https://api.dicebear.com/7.x/initials/svg?seed=Sumbono", notes: "Tanda tangan pengesahan VP Rendalhar Level 3" },
-      { id: "sig-5", role_title: "Staff Gudang (Penerima / Pengeluar TUG 8)", user_name: "Ahmad Subarjo", signature_url: "https://api.dicebear.com/7.x/initials/svg?seed=AhmadSubarjo", notes: "Tanda tangan verifikasi fisik gudang utama" }
+      { id: "sig-2", role_title: "Verifikator Rendalhar (Level 1 Approval)", user_name: "Maghfur Muhammad Alfin", signature_url: `data:image/svg+xml;utf8,<svg xmlns="http://www.w3.org/2000/svg" width="220" height="70" viewBox="0 0 220 70"><path d="M 15 42 C 35 15, 50 58, 80 25 C 100 12, 120 52, 150 30 C 170 20, 185 45, 205 35" stroke="%230f2b5c" stroke-width="2.5" fill="none" stroke-linecap="round"/><path d="M 30 50 L 180 46" stroke="%231e293b" stroke-width="1.8" fill="none" stroke-linecap="round"/><text x="50" y="62" font-family="cursive" font-size="11" font-weight="bold" fill="%230f2b5c">Maghfur M. Alfin</text></svg>`, notes: "Tanda tangan verifikasi dokumen Rendalhar Level 1" },
+      { id: "sig-3", role_title: "Manager Logistik (Level 2 Approval)", user_name: "Mohamat Emir Ferdian", signature_url: `data:image/svg+xml;utf8,<svg xmlns="http://www.w3.org/2000/svg" width="220" height="70" viewBox="0 0 220 70"><path d="M 15 45 C 35 15, 45 65, 75 30 C 95 15, 115 55, 145 35 C 165 25, 185 50, 205 38" stroke="%230f2b5c" stroke-width="2.5" fill="none" stroke-linecap="round"/><path d="M 40 52 L 180 48" stroke="%231e293b" stroke-width="1.8" fill="none" stroke-linecap="round"/><text x="60" y="62" font-family="cursive" font-size="11" font-weight="bold" fill="%230f2b5c">M. Emir Ferdian</text></svg>`, notes: "Tanda tangan persetujuan operasional logistik Level 2" },
+      { id: "sig-4", role_title: "VP Rendalhar (Level 3 Pengesahan)", user_name: "Sumbono", signature_url: `data:image/svg+xml;utf8,<svg xmlns="http://www.w3.org/2000/svg" width="220" height="70" viewBox="0 0 220 70"><path d="M 20 40 C 35 10, 50 60, 80 20 C 110 5, 130 55, 160 30 C 180 20, 195 45, 205 35" stroke="%230f2b5c" stroke-width="2.5" fill="none" stroke-linecap="round"/><path d="M 30 48 C 80 55, 140 45, 190 48" stroke="%231e293b" stroke-width="1.8" fill="none" stroke-linecap="round"/><text x="75" y="62" font-family="cursive" font-size="11" font-weight="bold" fill="%230f2b5c">Sumbono</text></svg>`, notes: "Tanda tangan pengesahan VP Rendalhar Level 3" }
     ];
     for (const s of signatures) {
       await dbPool.query(
         "INSERT IGNORE INTO digital_signatures (id, role_title, user_name, signature_url, notes) VALUES (?, ?, ?, ?, ?)",
         [s.id, s.role_title, s.user_name, s.signature_url, s.notes]
+      );
+      await dbPool.query(
+        "UPDATE digital_signatures SET signature_url = ? WHERE id = ? OR user_name = ?",
+        [s.signature_url, s.id, s.user_name]
       );
     }
 
@@ -397,37 +442,87 @@ export async function seedDatabase(force: boolean = false) {
 
     // 5. SPKs (30 items)
     for (const spk of demoSPKs) {
+      if (!spk || !spk.id) continue;
       await dbPool.query(
         `INSERT IGNORE INTO spk_work_orders (
           id, spk_number, target_port, status, remarks, vessels, created_by
         ) VALUES (?, ?, ?, ?, ?, ?, ?)`,
         [
-          spk.id, spk.spk_number, spk.target_port, spk.status, spk.remarks || null,
+          spk.id, spk.spk_number, spk.target_port || "Pelabuhan Merak", spk.status, spk.remarks || null,
           JSON.stringify(spk.vessels || []), spk.created_by || "Superadmin"
         ]
       );
     }
 
-    // 6. TUG 5 Material Requests (30 items)
+    // 6. TUG 5 Material Requests
     for (const mr of demoMaterialRequests) {
+      if (!mr || !mr.id) continue;
+      const alfSig = mr.alfin_signature_url || (mr.alfin_signed ? "https://api.dicebear.com/7.x/initials/svg?seed=MaghfurAlfin" : null);
+      const emrSig = mr.emir_signature_url || (mr.emir_signed ? "https://api.dicebear.com/7.x/initials/svg?seed=EmirFerdian" : null);
+      const sumSig = mr.sumbono_signature_url || (mr.sumbono_signed ? "https://api.dicebear.com/7.x/initials/svg?seed=Sumbono" : null);
+
       await dbPool.query(
         `INSERT IGNORE INTO material_requests (
           id, request_number, tug5_number, vessel_name, request_date, requester_name,
           warehouse_name, delivery_address, work_order_ref, account_code, function_code,
-          urgency, department, remarks, status, items
-        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+          urgency, department, remarks, status, items,
+          alfin_signed, alfin_signed_at, alfin_signature_url,
+          emir_signed, emir_signed_at, emir_signature_url,
+          sumbono_signed, sumbono_signed_at, sumbono_signature_url
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
         [
           mr.id, mr.request_number, mr.tug5_number || null, mr.vessel_name, mr.request_date,
           mr.requester_name || mr.requested_by || "Chief Engineer", mr.warehouse_name || "Jakarta HQ Warehouse",
           mr.delivery_address || null, mr.work_order_ref || mr.spk_number || null, mr.account_code || "BPP",
           mr.function_code || "ARMADA", mr.urgency || "NORMAL", mr.department || "Engine Room",
-          mr.remarks || null, mr.status, JSON.stringify(mr.items || [])
+          mr.remarks || null, mr.status, JSON.stringify(mr.items || []),
+          mr.alfin_signed ? 1 : 0, mr.alfin_signed_at || null, alfSig,
+          mr.emir_signed ? 1 : 0, mr.emir_signed_at || null, emrSig,
+          mr.sumbono_signed ? 1 : 0, mr.sumbono_signed_at || null, sumSig
+        ]
+      );
+
+      // USER DIRECTIVE: All TUG 5 requests default to UNAPPROVED (Submitted) so users can approve from Level 1 -> 2 -> 3
+      const isApproved = mr.status === "Approved";
+      const statusToSet = "Submitted";
+      const alfSigUpdate = isApproved ? (mr.alfin_signature_url || "https://api.dicebear.com/7.x/initials/svg?seed=MaghfurAlfin") : null;
+      const emrSigUpdate = isApproved ? (mr.emir_signature_url || "https://api.dicebear.com/7.x/initials/svg?seed=EmirFerdian") : null;
+      const sumSigUpdate = isApproved ? (mr.sumbono_signature_url || "https://api.dicebear.com/7.x/initials/svg?seed=Sumbono") : null;
+
+      await dbPool.query(
+        `UPDATE material_requests SET 
+          status = ?,
+          alfin_signed = ?, alfin_signed_at = ?, alfin_signature_url = ?,
+          emir_signed = ?, emir_signed_at = ?, emir_signature_url = ?,
+          sumbono_signed = ?, sumbono_signed_at = ?, sumbono_signature_url = ?
+        WHERE id = ?`,
+        [
+          statusToSet,
+          isApproved ? 1 : 0, isApproved ? (mr.alfin_signed_at || null) : null, alfSigUpdate,
+          isApproved ? 1 : 0, isApproved ? (mr.emir_signed_at || null) : null, emrSigUpdate,
+          isApproved ? 1 : 0, isApproved ? (mr.sumbono_signed_at || null) : null, sumSigUpdate,
+          mr.id
         ]
       );
     }
 
+    // Always reset all TUG 5 material_requests in MySQL database to Submitted (Unapproved)
+    try {
+      await dbPool.query(
+        `UPDATE material_requests SET 
+          status = 'Submitted',
+          alfin_signed = 0, alfin_signed_at = NULL, alfin_signature_url = NULL,
+          emir_signed = 0, emir_signed_at = NULL, emir_signature_url = NULL,
+          sumbono_signed = 0, sumbono_signed_at = NULL, sumbono_signature_url = NULL`
+      );
+      console.log("✅ [MySQL DB] Reset all TUG 5 material requests to Submitted (Unapproved).");
+    } catch (e: any) {
+      console.error("ℹ️ [MySQL DB] Reset material requests:", e.message);
+    }
+
     // 7. TUG 8 Outbound Dispatches (30 items)
     for (const dsp of demoDispatches) {
+      if (!dsp || !dsp.id) continue;
       await dbPool.query(
         `INSERT IGNORE INTO outbound_dispatches (
           id, dispatch_number, tug8_number, bon_pengeluaran_number, surat_jalan_number,
@@ -435,7 +530,7 @@ export async function seedDatabase(force: boolean = false) {
           transporter_name, vehicle_number, driver_name, driver_phone, status, items, created_by
         ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
         [
-          dsp.id, dsp.dispatch_number, dsp.tug8_number || null, dsp.bon_pengeluaran_number || null,
+          dsp.id, dsp.dispatch_number || null, dsp.tug8_number || null, dsp.bon_pengeluaran_number || null,
           dsp.surat_jalan_number || null, dsp.manifest_number || null, dsp.spk_id || null,
           dsp.spk_number || null, dsp.vessel_name, dsp.destination_port || "Tanjung Priok",
           dsp.warehouse_origin || "Jakarta HQ Warehouse", dsp.transporter_name || null,
@@ -447,6 +542,7 @@ export async function seedDatabase(force: boolean = false) {
 
     // 8. Inbound Receivings (25 items)
     for (const rec of demoReceiving) {
+      if (!rec || !rec.id) continue;
       await dbPool.query(
         `INSERT IGNORE INTO inbound_receivings (
           id, purchase_order_num, delivery_note_num, vendor_id, vendor_name,
@@ -462,6 +558,7 @@ export async function seedDatabase(force: boolean = false) {
 
     // 9. TUG 10 Material Returns (25 items)
     for (const ret of demoMaterialReturns) {
+      if (!ret || !ret.id) continue;
       await dbPool.query(
         `INSERT IGNORE INTO material_returns (
           id, return_number, vessel_name, spk_id, spk_number, return_date,

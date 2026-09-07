@@ -229,7 +229,7 @@ export default function Sidebar({
         >
           <div className="flex items-center gap-2.5">
             <FileText className={`w-4 h-4 ${currentTab === "spk-orders" ? "text-blue-500" : "text-slate-400"} shrink-0`} />
-            <span>SPK (Work Order)</span>
+            <span>SPK</span>
           </div>
         </button>
 

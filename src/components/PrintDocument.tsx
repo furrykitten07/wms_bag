@@ -20,17 +20,38 @@ interface PrintDocumentProps {
   onClose: () => void;
 }
 
+import { sanitizeSignatureUrl, createSVGSignatureDataUrl } from "../utils/signatureUtils.js";
+
 const getSignatureForSlot = (roleOrTitle: string, name?: string, signaturesList?: DigitalSignature[], docData?: any) => {
+  const rLower = roleOrTitle.toLowerCase().trim();
+  
+  // USER DIRECTIVE: Kepala Gudang, Pemeriksa, and Penerima signatures MUST BE LEFT EMPTY / BLANK FOR TUG 8 AND ALL DOCUMENTS
+  if (
+    rLower.includes("kepala gudang") || 
+    rLower.includes("kepala_gudang") ||
+    rLower.includes("pemeriksa") ||
+    rLower.includes("penerima") ||
+    rLower.includes("carrier") ||
+    rLower.includes("captain")
+  ) {
+    return null;
+  }
+
   if (docData) {
-    const rLower = roleOrTitle.toLowerCase().trim();
     if (rLower.includes("vp") || rLower.includes("sumbono")) {
-      if (docData.sumbono_signed && docData.sumbono_signature_url) return docData.sumbono_signature_url;
+      if (docData.sumbono_signed) {
+        return sanitizeSignatureUrl(docData.sumbono_signature_url, "Sumbono");
+      }
     }
     if (rLower.includes("manager") || rLower.includes("emir")) {
-      if (docData.emir_signed && docData.emir_signature_url) return docData.emir_signature_url;
+      if (docData.emir_signed) {
+        return sanitizeSignatureUrl(docData.emir_signature_url, "Mohamat Emir Ferdian");
+      }
     }
     if (rLower.includes("verifikator") || rLower.includes("petugas") || rLower.includes("alfin")) {
-      if (docData.alfin_signed && docData.alfin_signature_url) return docData.alfin_signature_url;
+      if (docData.alfin_signed) {
+        return sanitizeSignatureUrl(docData.alfin_signature_url, "Maghfur Muhammad Alfin");
+      }
     }
   }
 
@@ -41,21 +62,23 @@ const getSignatureForSlot = (roleOrTitle: string, name?: string, signaturesList?
       if (saved) sigs = JSON.parse(saved);
     } catch (e) {}
   }
-  if (!sigs || sigs.length === 0) return null;
 
-  const rLower = roleOrTitle.toLowerCase().trim();
   const nLower = (name || "").toLowerCase().trim();
 
   if (nLower && !nLower.includes("...") && nLower !== "(-)") {
-    const matchName = sigs.find(s => s.user_name.toLowerCase().trim() === nLower);
-    if (matchName) return matchName.signature_url;
+    const matchName = (sigs || []).find(s => s.user_name.toLowerCase().trim() === nLower);
+    if (matchName) return sanitizeSignatureUrl(matchName.signature_url, name || matchName.user_name);
   }
 
-  const matchRole = sigs.find(s => {
+  const matchRole = (sigs || []).find(s => {
     const sRole = s.role_title.toLowerCase().trim();
     return sRole === rLower || sRole.includes(rLower) || rLower.includes(sRole);
   });
-  if (matchRole) return matchRole.signature_url;
+  if (matchRole) return sanitizeSignatureUrl(matchRole.signature_url, name || matchRole.user_name);
+
+  if (name && name !== "(-)" && !name.includes("...")) {
+    return createSVGSignatureDataUrl(name);
+  }
 
   return null;
 };

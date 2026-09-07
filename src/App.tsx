@@ -30,7 +30,7 @@ import {
   MaterialReturnStatus,
   DigitalSignature
 } from "./types.js";
-import { ChevronRight } from "lucide-react";
+import { ChevronRight, ShieldAlert, CheckCircle } from "lucide-react";
 
 // Import modular sub-components
 import Sidebar from "./components/Sidebar.js";
@@ -118,24 +118,13 @@ export default function App() {
     setLoading(true);
     setError(null);
     try {
-      // 1. Fetch User directory & authentic operator profile
+      // 1. Fetch User directory
       const usrList = await api.getUsers();
       setSimulatedUsers(usrList);
       
-      let savedUser = localStorage.getItem("wms_username");
-      if (!savedUser) {
-        savedUser = "superadmin";
-        localStorage.setItem("wms_username", "superadmin");
-      }
-      
-      const matchedUser = usrList.find(u => u.username === savedUser) || usrList[0];
-      if (matchedUser) {
-        setCurrentUser(matchedUser);
-        setCurrentUserHeader(matchedUser.username);
-        setIsAuthenticated(true);
-      } else {
-        setIsAuthenticated(false);
-      }
+      // Always route to login screen first when opening website
+      setCurrentUser(null);
+      setIsAuthenticated(false);
 
       // 2. Fetch full static lists
       const locList = await api.getLocations();
@@ -644,7 +633,7 @@ export default function App() {
   };
 
   // Spinner Screen
-  if (loading && !currentUser && localStorage.getItem("wms_username")) {
+  if (loading && isAuthenticated) {
     return (
       <div className="min-h-screen bg-slate-900 flex flex-col items-center justify-center text-white p-6 font-mono selection:bg-rose-500">
         <div className="w-10 h-10 border-4 border-blue-500 border-t-transparent rounded-full animate-spin mb-4" />
@@ -738,91 +727,138 @@ export default function App() {
             const myTotalAction = myTug5Action + myTug6Action + myTug8Action + myTug10Action;
 
             return (
-              <div className="bg-slate-900 text-white px-5 py-2.5 flex flex-col md:flex-row items-start md:items-center justify-between gap-3 border-b border-slate-800 shadow-md shrink-0 font-sans">
-                <div className="flex items-center gap-2.5">
-                  <div className="p-2 bg-amber-500/20 text-amber-400 rounded-lg border border-amber-500/30 text-base animate-pulse">
-                    ✍️
+              <div className="bg-slate-900 text-slate-100 px-6 py-2.5 flex flex-col xl:flex-row xl:items-center justify-between gap-3 border-b border-slate-800 shadow-sm shrink-0 font-sans">
+                
+                {/* Left: Icon & Notification Summary */}
+                <div className="flex items-center gap-3 min-w-0">
+                  <div className={`p-2 rounded-lg border text-sm flex items-center justify-center shrink-0 ${
+                    myTotalAction > 0 
+                      ? "bg-amber-500/10 border-amber-500/30 text-amber-400 animate-pulse" 
+                      : total > 0 
+                      ? "bg-blue-500/10 border-blue-500/30 text-blue-400" 
+                      : "bg-emerald-500/10 border-emerald-500/30 text-emerald-400"
+                  }`}>
+                    <ShieldAlert className="w-4.5 h-4.5" />
                   </div>
-                  <div>
-                    <div className="flex items-center gap-2">
-                      <span className="text-xs font-bold text-slate-200">
-                        Pemberitahuan TTD Digital Berjenjang — Login Sebagai: <strong className="text-amber-300 font-black">{currentUser.name}</strong> ({currentUser.role})
+
+                  <div className="min-w-0 text-xs">
+                    <div className="flex items-center gap-2 flex-wrap">
+                      <span className="font-bold text-slate-100 uppercase tracking-wide text-[11px] font-mono">
+                        Status TTD Digital Berjenjang
+                      </span>
+                      <span className="text-slate-500 font-mono text-[10px]">•</span>
+                      <span className="text-slate-300 text-[11px] font-medium">
+                        <strong className="text-slate-100 font-bold">{currentUser.name}</strong>
+                        <span className="text-slate-400 ml-1">({currentUser.role})</span>
                       </span>
                     </div>
-                    <p className="text-[11px] text-slate-300 font-mono mt-0.5">
+
+                    <div className="text-[11px] font-sans mt-0.5 flex items-center gap-2 flex-wrap">
                       {total > 0 ? (
-                        <span className="text-amber-300 font-bold">
-                          ⚠️ PERHATIAN: Terdapat {total} Dokumen TUG yang belum lengkap TTD Digital.
+                        <>
+                          <span className="text-amber-300 font-semibold flex items-center gap-1">
+                            ⚠️ Terdapat <strong className="text-amber-300 font-bold">{total}</strong> Dokumen TUG belum lengkap TTD Digital
+                          </span>
                           {myTotalAction > 0 && (
-                            <span className="text-emerald-400 font-black ml-1.5 underline decoration-emerald-400">
-                              ({myTotalAction} Dokumen Siap Anda Setujui)
+                            <span className="bg-emerald-500/15 border border-emerald-500/30 text-emerald-300 px-2 py-0.5 rounded-full text-[10px] font-mono font-extrabold flex items-center gap-1">
+                              <CheckCircle className="w-3 h-3 text-emerald-400" />
+                              {myTotalAction} Siap Anda Setujui
                             </span>
                           )}
-                        </span>
+                        </>
                       ) : (
-                        <span className="text-emerald-400 font-bold">
-                          ✓ Seluruh Dokumen TUG telah lengkap diverifikasi & ditandatangani secara digital.
+                        <span className="text-emerald-400 font-semibold flex items-center gap-1">
+                          <CheckCircle className="w-3.5 h-3.5 text-emerald-400" />
+                          Seluruh Dokumen TUG telah lengkap diverifikasi & ditandatangani secara digital.
                         </span>
                       )}
-                    </p>
+                    </div>
                   </div>
                 </div>
 
-                {/* Dedicated TUG Breakdown Quick Action Pills */}
-                <div className="flex items-center gap-2 flex-wrap">
+                {/* Right: Modern Compact Quick Filter Navigation Pills */}
+                <div className="flex items-center gap-2 shrink-0 flex-wrap">
+                  <span className="text-[10px] font-mono font-bold uppercase text-slate-400 mr-1 hidden sm:inline">
+                    Quick Filter:
+                  </span>
+
+                  {/* TUG 5 */}
                   <button
                     onClick={() => setCurrentTab("material-requests")}
-                    className={`px-3 py-1.5 rounded-lg font-mono font-bold text-xs flex items-center gap-1.5 transition-all cursor-pointer shadow-xs border ${
-                      tug5 > 0
-                        ? "bg-blue-600 hover:bg-blue-500 text-white border-blue-400 ring-2 ring-blue-500/50"
-                        : "bg-slate-800 text-slate-400 border-slate-700 hover:bg-slate-750"
+                    className={`px-3 py-1.5 rounded-lg text-xs font-mono font-bold flex items-center gap-2 transition-all cursor-pointer border shadow-xs ${
+                      currentTab === "material-requests"
+                        ? "bg-indigo-600 text-white border-indigo-400 shadow-sm ring-2 ring-indigo-500/30"
+                        : tug5 > 0
+                        ? "bg-slate-800 hover:bg-slate-750 text-slate-200 border-slate-700"
+                        : "bg-slate-850 hover:bg-slate-800 text-slate-400 border-slate-800"
                     }`}
+                    title="Buka Permintaan Barang TUG 5"
                   >
-                    <span>📄 TUG 5 Permintaan</span>
-                    <span className={`text-[10px] px-1.5 py-0.2 rounded-full font-black ${tug5 > 0 ? "bg-amber-400 text-slate-950 font-black" : "bg-slate-700 text-slate-400"}`}>
-                      {tug5 > 0 ? `${tug5} PENDING TTD` : "✓ Complete"}
+                    <span>📄 TUG 5</span>
+                    <span className={`text-[10px] px-1.5 py-0.2 rounded-full font-mono font-black ${
+                      tug5 > 0 ? "bg-amber-400 text-slate-950" : "bg-slate-700 text-slate-300"
+                    }`}>
+                      {tug5 > 0 ? `${tug5} Pending` : "✓ Complete"}
                     </span>
                   </button>
 
+                  {/* TUG 6 */}
                   <button
                     onClick={() => setCurrentTab("material-requests-tug6")}
-                    className={`px-3 py-1.5 rounded-lg font-mono font-bold text-xs flex items-center gap-1.5 transition-all cursor-pointer shadow-xs border ${
-                      tug6 > 0
-                        ? "bg-purple-600 hover:bg-purple-500 text-white border-purple-400 ring-2 ring-purple-500/50"
-                        : "bg-slate-800 text-slate-400 border-slate-700 hover:bg-slate-750"
+                    className={`px-3 py-1.5 rounded-lg text-xs font-mono font-bold flex items-center gap-2 transition-all cursor-pointer border shadow-xs ${
+                      currentTab === "material-requests-tug6"
+                        ? "bg-purple-600 text-white border-purple-400 shadow-sm ring-2 ring-purple-500/30"
+                        : tug6 > 0
+                        ? "bg-slate-800 hover:bg-slate-750 text-slate-200 border-slate-700"
+                        : "bg-slate-850 hover:bg-slate-800 text-slate-400 border-slate-800"
                     }`}
+                    title="Buka Requisition TUG 6"
                   >
-                    <span>📑 TUG 6 Requisition</span>
-                    <span className={`text-[10px] px-1.5 py-0.2 rounded-full font-black ${tug6 > 0 ? "bg-amber-400 text-slate-950 font-black" : "bg-slate-700 text-slate-400"}`}>
-                      {tug6 > 0 ? `${tug6} PENDING TTD` : "✓ Complete"}
+                    <span>📑 TUG 6</span>
+                    <span className={`text-[10px] px-1.5 py-0.2 rounded-full font-mono font-black ${
+                      tug6 > 0 ? "bg-amber-400 text-slate-950" : "bg-slate-700 text-slate-300"
+                    }`}>
+                      {tug6 > 0 ? `${tug6} Pending` : "✓ Complete"}
                     </span>
                   </button>
 
+                  {/* TUG 8 */}
                   <button
                     onClick={() => setCurrentTab("dispatch")}
-                    className={`px-3 py-1.5 rounded-lg font-mono font-bold text-xs flex items-center gap-1.5 transition-all cursor-pointer shadow-xs border ${
-                      tug8 > 0
-                        ? "bg-amber-600 hover:bg-amber-500 text-white border-amber-400 ring-2 ring-amber-500/50"
-                        : "bg-slate-800 text-slate-400 border-slate-700 hover:bg-slate-750"
+                    className={`px-3 py-1.5 rounded-lg text-xs font-mono font-bold flex items-center gap-2 transition-all cursor-pointer border shadow-xs ${
+                      currentTab === "dispatch"
+                        ? "bg-blue-600 text-white border-blue-400 shadow-sm ring-2 ring-blue-500/30"
+                        : tug8 > 0
+                        ? "bg-slate-800 hover:bg-slate-750 text-slate-200 border-slate-700"
+                        : "bg-slate-850 hover:bg-slate-800 text-slate-400 border-slate-800"
                     }`}
+                    title="Buka Dispatch TUG 8"
                   >
-                    <span>🚚 TUG 8 Dispatch</span>
-                    <span className={`text-[10px] px-1.5 py-0.2 rounded-full font-black ${tug8 > 0 ? "bg-amber-400 text-slate-950 font-black" : "bg-slate-700 text-slate-400"}`}>
-                      {tug8 > 0 ? `${tug8} PENDING TTD` : "✓ Complete"}
+                    <span>🚚 TUG 8</span>
+                    <span className={`text-[10px] px-1.5 py-0.2 rounded-full font-mono font-black ${
+                      tug8 > 0 ? "bg-amber-400 text-slate-950" : "bg-slate-700 text-slate-300"
+                    }`}>
+                      {tug8 > 0 ? `${tug8} Pending` : "✓ Complete"}
                     </span>
                   </button>
 
+                  {/* TUG 10 */}
                   <button
                     onClick={() => setCurrentTab("material-returns")}
-                    className={`px-3 py-1.5 rounded-lg font-mono font-bold text-xs flex items-center gap-1.5 transition-all cursor-pointer shadow-xs border ${
-                      tug10 > 0
-                        ? "bg-emerald-600 hover:bg-emerald-500 text-white border-emerald-400 ring-2 ring-emerald-500/50"
-                        : "bg-slate-800 text-slate-400 border-slate-700 hover:bg-slate-800"
+                    className={`px-3 py-1.5 rounded-lg text-xs font-mono font-bold flex items-center gap-2 transition-all cursor-pointer border shadow-xs ${
+                      currentTab === "material-returns"
+                        ? "bg-emerald-600 text-white border-emerald-400 shadow-sm ring-2 ring-emerald-500/30"
+                        : tug10 > 0
+                        ? "bg-slate-800 hover:bg-slate-750 text-slate-200 border-slate-700"
+                        : "bg-slate-850 hover:bg-slate-800 text-slate-400 border-slate-800"
                     }`}
+                    title="Buka Pengembalian TUG 10"
                   >
-                    <span>🔄 TUG 10 Pengembalian</span>
-                    <span className={`text-[10px] px-1.5 py-0.2 rounded-full font-black ${tug10 > 0 ? "bg-amber-400 text-slate-950 font-black" : "bg-slate-700 text-slate-400"}`}>
-                      {tug10 > 0 ? `${tug10} PENDING TTD` : "✓ Complete"}
+                    <span>🔄 TUG 10</span>
+                    <span className={`text-[10px] px-1.5 py-0.2 rounded-full font-mono font-black ${
+                      tug10 > 0 ? "bg-amber-400 text-slate-950" : "bg-slate-700 text-slate-300"
+                    }`}>
+                      {tug10 > 0 ? `${tug10} Pending` : "✓ Complete"}
                     </span>
                   </button>
                 </div>
@@ -844,6 +880,7 @@ export default function App() {
               materialRequestsTUG6={materialRequestsTUG6}
               dispatches={dispatchList}
               materialReturns={materialReturns}
+              spkList={spkList}
               onQuickOrder={handleQuickOrder}
               onNavigateTab={setCurrentTab}
               onProcessTUG5={(req) => {
@@ -875,7 +912,7 @@ export default function App() {
 
           {/* Sparepart Catalog View */}
           {currentTab === "sparepart-catalog" && (
-            <SparePartCatalogView />
+            <SparePartCatalogView parts={parts} />
           )}
 
           {/* Receiving inbound queue */}
@@ -883,6 +920,7 @@ export default function App() {
             <ReceivingView 
               receivingList={receivingList}
               parts={parts}
+              spkList={spkList}
               role={currentUser!.role}
               onAddReceiving={handleAddReceiving}
               onVerifyReceiving={handleVerifyReceiving}

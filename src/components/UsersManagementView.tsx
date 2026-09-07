@@ -520,7 +520,7 @@ export default function UsersManagementView({
                 },
                 {
                   role: "Staff Gudang",
-                  user: "Ahmad Subarjo (staff_gudang_1)",
+                  user: "Maghfur Muhammad Alfin (alfin)",
                   badge: "bg-blue-100 text-blue-800 border-blue-300",
                   desc: "Staff pengeluar barang gudang utama, penyiapan fisik barang TUG 8, dan pengarsipan bukti penerimaan.",
                   privileges: ["Eksekusi Outbound Dispatch (TUG 8)", "Cetak Surat Jalan & Bon TUG 8", "Management Stok Master", "Opname Fisik Barang"]
@@ -688,7 +688,7 @@ export default function UsersManagementView({
                   className="w-full bg-white border border-slate-300 rounded-lg px-2.5 py-1.5 text-xs text-slate-800 focus:outline-none focus:ring-1 focus:ring-blue-500"
                 >
                   <option value={UserRole.WAREHOUSE_STAFF}>Petugas Gudang (Maghfur Muhammad Alfin)</option>
-                  <option value={UserRole.WAREHOUSE_ADMIN}>Staff Gudang (Ahmad Subarjo)</option>
+                  <option value={UserRole.WAREHOUSE_ADMIN}>Staff Gudang</option>
                   <option value={UserRole.VERIFIER_RENDALHAR}>Verifikator Rendalhar (Level 1 Approval)</option>
                   <option value={UserRole.LOGISTICS_MANAGER}>Manager Logistik (Level 2 Approval - Emir)</option>
                   <option value={UserRole.VP_RENDALHAR}>VP RENDALHAR (Level 3 Pengesahan - Sumbono)</option>

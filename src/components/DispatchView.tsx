@@ -16,6 +16,9 @@ import {
   Calendar, 
   ArrowRightCircle, 
   ChevronRight,
+  ChevronLeft,
+  ChevronsLeft,
+  ChevronsRight,
   Anchor,
   X,
   Printer,
@@ -30,7 +33,9 @@ import {
   SlidersHorizontal,
   FolderArchive,
   ChevronDown,
-  Trash2
+  Trash2,
+  ShieldCheck,
+  CheckCircle
 } from "lucide-react";
 import { OutboundDispatch, DispatchStatus, UserRole, SparePart, MaterialRequest, SPKWorkOrder, MaterialReturn } from "../types.js";
 
@@ -83,10 +88,15 @@ export default function DispatchView({
 
   // Outbound Pagination states
   const [dspPage, setDspPage] = useState(1);
-  const dspPerPage = 6;
+  const [dspPerPage, setDspPerPage] = useState<number>(10);
+
+  // Selected dispatch IDs state for Bulk Delete Checklist
+  const [selectedDspIds, setSelectedDspIds] = useState<string[]>([]);
+  const [isBulkDeleting, setIsBulkDeleting] = useState<boolean>(false);
 
   React.useEffect(() => {
     setDspPage(1);
+    setSelectedDspIds([]);
   }, [search, statusFilter, vesselFilter, activeTab, timePreset, selectedMonth, dateFrom, dateTo]);
 
   const [selectedDispatch, setSelectedDispatch] = useState<OutboundDispatch | null>(null);
@@ -361,18 +371,19 @@ export default function DispatchView({
 
   // Helper to match item dates against current timePreset / date filters
   const isDateInFilter = (dateStr?: string) => {
-    if (!dateStr) return false;
+    if (!dateStr) return true;
     if (timePreset === "all") return true;
+    const currentYYYYMM = new Date().toISOString().substring(0, 7);
     if (timePreset === "july2026" || selectedMonth === "2026-07") {
-      return dateStr.startsWith("2026-07");
+      return dateStr.startsWith("2026-07") || dateStr.startsWith(currentYYYYMM);
     }
     if (timePreset === "week") {
       const now = new Date().getTime();
       const dTime = new Date(dateStr).getTime();
-      return !isNaN(dTime) && (now - dTime) <= 7 * 24 * 60 * 60 * 1000;
+      return isNaN(dTime) || (now - dTime) <= 7 * 24 * 60 * 60 * 1000;
     }
     if (timePreset === "month" && selectedMonth !== "ALL") {
-      return dateStr.startsWith(selectedMonth);
+      return dateStr.startsWith(selectedMonth) || dateStr.startsWith(currentYYYYMM);
     }
     if (timePreset === "custom") {
       if (dateFrom && dateStr < dateFrom) return false;
@@ -384,52 +395,69 @@ export default function DispatchView({
 
   // Filtered TUG 5 requests
   const filteredTug5List = React.useMemo(() => {
-    return requests.filter(r => {
-      const dateVal = r.request_date || r.created_at?.split("T")[0] || "";
+    return (requests || []).filter(r => {
+      if (!r) return false;
+      const vName = r.vessel_name || "";
+      const reqNum = r.request_number || "";
+      const tug5Num = r.tug5_number || "";
+      const woRef = r.work_order_ref || "";
+      const dateVal = r.request_date || (r.created_at ? r.created_at.split("T")[0] : "");
       const matchesSearch = search === "" || 
-        r.request_number.toLowerCase().includes(search.toLowerCase()) || 
-        (r.tug5_number && r.tug5_number.toLowerCase().includes(search.toLowerCase())) ||
-        r.vessel_name.toLowerCase().includes(search.toLowerCase()) ||
-        (r.work_order_ref && r.work_order_ref.toLowerCase().includes(search.toLowerCase()));
-      const matchesVessel = vesselFilter === "All" || r.vessel_name === vesselFilter;
+        reqNum.toLowerCase().includes(search.toLowerCase()) || 
+        tug5Num.toLowerCase().includes(search.toLowerCase()) ||
+        vName.toLowerCase().includes(search.toLowerCase()) ||
+        woRef.toLowerCase().includes(search.toLowerCase());
+      const matchesVessel = vesselFilter === "All" || vName === vesselFilter;
       return matchesSearch && matchesVessel && isDateInFilter(dateVal);
     });
   }, [requests, search, vesselFilter, timePreset, selectedMonth, dateFrom, dateTo]);
 
   // Filtered TUG 6 requests
   const filteredTug6List = React.useMemo(() => {
-    const list = (requestsTUG6 && requestsTUG6.length > 0) ? requestsTUG6 : requests.filter(r => (r as any).tug_type === "TUG6");
-    return list.filter(r => {
-      const dateVal = r.request_date || r.created_at?.split("T")[0] || "";
+    const rawList = (requestsTUG6 && requestsTUG6.length > 0) ? requestsTUG6 : (requests || []).filter(r => r && (r as any).tug_type === "TUG6");
+    return rawList.filter(r => {
+      if (!r) return false;
+      const vName = r.vessel_name || "";
+      const reqNum = r.request_number || "";
+      const tug6Num = r.tug6_number || "";
+      const tug5Num = r.tug5_number || "";
+      const woRef = r.work_order_ref || "";
+      const dateVal = r.request_date || (r.created_at ? r.created_at.split("T")[0] : "");
       const matchesSearch = search === "" || 
-        r.request_number.toLowerCase().includes(search.toLowerCase()) || 
-        (r.tug6_number && r.tug6_number.toLowerCase().includes(search.toLowerCase())) ||
-        (r.tug5_number && r.tug5_number.toLowerCase().includes(search.toLowerCase())) ||
-        r.vessel_name.toLowerCase().includes(search.toLowerCase()) ||
-        (r.work_order_ref && r.work_order_ref.toLowerCase().includes(search.toLowerCase()));
-      const matchesVessel = vesselFilter === "All" || r.vessel_name === vesselFilter;
+        reqNum.toLowerCase().includes(search.toLowerCase()) || 
+        tug6Num.toLowerCase().includes(search.toLowerCase()) ||
+        tug5Num.toLowerCase().includes(search.toLowerCase()) ||
+        vName.toLowerCase().includes(search.toLowerCase()) ||
+        woRef.toLowerCase().includes(search.toLowerCase());
+      const matchesVessel = vesselFilter === "All" || vName === vesselFilter;
       return matchesSearch && matchesVessel && isDateInFilter(dateVal);
     });
   }, [requestsTUG6, requests, search, vesselFilter, timePreset, selectedMonth, dateFrom, dateTo]);
 
   // Extract unique lists of vessels for filters
-  const uniqueVessels = Array.from(new Set(dispatchList.map(d => d.vessel_name))).filter(Boolean);
+  const uniqueVessels = Array.from(new Set((dispatchList || []).filter(d => d && d.vessel_name).map(d => d.vessel_name))).filter(Boolean);
 
   // Filtering dispatches
-  const filtered = dispatchList.filter(d => {
+  const filtered = (dispatchList || []).filter(d => {
+    if (!d) return false;
+    const vName = d.vessel_name || "";
+    const dispNum = d.dispatch_number || "";
+    const tug8Num = d.tug8_number || "";
+    const reqRef = d.request_reference || "";
+
     const isQueue = activeTab === "queue" ? d.status !== DispatchStatus.DELIVERED && d.status !== DispatchStatus.COMPLETED && d.status !== "Completed" as any : d.status === DispatchStatus.DELIVERED || d.status === DispatchStatus.COMPLETED || d.status === "Completed" as any;
     
     const matchesSearch = 
-      d.vessel_name.toLowerCase().includes(search.toLowerCase()) || 
-      (d.dispatch_number && d.dispatch_number.toLowerCase().includes(search.toLowerCase())) || 
-      (d.tug8_number && d.tug8_number.toLowerCase().includes(search.toLowerCase())) || 
-      d.request_reference.toLowerCase().includes(search.toLowerCase());
+      vName.toLowerCase().includes(search.toLowerCase()) || 
+      dispNum.toLowerCase().includes(search.toLowerCase()) || 
+      tug8Num.toLowerCase().includes(search.toLowerCase()) || 
+      reqRef.toLowerCase().includes(search.toLowerCase());
 
     const matchesStatus = statusFilter === "All" || d.status === statusFilter;
-    const matchesVessel = vesselFilter === "All" || d.vessel_name === vesselFilter;
+    const matchesVessel = vesselFilter === "All" || vName === vesselFilter;
 
     // Time filter evaluation
-    const dDate = (d as any).dispatch_date || d.created_at?.split("T")[0] || d.created_at || "";
+    const dDate = (d as any).dispatch_date || (d.created_at ? d.created_at.split("T")[0] : "") || d.created_at || "";
     const matchesTime = isDateInFilter(dDate);
 
     return isQueue && matchesSearch && matchesStatus && matchesVessel && matchesTime;
@@ -591,7 +619,7 @@ export default function DispatchView({
           });
         }
       });
-      const vessels = Array.from(new Set(filtered.map(d => d.vessel_name).filter(Boolean)));
+      const vessels = Array.from(new Set(filtered.filter(d => d && d.vessel_name).map(d => d.vessel_name))).filter(Boolean);
       const combinedDoc: OutboundDispatch = {
         ...filtered[0],
         dispatch_number: `REKAP-TUG8-${filtered.length}-ITEMS`,
@@ -607,10 +635,56 @@ export default function DispatchView({
   const dspTotalPages = Math.ceil(filtered.length / dspPerPage) || 1;
   const paginatedDsp = filtered.slice((dspPage - 1) * dspPerPage, dspPage * dspPerPage);
 
-  const statsActiveCount = dispatchList.filter(d => d.status !== DispatchStatus.DELIVERED && d.status !== DispatchStatus.COMPLETED && d.status !== "Completed" as any).length;
-  const statsDraftCount = dispatchList.filter(d => d.status === DispatchStatus.DRAFT).length;
-  const statsTransitCount = dispatchList.filter(d => d.status === DispatchStatus.DISPATCHED).length;
-  const statsArchiveCount = dispatchList.filter(d => d.status === DispatchStatus.DELIVERED || d.status === DispatchStatus.COMPLETED || d.status === "Completed" as any).length;
+  const isAllPageSelected = paginatedDsp.length > 0 && paginatedDsp.every(d => selectedDspIds.includes(d.id));
+  const isSomePageSelected = paginatedDsp.some(d => selectedDspIds.includes(d.id));
+
+  const handleSelectAllPage = (e: React.ChangeEvent<HTMLInputElement>) => {
+    if (e.target.checked) {
+      const pageIds = paginatedDsp.map(r => r.id);
+      const combined = Array.from(new Set([...selectedDspIds, ...pageIds]));
+      setSelectedDspIds(combined);
+    } else {
+      const pageIds = new Set(paginatedDsp.map(r => r.id));
+      setSelectedDspIds(selectedDspIds.filter(id => !pageIds.has(id)));
+    }
+  };
+
+  const handleToggleSelectRow = (id: string, e: React.ChangeEvent<HTMLInputElement>) => {
+    e.stopPropagation();
+    if (e.target.checked) {
+      setSelectedDspIds(prev => [...prev, id]);
+    } else {
+      setSelectedDspIds(prev => prev.filter(item => item !== id));
+    }
+  };
+
+  const handleBulkDelete = async () => {
+    if (selectedDspIds.length === 0 || !onDeleteDispatch) return;
+    const confirmMsg = `Apakah Anda yakin ingin menghapus ${selectedDspIds.length} dokumen TUG 8 yang dichecklist?`;
+    if (!confirm(confirmMsg)) return;
+
+    setIsBulkDeleting(true);
+    const totalToDelete = selectedDspIds.length;
+    try {
+      for (const id of selectedDspIds) {
+        await onDeleteDispatch(id);
+      }
+      setSelectedDspIds([]);
+      alert(`Berhasil menghapus ${totalToDelete} dokumen TUG 8.`);
+    } catch (err: any) {
+      console.error("Bulk delete error:", err);
+      alert("Terjadi kesalahan saat menghapus dokumen TUG 8.");
+    } finally {
+      setIsBulkDeleting(false);
+    }
+  };
+
+  const safeDispatchList = (dispatchList || []).filter(Boolean);
+
+  const statsActiveCount = safeDispatchList.filter(d => d.status !== DispatchStatus.DELIVERED && d.status !== DispatchStatus.COMPLETED && d.status !== "Completed" as any).length;
+  const statsDraftCount = safeDispatchList.filter(d => d.status === DispatchStatus.DRAFT).length;
+  const statsTransitCount = safeDispatchList.filter(d => d.status === DispatchStatus.DISPATCHED).length;
+  const statsArchiveCount = safeDispatchList.filter(d => d.status === DispatchStatus.DELIVERED || d.status === DispatchStatus.COMPLETED || d.status === "Completed" as any).length;
 
   return (
     <div className="flex-1 flex flex-col h-full bg-slate-50 border-l border-slate-200">
@@ -865,6 +939,35 @@ export default function DispatchView({
 
       {/* Main Table Segment */}
       <section className="flex-1 flex flex-col min-h-0 bg-white">
+        
+        {/* Bulk Delete Action Bar */}
+        {selectedDspIds.length > 0 && onDeleteDispatch && (
+          <div className="bg-rose-50 border-b border-rose-200 px-6 py-2.5 flex items-center justify-between shadow-xs sticky top-0 z-20">
+            <div className="flex items-center gap-2 font-mono text-xs text-rose-900 font-extrabold">
+              <AlertTriangle className="w-4 h-4 text-rose-600 shrink-0" />
+              <span>Terpilih <span className="bg-rose-200 text-rose-950 px-2 py-0.5 rounded font-black">{selectedDspIds.length}</span> Dokumen TUG 8</span>
+            </div>
+            <div className="flex items-center gap-2 font-mono text-xs">
+              <button
+                type="button"
+                onClick={() => setSelectedDspIds([])}
+                className="px-3 py-1 bg-white border border-rose-200 text-slate-700 hover:bg-slate-50 text-[11px] font-bold rounded-lg cursor-pointer transition-colors"
+              >
+                Batal Pilih
+              </button>
+              <button
+                type="button"
+                disabled={isBulkDeleting}
+                onClick={handleBulkDelete}
+                className="px-4 py-1.5 bg-rose-600 hover:bg-rose-700 active:bg-rose-800 disabled:opacity-50 text-white text-[11px] font-mono font-black uppercase rounded-lg shadow-xs cursor-pointer flex items-center gap-1.5 transition-all"
+              >
+                <Trash2 className="w-3.5 h-3.5" />
+                <span>{isBulkDeleting ? "Menghapus..." : `Hapus (${selectedDspIds.length}) Terpilih`}</span>
+              </button>
+            </div>
+          </div>
+        )}
+
         <div className="px-6 py-3.5 border-b border-slate-100 bg-slate-50/50 flex justify-between items-center shrink-0">
           <div className="flex items-center gap-2 text-slate-700">
             <Box className="w-4 h-4 text-blue-500" />
@@ -891,6 +994,18 @@ export default function DispatchView({
             <table className="w-full text-xs text-left border-collapse min-w-[900px]">
               <thead className="bg-slate-50 text-[10px] font-mono font-extrabold text-slate-600 uppercase border-b border-slate-200 sticky top-0 z-10">
                 <tr>
+                  <th className="p-3.5 w-10 text-center bg-slate-50">
+                    <input
+                      type="checkbox"
+                      className="w-4 h-4 rounded text-indigo-600 focus:ring-indigo-500 border-slate-300 cursor-pointer accent-indigo-600"
+                      checked={isAllPageSelected}
+                      ref={input => {
+                        if (input) input.indeterminate = !isAllPageSelected && isSomePageSelected;
+                      }}
+                      onChange={handleSelectAllPage}
+                      title="Pilih Semua di Halaman Ini"
+                    />
+                  </th>
                   <th className="p-3.5 w-10 text-center bg-slate-50">NO</th>
                   <th className="p-3.5">Detail</th>
                   <th className="p-3.5">No. TUG 8 (Spare Part Note)</th>
@@ -906,10 +1021,23 @@ export default function DispatchView({
                 {paginatedDsp.map((item, idx) => {
                   const itemsCount = item.items.length;
                   const partsSummary = item.items.map(i => `${i.qty_dispatched || i.qty_requested}x ${i.part_number}`).join(", ");
+                  const isSelected = selectedDspIds.includes(item.id);
 
                   return (
-                    <tr key={item.id} className="hover:bg-blue-50/30 transition-colors font-semibold">
-                      
+                    <tr 
+                      key={item.id} 
+                      className={`transition-colors font-semibold ${
+                        isSelected ? "bg-rose-50/60" : "hover:bg-blue-50/30"
+                      }`}
+                    >
+                      <td className="p-3.5 text-center" onClick={(e) => e.stopPropagation()}>
+                        <input
+                          type="checkbox"
+                          className="w-4 h-4 rounded text-indigo-600 focus:ring-indigo-500 border-slate-300 cursor-pointer accent-indigo-600"
+                          checked={isSelected}
+                          onChange={(e) => handleToggleSelectRow(item.id, e)}
+                        />
+                      </td>
                       {/* NO */}
                       <td className="p-3.5 text-center text-slate-500 font-mono font-bold">{(dspPage - 1) * dspPerPage + idx + 1}</td>
                       
@@ -1025,92 +1153,93 @@ export default function DispatchView({
                                         setActiveActionId(null);
                                         handleOpenUpdateModal(item);
                                       }}
-                                      className="w-full px-4 py-2 text-xs font-semibold hover:bg-slate-100 text-slate-800 flex items-center gap-2 cursor-pointer transition-colors text-left"
+              className="w-full px-4 py-2 text-xs font-semibold hover:bg-slate-100 text-slate-800 flex items-center gap-2 cursor-pointer transition-colors text-left"
                                     >
                                       <Eye className="w-3.5 h-3.5 text-slate-550" />
                                       <span>Lihat Detail</span>
                                     </button>
                                   )}
 
-                                   {/* Quick Level 1 Signature Button (Alfin / Verifikator) */}
-                                   {(currentUser?.username === "alfin" || currentUser?.role === UserRole.VERIFIER_RENDALHAR || currentUser?.role === UserRole.SUPER_ADMIN) && !item.alfin_signed && (
-                                     <>
-                                       <div className="border-t border-slate-100 my-1"></div>
-                                       <button
-                                         type="button"
-                                         onClick={async (e) => {
-                                           e.stopPropagation();
-                                           setActiveActionId(null);
-                                           const now = new Date().toISOString();
-                                           if (onUpdateDispatch) {
-                                             await onUpdateDispatch(item.id, {
-                                               alfin_signed: true,
-                                               alfin_signed_at: now,
-                                               alfin_signature_url: "https://api.dicebear.com/7.x/initials/svg?seed=MaghfurAlfin"
-                                             });
-                                           }
-                                         }}
-                                         className="w-full px-4 py-2 text-xs font-bold hover:bg-emerald-50 text-emerald-700 flex items-center gap-2 cursor-pointer transition-colors text-left"
-                                       >
-                                         <CheckCircle className="w-3.5 h-3.5 text-emerald-600" />
-                                         <span>✓ TTD Level 1 (Alfin)</span>
-                                       </button>
-                                     </>
-                                   )}
+                                  {/* Quick Level 1 Signature Button (Alfin / Verifikator) */}
+                                  {isAlfinRole && !item.alfin_signed && (
+                                    <>
+                                      <div className="border-t border-slate-100 my-1"></div>
+                                      <button
+                                        type="button"
+                                        onClick={async (e) => {
+                                          e.stopPropagation();
+                                          setActiveActionId(null);
+                                          const now = new Date().toISOString();
+                                          if (onUpdateDispatch) {
+                                            await onUpdateDispatch(item.id, {
+                                              alfin_signed: true,
+                                              alfin_signed_at: now,
+                                              alfin_signature_url: "https://api.dicebear.com/7.x/initials/svg?seed=MaghfurAlfin"
+                                            });
+                                          }
+                                        }}
+                                        className="w-full px-4 py-2 text-xs font-bold hover:bg-emerald-50 text-emerald-700 flex items-center gap-2 cursor-pointer transition-colors text-left"
+                                      >
+                                        <CheckCircle className="w-3.5 h-3.5 text-emerald-600" />
+                                        <span>✓ TTD Level 1 (Alfin)</span>
+                                      </button>
+                                    </>
+                                  )}
 
-                                   {/* Quick Level 2 Signature Button (Emir / Manager Logistik) */}
-                                   {(currentUser?.username === "emir" || currentUser?.role === UserRole.LOGISTICS_MANAGER || currentUser?.role === UserRole.SUPER_ADMIN) && !item.emir_signed && (
-                                     <>
-                                       <div className="border-t border-slate-100 my-1"></div>
-                                       <button
-                                         type="button"
-                                         onClick={async (e) => {
-                                           e.stopPropagation();
-                                           setActiveActionId(null);
-                                           const now = new Date().toISOString();
-                                           if (onUpdateDispatch) {
-                                             await onUpdateDispatch(item.id, {
-                                               emir_signed: true,
-                                               emir_signed_at: now,
-                                               emir_signature_url: "https://api.dicebear.com/7.x/initials/svg?seed=EmirFerdian"
-                                             });
-                                           }
-                                         }}
-                                         className="w-full px-4 py-2 text-xs font-bold hover:bg-amber-50 text-amber-800 flex items-center gap-2 cursor-pointer transition-colors text-left"
-                                       >
-                                         <CheckCircle className="w-3.5 h-3.5 text-amber-600" />
-                                         <span>✓ TTD Level 2 (Emir)</span>
-                                       </button>
-                                     </>
-                                   )}
+                                  {/* Quick Level 2 Signature Button (Emir / Manager Logistik) */}
+                                  {isEmirRole && !item.emir_signed && (
+                                    <>
+                                      <div className="border-t border-slate-100 my-1"></div>
+                                      <button
+                                        type="button"
+                                        onClick={async (e) => {
+                                          e.stopPropagation();
+                                          setActiveActionId(null);
+                                          const now = new Date().toISOString();
+                                          if (onUpdateDispatch) {
+                                            await onUpdateDispatch(item.id, {
+                                              emir_signed: true,
+                                              emir_signed_at: now,
+                                              emir_signature_url: "https://api.dicebear.com/7.x/initials/svg?seed=EmirFerdian"
+                                            });
+                                          }
+                                        }}
+                                        className="w-full px-4 py-2 text-xs font-bold hover:bg-amber-50 text-amber-800 flex items-center gap-2 cursor-pointer transition-colors text-left"
+                                      >
+                                        <CheckCircle className="w-3.5 h-3.5 text-amber-600" />
+                                        <span>✓ TTD Level 2 (Emir)</span>
+                                      </button>
+                                    </>
+                                  )}
 
-                                   {/* Quick Level 3 Signature Button (Sumbono / VP Rendalhar) */}
-                                   {(currentUser?.username === "sumbono" || currentUser?.role === UserRole.VP_RENDALHAR || currentUser?.role === UserRole.SUPER_ADMIN) && !item.sumbono_signed && (
-                                     <>
-                                       <div className="border-t border-slate-100 my-1"></div>
-                                       <button
-                                         type="button"
-                                         onClick={async (e) => {
-                                           e.stopPropagation();
-                                           setActiveActionId(null);
-                                           const now = new Date().toISOString();
-                                           if (onUpdateDispatch) {
-                                             await onUpdateDispatch(item.id, {
-                                               sumbono_signed: true,
-                                               sumbono_signed_at: now,
-                                               sumbono_signature_url: "https://api.dicebear.com/7.x/initials/svg?seed=Sumbono"
-                                             });
-                                           }
-                                         }}
-                                         className="w-full px-4 py-2 text-xs font-bold hover:bg-indigo-50 text-indigo-700 flex items-center gap-2 cursor-pointer transition-colors text-left"
-                                       >
-                                         <CheckCircle className="w-3.5 h-3.5 text-indigo-600" />
-                                         <span>✓ Sahkan & TTD (Sumbono)</span>
-                                       </button>
-                                     </>
-                                   )}
+                                  {/* Quick Level 3 Signature Button (Sumbono / VP Rendalhar) */}
+                                  {isSumbonoRole && !item.sumbono_signed && (
+                                    <>
+                                      <div className="border-t border-slate-100 my-1"></div>
+                                      <button
+                                        type="button"
+                                        onClick={async (e) => {
+                                          e.stopPropagation();
+                                          setActiveActionId(null);
+                                          const now = new Date().toISOString();
+                                          if (onUpdateDispatch) {
+                                            await onUpdateDispatch(item.id, {
+                                              sumbono_signed: true,
+                                              sumbono_signed_at: now,
+                                              sumbono_signature_url: "https://api.dicebear.com/7.x/initials/svg?seed=Sumbono",
+                                              status: DispatchStatus.DELIVERED
+                                            });
+                                          }
+                                        }}
+                                        className="w-full px-4 py-2 text-xs font-bold hover:bg-indigo-50 text-indigo-700 flex items-center gap-2 cursor-pointer transition-colors text-left"
+                                      >
+                                        <CheckCircle className="w-3.5 h-3.5 text-indigo-600" />
+                                        <span>✓ Sahkan & TTD (Sumbono)</span>
+                                      </button>
+                                    </>
+                                  )}
 
-                                   <div className="border-t border-slate-100 my-1"></div>
+                                  <div className="border-t border-slate-100 my-1"></div>
 
                                   <button
                                     type="button"
@@ -1168,29 +1297,95 @@ export default function DispatchView({
           )}
         </div>
 
-        {/* Pagination segment */}
-        <div className="bg-white border-t border-slate-200 px-6 py-4.5 flex items-center justify-between font-mono text-[11px] font-bold shrink-0 shadow-2xs no-print">
-          <span className="text-slate-450 uppercase tracking-widest leading-none text-[10px] font-black">
-            TOTAL REKOR DATA: {filtered.length} OUTBOUND
-          </span>
+        {/* Modern Sticky Pagination Bar for Dispatch TUG 8 */}
+        <div className="bg-white border-t border-slate-200 px-6 py-3 flex flex-col sm:flex-row items-center justify-between gap-3 font-sans text-xs shrink-0 shadow-md sticky bottom-0 z-20 no-print">
+          {/* Left: Record Range Summary & Per Page Selector */}
+          <div className="flex items-center gap-4 text-slate-600 font-medium">
+            <div className="flex items-center gap-2">
+              <span className="text-[11px] font-mono text-slate-500 uppercase font-bold">Baris per halaman:</span>
+              <select
+                value={dspPerPage}
+                onChange={(e) => {
+                  setDspPerPage(Number(e.target.value));
+                  setDspPage(1);
+                }}
+                className="bg-slate-50 border border-slate-250 text-slate-800 text-xs font-bold font-mono rounded-lg px-2 py-1 focus:outline-none focus:ring-1 focus:ring-indigo-500 cursor-pointer"
+              >
+                <option value={5}>5</option>
+                <option value={10}>10</option>
+                <option value={25}>25</option>
+                <option value={50}>50</option>
+                <option value={100}>100</option>
+              </select>
+            </div>
+            <span className="text-slate-300">|</span>
+            <span className="text-[11px] font-mono text-slate-600 font-bold">
+              Menampilkan <span className="text-slate-900 font-black">{filtered.length > 0 ? (dspPage - 1) * dspPerPage + 1 : 0}</span> - <span className="text-slate-900 font-black">{Math.min(dspPage * dspPerPage, filtered.length)}</span> dari <span className="text-slate-900 font-black">{filtered.length}</span> data TUG 8
+            </span>
+          </div>
 
-          <div className="flex items-center gap-1">
+          {/* Right: Page Number Buttons */}
+          <div className="flex items-center gap-1 font-mono">
+            <button
+              disabled={dspPage === 1}
+              onClick={() => setDspPage(1)}
+              className="p-1.5 rounded-lg border border-slate-200 text-slate-600 disabled:opacity-30 hover:bg-slate-100 disabled:hover:bg-transparent transition-all cursor-pointer disabled:cursor-not-allowed"
+              title="Halaman Pertama"
+            >
+              <ChevronsLeft className="w-4 h-4" />
+            </button>
+
             <button
               disabled={dspPage === 1}
               onClick={() => setDspPage(p => Math.max(1, p - 1))}
-              className="px-3 py-1.5 rounded-lg border border-slate-200 text-slate-600 disabled:opacity-40 hover:bg-slate-50 transition-colors cursor-pointer disabled:cursor-not-allowed"
+              className="p-1.5 rounded-lg border border-slate-200 text-slate-600 disabled:opacity-30 hover:bg-slate-100 disabled:hover:bg-transparent transition-all cursor-pointer disabled:cursor-not-allowed flex items-center gap-1 px-2.5 text-xs font-bold"
+              title="Halaman Sebelumnya"
             >
-              Sebelumnya
+              <ChevronLeft className="w-4 h-4" />
+              <span className="hidden md:inline">Sebelumnya</span>
             </button>
-            <span className="px-3 py-1.5 text-slate-500">
-              Halaman {dspPage} dari {dspTotalPages || 1}
-            </span>
+
+            <div className="flex items-center gap-1 px-1">
+              {Array.from({ length: dspTotalPages || 1 }, (_, i) => i + 1)
+                .filter(p => p === 1 || p === dspTotalPages || Math.abs(p - dspPage) <= 1)
+                .map((p, i, arr) => {
+                  const prev = arr[i - 1];
+                  const showEllipsis = prev && p - prev > 1;
+                  return (
+                    <React.Fragment key={p}>
+                      {showEllipsis && <span className="px-1 text-slate-400 font-bold">...</span>}
+                      <button
+                        onClick={() => setDspPage(p)}
+                        className={`w-8 h-8 rounded-lg text-xs font-mono font-bold transition-all cursor-pointer ${
+                          dspPage === p
+                            ? "bg-slate-900 text-white shadow-xs font-black"
+                            : "bg-white border border-slate-200 text-slate-600 hover:bg-slate-100"
+                        }`}
+                      >
+                        {p}
+                      </button>
+                    </React.Fragment>
+                  );
+                })}
+            </div>
+
             <button
-              disabled={dspPage === dspTotalPages || dspTotalPages <= 1}
+              disabled={dspPage >= dspTotalPages || dspTotalPages <= 1}
               onClick={() => setDspPage(p => Math.min(dspTotalPages, p + 1))}
-              className="px-3 py-1.5 rounded-lg border border-slate-200 text-slate-600 disabled:opacity-40 hover:bg-slate-50 transition-colors cursor-pointer disabled:cursor-not-allowed"
+              className="p-1.5 rounded-lg border border-slate-200 text-slate-600 disabled:opacity-30 hover:bg-slate-100 disabled:hover:bg-transparent transition-all cursor-pointer disabled:cursor-not-allowed flex items-center gap-1 px-2.5 text-xs font-bold"
+              title="Halaman Selanjutnya"
             >
-              Selanjutnya
+              <span className="hidden md:inline">Selanjutnya</span>
+              <ChevronRight className="w-4 h-4" />
+            </button>
+
+            <button
+              disabled={dspPage >= dspTotalPages || dspTotalPages <= 1}
+              onClick={() => setDspPage(dspTotalPages)}
+              className="p-1.5 rounded-lg border border-slate-200 text-slate-600 disabled:opacity-30 hover:bg-slate-100 disabled:hover:bg-transparent transition-all cursor-pointer disabled:cursor-not-allowed"
+              title="Halaman Terakhir"
+            >
+              <ChevronsRight className="w-4 h-4" />
             </button>
           </div>
         </div>
@@ -1249,6 +1444,103 @@ export default function DispatchView({
                   <div className="flex justify-between">
                     <span>Coordinated By:</span>
                     <span>{selectedDispatch.created_by}</span>
+                  </div>
+                </div>
+
+                {/* 3-Level Approval Stepper */}
+                <div className="bg-slate-900 text-white rounded-xl p-4 border border-slate-800 space-y-3">
+                  <div className="flex justify-between items-center border-b border-slate-800 pb-2">
+                    <span className="text-xs font-black font-display uppercase tracking-wider text-slate-200 flex items-center gap-1.5">
+                      <ShieldCheck className="w-4 h-4 text-emerald-400" />
+                      Approval TUG 8 & TTD Digital
+                    </span>
+                  </div>
+
+                  <div className="space-y-2 pt-1">
+                    {/* LEVEL 1: ALFIN */}
+                    <div className={`p-2.5 rounded-lg border text-xs flex items-center justify-between ${selectedDispatch.alfin_signed ? 'bg-emerald-950/40 border-emerald-500/40 text-emerald-100' : 'bg-slate-800/80 border-slate-700 text-slate-300'}`}>
+                      <div>
+                        <div className="font-bold">L1: Maghfur Alfin (Verifikator)</div>
+                        <div className="text-[9.5px] text-slate-400 font-mono">
+                          {selectedDispatch.alfin_signed ? `✓ Signed: ${selectedDispatch.alfin_signed_at ? new Date(selectedDispatch.alfin_signed_at).toLocaleDateString("id-ID") : "Terverifikasi"}` : "⏳ Pending Approval"}
+                        </div>
+                      </div>
+                      {!selectedDispatch.alfin_signed && isAlfinRole && (
+                        <button
+                          type="button"
+                          onClick={async () => {
+                            const now = new Date().toISOString();
+                            if (onUpdateDispatch) {
+                              await onUpdateDispatch(selectedDispatch.id, {
+                                alfin_signed: true,
+                                alfin_signed_at: now,
+                                alfin_signature_url: "https://api.dicebear.com/7.x/initials/svg?seed=MaghfurAlfin"
+                              });
+                            }
+                          }}
+                          className="px-2.5 py-1 bg-emerald-600 hover:bg-emerald-500 text-white font-bold text-[10px] uppercase rounded cursor-pointer"
+                        >
+                          TTD Alfin
+                        </button>
+                      )}
+                    </div>
+
+                    {/* LEVEL 2: EMIR */}
+                    <div className={`p-2.5 rounded-lg border text-xs flex items-center justify-between ${selectedDispatch.emir_signed ? 'bg-emerald-950/40 border-emerald-500/40 text-emerald-100' : 'bg-slate-800/80 border-slate-700 text-slate-300'}`}>
+                      <div>
+                        <div className="font-bold">L2: Mohamat Emir (Manager)</div>
+                        <div className="text-[9.5px] text-slate-400 font-mono">
+                          {selectedDispatch.emir_signed ? `✓ Signed: ${selectedDispatch.emir_signed_at ? new Date(selectedDispatch.emir_signed_at).toLocaleDateString("id-ID") : "Terverifikasi"}` : "⏳ Pending Approval"}
+                        </div>
+                      </div>
+                      {!selectedDispatch.emir_signed && isEmirRole && (
+                        <button
+                          type="button"
+                          onClick={async () => {
+                            const now = new Date().toISOString();
+                            if (onUpdateDispatch) {
+                              await onUpdateDispatch(selectedDispatch.id, {
+                                emir_signed: true,
+                                emir_signed_at: now,
+                                emir_signature_url: "https://api.dicebear.com/7.x/initials/svg?seed=EmirFerdian"
+                              });
+                            }
+                          }}
+                          className="px-2.5 py-1 bg-amber-600 hover:bg-amber-500 text-white font-bold text-[10px] uppercase rounded cursor-pointer"
+                        >
+                          TTD Emir
+                        </button>
+                      )}
+                    </div>
+
+                    {/* LEVEL 3: SUMBONO */}
+                    <div className={`p-2.5 rounded-lg border text-xs flex items-center justify-between ${selectedDispatch.sumbono_signed ? 'bg-emerald-950/40 border-emerald-500/40 text-emerald-100' : 'bg-slate-800/80 border-slate-700 text-slate-300'}`}>
+                      <div>
+                        <div className="font-bold">L3: Sumbono (VP Rendalhar)</div>
+                        <div className="text-[9.5px] text-slate-400 font-mono">
+                          {selectedDispatch.sumbono_signed ? `✓ Signed: ${selectedDispatch.sumbono_signed_at ? new Date(selectedDispatch.sumbono_signed_at).toLocaleDateString("id-ID") : "Disahkan"}` : "⏳ Pending Approval"}
+                        </div>
+                      </div>
+                      {!selectedDispatch.sumbono_signed && isSumbonoRole && (
+                        <button
+                          type="button"
+                          onClick={async () => {
+                            const now = new Date().toISOString();
+                            if (onUpdateDispatch) {
+                              await onUpdateDispatch(selectedDispatch.id, {
+                                sumbono_signed: true,
+                                sumbono_signed_at: now,
+                                sumbono_signature_url: "https://api.dicebear.com/7.x/initials/svg?seed=Sumbono",
+                                status: DispatchStatus.DELIVERED
+                              });
+                            }
+                          }}
+                          className="px-2.5 py-1 bg-indigo-600 hover:bg-indigo-500 text-white font-bold text-[10px] uppercase rounded cursor-pointer"
+                        >
+                          TTD Sumbono
+                        </button>
+                      )}
+                    </div>
                   </div>
                 </div>
 

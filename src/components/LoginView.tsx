@@ -190,25 +190,25 @@ export default function LoginView({ onLoginSuccess, loading: appLoading }: Login
               </div>
             )}
 
-            {/* Click to authentication trigger button with animation */}
-            <button
-              type="submit"
-              disabled={isLoading}
-              className="w-full py-3.5 bg-blue-600 hover:bg-blue-500 active:bg-blue-700 text-white rounded-xl text-xs font-bold uppercase tracking-wider flex items-center justify-center gap-2 transition-all duration-200 cursor-pointer select-none font-sans shadow-lg shadow-blue-500/25 hover:shadow-blue-500/40 active:scale-[0.99] mt-6 group"
-            >
-              {isLoading ? (
-                <div className="flex items-center gap-2 font-mono">
-                  <RefreshCw className="w-4 h-4 animate-spin text-white" />
-                  <span>Memproses Otentikasi...</span>
-                </div>
-              ) : (
-                <>
-                  <span>Masuk ke Dashboard</span>
-                  <ArrowRight className="w-4 h-4 transition-transform group-hover:translate-x-1" />
-                </>
-              )}
-            </button>
-          </form>
+              {/* Click to authentication trigger button with animation */}
+              <button
+                type="submit"
+                disabled={isLoading}
+                className="w-full py-3.5 bg-blue-600 hover:bg-blue-500 active:bg-blue-700 text-white rounded-xl text-xs font-bold uppercase tracking-wider flex items-center justify-center gap-2 transition-all duration-200 cursor-pointer select-none font-sans shadow-lg shadow-blue-500/25 hover:shadow-blue-500/40 active:scale-[0.99] mt-6 group"
+              >
+                {isLoading ? (
+                  <div className="flex items-center gap-2 font-mono">
+                    <RefreshCw className="w-4 h-4 animate-spin text-white" />
+                    <span>Memproses Otentikasi...</span>
+                  </div>
+                ) : (
+                  <>
+                    <span>Masuk ke Dashboard</span>
+                    <ArrowRight className="w-4 h-4 transition-transform group-hover:translate-x-1" />
+                  </>
+                )}
+              </button>
+            </form>
 
         </div>
       </div>

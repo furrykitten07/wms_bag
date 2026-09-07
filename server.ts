@@ -42,6 +42,7 @@ import {
   demoReceiving, 
   demoMaterialReturns 
 } from "./src/demoSeedData.js";
+import { deriveTUG6FromTUG5 } from "./src/utils/criticalItemsMatcher.js";
 
 const app = express();
 const PORT = 3000;
@@ -52,11 +53,9 @@ app.use(express.json());
 
 const users: User[] = [
   { id: "usr-1", username: "superadmin", name: "Fikri Haikal (Superadmin)", email: "superadmin@maritime-logistics.com", role: UserRole.SUPER_ADMIN, password: "admin123" },
-  { id: "usr-2", username: "staff_gudang_1", name: "Ahmad Subarjo (Staff Gudang)", email: "ahmad.subarjo@maritime-logistics.com", role: UserRole.WAREHOUSE_ADMIN, password: "admin123" },
   { id: "usr-3", username: "alfin", name: "Maghfur Muhammad Alfin", email: "alfin.rendalhar@maritime-logistics.com", role: UserRole.WAREHOUSE_STAFF, password: "admin123" },
   { id: "usr-4", username: "emir", name: "Mohamat Emir Ferdian", email: "emir.ferdian@maritime-logistics.com", role: UserRole.LOGISTICS_MANAGER, password: "admin123" },
-  { id: "usr-5", username: "sumbono", name: "Sumbono", email: "sumbono@maritime-logistics.com", role: UserRole.VP_RENDALHAR, password: "admin123" },
-  { id: "usr-6", username: "crew_voyager", name: "Anto Wijaya", email: "voyager.chief@maritime-crew.com", role: UserRole.VESSEL_CREW, vesselName: "MV. KARTINI BARUNA", password: "admin123" }
+  { id: "usr-5", username: "sumbono", name: "Sumbono", email: "sumbono@maritime-logistics.com", role: UserRole.VP_RENDALHAR, password: "admin123" }
 ];
 
 const vendors: Vendor[] = [
@@ -81,7 +80,19 @@ let locations: WarehouseLocation[] = [
 // Synchronized in-memory demo data arrays (Anchored to Jan-Jun 2026, July 2026 empty)
 let spareParts: SparePart[] = demoSpareParts;
 let spkRequests: SPKWorkOrder[] = demoSPKs;
-let materialRequests: MaterialRequest[] = demoMaterialRequests;
+let materialRequests: MaterialRequest[] = demoMaterialRequests.map(mr => ({
+  ...mr,
+  status: "Submitted" as any,
+  alfin_signed: false,
+  alfin_signed_at: undefined,
+  alfin_signature_url: undefined,
+  emir_signed: false,
+  emir_signed_at: undefined,
+  emir_signature_url: undefined,
+  sumbono_signed: false,
+  sumbono_signed_at: undefined,
+  sumbono_signature_url: undefined
+}));
 let materialRequestsTUG6: MaterialRequest[] = demoMaterialRequestsTUG6;
 let dispatch: OutboundDispatch[] = demoDispatches;
 let receiving: InboundReceiving[] = demoReceiving;
@@ -389,11 +400,9 @@ app.get("/api/auth/me", (req, res) => {
 
 // DIGITAL SIGNATURES ENDPOINTS
 let signatures: any[] = [
-  { id: "sig-1", role_title: "Chief Engineer (Pembuat TUG 5 / TUG 10)", user_name: "Anto Wijaya", signature_url: "https://api.dicebear.com/7.x/initials/svg?seed=AntoWijaya", notes: "Tanda tangan resmi Chief Engineer Armada Kapal" },
   { id: "sig-2", role_title: "Verifikator Rendalhar (Level 1 Approval)", user_name: "Maghfur Muhammad Alfin", signature_url: "https://api.dicebear.com/7.x/initials/svg?seed=MaghfurAlfin", notes: "Tanda tangan verifikasi dokumen Rendalhar Level 1" },
   { id: "sig-3", role_title: "Manager Logistik (Level 2 Approval)", user_name: "Mohamat Emir Ferdian", signature_url: "https://api.dicebear.com/7.x/initials/svg?seed=EmirFerdian", notes: "Tanda tangan persetujuan operasional logistik Level 2" },
-  { id: "sig-4", role_title: "VP Rendalhar (Level 3 Pengesahan)", user_name: "Sumbono", signature_url: "https://api.dicebear.com/7.x/initials/svg?seed=Sumbono", notes: "Tanda tangan pengesahan VP Rendalhar Level 3" },
-  { id: "sig-5", role_title: "Staff Gudang (Penerima / Pengeluar TUG 8)", user_name: "Ahmad Subarjo", signature_url: "https://api.dicebear.com/7.x/initials/svg?seed=AhmadSubarjo", notes: "Tanda tangan verifikasi fisik gudang utama" }
+  { id: "sig-4", role_title: "VP Rendalhar (Level 3 Pengesahan)", user_name: "Sumbono", signature_url: "https://api.dicebear.com/7.x/initials/svg?seed=Sumbono", notes: "Tanda tangan pengesahan VP Rendalhar Level 3" }
 ];
 
 app.get("/api/signatures", async (req, res) => {
@@ -990,33 +999,45 @@ app.get("/api/dispatch", (req, res) => {
   res.json(dispatch);
 });
 
-app.post("/api/dispatch", (req, res) => {
+app.post("/api/dispatch", async (req, res) => {
   const userHeader = req.headers["x-user-username"] as string;
   const body = req.body;
+  const nowStr = new Date().toISOString();
+  const dspNum = `DSP-2026-${Math.floor(10000 + Math.random() * 90000)}`;
+  const bpbNum = body.bon_pengeluaran_number || `BPB-2026-${Math.floor(10000 + Math.random() * 90000)}`;
+
   const newDispatch: OutboundDispatch = {
     id: `dsp-${Date.now()}`,
+    dispatch_number: dspNum,
+    tug8_number: bpbNum,
     request_reference: body.request_reference || "Direct WMS Order",
-    vessel_name: body.vessel_name,
-    consignee: body.consignee || `Port Agent - ${body.vessel_name}`,
-    items: body.items.map((itm: any) => {
+    vessel_name: body.vessel_name || "MV. KARTINI BARUNA",
+    consignee: body.consignee || `Port Agent - ${body.vessel_name || "Baruna Vessel"}`,
+    items: (body.items || []).map((itm: any) => {
       const sp = spareParts.find(p => p.id === itm.spare_part_id);
       return {
         spare_part_id: itm.spare_part_id,
-        spare_part_name: sp ? sp.part_name : "Marine Spare",
-        part_number: sp ? sp.part_number : "PN-GEN",
-        qty_requested: Number(itm.qty_requested),
-        qty_dispatched: Number(itm.qty_dispatched || itm.qty_requested),
-        unit: sp ? sp.unit : "PCS",
+        spare_part_name: itm.spare_part_name || (sp ? sp.part_name : "Marine Spare"),
+        part_number: itm.part_number || (sp ? sp.part_number : "PN-GEN"),
+        qty_requested: Number(itm.qty_requested || 1),
+        qty_dispatched: Number(itm.qty_dispatched || itm.qty_requested || 1),
+        unit: itm.unit || (sp ? sp.unit : "PCS"),
         unit_price: Number(itm.unit_price || 150)
       };
     }),
-    status: DispatchStatus.WAITING,
-    bon_pengeluaran_number: `BPB-2026-${Math.floor(10000 + Math.random() * 90000)}`,
-    surat_jalan_number: `SJL-2026-${Math.floor(1000 + Math.random() * 9000)}`,
-    manifest_number: `MNF-2026-${Math.floor(10000 + Math.random() * 90000)}`,
+    status: body.status || DispatchStatus.WAITING,
+    bon_pengeluaran_number: bpbNum,
+    surat_jalan_number: body.surat_jalan_number || `SJL-2026-${Math.floor(1000 + Math.random() * 9000)}`,
+    manifest_number: body.manifest_number || `MNF-2026-${Math.floor(10000 + Math.random() * 90000)}`,
     courier_name: body.courier_name || "Internal Cargo",
-    tracking_number: body.tracking_number,
+    tracking_number: body.tracking_number || "-",
+    driver_pic: body.driver_pic || "-",
+    warehouse_name: body.warehouse_name || "Gudang Merak",
+    delivery_destination: body.delivery_destination || "Port Agent / Vessel Side",
+    notes: body.notes || "",
     created_by: userHeader || "Budi Santoso",
+    created_at: nowStr,
+    updated_at: nowStr,
     work_order_ref: body.work_order_ref || "",
     account_code: body.account_code || "BPP",
     function_code: body.function_code || "ARMADA"
@@ -1031,6 +1052,30 @@ app.post("/api/dispatch", (req, res) => {
   });
 
   dispatch.unshift(newDispatch);
+
+  try {
+    const dbPool = getPool();
+    if (dbPool) {
+      await dbPool.query(
+        `INSERT INTO outbound_dispatches (
+          id, dispatch_number, tug8_number, bon_pengeluaran_number, surat_jalan_number,
+          manifest_number, spk_id, spk_number, vessel_name, destination_port, warehouse_origin,
+          transporter_name, vehicle_number, driver_name, driver_phone, status, items, created_by
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+        [
+          newDispatch.id, newDispatch.dispatch_number, newDispatch.tug8_number, newDispatch.bon_pengeluaran_number,
+          newDispatch.surat_jalan_number, newDispatch.manifest_number, newDispatch.spk_id || null,
+          newDispatch.work_order_ref || null, newDispatch.vessel_name, newDispatch.delivery_destination || "Pelabuhan Merak",
+          newDispatch.warehouse_name || "Gudang Merak", newDispatch.courier_name || null,
+          newDispatch.tracking_number || null, newDispatch.driver_pic || null, null,
+          newDispatch.status, JSON.stringify(newDispatch.items || []), newDispatch.created_by
+        ]
+      );
+    }
+  } catch (err: any) {
+    console.error("ℹ️ [MySQL DB] Outbound dispatch insert:", err.message);
+  }
+
   createAudit("Dispatch Created", "Dispatch", `Created dispatch shipment BPB ${newDispatch.bon_pengeluaran_number} for vessel ${newDispatch.vessel_name}`, userHeader);
   res.status(201).json(newDispatch);
 });
@@ -1133,7 +1178,17 @@ app.put("/api/dispatch/:id", (req, res) => {
 
   const updatedDsp: OutboundDispatch = {
     ...oldDsp,
+    ...updateBody,
     status: nextStatus || oldDsp.status,
+    alfin_signed: updateBody.alfin_signed !== undefined ? Boolean(updateBody.alfin_signed) : oldDsp.alfin_signed,
+    alfin_signed_at: updateBody.alfin_signed_at || oldDsp.alfin_signed_at,
+    alfin_signature_url: updateBody.alfin_signature_url || oldDsp.alfin_signature_url,
+    emir_signed: updateBody.emir_signed !== undefined ? Boolean(updateBody.emir_signed) : oldDsp.emir_signed,
+    emir_signed_at: updateBody.emir_signed_at || oldDsp.emir_signed_at,
+    emir_signature_url: updateBody.emir_signature_url || oldDsp.emir_signature_url,
+    sumbono_signed: updateBody.sumbono_signed !== undefined ? Boolean(updateBody.sumbono_signed) : oldDsp.sumbono_signed,
+    sumbono_signed_at: updateBody.sumbono_signed_at || oldDsp.sumbono_signed_at,
+    sumbono_signature_url: updateBody.sumbono_signature_url || oldDsp.sumbono_signature_url,
     courier_name: updateBody.courier_name !== undefined ? updateBody.courier_name : oldDsp.courier_name,
     tracking_number: updateBody.tracking_number !== undefined ? updateBody.tracking_number : oldDsp.tracking_number,
     dispatch_date: (nextStatus === DispatchStatus.DISPATCHED || nextStatus === "Ready To Dispatch" as any) 
@@ -1155,7 +1210,7 @@ app.post("/api/dispatch/:id/action-log", (req, res) => {
   const { id } = req.params;
   const { action } = req.body; // "Printed" | "Downloaded" | "Viewed"
 
-  const dsp = dispatch.find(d => d.id === id);
+  const dsp = (dispatch || []).find(d => d && d.id === id);
   if (!dsp) {
     res.status(404).json({ error: "Dispatch record not found" });
     return;
@@ -1353,10 +1408,34 @@ app.put("/api/material-requests/:id", (req, res) => {
 
     const oldMR = materialRequests[idx];
     const oldStatus = oldMR.status;
-    const newStatus = (body.status as MaterialRequestStatus) || oldMR.status;
+    
+    const alfSigDefault = `data:image/svg+xml;utf8,<svg xmlns="http://www.w3.org/2000/svg" width="220" height="70" viewBox="0 0 220 70"><path d="M 15 42 C 35 15, 50 58, 80 25 C 100 12, 120 52, 150 30 C 170 20, 185 45, 205 35" stroke="%230f2b5c" stroke-width="2.5" fill="none" stroke-linecap="round"/><path d="M 30 50 L 180 46" stroke="%231e293b" stroke-width="1.8" fill="none" stroke-linecap="round"/><text x="50" y="62" font-family="cursive" font-size="11" font-weight="bold" fill="%230f2b5c">Maghfur M. Alfin</text></svg>`;
+    const emrSigDefault = `data:image/svg+xml;utf8,<svg xmlns="http://www.w3.org/2000/svg" width="220" height="70" viewBox="0 0 220 70"><path d="M 15 45 C 35 15, 45 65, 75 30 C 95 15, 115 55, 145 35 C 165 25, 185 50, 205 38" stroke="%230f2b5c" stroke-width="2.5" fill="none" stroke-linecap="round"/><path d="M 40 52 L 180 48" stroke="%231e293b" stroke-width="1.8" fill="none" stroke-linecap="round"/><text x="60" y="62" font-family="cursive" font-size="11" font-weight="bold" fill="%230f2b5c">M. Emir Ferdian</text></svg>`;
+    const sumSigDefault = `data:image/svg+xml;utf8,<svg xmlns="http://www.w3.org/2000/svg" width="220" height="70" viewBox="0 0 220 70"><path d="M 20 40 C 35 10, 50 60, 80 20 C 110 5, 130 55, 160 30 C 180 20, 195 45, 205 35" stroke="%230f2b5c" stroke-width="2.5" fill="none" stroke-linecap="round"/><path d="M 30 48 C 80 55, 140 45, 190 48" stroke="%231e293b" stroke-width="1.8" fill="none" stroke-linecap="round"/><text x="75" y="62" font-family="cursive" font-size="11" font-weight="bold" fill="%230f2b5c">Sumbono</text></svg>`;
+
+    const alfin_signed = body.alfin_signed !== undefined ? Boolean(body.alfin_signed) : oldMR.alfin_signed;
+    const alfin_signed_at = body.alfin_signed_at || oldMR.alfin_signed_at;
+    let alfin_signature_url = body.alfin_signature_url || oldMR.alfin_signature_url;
+    if (!alfin_signature_url || alfin_signature_url.includes("dicebear")) alfin_signature_url = alfSigDefault;
+
+    const emir_signed = body.emir_signed !== undefined ? Boolean(body.emir_signed) : oldMR.emir_signed;
+    const emir_signed_at = body.emir_signed_at || oldMR.emir_signed_at;
+    let emir_signature_url = body.emir_signature_url || oldMR.emir_signature_url;
+    if (!emir_signature_url || emir_signature_url.includes("dicebear")) emir_signature_url = emrSigDefault;
+
+    const sumbono_signed = body.sumbono_signed !== undefined ? Boolean(body.sumbono_signed) : oldMR.sumbono_signed;
+    const sumbono_signed_at = body.sumbono_signed_at || oldMR.sumbono_signed_at;
+    let sumbono_signature_url = body.sumbono_signature_url || oldMR.sumbono_signature_url;
+    if (!sumbono_signature_url || sumbono_signature_url.includes("dicebear")) sumbono_signature_url = sumSigDefault;
+
+    let newStatus = (body.status as MaterialRequestStatus) || oldMR.status;
+    if (sumbono_signed || (alfin_signed && emir_signed && sumbono_signed)) {
+      newStatus = "Approved";
+    }
 
     const updatedMR: MaterialRequest = {
       ...oldMR,
+      ...body,
       request_date: body.request_date || oldMR.request_date,
       warehouse_name: body.warehouse_name || oldMR.warehouse_name,
       delivery_address: body.delivery_address || oldMR.delivery_address,
@@ -1365,6 +1444,15 @@ app.put("/api/material-requests/:id", (req, res) => {
       function_code: body.function_code || oldMR.function_code,
       remarks: body.remarks || oldMR.remarks,
       status: newStatus,
+      alfin_signed,
+      alfin_signed_at,
+      alfin_signature_url,
+      emir_signed,
+      emir_signed_at,
+      emir_signature_url,
+      sumbono_signed,
+      sumbono_signed_at,
+      sumbono_signature_url,
       items: body.items ? body.items.map((itm: any) => {
         const sp = spareParts.find(p => p.id === itm.spare_part_id);
         return {
@@ -1525,7 +1613,11 @@ app.post("/api/material-requests/:id/action-log", (req, res) => {
 
 // --- MATERIAL REQUESTS TUG 6 ENDPOINTS ---
 app.get("/api/material-requests-tug6", (req, res) => {
-  res.json(materialRequestsTUG6);
+  // USER DIRECTIVE: TUG 6 is derived from TUG 5 based on sheet 'CRITICAL' in data/FIKRI.xlsx
+  const derivedTUG6 = deriveTUG6FromTUG5(materialRequests || []);
+  const derivedIds = new Set(derivedTUG6.map(d => d.id));
+  const manualOnly = (materialRequestsTUG6 || []).filter(m => !derivedIds.has(m.id));
+  res.json([...derivedTUG6, ...manualOnly]);
 });
 
 app.post("/api/material-requests-tug6", (req, res) => {
@@ -1669,8 +1761,27 @@ app.put("/api/material-requests-tug6/:id", (req, res) => {
   }
 
   const oldMR = materialRequestsTUG6[idx];
+
+  const alfin_signed = body.alfin_signed !== undefined ? Boolean(body.alfin_signed) : oldMR.alfin_signed;
+  const alfin_signed_at = body.alfin_signed_at || oldMR.alfin_signed_at;
+  const alfin_signature_url = body.alfin_signature_url || oldMR.alfin_signature_url;
+
+  const emir_signed = body.emir_signed !== undefined ? Boolean(body.emir_signed) : oldMR.emir_signed;
+  const emir_signed_at = body.emir_signed_at || oldMR.emir_signed_at;
+  const emir_signature_url = body.emir_signature_url || oldMR.emir_signature_url;
+
+  const sumbono_signed = body.sumbono_signed !== undefined ? Boolean(body.sumbono_signed) : oldMR.sumbono_signed;
+  const sumbono_signed_at = body.sumbono_signed_at || oldMR.sumbono_signed_at;
+  const sumbono_signature_url = body.sumbono_signature_url || oldMR.sumbono_signature_url;
+
+  let newStatus = (body.status as MaterialRequestStatus) || oldMR.status;
+  if (sumbono_signed || (alfin_signed && emir_signed && sumbono_signed)) {
+    newStatus = "Approved";
+  }
+
   const updatedMR: MaterialRequest = {
     ...oldMR,
+    ...body,
     request_date: body.request_date || oldMR.request_date,
     vessel_name: body.vessel_name || oldMR.vessel_name,
     warehouse_name: body.warehouse_name || oldMR.warehouse_name,
@@ -1679,7 +1790,16 @@ app.put("/api/material-requests-tug6/:id", (req, res) => {
     account_code: body.account_code !== undefined ? body.account_code : oldMR.account_code,
     function_code: body.function_code !== undefined ? body.function_code : oldMR.function_code,
     remarks: body.remarks !== undefined ? body.remarks : oldMR.remarks,
-    status: (body.status as MaterialRequestStatus) || oldMR.status,
+    status: newStatus,
+    alfin_signed,
+    alfin_signed_at,
+    alfin_signature_url,
+    emir_signed,
+    emir_signed_at,
+    emir_signature_url,
+    sumbono_signed,
+    sumbono_signed_at,
+    sumbono_signature_url,
     items: body.items ? body.items.map((itm: any) => ({
       spare_part_id: itm.spare_part_id,
       spare_part_name: itm.spare_part_name,
@@ -1837,16 +1957,41 @@ app.put("/api/material-returns/:id", async (req, res) => {
   }
 
   const oldReturn = materialReturns[idx];
-  const oldStatus = oldReturn.status;
-  const newStatus = (body.status as MaterialReturnStatus) || oldReturn.status;
+
+  const alfin_signed = body.alfin_signed !== undefined ? Boolean(body.alfin_signed) : oldReturn.alfin_signed;
+  const alfin_signed_at = body.alfin_signed_at || oldReturn.alfin_signed_at;
+  const alfin_signature_url = body.alfin_signature_url || oldReturn.alfin_signature_url;
+
+  const emir_signed = body.emir_signed !== undefined ? Boolean(body.emir_signed) : oldReturn.emir_signed;
+  const emir_signed_at = body.emir_signed_at || oldReturn.emir_signed_at;
+  const emir_signature_url = body.emir_signature_url || oldReturn.emir_signature_url;
+
+  const sumbono_signed = body.sumbono_signed !== undefined ? Boolean(body.sumbono_signed) : oldReturn.sumbono_signed;
+  const sumbono_signed_at = body.sumbono_signed_at || oldReturn.sumbono_signed_at;
+  const sumbono_signature_url = body.sumbono_signature_url || oldReturn.sumbono_signature_url;
+
+  let newStatus = (body.status as MaterialReturnStatus) || oldReturn.status;
+  if (sumbono_signed || (alfin_signed && emir_signed && sumbono_signed)) {
+    newStatus = "Approved";
+  }
 
   const updatedReturn: MaterialReturn = {
     ...oldReturn,
+    ...body,
     return_date: body.return_date || oldReturn.return_date,
     warehouse_name: body.warehouse_name || oldReturn.warehouse_name,
     return_reason: body.return_reason || oldReturn.return_reason,
     notes: body.notes || oldReturn.notes,
     status: newStatus,
+    alfin_signed,
+    alfin_signed_at,
+    alfin_signature_url,
+    emir_signed,
+    emir_signed_at,
+    emir_signature_url,
+    sumbono_signed,
+    sumbono_signed_at,
+    sumbono_signature_url,
     items: body.items ? body.items.map((itm: any) => ({
       spare_part_id: itm.spare_part_id,
       part_number: itm.part_number,

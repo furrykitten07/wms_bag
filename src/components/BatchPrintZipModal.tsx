@@ -39,6 +39,7 @@ export default function BatchPrintZipModal({
   const [endDate, setEndDate] = useState<string>("2026-07-31");
   const [isExporting, setIsExporting] = useState<boolean>(false);
   const [exportMessage, setExportMessage] = useState<string | null>(null);
+  const [progressStatus, setProgressStatus] = useState<string>("");
 
   if (!isOpen) return null;
 
@@ -60,14 +61,23 @@ export default function BatchPrintZipModal({
 
     setIsExporting(true);
     setExportMessage(null);
+    setProgressStatus("Menyiapkan dokumen...");
 
     try {
-      const res = await downloadTUGZipArchive(requests, type, startDate, endDate, signatures);
-      setExportMessage(`Berhasil membuat file ${res.filename} berisi ${res.count} dokumen (1 file per No. Request)!`);
+      const res = await downloadTUGZipArchive(
+        requests, 
+        type, 
+        startDate, 
+        endDate, 
+        signatures,
+        (current, total) => setProgressStatus(`Membuat PDF ${current} dari ${total}...`)
+      );
+      setExportMessage(`Berhasil membuat file ${res.filename} berisi ${res.count} dokumen PDF (1 file PDF per No. Request)!`);
     } catch (err: any) {
-      alert(err.message || "Gagal membuat file ZIP archive");
+      alert(err.message || "Gagal membuat file ZIP archive PDF");
     } finally {
       setIsExporting(false);
+      setProgressStatus("");
     }
   };
 
@@ -85,10 +95,10 @@ export default function BatchPrintZipModal({
             </div>
             <div>
               <h2 className="text-base font-bold text-slate-900 flex items-center gap-2">
-                Export ZIP / Cetak Batch Dokumen {badgeTitle}
+                Export ZIP PDF / Cetak Batch Dokumen {badgeTitle}
               </h2>
               <p className="text-[11px] text-slate-500">
-                Pilih rentang waktu untuk mengunduh arsip ZIP (1 file per No. Request)
+                Pilih rentang waktu untuk mengunduh arsip ZIP berisi file PDF (1 file per No. Request)
               </p>
             </div>
           </div>
@@ -139,7 +149,7 @@ export default function BatchPrintZipModal({
                   Total Dokumen Ditemukan:
                 </span>
                 <span className="text-xs text-blue-800">
-                  <strong className="text-sm text-blue-900 font-black">{filteredRequests.length}</strong> Dokumen per No. Request (Periode {startDate || "Awal"} s/d {endDate || "Akhir"})
+                  <strong className="text-sm text-blue-900 font-black">{filteredRequests.length}</strong> Dokumen PDF per No. Request (Periode {startDate || "Awal"} s/d {endDate || "Akhir"})
                 </span>
               </div>
             </div>
@@ -154,7 +164,7 @@ export default function BatchPrintZipModal({
 
           {/* Info note */}
           <div className="p-3 bg-slate-100 rounded-lg text-[11px] text-slate-600 leading-relaxed border border-slate-200">
-            💡 <strong>Format output ZIP:</strong> Di dalam file ZIP akan berisi file HTML interaktif masing-masing per No. Request (misal: <code>TUG5_REQ-2026-001.html</code>). Setiap file sudah siap cetak lengkap dengan kop surat resmi, rincian barang, dan tanda tangan digital.
+            💡 <strong>Format output ZIP:</strong> Di dalam file ZIP akan berisi file <strong>PDF</strong> resmi masing-masing per No. Request (misal: <code>TUG5_REQ-2026-001.pdf</code>). Setiap file PDF terformat A4 presisi lengkap dengan kop surat resmi, rincian barang, dan tanda tangan digital.
           </div>
 
         </div>
@@ -193,12 +203,12 @@ export default function BatchPrintZipModal({
               {isExporting ? (
                 <>
                   <Loader2 className="w-4 h-4 animate-spin" />
-                  <span>Mengeksport ZIP...</span>
+                  <span>{progressStatus || "Mengeksport PDF ZIP..."}</span>
                 </>
               ) : (
                 <>
                   <Download className="w-4 h-4" />
-                  <span>Download Archive ZIP ({filteredRequests.length} File)</span>
+                  <span>Download Archive ZIP PDF ({filteredRequests.length} File)</span>
                 </>
               )}
             </button>
