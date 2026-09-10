@@ -43,7 +43,9 @@ import {
   MaterialRequestItem, 
   MaterialRequestStatus,
   SPKWorkOrder,
-  DigitalSignature
+  DigitalSignature,
+  InboundReceiving,
+  ReceivingStatus
 } from "../types.js";
 import BatchPrintZipModal from "./BatchPrintZipModal.js";
 
@@ -58,6 +60,7 @@ interface MaterialRequestViewProps {
   onLogMRAction: (id: string, action: "Printed" | "Downloaded") => Promise<void>;
   onPreviewTUG5: (request: MaterialRequest) => void;
   spkList?: SPKWorkOrder[];
+  receivingList?: InboundReceiving[];
   autoOpenMRId?: string | null;
   onClearAutoOpenMRId?: () => void;
   signatures?: DigitalSignature[];
@@ -74,6 +77,7 @@ export default function MaterialRequestView({
   onLogMRAction,
   onPreviewTUG5,
   spkList = [],
+  receivingList = [],
   autoOpenMRId,
   onClearAutoOpenMRId,
   signatures = []
@@ -162,6 +166,77 @@ export default function MaterialRequestView({
   const [pendingSyncList, setPendingSyncList] = useState<SPKWorkOrder[]>([]);
   const [selectedSyncIds, setSelectedSyncIds] = useState<string[]>([]);
 
+  // Helper to resolve Inbound Receiving & Partial completeness info for a TUG 5 document
+  const getInboundInfoForMR = (mr: Partial<MaterialRequest> | MaterialRequest) => {
+    const spkRef = mr.work_order_ref || mr.spk_number;
+    const match = receivingList.find(r => 
+      (spkRef && r.spk_number === spkRef) ||
+      (mr.receiving_ref_id && r.id === mr.receiving_ref_id)
+    );
+
+    if (!match) {
+      return {
+        hasInbound: false,
+        receivingRecord: null,
+        status: mr.receiving_status || "BELUM_INBOUND",
+        isPartial: mr.is_partial || false,
+        incompleteItems: mr.incomplete_items_summary || "",
+        completionDate: mr.completion_date || null,
+        auditLogs: [] as any[]
+      };
+    }
+
+    const isPartial = match.status === ReceivingStatus.PARTIAL_REJECT || 
+                      match.status === ReceivingStatus.FULL_REJECT || 
+                      (match.status as string) === "PARTIAL_REJECT" || 
+                      (match.status as string) === "FULL_REJECT" || 
+                      match.items.some(i => {
+                        const targetQty = i.qty_spk ?? i.qty_ordered ?? 0;
+                        const st = i.status || i.qc_status;
+                        return i.qty_received < targetQty || st === "PARTIAL" || st === "REJECTED" || st === "Rejected";
+                      });
+
+    const isComplete = match.status === ReceivingStatus.ACCEPTED || 
+                       match.status === ReceivingStatus.VERIFIED || 
+                       (match.status as string) === "ACCEPTED" || 
+                       (match.status as string) === "VERIFIED";
+
+    const incompleteItemsList = match.items
+      .filter(i => {
+        const targetQty = i.qty_spk ?? i.qty_ordered ?? 0;
+        const st = i.status || i.qc_status;
+        return i.qty_received < targetQty || st === "REJECTED" || st === "Rejected" || st === "PARTIAL";
+      })
+      .map(i => {
+        const targetQty = i.qty_spk ?? i.qty_ordered ?? 0;
+        const diff = targetQty - i.qty_received;
+        const noteStr = i.keeper_notes ? ` (${i.keeper_notes})` : "";
+        const name = i.part_name || i.spare_part_name;
+        return `${name}: SPK ${targetQty} ${i.unit || 'PCS'} → Diterima ${i.qty_received} ${i.unit || 'PCS'} (Selisih: ${diff} ${i.unit || 'PCS'}${noteStr})`;
+      });
+    
+    const incompleteItemsSummary = incompleteItemsList.join(" | ") || (isPartial ? "Beberapa barang dalam status parsial / belum lengkap." : "");
+
+    let completionDate = mr.completion_date || null;
+    if (isComplete && match.verified_at) {
+      completionDate = match.verified_at;
+    } else if (isComplete && match.completion_date) {
+      completionDate = match.completion_date;
+    } else if (isComplete && !completionDate) {
+      completionDate = match.created_at || new Date().toISOString();
+    }
+
+    return {
+      hasInbound: true,
+      receivingRecord: match,
+      status: match.status,
+      isPartial,
+      incompleteItems: incompleteItemsSummary,
+      completionDate: isComplete ? completionDate : null,
+      auditLogs: match.audit_logs || []
+    };
+  };
+
   const handleSyncSPK = () => {
     const unmatchedSPKs = spkList.filter(spk => {
       return !requests.some(req => req.work_order_ref === spk.spk_number);
@@ -209,6 +284,46 @@ export default function MaterialRequestView({
         const primaryVessel = spk.vessels[0]?.vessel_name || "MV. KARTINI BARUNA";
         const cargoAddress = `Pelabuhan Target: ${spk.target_port || "Pelabuhan Merak Mas, Cilegon"}`;
 
+        const matchedInbound = receivingList.find(r => r.spk_number === spk.spk_number);
+        let inboundStatus: string | undefined = undefined;
+        let isPartial: boolean | undefined = undefined;
+        let incompleteSummary: string | undefined = undefined;
+        let completionDate: string | undefined = undefined;
+        let receivingRefId: string | undefined = undefined;
+
+        if (matchedInbound) {
+          receivingRefId = matchedInbound.id;
+          inboundStatus = matchedInbound.status;
+          isPartial = matchedInbound.status === ReceivingStatus.PARTIAL_REJECT || 
+                      matchedInbound.status === ReceivingStatus.FULL_REJECT || 
+                      (matchedInbound.status as string) === "PARTIAL_REJECT" || 
+                      (matchedInbound.status as string) === "FULL_REJECT" || 
+                      matchedInbound.items.some(i => {
+                        const targetQty = i.qty_spk ?? i.qty_ordered ?? 0;
+                        const st = i.status || i.qc_status;
+                        return i.qty_received < targetQty || st === "PARTIAL" || st === "REJECTED" || st === "Rejected";
+                      });
+          const incList = matchedInbound.items
+            .filter(i => {
+              const targetQty = i.qty_spk ?? i.qty_ordered ?? 0;
+              const st = i.status || i.qc_status;
+              return i.qty_received < targetQty || st === "REJECTED" || st === "Rejected" || st === "PARTIAL";
+            })
+            .map(i => {
+              const targetQty = i.qty_spk ?? i.qty_ordered ?? 0;
+              const name = i.part_name || i.spare_part_name;
+              return `${name}: SPK ${targetQty} → Diterima ${i.qty_received} (Kurang ${targetQty - i.qty_received}${i.keeper_notes ? ` - ${i.keeper_notes}` : ""})`;
+            });
+          incompleteSummary = incList.join(" | ");
+          const isComplete = matchedInbound.status === ReceivingStatus.ACCEPTED || 
+                             matchedInbound.status === ReceivingStatus.VERIFIED || 
+                             (matchedInbound.status as string) === "ACCEPTED" || 
+                             (matchedInbound.status as string) === "VERIFIED";
+          if (isComplete && !isPartial) {
+            completionDate = matchedInbound.verified_at || matchedInbound.completion_date || matchedInbound.created_at;
+          }
+        }
+
         return {
           request_date: new Date(spk.created_at).toISOString().split("T")[0],
           requester_name: spk.created_by || "Crew User",
@@ -220,7 +335,12 @@ export default function MaterialRequestView({
           function_code: "ARMADA",  // Default function code
           remarks: `SINKRONISASI OTOMATIS REGISTER SPK: ${spk.spk_number} (Dari Register Eksternal)`,
           status: "Draft" as const, // Start as Draft
-          items: allItems
+          items: allItems,
+          receiving_ref_id: receivingRefId,
+          receiving_status: inboundStatus,
+          is_partial: isPartial,
+          incomplete_items_summary: incompleteSummary,
+          completion_date: completionDate
         };
       });
 
@@ -315,6 +435,46 @@ export default function MaterialRequestView({
       return;
     }
 
+    const matchedInbound = receivingList.find(r => r.spk_number === workOrderRef);
+    let receiving_ref_id = activeMR?.receiving_ref_id;
+    let receiving_status = activeMR?.receiving_status;
+    let is_partial = activeMR?.is_partial;
+    let incomplete_items_summary = activeMR?.incomplete_items_summary;
+    let completion_date = activeMR?.completion_date;
+
+    if (matchedInbound) {
+      receiving_ref_id = matchedInbound.id;
+      receiving_status = matchedInbound.status;
+      is_partial = matchedInbound.status === ReceivingStatus.PARTIAL_REJECT || 
+                  matchedInbound.status === ReceivingStatus.FULL_REJECT || 
+                  (matchedInbound.status as string) === "PARTIAL_REJECT" || 
+                  (matchedInbound.status as string) === "FULL_REJECT" || 
+                  matchedInbound.items.some(i => {
+                    const targetQty = i.qty_spk ?? i.qty_ordered ?? 0;
+                    const st = i.status || i.qc_status;
+                    return i.qty_received < targetQty || st === "PARTIAL" || st === "REJECTED" || st === "Rejected";
+                  });
+      const incList = matchedInbound.items
+        .filter(i => {
+          const targetQty = i.qty_spk ?? i.qty_ordered ?? 0;
+          const st = i.status || i.qc_status;
+          return i.qty_received < targetQty || st === "REJECTED" || st === "Rejected" || st === "PARTIAL";
+        })
+        .map(i => {
+          const targetQty = i.qty_spk ?? i.qty_ordered ?? 0;
+          const name = i.part_name || i.spare_part_name;
+          return `${name}: SPK ${targetQty} → Diterima ${i.qty_received} (Kurang ${targetQty - i.qty_received}${i.keeper_notes ? ` - ${i.keeper_notes}` : ""})`;
+        });
+      incomplete_items_summary = incList.join(" | ");
+      const isComplete = matchedInbound.status === ReceivingStatus.ACCEPTED || 
+                         matchedInbound.status === ReceivingStatus.VERIFIED || 
+                         (matchedInbound.status as string) === "ACCEPTED" || 
+                         (matchedInbound.status as string) === "VERIFIED";
+      if (isComplete && !is_partial) {
+        completion_date = matchedInbound.verified_at || matchedInbound.completion_date || matchedInbound.created_at;
+      }
+    }
+
     const reqData = {
       request_date: requestDate,
       requester_name: currentUser.name,
@@ -326,7 +486,12 @@ export default function MaterialRequestView({
       function_code: functionCode,
       remarks,
       status,
-      items: formItems as MaterialRequestItem[]
+      items: formItems as MaterialRequestItem[],
+      receiving_ref_id,
+      receiving_status,
+      is_partial,
+      incomplete_items_summary,
+      completion_date
     };
 
     try {
@@ -663,6 +828,7 @@ export default function MaterialRequestView({
                 <th className="py-4 px-6 font-semibold">Tanggal Pengajuan</th>
                 <th className="py-4 px-6 font-semibold">Kapal Penerima</th>
                 <th className="py-4 px-6 font-semibold">Pemohon (Chief Eng.)</th>
+                <th className="py-4 px-6 font-semibold text-center">Status Inbound</th>
                 <th className="py-4 px-6 font-semibold text-center">Kuantitas Item</th>
                 <th className="py-4 px-6 font-semibold">Work Order No.</th>
                 <th className="py-4 px-6 font-semibold">Status Approval</th>
@@ -672,7 +838,7 @@ export default function MaterialRequestView({
             <tbody className="divide-y divide-slate-100 text-xs">
               {filteredRequests.length === 0 ? (
                 <tr>
-                  <td colSpan={10} className="py-16 text-center text-slate-400 font-mono text-[11px]">
+                  <td colSpan={11} className="py-16 text-center text-slate-400 font-mono text-[11px]">
                     Tidak ada dokumen permintaan barang TUG 5 yang terekam.
                   </td>
                 </tr>
@@ -684,6 +850,7 @@ export default function MaterialRequestView({
                     year: "numeric" 
                   }) : "-";
                   const isSelected = selectedMRIds.includes(mr.id);
+                  const inboundInfo = getInboundInfoForMR(mr);
                   return (
                     <tr 
                       key={mr.id} 
@@ -709,6 +876,37 @@ export default function MaterialRequestView({
                       <td className="py-4.5 px-6 text-slate-650 font-medium">{dateStr}</td>
                       <td className="py-4.5 px-6 text-slate-900 font-bold font-sans">{mr.vessel_name}</td>
                       <td className="py-4.5 px-6 text-slate-700 font-semibold">{mr.requester_name}</td>
+                      <td className="py-4.5 px-6 text-center">
+                        {inboundInfo.hasInbound ? (
+                          inboundInfo.isPartial ? (
+                            <div className="flex flex-col items-center gap-0.5" title={inboundInfo.incompleteItems}>
+                              <span className="bg-amber-100 text-amber-900 border border-amber-300 px-2.5 py-0.5 rounded-full text-[9.5px] font-black uppercase tracking-wider flex items-center gap-1 w-fit shadow-2xs">
+                                <AlertTriangle className="w-3 h-3 text-amber-600 shrink-0" />
+                                ⚠️ Parsial (Selisih)
+                              </span>
+                              <span className="text-[9px] text-amber-700 font-sans font-medium line-clamp-1 max-w-[150px]">
+                                {inboundInfo.incompleteItems}
+                              </span>
+                            </div>
+                          ) : (
+                            <div className="flex flex-col items-center gap-0.5">
+                              <span className="bg-emerald-100 text-emerald-900 border border-emerald-300 px-2.5 py-0.5 rounded-full text-[9.5px] font-black uppercase tracking-wider flex items-center gap-1 w-fit shadow-2xs">
+                                <CheckCircle className="w-3 h-3 text-emerald-600 shrink-0" />
+                                ✓ Lengkap
+                              </span>
+                              {inboundInfo.completionDate && (
+                                <span className="text-[9px] text-emerald-700 font-mono font-bold">
+                                  Fix: {new Date(inboundInfo.completionDate).toLocaleDateString("id-ID", { day: "numeric", month: "short" })}
+                                </span>
+                              )}
+                            </div>
+                          )
+                        ) : (
+                          <span className="bg-slate-100 text-slate-500 border border-slate-200 px-2.5 py-0.5 rounded-full text-[9.5px] font-bold uppercase tracking-wider w-fit inline-block">
+                            ⚪ Belum Inbound
+                          </span>
+                        )}
+                      </td>
                       <td className="py-4.5 px-6 text-center font-mono font-bold">
                         <span className="bg-slate-50 px-3 py-1.5 rounded border border-slate-205 text-slate-700 text-[10px]">
                           {(mr.items || []).length} Suku Cadang
@@ -1163,6 +1361,160 @@ export default function MaterialRequestView({
                 </div>
               )}
 
+              {/* PANEL INBOUND RECEIVING & KELENGKAPAN SPK */}
+              {(() => {
+                const inboundInfo = getInboundInfoForMR(activeMR);
+                return (
+                  <div className="bg-slate-900 text-white rounded-xl p-4 border border-slate-800 space-y-3.5 shadow-md">
+                    <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center border-b border-slate-800 pb-2.5 gap-2">
+                      <div className="flex items-center gap-2">
+                        <ShieldCheck className="w-4 h-4 text-emerald-400 shrink-0" />
+                        <h4 className="text-xs font-black font-display uppercase tracking-wider text-slate-100">
+                          STATUS KELENGKAPAN DATA INBOUND RECEIVING (PENERIMAAN BARANG)
+                        </h4>
+                      </div>
+                      <div>
+                        {inboundInfo.hasInbound ? (
+                          inboundInfo.isPartial ? (
+                            <span className="bg-amber-500/20 text-amber-300 border border-amber-500/40 px-3 py-1 rounded-full text-[10px] font-black uppercase tracking-wider flex items-center gap-1.5">
+                              <AlertTriangle className="w-3.5 h-3.5 text-amber-400 shrink-0" />
+                              ⚠️ DATA PARSIAL (BELUM LENGKAP)
+                            </span>
+                          ) : (
+                            <span className="bg-emerald-500/20 text-emerald-300 border border-emerald-500/40 px-3 py-1 rounded-full text-[10px] font-black uppercase tracking-wider flex items-center gap-1.5">
+                              <CheckCircle className="w-3.5 h-3.5 text-emerald-400 shrink-0" />
+                              ✓ DATA LENGKAP & TERVERIFIKASI
+                            </span>
+                          )
+                        ) : (
+                          <span className="bg-slate-800 text-slate-400 border border-slate-700 px-3 py-1 rounded-full text-[10px] font-bold uppercase tracking-wider">
+                            ⚪ BELUM TERDAPAT DATA INBOUND
+                          </span>
+                        )}
+                      </div>
+                    </div>
+
+                    {inboundInfo.hasInbound && inboundInfo.receivingRecord ? (
+                      <div className="space-y-3 text-xs">
+                        
+                        {/* Detail Status & Timestamp Completeness */}
+                        <div className="grid grid-cols-1 md:grid-cols-3 gap-3 bg-slate-800/80 p-3 rounded-lg border border-slate-700/80 font-mono text-[11px]">
+                          <div>
+                            <span className="text-slate-400 block text-[9.5px] uppercase font-bold">No. SPK Inbound:</span>
+                            <span className="text-rose-400 font-black">{inboundInfo.receivingRecord.spk_number}</span>
+                          </div>
+                          <div>
+                            <span className="text-slate-400 block text-[9.5px] uppercase font-bold">Status Verifikasi Gudang:</span>
+                            <span className="text-emerald-400 font-bold uppercase">{inboundInfo.receivingRecord.status}</span>
+                          </div>
+                          <div>
+                            <span className="text-slate-400 block text-[9.5px] uppercase font-bold">Waktu Lengkap / Verifikasi:</span>
+                            <span className="text-amber-300 font-bold">
+                              {inboundInfo.completionDate ? new Date(inboundInfo.completionDate).toLocaleString("id-ID") : (inboundInfo.isPartial ? "⏳ Menunggu barang susulan / belum lengkap" : "-")}
+                            </span>
+                          </div>
+                        </div>
+
+                        {/* Rincian Barang Parsial jika ada */}
+                        {inboundInfo.isPartial && (
+                          <div className="bg-amber-950/40 border border-amber-500/40 p-3.5 rounded-lg space-y-2">
+                            <div className="flex items-center gap-2 text-amber-300 font-bold text-[11.5px]">
+                              <AlertTriangle className="w-4 h-4 text-amber-400 shrink-0" />
+                              <span>Keterangan Barang Yang Belum Lengkap (Parsial / Selisih):</span>
+                            </div>
+                            <div className="space-y-1.5 text-[11px] text-slate-200">
+                              {inboundInfo.receivingRecord.items
+                                .filter(i => {
+                                  const targetQty = i.qty_spk ?? i.qty_ordered ?? 0;
+                                  const st = i.status || i.qc_status;
+                                  return i.qty_received < targetQty || st === "REJECTED" || st === "Rejected" || st === "PARTIAL";
+                                })
+                                .map((itm, i) => {
+                                  const targetQty = itm.qty_spk ?? itm.qty_ordered ?? 0;
+                                  const selisih = targetQty - itm.qty_received;
+                                  const name = itm.part_name || itm.spare_part_name;
+                                  return (
+                                    <div key={i} className="bg-slate-900/80 p-2 rounded border border-amber-500/30 flex flex-col sm:flex-row sm:items-center justify-between gap-1">
+                                      <div>
+                                        <span className="font-bold text-white">{name}</span>
+                                        <span className="text-slate-400 font-mono text-[10px] ml-2">({itm.part_number})</span>
+                                        {itm.keeper_notes && (
+                                          <span className="text-amber-300 text-[10.5px] block italic font-sans">
+                                            💬 Catatan Gudang: "{itm.keeper_notes}"
+                                          </span>
+                                        )}
+                                      </div>
+                                      <div className="font-mono text-[10.5px] shrink-0 text-right">
+                                        <span className="text-slate-300">Target: {targetQty} {itm.unit || 'PCS'}</span> &bull;{" "}
+                                        <span className="text-emerald-400 font-bold">Diterima: {itm.qty_received}</span> &bull;{" "}
+                                        <span className="text-rose-400 font-extrabold bg-rose-950/60 px-1.5 py-0.5 rounded border border-rose-800">
+                                          Kurang: {selisih} {itm.unit || 'PCS'}
+                                        </span>
+                                      </div>
+                                    </div>
+                                  );
+                                })}
+                            </div>
+                          </div>
+                        )}
+
+                        {/* Audit Log History Timeline */}
+                        <div className="space-y-2 pt-1">
+                          <h5 className="text-[10px] font-mono font-bold uppercase tracking-wider text-slate-400 flex items-center gap-1.5">
+                            <History className="w-3.5 h-3.5 text-blue-400" />
+                            RIWAYAT LOG HISTORY KELENGKAPAN DATA & RECEIVING INBOUND:
+                          </h5>
+
+                          <div className="space-y-2 max-h-48 overflow-y-auto pr-1">
+                            {inboundInfo.auditLogs && inboundInfo.auditLogs.length > 0 ? (
+                              inboundInfo.auditLogs.map((log: any, i: number) => (
+                                <div key={i} className="bg-slate-800/60 border border-slate-700/60 p-2.5 rounded-lg flex items-start justify-between text-[11px] gap-3">
+                                  <div className="space-y-0.5">
+                                    <div className="flex items-center gap-2">
+                                      <span className="font-bold text-blue-300">{log.action || log.user}</span>
+                                      <span className="text-slate-400 text-[10px] font-mono">oleh {log.user || 'Sistem'}</span>
+                                    </div>
+                                    <p className="text-slate-300 text-[10.5px]">{log.notes}</p>
+                                  </div>
+                                  <span className="text-[9.5px] font-mono text-slate-400 whitespace-nowrap bg-slate-900 px-2 py-0.5 rounded border border-slate-700 shrink-0">
+                                    {log.timestamp ? new Date(log.timestamp).toLocaleString("id-ID") : "-"}
+                                  </span>
+                                </div>
+                              ))
+                            ) : (
+                              <div className="text-[10.5px] font-mono text-slate-400 italic bg-slate-800/40 p-2.5 rounded text-center border border-slate-700/50">
+                                Data penerimaan inbound tercatat pada {inboundInfo.receivingRecord.created_at ? new Date(inboundInfo.receivingRecord.created_at).toLocaleString("id-ID") : "-"}. Log detail pemeriksaan tersimpan di database.
+                              </div>
+                            )}
+
+                            {/* Timestamp saat lengkap */}
+                            {inboundInfo.completionDate && (
+                              <div className="bg-emerald-950/60 border border-emerald-500/50 p-2.5 rounded-lg flex items-center justify-between text-[11px] text-emerald-200">
+                                <div className="flex items-center gap-2">
+                                  <CheckCircle className="w-4 h-4 text-emerald-400 shrink-0" />
+                                  <div>
+                                    <strong className="text-white block text-[11px]">SPK INBOUND DISENYATAKAN LENGKAP & TERVERIFIKASI</strong>
+                                    <span className="text-emerald-300 text-[10px]">Seluruh barang kargo telah berhasil dicocokkan 100% tanpa selisih.</span>
+                                  </div>
+                                </div>
+                                <span className="text-[10px] font-mono text-emerald-300 font-bold bg-emerald-900/80 px-2 py-0.5 rounded border border-emerald-600 shrink-0">
+                                  {new Date(inboundInfo.completionDate).toLocaleString("id-ID")}
+                                </span>
+                              </div>
+                            )}
+                          </div>
+                        </div>
+
+                      </div>
+                    ) : (
+                      <div className="text-xs text-slate-400 font-mono italic">
+                        Belum ada tautan transaksi receiving (inbound) untuk SPK #{activeMR.work_order_ref || '-'}.
+                      </div>
+                    )}
+                  </div>
+                );
+              })()}
+
               {/* Items List inside Modal */}
               <div className="space-y-2">
                 <h4 className="text-[10px] font-black font-mono uppercase tracking-widest text-slate-500 flex items-center justify-between">
@@ -1598,6 +1950,61 @@ export default function MaterialRequestView({
                             <span className="text-[8px] text-slate-500 block mt-1 leading-tight">
                               Kapal yang ada dalam SPK: {matchedSPK.vessels.map(v => v.vessel_name).join(", ")}
                             </span>
+
+                            {(() => {
+                              const matchedInbound = receivingList.find(r => r.spk_number === matchedSPK.spk_number);
+                              if (!matchedInbound) return null;
+                              const isPartial = matchedInbound.status === ReceivingStatus.PARTIAL_REJECT || 
+                                                matchedInbound.status === ReceivingStatus.FULL_REJECT || 
+                                                (matchedInbound.status as string) === "PARTIAL_REJECT" || 
+                                                (matchedInbound.status as string) === "FULL_REJECT" || 
+                                                matchedInbound.items.some(i => {
+                                                  const targetQty = i.qty_spk ?? i.qty_ordered ?? 0;
+                                                  const st = i.status || i.qc_status;
+                                                  return i.qty_received < targetQty || st === "PARTIAL" || st === "REJECTED" || st === "Rejected";
+                                                });
+                              const incItems = matchedInbound.items.filter(i => {
+                                const targetQty = i.qty_spk ?? i.qty_ordered ?? 0;
+                                const st = i.status || i.qc_status;
+                                return i.qty_received < targetQty || st === "REJECTED" || st === "Rejected" || st === "PARTIAL";
+                              });
+
+                              return (
+                                <div className={`mt-2 p-2 rounded text-left border text-[10px] font-sans ${isPartial ? 'bg-amber-50 border-amber-300 text-amber-900' : 'bg-emerald-50 border-emerald-300 text-emerald-900'}`}>
+                                  <div className="font-bold flex items-center justify-between border-b pb-1 mb-1 border-current/20">
+                                    <span className="flex items-center gap-1 uppercase tracking-tight">
+                                      {isPartial ? <AlertTriangle className="w-3 h-3 text-amber-600 shrink-0" /> : <CheckCircle className="w-3 h-3 text-emerald-600 shrink-0" />}
+                                      Inbound Receiving Status: {matchedInbound.status}
+                                    </span>
+                                    <span className="font-mono text-[9px]">
+                                      {isPartial ? "⚠️ PARSIAL" : "✓ LENGKAP"}
+                                    </span>
+                                  </div>
+
+                                  {isPartial && incItems.length > 0 ? (
+                                    <div className="space-y-0.5 text-[9.5px]">
+                                      <div className="font-bold text-amber-800">⚠️ Barang Belum Lengkap Dari Receiving:</div>
+                                      <ul className="list-disc pl-3 text-amber-950 space-y-0.5">
+                                        {incItems.map((itm, i) => {
+                                          const targetQty = itm.qty_spk ?? itm.qty_ordered ?? 0;
+                                          const name = itm.part_name || itm.spare_part_name;
+                                          return (
+                                            <li key={i}>
+                                              <strong>{name}</strong>: SPK {targetQty} &rarr; Diterima {itm.qty_received} (Selisih {targetQty - itm.qty_received} {itm.unit || 'PCS'})
+                                              {itm.keeper_notes && <span className="italic text-amber-700 font-normal"> — "{itm.keeper_notes}"</span>}
+                                            </li>
+                                          );
+                                        })}
+                                      </ul>
+                                    </div>
+                                  ) : (
+                                    <div className="text-[9.5px] text-emerald-800 font-medium">
+                                      ✓ Seluruh barang telah diterima 100% lengkap pada {matchedInbound.verified_at ? new Date(matchedInbound.verified_at).toLocaleDateString("id-ID") : (matchedInbound.completion_date ? new Date(matchedInbound.completion_date).toLocaleDateString("id-ID") : new Date(matchedInbound.created_at || new Date()).toLocaleDateString("id-ID"))}
+                                    </div>
+                                  )}
+                                </div>
+                              );
+                            })()}
                           </div>
                         );
                       })()}

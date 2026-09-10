@@ -26,7 +26,13 @@ import {
   Boxes,
   FileCheck,
   ListFilter,
-  Info
+  Info,
+  Clock,
+  History,
+  Calendar,
+  UserCheck,
+  RefreshCw,
+  BadgeCheck
 } from "lucide-react";
 import { InboundReceiving, ReceivingStatus, SparePart, UserRole, SPKWorkOrder } from "../types.js";
 import { demoSPKs } from "../demoSeedData.js";
@@ -139,8 +145,45 @@ export default function ReceivingView({
   const [signatureDataUrl, setSignatureDataUrl] = useState("");
   const [detailKeeperNotes, setDetailKeeperNotes] = useState("");
 
+  // Audit log & Resolve state
+  const [detailTab, setDetailTab] = useState<"items" | "logs">("items");
+  const [isResolveModalOpen, setIsResolveModalOpen] = useState(false);
+  const [resolveCompletionDate, setResolveCompletionDate] = useState(() => new Date().toISOString().slice(0, 16));
+  const [resolveNotes, setResolveNotes] = useState("Barang susulan/pengganti telah diterima secara fisik dan diperiksa LENGKAP & SESUAI oleh Penjaga Gudang.");
+  const [resolveConfirmed, setResolveConfirmed] = useState(false);
+
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
   const [isDrawing, setIsDrawing] = useState(false);
+
+  // Resize canvas to match container & load existing signature
+  useEffect(() => {
+    if (activeReceiving && canvasRef.current && detailTab === "items") {
+      const canvas = canvasRef.current;
+      const ctx = canvas.getContext("2d");
+      if (!ctx) return;
+
+      const rect = canvas.getBoundingClientRect();
+      if (rect.width > 0) {
+        canvas.width = rect.width;
+        canvas.height = Math.max(140, rect.height);
+      } else {
+        canvas.width = 600;
+        canvas.height = 140;
+      }
+
+      ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+      const sigUrl = signatureDataUrl || activeReceiving.signature_data_url || (activeReceiving as any).signature_data_url;
+      if (sigUrl) {
+        const img = new Image();
+        img.crossOrigin = "anonymous";
+        img.onload = () => {
+          ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
+        };
+        img.src = sigUrl;
+      }
+    }
+  }, [activeReceiving, detailTab]);
 
   const startDrawing = (e: React.MouseEvent<HTMLCanvasElement> | React.TouchEvent<HTMLCanvasElement>) => {
     const canvas = canvasRef.current;
@@ -149,11 +192,14 @@ export default function ReceivingView({
     if (!ctx) return;
     
     ctx.strokeStyle = "#1e3a8a"; // Dark navy blue signature ink
-    ctx.lineWidth = 3;
+    ctx.lineWidth = 3.5;
     ctx.lineCap = "round";
     ctx.lineJoin = "round";
 
     const rect = canvas.getBoundingClientRect();
+    const scaleX = canvas.width / (rect.width || 1);
+    const scaleY = canvas.height / (rect.height || 1);
+
     let clientX, clientY;
     if ("touches" in e) {
       clientX = e.touches[0].clientX;
@@ -163,8 +209,11 @@ export default function ReceivingView({
       clientY = e.clientY;
     }
 
+    const x = (clientX - rect.left) * scaleX;
+    const y = (clientY - rect.top) * scaleY;
+
     ctx.beginPath();
-    ctx.moveTo(clientX - rect.left, clientY - rect.top);
+    ctx.moveTo(x, y);
     setIsDrawing(true);
   };
 
@@ -176,6 +225,9 @@ export default function ReceivingView({
     if (!ctx) return;
 
     const rect = canvas.getBoundingClientRect();
+    const scaleX = canvas.width / (rect.width || 1);
+    const scaleY = canvas.height / (rect.height || 1);
+
     let clientX, clientY;
     if ("touches" in e) {
       clientX = e.touches[0].clientX;
@@ -185,14 +237,21 @@ export default function ReceivingView({
       clientY = e.clientY;
     }
 
-    ctx.lineTo(clientX - rect.left, clientY - rect.top);
-    ctx.stroke();
+    const x = (clientX - rect.left) * scaleX;
+    const y = (clientY - rect.top) * scaleY;
 
-    setSignatureDataUrl(canvas.toDataURL());
+    ctx.lineTo(x, y);
+    ctx.stroke();
   };
 
   const stopDrawing = () => {
+    if (!isDrawing) return;
     setIsDrawing(false);
+    const canvas = canvasRef.current;
+    if (canvas) {
+      const dataUrl = canvas.toDataURL("image/png");
+      setSignatureDataUrl(dataUrl);
+    }
   };
 
   const clearCanvas = () => {
@@ -215,6 +274,7 @@ export default function ReceivingView({
 
   const handleOpenVerifyModal = (rec: InboundReceiving) => {
     setActiveReceiving(rec);
+    setDetailTab("items");
     setVerificationItems(
       rec.items.map(itm => ({
         ...itm,
@@ -242,11 +302,11 @@ export default function ReceivingView({
     updated[idx].qty_received = Math.max(0, qtyReceived);
     updated[idx].qty_rejected = Math.max(0, diff);
 
-    if (updated[idx].qty_rejected > 0) {
+    if (updated[idx].item_matched === "Tidak Sesuai" || updated[idx].qty_rejected > 0) {
       updated[idx].qc_status = "Rejected";
-      updated[idx].qty_matched_status = `QTY Kurang (-${diff})`;
+      updated[idx].qty_matched_status = updated[idx].item_matched === "Tidak Sesuai" ? "Item Tidak Sesuai" : `QTY Kurang (-${diff})`;
       if (!updated[idx].reject_reason) {
-        updated[idx].reject_reason = "Selisih QTY fisik saat penerimaan gudang";
+        updated[idx].reject_reason = updated[idx].item_matched === "Tidak Sesuai" ? "Spesifikasi item tidak sesuai SPK" : "Selisih QTY fisik saat penerimaan gudang";
       }
     } else if (qtyReceived > ordered) {
       updated[idx].qc_status = "Verified";
@@ -259,8 +319,12 @@ export default function ReceivingView({
     }
     setVerificationItems(updated);
 
-    const anyRejected = updated.some(u => u.qty_rejected > 0);
-    if (anyRejected) {
+    const anyNotMatched = updated.some(u => u.item_matched === "Tidak Sesuai" || u.qty_rejected > 0);
+    const allNotMatched = updated.every(u => u.item_matched === "Tidak Sesuai" || u.qty_received === 0);
+
+    if (allNotMatched) {
+      setOverallStatus(ReceivingStatus.FULL_REJECT);
+    } else if (anyNotMatched) {
       setOverallStatus(ReceivingStatus.PARTIAL_REJECT);
     } else {
       setOverallStatus(ReceivingStatus.ACCEPTED);
@@ -271,17 +335,85 @@ export default function ReceivingView({
     if (!activeReceiving) return;
 
     try {
+      const existingLogs = activeReceiving.audit_logs || [];
+      const statusChanged = activeReceiving.status !== overallStatus;
+      
+      const newLogEntry = {
+        timestamp: new Date().toISOString(),
+        username: role === UserRole.SUPER_ADMIN ? "Super Admin" : "Penjaga Gudang",
+        action: overallStatus === ReceivingStatus.ACCEPTED 
+          ? "Verifikasi Gudang Disimpan (Lengkap & Sesuai)" 
+          : statusChanged 
+          ? `Status Diubah Menjadi ${overallStatus}` 
+          : "Pemeriksaan Gudang Diperbarui",
+        notes: detailKeeperNotes || (overallStatus === ReceivingStatus.ACCEPTED ? "Fisik & QTY Terverifikasi Sesuai" : "Terdapat catatan fisik / ketidaksesuaian barang"),
+        status_before: activeReceiving.status,
+        status_after: overallStatus
+      };
+
+      const updatedLogs = [newLogEntry, ...existingLogs];
+
       await onVerifyReceiving(activeReceiving.id, {
         status: overallStatus,
         items: verificationItems,
-        reject_reason: overallRejectReason || (overallStatus !== ReceivingStatus.ACCEPTED ? "Pemeriksaan fisik gudang mencatat selisih QTY" : ""),
+        reject_reason: overallRejectReason || (overallStatus !== ReceivingStatus.ACCEPTED ? "Pemeriksaan fisik gudang mencatat ketidaksesuaian/selisih QTY" : ""),
         return_note_num: overallStatus !== ReceivingStatus.ACCEPTED ? returnNoteNum || `RET-${Date.now().toString().slice(-4)}` : "",
         signature_data_url: signatureDataUrl,
-        keeper_notes: detailKeeperNotes
-      });
+        keeper_notes: detailKeeperNotes,
+        completion_date: overallStatus === ReceivingStatus.ACCEPTED ? (activeReceiving.completion_date || new Date().toISOString()) : undefined,
+        audit_logs: updatedLogs
+      } as any);
+
       setActiveReceiving(null);
     } catch (err: any) {
       alert(err.message || "Gagal menyimpan verifikasi penerimaan gudang");
+    }
+  };
+
+  const handleConfirmResolveToAccepted = async () => {
+    if (!activeReceiving) return;
+    if (!resolveConfirmed) {
+      alert("Harap centang persetujuan verifikasi fisik barang sebelum melanjutkan.");
+      return;
+    }
+
+    const updatedItems = verificationItems.map(itm => ({
+      ...itm,
+      qty_received: itm.qty_ordered,
+      qty_rejected: 0,
+      item_matched: "Sesuai" as const,
+      qc_status: "Verified" as const,
+      qty_matched_status: "QTY Sesuai",
+      reject_reason: ""
+    }));
+
+    const resolveLogEntry = {
+      timestamp: new Date().toISOString(),
+      username: role === UserRole.SUPER_ADMIN ? "Super Admin" : "Penjaga Gudang",
+      action: "Status Diubah Menjadi Sesuai / Lengkap",
+      notes: resolveNotes || "Barang susulan diterima dan terverifikasi lengkap.",
+      status_before: activeReceiving.status,
+      status_after: ReceivingStatus.ACCEPTED
+    };
+
+    const updatedLogs = [resolveLogEntry, ...(activeReceiving.audit_logs || [])];
+
+    try {
+      const compDate = resolveCompletionDate ? new Date(resolveCompletionDate).toISOString() : new Date().toISOString();
+
+      await onVerifyReceiving(activeReceiving.id, {
+        status: ReceivingStatus.ACCEPTED,
+        items: updatedItems,
+        keeper_notes: detailKeeperNotes ? `${detailKeeperNotes}\n[UPDATE SESUAI]: ${resolveNotes}` : `[UPDATE SESUAI]: ${resolveNotes}`,
+        completion_date: compDate,
+        audit_logs: updatedLogs
+      } as any);
+
+      setActiveReceiving(null);
+      setIsResolveModalOpen(false);
+      alert("Berhasil memperbarui status penerimaan barang menjadi SESUAI & LENGKAP.");
+    } catch (err: any) {
+      alert(err.message || "Gagal memperbarui status penerimaan barang.");
     }
   };
 
@@ -299,14 +431,31 @@ export default function ReceivingView({
 
     try {
       const selectedSpk = availableSpks.find(s => s.spk_number === selectedSpkNumber);
+      
+      let hasMismatch = false;
+      let hasDiscrepancy = false;
+      let allRejected = true;
+
       const itemsToSave = spkItemsCheck.map(item => {
         const qtyOrdered = Number(item.qty_spk) || 0;
         const qtyReceived = Number(item.qty_received) || 0;
         const qtyRejected = Math.max(0, qtyOrdered - qtyReceived);
-        
+        const isMatched = item.item_matched === "Sesuai";
+
+        if (!isMatched) hasMismatch = true;
+        if (qtyReceived < qtyOrdered || qtyReceived > qtyOrdered) hasDiscrepancy = true;
+        if (isMatched && qtyReceived >= qtyOrdered) allRejected = false;
+
         let qtyStatus = "QTY Sesuai";
         if (qtyReceived < qtyOrdered) qtyStatus = `QTY Kurang (-${qtyOrdered - qtyReceived})`;
         else if (qtyReceived > qtyOrdered) qtyStatus = `QTY Lebih (+${qtyReceived - qtyOrdered})`;
+
+        const itemQcStatus: "Verified" | "Rejected" = (!isMatched || qtyRejected > 0) ? "Rejected" : "Verified";
+        const defaultNotes = !isMatched 
+          ? "Item fisik tidak sesuai dengan spesifikasi SPK" 
+          : qtyRejected > 0 
+          ? `Terdapat selisih QTY fisik (-${qtyRejected})` 
+          : "Pemeriksaan fisik barang oleh penjaga gudang sesuai";
 
         return {
           spare_part_id: item.spare_part_id,
@@ -315,12 +464,35 @@ export default function ReceivingView({
           qty_ordered: qtyOrdered,
           qty_received: qtyReceived,
           qty_rejected: qtyRejected,
-          qc_status: "Verified" as const,
+          qc_status: itemQcStatus,
           item_matched: item.item_matched,
           qty_matched_status: qtyStatus,
-          keeper_notes: item.keeper_notes || "Pemeriksaan fisik barang oleh penjaga gudang selesai"
+          keeper_notes: (item.keeper_notes || "").trim() || defaultNotes,
+          reject_reason: !isMatched ? "Item fisik tidak sesuai SPK" : (qtyRejected > 0 ? `Selisih QTY (-${qtyRejected})` : undefined)
         };
       });
+
+      let calculatedStatus: ReceivingStatus = ReceivingStatus.ACCEPTED;
+      if (allRejected) {
+        calculatedStatus = ReceivingStatus.FULL_REJECT;
+      } else if (hasMismatch || hasDiscrepancy) {
+        calculatedStatus = ReceivingStatus.PARTIAL_REJECT;
+      }
+
+      const defaultOverallNotes = calculatedStatus === ReceivingStatus.ACCEPTED
+        ? "Verifikasi fisik & QTY penjaga gudang sesuai. Barang siap digunakan untuk TUG 5."
+        : calculatedStatus === ReceivingStatus.PARTIAL_REJECT
+        ? "Pemeriksaan fisik mencatat sebagian item tidak sesuai atau ada selisih QTY."
+        : "Pemeriksaan fisik mencatat seluruh barang tidak sesuai / ditolak.";
+
+      const initialLogs = [{
+        timestamp: new Date().toISOString(),
+        username: role === UserRole.SUPER_ADMIN ? "Super Admin" : "Penjaga Gudang",
+        action: "Penerimaan Dicatat",
+        notes: (keeperOverallNotes || "").trim() || defaultOverallNotes,
+        status_before: "-",
+        status_after: calculatedStatus
+      }];
 
       await onAddReceiving({
         purchase_order_num: selectedSpkNumber,
@@ -330,9 +502,11 @@ export default function ReceivingView({
         vendor_id: "vnd-spk",
         vendor_name: selectedSpk?.vessels?.[0]?.vessel_name ? `Kapal ${selectedSpk.vessels[0].vessel_name}` : (selectedSpk as any)?.vessel_name ? `Kapal ${(selectedSpk as any).vessel_name}` : "Vendor Logistik BAG",
         items: itemsToSave,
-        status: ReceivingStatus.ACCEPTED, // Direct ACCEPTED without approval
-        keeper_notes: keeperOverallNotes || "Verifikasi fisik & QTY penjaga gudang selesai (Tanpa Approval). Barang siap masuk TUG 5.",
-        received_date: new Date().toISOString()
+        status: calculatedStatus,
+        keeper_notes: (keeperOverallNotes || "").trim() || defaultOverallNotes,
+        received_date: new Date().toISOString(),
+        completion_date: calculatedStatus === ReceivingStatus.ACCEPTED ? new Date().toISOString() : undefined,
+        audit_logs: initialLogs
       });
 
       setIsNewRecOpen(false);
@@ -598,23 +772,67 @@ export default function ReceivingView({
                       <td className="p-3.5 truncate max-w-[160px] font-bold text-slate-900">{item.vendor_name}</td>
                       <td className="p-3.5">
                         <span className="font-bold block text-slate-900">{itemsCount} jenis barang</span>
-                        <span className={`text-[10px] font-mono font-bold ${hasDiscrepancy ? "text-amber-600" : "text-emerald-600"}`}>
-                          Diterima: {totalUnitsReceived} / {totalUnitsOrdered} unit {hasDiscrepancy ? "(Ada Selisih)" : "(Lengkap)"}
+                        <span className={`text-[10px] font-mono font-bold block ${
+                          item.status === ReceivingStatus.FULL_REJECT || item.items.some(i => i.item_matched === "Tidak Sesuai")
+                            ? "text-rose-600 font-extrabold"
+                            : hasDiscrepancy 
+                            ? "text-amber-600 font-extrabold" 
+                            : "text-emerald-600"
+                        }`}>
+                          Diterima: {totalUnitsReceived} / {totalUnitsOrdered} unit {
+                            item.items.some(i => i.item_matched === "Tidak Sesuai")
+                              ? "(Ada Barang Tidak Sesuai)"
+                              : hasDiscrepancy 
+                              ? "(Ada Selisih QTY)" 
+                              : "(Lengkap)"
+                          }
                         </span>
+                        {item.keeper_notes && (
+                          <div className="mt-1 text-[10px] font-medium text-slate-700 bg-slate-100/90 px-2 py-0.5 rounded border border-slate-250 truncate max-w-[240px]" title={item.keeper_notes}>
+                            <span className="font-bold text-slate-900 font-mono">Notes:</span> {item.keeper_notes}
+                          </div>
+                        )}
+                        {item.signature_data_url && (
+                          <div className="mt-1 inline-flex items-center gap-1 text-[9.5px] font-mono font-bold text-emerald-800 bg-emerald-50 px-1.5 py-0.5 rounded border border-emerald-200">
+                            <BadgeCheck className="w-3 h-3 text-emerald-600" />
+                            <span>Paraf Gudang Ada</span>
+                          </div>
+                        )}
                       </td>
                       <td className="p-3.5 font-mono text-slate-500 truncate">
                         {new Date(item.received_date || item.created_at || Date.now()).toLocaleDateString("id-ID", { day: "2-digit", month: "short", year: "numeric", hour: "2-digit", minute: "2-digit" })}
                       </td>
                       <td className="p-3.5 text-center">
-                        <span className={`px-2.5 py-1 rounded text-[9px] uppercase font-black tracking-wider shadow-2xs inline-flex items-center gap-1 ${
-                          item.status === ReceivingStatus.ACCEPTED 
+                        <span className={`px-2.5 py-1 rounded text-[9.5px] uppercase font-black tracking-wider shadow-2xs inline-flex items-center gap-1.5 ${
+                          item.status === ReceivingStatus.ACCEPTED || item.status === ReceivingStatus.VERIFIED
                             ? "bg-emerald-100 text-emerald-800 border border-emerald-300"
                             : item.status === ReceivingStatus.PARTIAL_REJECT 
                             ? "bg-amber-100 text-amber-800 border border-amber-300"
-                            : "bg-rose-100 text-rose-800 border border-rose-300"
+                            : item.status === ReceivingStatus.FULL_REJECT
+                            ? "bg-rose-100 text-rose-800 border border-rose-300"
+                            : "bg-slate-100 text-slate-800 border border-slate-300"
                         }`}>
-                          <CheckCircle2 className="w-3 h-3 text-emerald-600" />
-                          Terverifikasi Gudang (Siap TUG 5)
+                          {item.status === ReceivingStatus.ACCEPTED || item.status === ReceivingStatus.VERIFIED ? (
+                            <>
+                              <CheckCircle2 className="w-3.5 h-3.5 text-emerald-600 shrink-0" />
+                              <span>Sesuai (Siap TUG 5)</span>
+                            </>
+                          ) : item.status === ReceivingStatus.PARTIAL_REJECT ? (
+                            <>
+                              <AlertTriangle className="w-3.5 h-3.5 text-amber-600 shrink-0" />
+                              <span>Ada Selisih / Partial</span>
+                            </>
+                          ) : item.status === ReceivingStatus.FULL_REJECT ? (
+                            <>
+                              <AlertOctagon className="w-3.5 h-3.5 text-rose-600 shrink-0" />
+                              <span>Tidak Sesuai / Ditolak</span>
+                            </>
+                          ) : (
+                            <>
+                              <Info className="w-3.5 h-3.5 text-slate-600 shrink-0" />
+                              <span>Menunggu Verifikasi</span>
+                            </>
+                          )}
                         </span>
                       </td>
                       <td className="p-3.5 text-right no-print relative">
@@ -751,6 +969,7 @@ export default function ReceivingView({
         <div className="fixed inset-0 bg-slate-950/60 backdrop-blur-xs flex items-center justify-center z-50 p-4 overflow-y-auto">
           <div className="bg-white text-slate-800 rounded-xl shadow-2xl w-full max-w-3xl overflow-hidden flex flex-col border border-slate-200">
             
+            {/* Modal Header */}
             <div className="bg-slate-900 text-white px-5 py-4 flex justify-between items-center border-b border-slate-800">
               <div className="flex items-center gap-2">
                 <FileCheck className="w-5 h-5 text-emerald-400" />
@@ -763,184 +982,548 @@ export default function ReceivingView({
               </button>
             </div>
 
-            <div className="p-6 space-y-5 overflow-y-auto max-h-[80vh] font-sans">
+            {/* Sub-Header & Navigation Tabs */}
+            <div className="bg-slate-100 border-b border-slate-200 px-6 py-2.5 flex items-center justify-between gap-4 font-sans text-xs">
+              <div className="flex items-center gap-2">
+                <button
+                  type="button"
+                  onClick={() => setDetailTab("items")}
+                  className={`px-3 py-1.5 rounded-lg font-bold font-mono text-xs transition-all cursor-pointer flex items-center gap-1.5 ${
+                    detailTab === "items"
+                      ? "bg-white text-blue-700 shadow-xs border border-slate-200 font-extrabold"
+                      : "text-slate-600 hover:text-slate-900 hover:bg-slate-200/60"
+                  }`}
+                >
+                  <ClipboardCheck className="w-3.5 h-3.5" />
+                  <span>Pemeriksaan Fisik &amp; Items</span>
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setDetailTab("logs")}
+                  className={`px-3 py-1.5 rounded-lg font-bold font-mono text-xs transition-all cursor-pointer flex items-center gap-1.5 ${
+                    detailTab === "logs"
+                      ? "bg-white text-blue-700 shadow-xs border border-slate-200 font-extrabold"
+                      : "text-slate-600 hover:text-slate-900 hover:bg-slate-200/60"
+                  }`}
+                >
+                  <History className="w-3.5 h-3.5 text-indigo-600" />
+                  <span>Riwayat Log &amp; Audit ({activeReceiving.audit_logs?.length || 0})</span>
+                </button>
+              </div>
+
+              {activeReceiving.completion_date && (
+                <div className="hidden sm:flex items-center gap-1 text-[11px] font-mono font-bold text-emerald-800 bg-emerald-100 px-2.5 py-1 rounded-lg border border-emerald-200">
+                  <Clock className="w-3 h-3 text-emerald-600" />
+                  <span>Lengkap pada: {new Date(activeReceiving.completion_date).toLocaleDateString("id-ID", { day: "2-digit", month: "short", year: "numeric", hour: "2-digit", minute: "2-digit" })}</span>
+                </div>
+              )}
+            </div>
+
+            <div className="p-6 space-y-5 overflow-y-auto max-h-[75vh] font-sans">
               
-              <div className="grid grid-cols-2 gap-4 bg-slate-50 p-4 border border-slate-200 rounded-lg text-xs leading-relaxed">
+              {/* Common Details Card */}
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4 bg-slate-50 p-4 border border-slate-200 rounded-xl text-xs leading-relaxed">
                 <div>
-                  <p className="text-slate-400 font-bold uppercase tracking-wider text-[9px] mb-1">Rincian SPK &amp; Pengiriman</p>
+                  <p className="text-slate-400 font-bold uppercase tracking-wider text-[9px] mb-1 font-mono">Rincian SPK &amp; Pengiriman</p>
                   <p className="text-blue-700 font-black text-sm">No. SPK: {activeReceiving.spk_number || activeReceiving.purchase_order_num}</p>
                   <p className="text-slate-700 font-semibold mt-0.5">Surat Jalan (DN): {activeReceiving.delivery_note_num}</p>
                 </div>
                 <div>
-                  <p className="text-slate-400 font-bold uppercase tracking-wider text-[9px] mb-1">Pemasok / Armada Kapal</p>
+                  <p className="text-slate-400 font-bold uppercase tracking-wider text-[9px] mb-1 font-mono">Pemasok / Armada Kapal</p>
                   <p className="text-slate-900 font-extrabold text-sm">{activeReceiving.vendor_name}</p>
-                  <span className="inline-block mt-1 bg-emerald-100 text-emerald-800 font-bold px-2 py-0.5 rounded text-[10px] font-mono border border-emerald-200">
-                    ✓ Terverifikasi Gudang (Siap Dipakai TUG 5)
-                  </span>
-                </div>
-              </div>
-
-              {/* Items Verification check boxes */}
-              <div className="space-y-3">
-                <h4 className="text-[10px] font-bold text-slate-600 uppercase tracking-widest font-mono flex items-center gap-1.5">
-                  <ClipboardCheck className="w-4 h-4 text-blue-600" />
-                  Daftar Barang SPK &amp; Pengecekan Fisik Gudang
-                </h4>
-
-                <div className="border border-slate-200 rounded-lg divide-y divide-slate-100 overflow-hidden">
-                  {verificationItems.map((vItem, idx) => (
-                    <div key={idx} className="p-4 bg-white hover:bg-slate-50/70 space-y-2.5">
-                      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
-                        <div className="min-w-0">
-                          <span className="font-mono text-xs bg-slate-100 text-slate-800 px-2 py-0.5 rounded font-bold border border-slate-200">
-                            Part No: {vItem.part_number}
-                          </span>
-                          <p className="font-bold text-sm text-slate-900 mt-1">{vItem.spare_part_name}</p>
-                          <p className="text-[11px] font-bold text-blue-700 mt-0.5">
-                            QTY Dipesan (SPK): {vItem.qty_ordered} {vItem.unit || "PCS"}
-                          </p>
-                        </div>
-
-                        {/* QC controls */}
-                        <div className="flex items-center gap-3 shrink-0">
-                          <div className="flex flex-col">
-                            <label className="text-[9px] pb-1 uppercase font-bold text-slate-500 text-right font-mono">Status Kesesuaian</label>
-                            <span className={`px-2 py-1 rounded text-[10px] font-black uppercase text-center ${vItem.item_matched === "Tidak Sesuai" ? "bg-rose-100 text-rose-800 border border-rose-200" : "bg-emerald-100 text-emerald-800 border border-emerald-200"}`}>
-                              {vItem.item_matched || "Sesuai"}
-                            </span>
-                          </div>
-
-                          <div className="flex flex-col">
-                            <label className="text-[9px] pb-1 uppercase font-bold text-slate-500 text-right font-mono">QTY Diterima</label>
-                            <input 
-                              type="number" 
-                              value={vItem.qty_received}
-                              onChange={(e) => handleItemQtyChange(idx, Number(e.target.value))}
-                              className="bg-slate-50 border border-slate-300 p-1.5 w-20 text-center font-mono font-bold text-xs text-slate-900 rounded-lg focus:ring-1 focus:ring-blue-500"
-                            />
-                          </div>
-
-                          <div className="flex flex-col text-right">
-                            <span className="text-[9px] uppercase font-mono font-bold text-slate-400">Pengecekan QTY</span>
-                            <span className={`font-mono text-xs font-extrabold px-2 py-1 rounded mt-0.5 ${
-                              vItem.qty_received === vItem.qty_ordered 
-                                ? "bg-emerald-50 text-emerald-700 border border-emerald-200" 
-                                : vItem.qty_received < vItem.qty_ordered 
-                                ? "bg-amber-50 text-amber-800 border border-amber-200"
-                                : "bg-blue-50 text-blue-800 border border-blue-200"
-                            }`}>
-                              {vItem.qty_received === vItem.qty_ordered 
-                                ? "✓ QTY Sesuai" 
-                                : vItem.qty_received < vItem.qty_ordered 
-                                ? `⚠️ Kurang (-${vItem.qty_ordered - vItem.qty_received})`
-                                : `ℹ️ Lebih (+${vItem.qty_received - vItem.qty_ordered})`}
-                            </span>
-                          </div>
-                        </div>
-                      </div>
-
-                      {/* Notes row */}
-                      <div>
-                        <input
-                          type="text"
-                          value={vItem.keeper_notes || ""}
-                          onChange={(e) => {
-                            const up = [...verificationItems];
-                            up[idx].keeper_notes = e.target.value;
-                            setVerificationItems(up);
-                          }}
-                          placeholder="Catatan penjaga gudang per item (opsional)..."
-                          className="w-full bg-slate-50 border border-slate-200 text-slate-800 text-xs px-3 py-1.5 rounded-lg focus:outline-none focus:bg-white"
-                        />
-                      </div>
-                    </div>
-                  ))}
-                </div>
-              </div>
-
-              {/* Overall Keeper Notes */}
-              <div>
-                <label className="text-xs font-bold text-slate-700 block mb-1">
-                  Catatan Umum Penjaga Gudang:
-                </label>
-                <textarea
-                  rows={2}
-                  value={detailKeeperNotes}
-                  onChange={(e) => setDetailKeeperNotes(e.target.value)}
-                  placeholder="Tuliskan catatan kondisi fisik kemasan/pengiriman dari penjaga gudang..."
-                  className="w-full bg-slate-50 border border-slate-300 rounded-lg p-2.5 text-xs text-slate-800 focus:outline-none focus:ring-1 focus:ring-blue-500"
-                />
-              </div>
-
-              {/* INTERACTIVE DIGITAL SIGNATURE PAD */}
-              <div className="bg-slate-50 border border-slate-200 rounded-lg p-4 flex flex-col gap-2">
-                <div className="flex justify-between items-center">
-                  <div className="space-y-0.5">
-                    <h4 className="text-xs font-bold font-display uppercase tracking-tight text-slate-800 flex items-center gap-1.5">
-                      <span className="w-2 h-2 rounded-full bg-blue-600 animate-ping"></span>
-                      Paraf Verifikasi Penjaga Gudang
-                    </h4>
-                    <p className="text-[10px] text-slate-500 font-mono">
-                      Goreskan paraf tanda tangan pemeriksaan fisik penerimaan barang
-                    </p>
-                  </div>
-                  <button
-                    type="button"
-                    onClick={clearCanvas}
-                    className="text-[10px] font-bold text-red-600 hover:text-red-700 bg-red-50 hover:bg-red-100 px-2 py-1 rounded transition-colors cursor-pointer"
-                  >
-                    Hapus Paraf
-                  </button>
-                </div>
-                
-                <div className="relative border border-slate-300 rounded-lg bg-white overflow-hidden shadow-inner h-[110px] cursor-crosshair">
-                  <canvas
-                    ref={canvasRef}
-                    width={500}
-                    height={110}
-                    onMouseDown={startDrawing}
-                    onMouseMove={draw}
-                    onMouseUp={stopDrawing}
-                    onMouseLeave={stopDrawing}
-                    onTouchStart={startDrawing}
-                    onTouchMove={draw}
-                    onTouchEnd={stopDrawing}
-                    className="w-full h-full block"
-                  />
-                  <div className="absolute bottom-2 left-1/2 -translate-x-1/2 w-[85%] border-b border-dashed border-slate-300 pointer-events-none text-center pb-0.5 select-none">
-                    <span className="text-[8px] font-mono text-slate-400 uppercase tracking-widest">
-                      Area Paraf Penjaga Gudang
+                  <div className="mt-1 flex items-center gap-2">
+                    <span className={`inline-block font-bold px-2 py-0.5 rounded text-[10px] font-mono border ${
+                      overallStatus === ReceivingStatus.ACCEPTED || overallStatus === ReceivingStatus.VERIFIED
+                        ? "bg-emerald-100 text-emerald-800 border-emerald-300"
+                        : overallStatus === ReceivingStatus.PARTIAL_REJECT
+                        ? "bg-amber-100 text-amber-800 border-amber-300"
+                        : "bg-rose-100 text-rose-800 border-rose-300"
+                    }`}>
+                      {overallStatus === ReceivingStatus.ACCEPTED || overallStatus === ReceivingStatus.VERIFIED
+                        ? "✓ Terverifikasi Sesuai / Lengkap"
+                        : overallStatus === ReceivingStatus.PARTIAL_REJECT
+                        ? "⚠️ Ada Selisih / Partial Reject"
+                        : "❌ Tidak Sesuai / Ditolak"}
                     </span>
                   </div>
                 </div>
               </div>
 
-              {/* Notice Banner - No Approval Required */}
-              <div className="bg-emerald-50 border border-emerald-200 rounded-lg p-3 text-xs text-emerald-900 flex items-center gap-2 font-medium">
-                <CheckCircle2 className="w-4 h-4 text-emerald-600 shrink-0" />
-                <span>
-                  <strong>Penerimaan Gudang Langsung Terverifikasi:</strong> Data penerimaan barang ini tersimpan secara otomatis dan dapat langsung digunakan pada pengajuan <strong>TUG 5 (Permintaan Barang)</strong> tanpa perlu menunggu approval manager.
-                </span>
-              </div>
+              {/* RESOLVE BANNER BUTTON (If not currently ACCEPTED/VERIFIED) */}
+              {overallStatus !== ReceivingStatus.ACCEPTED && overallStatus !== ReceivingStatus.VERIFIED && (
+                <div className="bg-gradient-to-r from-amber-500/10 via-amber-500/5 to-emerald-500/10 border border-amber-300 rounded-xl p-3.5 flex flex-col sm:flex-row sm:items-center justify-between gap-3 shadow-xs">
+                  <div className="space-y-0.5">
+                    <h5 className="text-xs font-bold text-amber-900 flex items-center gap-1.5">
+                      <RefreshCw className="w-4 h-4 text-amber-600 shrink-0 animate-spin-slow" />
+                      Apakah barang susulan/pengganti sudah tiba dan LENGKAP?
+                    </h5>
+                    <p className="text-[11px] text-amber-800 font-medium">
+                      Anda dapat mengonfirmasi kelengkapan barang fisik untuk mengubah status penerimaan menjadi <strong>"Sesuai / Lengkap"</strong>.
+                    </p>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setIsResolveModalOpen(true);
+                      setResolveCompletionDate(new Date().toISOString().slice(0, 16));
+                      setResolveNotes("Barang susulan/pengganti telah diterima secara fisik dan diperiksa LENGKAP & SESUAI oleh Penjaga Gudang.");
+                      setResolveConfirmed(false);
+                    }}
+                    className="px-3.5 py-2 bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-bold font-mono rounded-lg shadow-sm transition-all flex items-center gap-1.5 shrink-0 cursor-pointer"
+                  >
+                    <CheckCircle2 className="w-4 h-4 text-emerald-200" />
+                    <span>Ubah Status Ke Sesuai</span>
+                  </button>
+                </div>
+              )}
+
+              {/* HIGHLIGHT ALERT BANNER UNTUK BARANG TIDAK SESUAI / SELISIH QTY */}
+              {verificationItems.some(v => v.item_matched === "Tidak Sesuai" || v.qty_received < v.qty_ordered) && (
+                <div className="bg-rose-50 border border-rose-300 rounded-xl p-4 space-y-2.5 shadow-2xs">
+                  <div className="flex items-center gap-2 text-rose-800 font-bold text-xs uppercase tracking-tight">
+                    <AlertOctagon className="w-4 h-4 text-rose-600 shrink-0" />
+                    <span>Rincian Barang Tidak Sesuai / Selisih QTY ({verificationItems.filter(v => v.item_matched === "Tidak Sesuai" || v.qty_received < v.qty_ordered).length} Item)</span>
+                  </div>
+                  <p className="text-[11px] text-rose-700 font-medium leading-relaxed">
+                    Berikut adalah barang yang dicatat <strong>TIDAK SESUAI</strong> atau memiliki <strong>SELISIH QTY</strong> beserta catatan pemeriksaan fisik penjaga gudang:
+                  </p>
+                  <div className="space-y-2 pt-1">
+                    {verificationItems
+                      .filter(v => v.item_matched === "Tidak Sesuai" || v.qty_received < v.qty_ordered)
+                      .map((mItem, mIdx) => (
+                        <div key={mIdx} className="bg-white border border-rose-200 rounded-lg p-3 text-xs flex flex-col sm:flex-row sm:items-center justify-between gap-2 shadow-2xs">
+                          <div className="min-w-0">
+                            <div className="flex items-center gap-2 font-bold text-slate-900">
+                              <span className="font-mono text-[10px] bg-slate-100 px-1.5 py-0.5 rounded text-slate-700 border border-slate-200 font-extrabold">
+                                Part No: {mItem.part_number}
+                              </span>
+                              <span className="truncate">{mItem.spare_part_name}</span>
+                            </div>
+                            <p className="text-[11px] text-slate-600 mt-1 font-sans">
+                              <strong>SPK:</strong> {mItem.qty_ordered} {mItem.unit || "PCS"} | <strong>Fisik Datang:</strong> {mItem.qty_received} {mItem.unit || "PCS"}
+                            </p>
+                            {mItem.keeper_notes && (
+                              <p className="text-[11px] text-slate-700 mt-1 italic bg-slate-50 p-1.5 rounded border border-slate-100 font-sans">
+                                💬 <strong>Catatan Penjaga Gudang:</strong> "{mItem.keeper_notes}"
+                              </p>
+                            )}
+                          </div>
+                          <div className="shrink-0 flex items-center gap-1.5 font-mono">
+                            {mItem.item_matched === "Tidak Sesuai" && (
+                              <span className="bg-rose-600 text-white text-[10px] font-black px-2 py-0.5 rounded shadow-2xs">
+                                ✕ Item Tidak Sesuai
+                              </span>
+                            )}
+                            {mItem.qty_received < mItem.qty_ordered && (
+                              <span className="bg-amber-500 text-white text-[10px] font-black px-2 py-0.5 rounded shadow-2xs">
+                                ⚠️ QTY Kurang (-{mItem.qty_ordered - mItem.qty_received})
+                              </span>
+                            )}
+                          </div>
+                        </div>
+                      ))}
+                  </div>
+                </div>
+              )}
+
+              {/* TAB 1: PEMERIKSAAN FISIK & ITEMS */}
+              {detailTab === "items" && (
+                <>
+                  <div className="space-y-3">
+                    <h4 className="text-[10px] font-bold text-slate-600 uppercase tracking-widest font-mono flex items-center gap-1.5">
+                      <ClipboardCheck className="w-4 h-4 text-blue-600" />
+                      Daftar Barang SPK &amp; Pengecekan Fisik Gudang
+                    </h4>
+
+                    <div className="border border-slate-200 rounded-lg divide-y divide-slate-100 overflow-hidden">
+                      {verificationItems.map((vItem, idx) => (
+                        <div key={idx} className="p-4 bg-white hover:bg-slate-50/70 space-y-2.5">
+                          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+                            <div className="min-w-0">
+                              <span className="font-mono text-xs bg-slate-100 text-slate-800 px-2 py-0.5 rounded font-bold border border-slate-200">
+                                Part No: {vItem.part_number}
+                              </span>
+                              <p className="font-bold text-sm text-slate-900 mt-1">{vItem.spare_part_name}</p>
+                              <p className="text-[11px] font-bold text-blue-700 mt-0.5">
+                                QTY Dipesan (SPK): {vItem.qty_ordered} {vItem.unit || "PCS"}
+                              </p>
+                            </div>
+
+                            {/* QC controls */}
+                            <div className="flex items-center gap-3 shrink-0">
+                              <div className="flex flex-col">
+                                <label className="text-[9px] pb-1 uppercase font-bold text-slate-500 font-mono">Kesesuaian Item</label>
+                                <div className="flex items-center gap-1">
+                                  <button
+                                    type="button"
+                                    onClick={() => {
+                                      const up = [...verificationItems];
+                                      up[idx].item_matched = "Sesuai";
+                                      if (up[idx].qty_rejected === 0) {
+                                        up[idx].qc_status = "Verified";
+                                        up[idx].reject_reason = "";
+                                      }
+                                      setVerificationItems(up);
+
+                                      const anyNotMatched = up.some(u => u.item_matched === "Tidak Sesuai" || u.qty_rejected > 0);
+                                      const allNotMatched = up.every(u => u.item_matched === "Tidak Sesuai" || u.qty_received === 0);
+                                      if (allNotMatched) setOverallStatus(ReceivingStatus.FULL_REJECT);
+                                      else if (anyNotMatched) setOverallStatus(ReceivingStatus.PARTIAL_REJECT);
+                                      else setOverallStatus(ReceivingStatus.ACCEPTED);
+                                    }}
+                                    className={`px-2 py-0.5 rounded text-[10px] font-extrabold cursor-pointer transition-all ${
+                                      vItem.item_matched === "Sesuai"
+                                        ? "bg-emerald-600 text-white shadow-xs"
+                                        : "bg-slate-100 text-slate-600 hover:bg-slate-200"
+                                    }`}
+                                  >
+                                    ✓ Sesuai
+                                  </button>
+                                  <button
+                                    type="button"
+                                    onClick={() => {
+                                      const up = [...verificationItems];
+                                      up[idx].item_matched = "Tidak Sesuai";
+                                      up[idx].qc_status = "Rejected";
+                                      if (!up[idx].reject_reason) up[idx].reject_reason = "Spesifikasi fisik tidak sesuai SPK";
+                                      setVerificationItems(up);
+
+                                      const anyNotMatched = up.some(u => u.item_matched === "Tidak Sesuai" || u.qty_rejected > 0);
+                                      const allNotMatched = up.every(u => u.item_matched === "Tidak Sesuai" || u.qty_received === 0);
+                                      if (allNotMatched) setOverallStatus(ReceivingStatus.FULL_REJECT);
+                                      else if (anyNotMatched) setOverallStatus(ReceivingStatus.PARTIAL_REJECT);
+                                      else setOverallStatus(ReceivingStatus.ACCEPTED);
+                                    }}
+                                    className={`px-2 py-0.5 rounded text-[10px] font-extrabold cursor-pointer transition-all ${
+                                      vItem.item_matched === "Tidak Sesuai"
+                                        ? "bg-rose-600 text-white shadow-xs"
+                                        : "bg-slate-100 text-slate-600 hover:bg-slate-200"
+                                    }`}
+                                  >
+                                    ✕ Tidak Sesuai
+                                  </button>
+                                </div>
+                              </div>
+
+                              <div className="flex flex-col">
+                                <label className="text-[9px] pb-1 uppercase font-bold text-slate-500 text-right font-mono">QTY Diterima</label>
+                                <input 
+                                  type="number" 
+                                  value={vItem.qty_received}
+                                  onChange={(e) => handleItemQtyChange(idx, Number(e.target.value))}
+                                  className="bg-slate-50 border border-slate-300 p-1.5 w-20 text-center font-mono font-bold text-xs text-slate-900 rounded-lg focus:ring-1 focus:ring-blue-500"
+                                />
+                              </div>
+
+                              <div className="flex flex-col text-right">
+                                <span className="text-[9px] uppercase font-mono font-bold text-slate-400">Pengecekan QTY</span>
+                                <span className={`font-mono text-xs font-extrabold px-2 py-1 rounded mt-0.5 ${
+                                  vItem.qty_received === vItem.qty_ordered 
+                                    ? "bg-emerald-50 text-emerald-700 border border-emerald-200" 
+                                    : vItem.qty_received < vItem.qty_ordered 
+                                    ? "bg-amber-50 text-amber-800 border border-amber-200"
+                                    : "bg-blue-50 text-blue-800 border border-blue-200"
+                                }`}>
+                                  {vItem.qty_received === vItem.qty_ordered 
+                                    ? "✓ QTY Sesuai" 
+                                    : vItem.qty_received < vItem.qty_ordered 
+                                    ? `⚠️ Kurang (-${vItem.qty_ordered - vItem.qty_received})`
+                                    : `ℹ️ Lebih (+${vItem.qty_received - vItem.qty_ordered})`}
+                                </span>
+                              </div>
+                            </div>
+                          </div>
+
+                          {/* Notes row */}
+                          <div>
+                            <label className="text-[9px] uppercase font-bold text-slate-500 font-mono block mb-1">
+                              Catatan Penjaga Gudang per Item
+                            </label>
+                            <input
+                              type="text"
+                              value={vItem.keeper_notes || ""}
+                              onChange={(e) => {
+                                const up = [...verificationItems];
+                                up[idx].keeper_notes = e.target.value;
+                                setVerificationItems(up);
+                              }}
+                              placeholder="Tulis catatan kondisi fisik barang..."
+                              className="w-full bg-slate-50 border border-slate-200 text-slate-800 text-xs px-3 py-1.5 rounded-lg focus:outline-none focus:bg-white focus:border-blue-400"
+                            />
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+
+                  {/* Overall Keeper Notes */}
+                  <div>
+                    <label className="text-xs font-bold text-slate-700 block mb-1">
+                      Catatan Umum Penjaga Gudang:
+                    </label>
+                    <textarea
+                      rows={2}
+                      value={detailKeeperNotes}
+                      onChange={(e) => setDetailKeeperNotes(e.target.value)}
+                      placeholder="Tuliskan catatan kondisi fisik kemasan/pengiriman dari penjaga gudang..."
+                      className="w-full bg-slate-50 border border-slate-300 rounded-lg p-2.5 text-xs text-slate-800 focus:outline-none focus:ring-1 focus:ring-blue-500"
+                    />
+                  </div>
+
+                  {/* INTERACTIVE DIGITAL SIGNATURE PAD */}
+                  <div className="bg-slate-50 border border-slate-200 rounded-xl p-4 flex flex-col gap-3">
+                    <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+                      <div className="space-y-0.5">
+                        <h4 className="text-xs font-bold font-display uppercase tracking-tight text-slate-800 flex items-center gap-2">
+                          <span className="w-2.5 h-2.5 rounded-full bg-blue-600 animate-ping shrink-0" />
+                          Paraf Verifikasi Penjaga Gudang
+                          {signatureDataUrl && (
+                            <span className="bg-emerald-100 text-emerald-800 text-[10px] font-mono font-bold px-2 py-0.5 rounded border border-emerald-300 flex items-center gap-1">
+                              <CheckCircle2 className="w-3 h-3 text-emerald-600" />
+                              Paraf Tersimpan
+                            </span>
+                          )}
+                        </h4>
+                        <p className="text-[10px] text-slate-500 font-mono">
+                          Goreskan paraf tanda tangan dengan mouse atau layar sentuh pada kotak canvas di bawah
+                        </p>
+                      </div>
+                      <div className="flex items-center gap-2">
+                        <button
+                          type="button"
+                          onClick={clearCanvas}
+                          className="text-[10px] font-bold text-rose-600 hover:text-rose-700 bg-rose-50 hover:bg-rose-100 px-2.5 py-1 rounded-lg border border-rose-200 transition-colors cursor-pointer"
+                        >
+                          Hapus / Reset Paraf
+                        </button>
+                      </div>
+                    </div>
+                    
+                    <div className="relative border-2 border-slate-300 hover:border-blue-400 rounded-xl bg-white overflow-hidden shadow-inner h-[140px] cursor-crosshair transition-colors">
+                      <canvas
+                        ref={canvasRef}
+                        onMouseDown={startDrawing}
+                        onMouseMove={draw}
+                        onMouseUp={stopDrawing}
+                        onMouseLeave={stopDrawing}
+                        onTouchStart={startDrawing}
+                        onTouchMove={draw}
+                        onTouchEnd={stopDrawing}
+                        className="w-full h-full block touch-none select-none"
+                      />
+                      {!signatureDataUrl && !isDrawing && (
+                        <div className="absolute inset-0 pointer-events-none flex flex-col items-center justify-center opacity-40">
+                          <span className="text-[11px] font-mono text-slate-400 uppercase tracking-widest font-bold">
+                            ✍️ AREA PARAF PENJAGA GUDANG
+                          </span>
+                          <span className="text-[9px] font-mono text-slate-400 mt-0.5">
+                            (Klik &amp; Tahan Mouse atau Usap Layar)
+                          </span>
+                        </div>
+                      )}
+                      <div className="absolute bottom-2 left-1/2 -translate-x-1/2 w-[85%] border-b border-dashed border-slate-300 pointer-events-none text-center pb-0.5 select-none" />
+                    </div>
+
+                    {/* PRATINJAU BUKTI PARAF TERSIMPAN */}
+                    {signatureDataUrl && (
+                      <div className="bg-emerald-50/80 border border-emerald-200 rounded-lg p-2.5 flex items-center justify-between gap-3 text-xs text-emerald-900 font-sans">
+                        <div className="flex items-center gap-2">
+                          <BadgeCheck className="w-4 h-4 text-emerald-600 shrink-0" />
+                          <span>
+                            <strong>Bukti Paraf Sah:</strong> Tanda tangan fisik penjaga gudang telah tersimpan secara resmi sebagai bukti verifikasi.
+                          </span>
+                        </div>
+                        <div className="shrink-0 bg-white p-1 rounded border border-emerald-200 shadow-2xs">
+                          <img src={signatureDataUrl} alt="Bukti Paraf" className="h-8 max-w-[100px] object-contain" />
+                        </div>
+                      </div>
+                    )}
+                  </div>
+
+                  {/* Notice Banner - No Approval Required */}
+                  <div className="bg-emerald-50 border border-emerald-200 rounded-lg p-3 text-xs text-emerald-900 flex items-center gap-2 font-medium">
+                    <CheckCircle2 className="w-4 h-4 text-emerald-600 shrink-0" />
+                    <span>
+                      <strong>Penerimaan Gudang Langsung Terverifikasi:</strong> Data penerimaan barang ini tersimpan secara otomatis dan dapat langsung digunakan pada pengajuan <strong>TUG 5 (Permintaan Barang)</strong> tanpa perlu menunggu approval manager.
+                    </span>
+                  </div>
+                </>
+              )}
+
+              {/* TAB 2: RIWAYAT LOG AUDIT & AKTIVITAS */}
+              {detailTab === "logs" && (
+                <div className="space-y-4 font-sans">
+                  <div className="flex justify-between items-center pb-2 border-b border-slate-200">
+                    <div>
+                      <h4 className="text-xs font-bold text-slate-800 uppercase tracking-wider font-mono flex items-center gap-2">
+                        <History className="w-4 h-4 text-blue-600" />
+                        Riwayat Log Audit &amp; Aktivitas Penerimaan Barang
+                      </h4>
+                      <p className="text-[11px] text-slate-500 mt-0.5">
+                        Catatan kronologis pemeriksaan, perubahan status, dan pencatatan oleh penjaga gudang.
+                      </p>
+                    </div>
+                    <span className="text-xs font-mono font-bold px-2.5 py-1 bg-slate-100 text-slate-700 rounded-lg border border-slate-200">
+                      {(activeReceiving.audit_logs || []).length} Audit Log Recorded
+                    </span>
+                  </div>
+
+                  {(!activeReceiving.audit_logs || activeReceiving.audit_logs.length === 0) ? (
+                    <div className="text-center py-10 bg-slate-50 rounded-xl border border-slate-200 text-slate-400 font-mono text-xs">
+                      Belum ada riwayat audit log yang tercatat.
+                    </div>
+                  ) : (
+                    <div className="relative pl-6 space-y-5 before:absolute before:left-2.5 before:top-2 before:bottom-2 before:w-0.5 before:bg-slate-200">
+                      {activeReceiving.audit_logs.map((log, lIdx) => (
+                        <div key={lIdx} className="relative bg-white border border-slate-200 rounded-xl p-4 space-y-2 shadow-2xs hover:bg-slate-50/50 transition-colors">
+                          <div className="absolute -left-6 top-4 w-3.5 h-3.5 rounded-full bg-blue-600 ring-4 ring-white shadow-2xs" />
+                          
+                          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-1.5">
+                            <span className="font-bold text-xs text-slate-900 flex items-center gap-2">
+                              {log.action}
+                              {log.status_after && (
+                                <span className={`text-[10px] font-mono font-extrabold px-2 py-0.5 rounded border ${
+                                  log.status_after === ReceivingStatus.ACCEPTED || log.status_after === ReceivingStatus.VERIFIED
+                                    ? "bg-emerald-100 text-emerald-800 border-emerald-300"
+                                    : log.status_after === ReceivingStatus.PARTIAL_REJECT
+                                    ? "bg-amber-100 text-amber-800 border-amber-300"
+                                    : "bg-rose-100 text-rose-800 border-rose-300"
+                                }`}>
+                                  {log.status_after}
+                                </span>
+                              )}
+                            </span>
+                            <span className="text-[10px] font-mono text-slate-500 flex items-center gap-1">
+                              <Clock className="w-3 h-3 text-slate-400" />
+                              {new Date(log.timestamp).toLocaleString("id-ID", { day: "2-digit", month: "short", year: "numeric", hour: "2-digit", minute: "2-digit", second: "2-digit" })}
+                            </span>
+                          </div>
+
+                          <div className="flex items-center gap-2 text-[11px] text-slate-600 font-medium">
+                            <span className="bg-slate-100 text-slate-700 px-2 py-0.5 rounded text-[10px] font-mono border border-slate-200">
+                              Petugas: {log.username}
+                            </span>
+                            {log.status_before && log.status_before !== "-" && (
+                              <span className="text-[10px] text-slate-400 font-mono">
+                                Status Sebelum: {log.status_before}
+                              </span>
+                            )}
+                          </div>
+
+                          {log.notes && (
+                            <p className="text-xs text-slate-700 bg-slate-50 p-2.5 rounded-lg border border-slate-200 font-sans leading-relaxed">
+                              "{log.notes}"
+                            </p>
+                          )}
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              )}
 
               {/* Modal Actions */}
-              <div className="bg-slate-900 border-t border-slate-100 p-4 -mx-6 -mb-6 flex justify-end gap-3 font-mono">
+              <div className="bg-slate-900 border-t border-slate-800 p-4 -mx-6 -mb-6 flex justify-end gap-3 font-mono">
                 <button
                   type="button"
                   onClick={() => setActiveReceiving(null)}
                   className="px-4 py-2 bg-slate-800 hover:bg-slate-700 text-slate-300 rounded-lg text-xs font-bold uppercase cursor-pointer"
                 >
+                  Tutup
+                </button>
+                {detailTab === "items" && (
+                  <button
+                    type="button"
+                    onClick={handleCommitVerification}
+                    className="px-5 py-2 bg-emerald-600 hover:bg-emerald-500 text-white rounded-lg text-xs font-bold uppercase cursor-pointer transition-colors shadow-xs"
+                  >
+                    Simpan Verifikasi Gudang
+                  </button>
+                )}
+              </div>
+
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* CONFIRMATION MODAL UNTUK UBAH STATUS MENJADI SESUAI / LENGKAP */}
+      {isResolveModalOpen && (
+        <div className="fixed inset-0 bg-slate-950/70 backdrop-blur-xs flex items-center justify-center z-50 p-4">
+          <div className="bg-white rounded-xl shadow-2xl w-full max-w-lg overflow-hidden border border-slate-200 font-sans animate-in fade-in zoom-in-95 duration-150">
+            
+            <div className="bg-slate-900 text-white px-5 py-4 flex justify-between items-center border-b border-slate-800">
+              <div className="flex items-center gap-2">
+                <CheckCircle2 className="w-5 h-5 text-emerald-400" />
+                <h3 className="font-display font-extrabold text-xs uppercase tracking-wider">
+                  Konfirmasi Status Sesuai &amp; Barang Lengkap
+                </h3>
+              </div>
+              <button onClick={() => setIsResolveModalOpen(false)} className="text-slate-400 hover:text-white cursor-pointer">
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            <div className="p-5 space-y-4 text-xs">
+              <div className="bg-emerald-50 border border-emerald-200 rounded-xl p-3.5 text-emerald-900 leading-relaxed font-medium">
+                Anda akan mengonfirmasi bahwa barang susulan/pengganti untuk SPK <strong>{activeReceiving?.spk_number || activeReceiving?.purchase_order_num}</strong> telah diterima dan fisik seluruh barang kini <strong>"SESUAI &amp; LENGKAP"</strong>.
+              </div>
+
+              <div>
+                <label className="block text-[11px] font-bold text-slate-700 font-mono uppercase mb-1">
+                  Tanggal &amp; Waktu Barang Lengkap
+                </label>
+                <input
+                  type="datetime-local"
+                  value={resolveCompletionDate}
+                  onChange={(e) => setResolveCompletionDate(e.target.value)}
+                  className="w-full bg-slate-50 border border-slate-300 rounded-lg p-2 font-mono text-xs font-bold text-slate-900 focus:ring-1 focus:ring-emerald-500"
+                />
+              </div>
+
+              <div>
+                <label className="block text-[11px] font-bold text-slate-700 font-mono uppercase mb-1">
+                  Catatan Konfirmasi Kelengkapan Barang
+                </label>
+                <textarea
+                  rows={3}
+                  value={resolveNotes}
+                  onChange={(e) => setResolveNotes(e.target.value)}
+                  placeholder="Tuliskan alasan / rincian penerimaan susulan barang..."
+                  className="w-full bg-slate-50 border border-slate-300 rounded-lg p-2.5 text-xs text-slate-800 focus:ring-1 focus:ring-emerald-500"
+                />
+              </div>
+
+              <label className="flex items-start gap-2.5 bg-slate-50 p-3 rounded-lg border border-slate-200 cursor-pointer select-none">
+                <input
+                  type="checkbox"
+                  checked={resolveConfirmed}
+                  onChange={(e) => setResolveConfirmed(e.target.checked)}
+                  className="mt-0.5 rounded text-emerald-600 focus:ring-emerald-500 w-4 h-4 cursor-pointer"
+                />
+                <span className="text-[11px] font-bold text-slate-800 leading-tight">
+                  Saya mengonfirmasi bahwa fisik dan QTY seluruh barang pada SPK ini telah diperiksa dan diterima LENGKAP &amp; SESUAI oleh Penjaga Gudang.
+                </span>
+              </label>
+
+              <div className="flex justify-end gap-2 pt-3 border-t border-slate-100 font-mono">
+                <button
+                  type="button"
+                  onClick={() => setIsResolveModalOpen(false)}
+                  className="px-4 py-2 bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold rounded-lg text-xs uppercase cursor-pointer"
+                >
                   Batal
                 </button>
                 <button
                   type="button"
-                  onClick={handleCommitVerification}
-                  className="px-5 py-2 bg-emerald-600 hover:bg-emerald-500 text-white rounded-lg text-xs font-bold uppercase cursor-pointer transition-colors"
+                  disabled={!resolveConfirmed}
+                  onClick={handleConfirmResolveToAccepted}
+                  className="px-4 py-2 bg-emerald-600 hover:bg-emerald-700 disabled:opacity-50 text-white font-bold rounded-lg text-xs uppercase shadow-sm transition-all cursor-pointer disabled:cursor-not-allowed flex items-center gap-1.5"
                 >
-                  Simpan Verifikasi Gudang
+                  <CheckCircle2 className="w-4 h-4" />
+                  <span>Konfirmasi Status Sesuai</span>
                 </button>
               </div>
-
             </div>
           </div>
         </div>

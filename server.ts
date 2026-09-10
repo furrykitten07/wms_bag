@@ -891,26 +891,42 @@ app.post("/api/receiving", (req, res) => {
     id: `rec-${Date.now()}`,
     purchase_order_num: body.purchase_order_num || `PO-2026-${Math.floor(10000 + Math.random() * 90000)}`,
     delivery_note_num: body.delivery_note_num || `DN-${Date.now().toString().slice(-5)}`,
+    spk_number: body.spk_number,
+    spk_id: body.spk_id,
     vendor_id: vendorObj.id,
-    vendor_name: vendorObj.name,
+    vendor_name: body.vendor_name || vendorObj.name,
     items: (body.items || []).map((itm: any) => {
       const part = spareParts.find(p => p.id === itm.spare_part_id);
       return {
         spare_part_id: itm.spare_part_id,
-        spare_part_name: part ? part.part_name : "General Marine Spares",
-        part_number: part ? part.part_number : "PN-GENERIC",
+        spare_part_name: itm.spare_part_name || (part ? part.part_name : "General Marine Spares"),
+        part_number: itm.part_number || (part ? part.part_number : "PN-GENERIC"),
         qty_ordered: Number(itm.qty_ordered || 1),
         qty_received: Number(itm.qty_received || 0),
         qty_rejected: Number(itm.qty_rejected || 0),
         qc_status: itm.qc_status || "Pending",
+        item_matched: itm.item_matched || "Sesuai",
+        qty_matched_status: itm.qty_matched_status || "QTY Sesuai",
+        keeper_notes: itm.keeper_notes || "",
         reject_reason: itm.reject_reason
       };
     }),
     status: (body.status as ReceivingStatus) || ReceivingStatus.PENDING,
+    keeper_notes: body.keeper_notes,
     reject_reason: body.reject_reason,
     return_note_num: body.return_note_num,
     photo_evidence_url: body.photo_evidence_url || "",
-    received_date: new Date().toISOString(),
+    signature_data_url: body.signature_data_url || "",
+    received_date: body.received_date || new Date().toISOString(),
+    completion_date: body.completion_date || (body.status === ReceivingStatus.ACCEPTED || body.status === ReceivingStatus.VERIFIED ? new Date().toISOString() : undefined),
+    audit_logs: body.audit_logs || [{
+      timestamp: new Date().toISOString(),
+      username: userHeader || "Penjaga Gudang",
+      action: "Penerimaan Dicatat",
+      notes: (body.status === ReceivingStatus.ACCEPTED || body.status === ReceivingStatus.VERIFIED) ? "Fisik & QTY Terverifikasi Sesuai & Lengkap" : "Dicatat dengan catatan fisik / ketidaksesuaian barang",
+      status_before: "-",
+      status_after: body.status || ReceivingStatus.PENDING
+    }],
     created_by: userHeader || "Budi Santoso"
   };
 
@@ -931,7 +947,7 @@ app.put("/api/receiving/:id", (req, res) => {
   }
 
   const oldRec = receiving[recIdx];
-  const newStatus = updateBody.status as ReceivingStatus;
+  const newStatus = (updateBody.status as ReceivingStatus) || oldRec.status;
 
   const updatedRec: InboundReceiving = {
     ...oldRec,
@@ -939,12 +955,19 @@ app.put("/api/receiving/:id", (req, res) => {
     items: (updateBody.items || oldRec.items).map((itm: any) => ({
       ...itm,
       qty_received: Number(itm.qty_received),
-      qty_rejected: Number(itm.qty_rejected)
+      qty_rejected: Number(itm.qty_rejected),
+      qc_status: itm.qc_status || "Verified",
+      item_matched: itm.item_matched || "Sesuai",
+      qty_matched_status: itm.qty_matched_status || "QTY Sesuai",
+      keeper_notes: itm.keeper_notes || ""
     })),
-    reject_reason: updateBody.reject_reason,
-    return_note_num: updateBody.return_note_num,
+    keeper_notes: updateBody.keeper_notes !== undefined ? updateBody.keeper_notes : oldRec.keeper_notes,
+    reject_reason: updateBody.reject_reason !== undefined ? updateBody.reject_reason : oldRec.reject_reason,
+    return_note_num: updateBody.return_note_num !== undefined ? updateBody.return_note_num : oldRec.return_note_num,
     photo_evidence_url: updateBody.photo_evidence_url || oldRec.photo_evidence_url,
-    signature_data_url: updateBody.signature_data_url || oldRec.signature_data_url
+    signature_data_url: updateBody.signature_data_url || oldRec.signature_data_url,
+    completion_date: updateBody.completion_date !== undefined ? updateBody.completion_date : (newStatus === ReceivingStatus.ACCEPTED || newStatus === ReceivingStatus.VERIFIED ? (oldRec.completion_date || new Date().toISOString()) : oldRec.completion_date),
+    audit_logs: updateBody.audit_logs !== undefined ? updateBody.audit_logs : (oldRec.audit_logs || [])
   };
 
   // If transition to non-pending (Accepted or Partial/Full Reject) we update actual stocks & ledger!
@@ -1022,7 +1045,7 @@ app.post("/api/dispatch", async (req, res) => {
         qty_requested: Number(itm.qty_requested || 1),
         qty_dispatched: Number(itm.qty_dispatched || itm.qty_requested || 1),
         unit: itm.unit || (sp ? sp.unit : "PCS"),
-        unit_price: Number(itm.unit_price || 150)
+        unit_price: itm.unit_price !== undefined && itm.unit_price !== null ? Number(itm.unit_price) : 0
       };
     }),
     status: body.status || DispatchStatus.WAITING,
@@ -1095,22 +1118,23 @@ app.put("/api/dispatch/:id", (req, res) => {
   const nextStatus = updateBody.status as DispatchStatus;
 
   // Define helper functions for state groups
-  const isReservedState = (s: DispatchStatus) => {
+  const isReservedState = (s: DispatchStatus | string) => {
     return [
       DispatchStatus.PICKING, 
       DispatchStatus.PACKED, 
       DispatchStatus.READY_TO_DISPATCH,
       "Ready To Dispatch" as any
-    ].includes(s);
+    ].includes(s as any);
   };
 
-  const isDeductedState = (s: DispatchStatus) => {
+  const isDeductedState = (s: DispatchStatus | string) => {
     return [
       DispatchStatus.DISPATCHED, 
       DispatchStatus.DELIVERED, 
       DispatchStatus.COMPLETED,
-      "Completed" as any
-    ].includes(s);
+      "Completed" as any,
+      "Delivered" as any
+    ].includes(s as any);
   };
 
   // 1. VALIDATION: Check stock availability if transitioning from a non-active/un-deducted state to a deducted or preparation state
@@ -1179,6 +1203,10 @@ app.put("/api/dispatch/:id", (req, res) => {
   const updatedDsp: OutboundDispatch = {
     ...oldDsp,
     ...updateBody,
+    items: updateBody.items ? updateBody.items.map((itm: any) => ({
+      ...itm,
+      unit_price: itm.unit_price !== undefined && itm.unit_price !== null ? Number(itm.unit_price) : 0
+    })) : oldDsp.items,
     status: nextStatus || oldDsp.status,
     alfin_signed: updateBody.alfin_signed !== undefined ? Boolean(updateBody.alfin_signed) : oldDsp.alfin_signed,
     alfin_signed_at: updateBody.alfin_signed_at || oldDsp.alfin_signed_at,
@@ -1524,7 +1552,7 @@ app.put("/api/material-requests/:id", (req, res) => {
             qty_dispatched: isArrived ? itm.requested_qty : 0,
             qty_remaining: isArrived ? 0 : itm.requested_qty,
             unit: itm.unit,
-            unit_price: 150,
+            unit_price: (itm as any).unit_price !== undefined && (itm as any).unit_price !== null ? Number((itm as any).unit_price) : 0,
             notes: appendNote + itemNotes
           };
         })
@@ -1970,6 +1998,7 @@ app.put("/api/material-returns/:id", async (req, res) => {
   const sumbono_signed_at = body.sumbono_signed_at || oldReturn.sumbono_signed_at;
   const sumbono_signature_url = body.sumbono_signature_url || oldReturn.sumbono_signature_url;
 
+  const oldStatus = oldReturn.status;
   let newStatus = (body.status as MaterialReturnStatus) || oldReturn.status;
   if (sumbono_signed || (alfin_signed && emir_signed && sumbono_signed)) {
     newStatus = "Approved";

@@ -133,11 +133,15 @@ export interface InboundReceiving {
   items: Array<{
     spare_part_id: string;
     spare_part_name: string;
+    part_name?: string;
     part_number: string;
+    unit?: string;
     qty_ordered: number;
+    qty_spk?: number;
     qty_received: number;
     qty_rejected: number;
     qc_status: "Verified" | "Rejected" | "Pending" | "Approved";
+    status?: string;
     reject_reason?: string;
     item_matched?: "Sesuai" | "Tidak Sesuai" | boolean;
     qty_matched_status?: string;
@@ -150,8 +154,19 @@ export interface InboundReceiving {
   photo_evidence_url?: string;
   signature_data_url?: string;
   received_date: string;
+  completion_date?: string;
+  verified_at?: string;
+  audit_logs?: Array<{
+    timestamp: string;
+    username: string;
+    action: string;
+    notes?: string;
+    status_before?: string;
+    status_after?: string;
+  }>;
   created_at?: string;
   created_by: string;
+  received_by?: string;
 }
 
 export enum DispatchStatus {
@@ -175,15 +190,19 @@ export interface OutboundDispatch {
     spare_part_id: string;
     spare_part_name: string;
     part_number: string;
-    qty_requested: number;
-    qty_dispatched: number;
+    qty_requested?: number;
+    qty_dispatched?: number;
     unit: string;
-    unit_price: number;
+    unit_price?: number;
     qty_approved?: number;
     qty_remaining?: number;
+    avg_monthly_usage?: number;
+    remaining_stock?: number;
+    requested_qty?: number;
+    item_status?: string;
     notes?: string;
   }>;
-  status: DispatchStatus;
+  status: DispatchStatus | string;
   courier_name?: string;
   transporter_name?: string;
   tracking_number?: string;
@@ -192,6 +211,7 @@ export interface OutboundDispatch {
   bon_pengeluaran_number?: string;
   dispatch_date?: string;
   created_at?: string;
+  updated_at?: string;
   created_by: string;
   dispatch_number?: string;
   tug8_number?: string;
@@ -210,6 +230,26 @@ export interface OutboundDispatch {
   spk_number?: string;
   account_code?: string;
   function_code?: string;
+  is_partial?: boolean;
+  shipment_phase?: number;
+  incomplete_items_summary?: string;
+  dispatch_logs?: Array<{
+    timestamp: string;
+    action: string;
+    user: string;
+    notes?: string;
+    phase?: number;
+    dispatched_items_summary?: string;
+  }>;
+  alfin_signed?: boolean;
+  alfin_signed_at?: string;
+  alfin_signature_url?: string;
+  emir_signed?: boolean;
+  emir_signed_at?: string;
+  emir_signature_url?: string;
+  sumbono_signed?: boolean;
+  sumbono_signed_at?: string;
+  sumbono_signature_url?: string;
 }
 
 export enum RequestUrgency {
@@ -299,11 +339,16 @@ export interface SPKVesselItem {
 export interface SPKWorkOrder {
   id: string;
   spk_number: string;
-  target_port: string;
-  vessels: SPKVesselItem[];
-  status: "Draft" | "Pending Picking" | "Picking in Progress" | "Picked & Ready" | "Dispatched" | "Incomplete";
-  created_at: string;
-  created_by: string;
+  target_port?: string;
+  vessels?: SPKVesselItem[];
+  items?: any[];
+  vessel_name?: string;
+  description?: string;
+  status: "Draft" | "Pending Picking" | "Picking in Progress" | "Picked & Ready" | "Dispatched" | "Incomplete" | "COMPLETED";
+  created_at?: string;
+  date_created?: string;
+  created_by?: string;
+  assigned_to?: string;
   remarks?: string;
 }
 
@@ -352,6 +397,20 @@ export interface MaterialRequest {
   warehouse?: string;
   created_by?: string;
   notes?: string;
+  is_partial?: boolean;
+  receiving_status?: string;
+  receiving_ref_id?: string;
+  completion_date?: string;
+  incomplete_items_summary?: string;
+  alfin_signed?: boolean;
+  alfin_signed_at?: string;
+  alfin_signature_url?: string;
+  emir_signed?: boolean;
+  emir_signed_at?: string;
+  emir_signature_url?: string;
+  sumbono_signed?: boolean;
+  sumbono_signed_at?: string;
+  sumbono_signature_url?: string;
 }
 
 export interface MRActivityLog {
@@ -369,37 +428,52 @@ export type MaterialReturnStatus = "Draft" | "Submitted" | "Pending Verification
 export interface MaterialReturnItem {
   spare_part_id: string;
   part_number: string;
-  part_name: string;
+  part_name?: string;
   spare_part_name?: string;
   unit: string;
   avg_monthly_usage?: number;
   qty_issued?: number;
   qty_used?: number;
   qty_returnable?: number;
-  qty_returned: number;
+  qty_returned?: number;
+  remaining_stock?: number;
+  requested_qty?: number;
+  item_status?: "Arrived" | "Pending" | "Returned";
   notes?: string;
 }
 
 export interface MaterialReturn {
   id: string;
   return_number: string;
+  tug10_number?: string;
   return_date: string;
   vessel_name: string;
   warehouse_name?: string;
   spk_number?: string;
   spk_id?: string;
   work_order_number?: string;
+  work_order_ref?: string;
   dispatch_reference?: string; // TUG 8 dispatch reference
   return_reason?: string;
   notes?: string;
   status: MaterialReturnStatus;
   items: MaterialReturnItem[];
-  created_by: string;
-  created_at: string;
-  updated_at: string;
+  created_by?: string;
+  returned_by?: string;
+  created_at?: string;
+  updated_at?: string;
   reject_reason?: string;
   account_code?: string;
   function_code?: string;
+  alfin_signed?: boolean;
+  alfin_signed_at?: string;
+  alfin_signature_url?: string;
+  emir_signed?: boolean;
+  emir_signed_at?: string;
+  emir_signature_url?: string;
+  sumbono_signed?: boolean;
+  sumbono_signed_at?: string;
+  sumbono_signature_url?: string;
 }
 
 export interface DigitalSignature {

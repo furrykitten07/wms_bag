@@ -27,7 +27,7 @@ import {
   SlidersHorizontal,
   FileCheck
 } from "lucide-react";
-import { AuditLog, MaterialRequest, OutboundDispatch, MaterialReturn } from "../types.js";
+import { AuditLog, MaterialRequest, OutboundDispatch, MaterialReturn, SPKWorkOrder } from "../types.js";
 
 interface DashboardViewProps {
   summary: {
@@ -55,6 +55,7 @@ interface DashboardViewProps {
   materialRequestsTUG6?: MaterialRequest[];
   dispatches?: OutboundDispatch[];
   materialReturns?: MaterialReturn[];
+  spkList?: SPKWorkOrder[];
   onQuickOrder?: (partId: string) => void;
   onNavigateTab: (tab: string) => void;
   onProcessTUG5?: (request: MaterialRequest) => void;

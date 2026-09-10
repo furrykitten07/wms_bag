@@ -122,9 +122,22 @@ export default function App() {
       const usrList = await api.getUsers();
       setSimulatedUsers(usrList);
       
-      // Always route to login screen first when opening website
-      setCurrentUser(null);
-      setIsAuthenticated(false);
+      // Restore user session if stored in localStorage
+      const savedUser = localStorage.getItem("wms_username");
+      if (savedUser) {
+        const matchedSelf = usrList.find(u => u.username === savedUser);
+        if (matchedSelf) {
+          setCurrentUser(matchedSelf);
+          setIsAuthenticated(true);
+          setCurrentUserHeader(matchedSelf.username);
+        } else {
+          setCurrentUser(null);
+          setIsAuthenticated(false);
+        }
+      } else {
+        setCurrentUser(null);
+        setIsAuthenticated(false);
+      }
 
       // 2. Fetch full static lists
       const locList = await api.getLocations();
@@ -198,6 +211,7 @@ export default function App() {
         const matchedSelf = usrList.find(u => u.username === savedUser);
         if (matchedSelf) {
           setCurrentUser(matchedSelf);
+          setIsAuthenticated(true);
           setCurrentUserHeader(matchedSelf.username);
         }
       }
@@ -947,6 +961,7 @@ export default function App() {
               parts={parts}
               requests={materialRequests}
               requestsTUG6={materialRequestsTUG6}
+              receivingList={receivingList}
               onPreviewTUG5={(req) => setPrintDoc({ isOpen: true, type: "tug5", data: req })}
               onPreviewTUG6={(req) => setPrintDoc({ isOpen: true, type: "tug6", data: req })}
               spkList={spkList}
@@ -1020,6 +1035,7 @@ export default function App() {
               onLogMRAction={handleLogMRAction}
               onPreviewTUG5={handlePreviewTUG5}
               spkList={spkList}
+              receivingList={receivingList}
               autoOpenMRId={autoOpenMRId}
               onClearAutoOpenMRId={() => setAutoOpenMRId(null)}
               signatures={signatures}

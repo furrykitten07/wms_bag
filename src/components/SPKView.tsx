@@ -257,16 +257,18 @@ export default function SPKView({
 
   // Filter SPK list based on search query and status filter
   const filteredSPKList = spkList.filter((spk) => {
+    if (!spk) return false;
+
     // 1. Status Filter
     if (statusFilter !== "all" && spk.status !== statusFilter) return false;
     
     // 2. Keyword Search
     if (searchQuery.trim() !== "") {
       const q = searchQuery.toLowerCase();
-      const matchNum = spk.spk_number.toLowerCase().includes(q);
-      const matchPort = spk.target_port.toLowerCase().includes(q);
-      const matchOfficer = spk.created_by.toLowerCase().includes(q);
-      const matchVessels = spk.vessels.some(v => v.vessel_name.toLowerCase().includes(q));
+      const matchNum = (spk.spk_number || "").toLowerCase().includes(q);
+      const matchPort = (spk.target_port || "").toLowerCase().includes(q);
+      const matchOfficer = (spk.created_by || "").toLowerCase().includes(q);
+      const matchVessels = (spk.vessels || []).some(v => (v?.vessel_name || "").toLowerCase().includes(q));
       
       return matchNum || matchPort || matchOfficer || matchVessels;
     }

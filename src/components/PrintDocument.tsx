@@ -1170,7 +1170,7 @@ export default function PrintDocument({
                         ) : (
                           (data?.items || []).map((item, idx) => {
                             const requested = item.qty_requested || (item as any).qty_ordered || 0;
-                            const price = (item as any).unit_price || 120;
+                            const price = (item as any).unit_price !== undefined && (item as any).unit_price !== null ? Number((item as any).unit_price) : 0;
                             const subtotal = requested * price;
 
                             return (
@@ -1181,6 +1181,11 @@ export default function PrintDocument({
                                 </td>
                                 <td className="px-4 py-2 border-r border-slate-300">
                                   <span className="font-bold">{item.spare_part_name || "(-)"}</span>
+                                  {(item as any).keeper_notes && (
+                                    <p className="text-[10px] text-slate-700 font-sans italic bg-slate-100 p-1 mt-1 rounded border border-slate-200">
+                                      <strong className="not-italic font-mono uppercase text-[9px] text-slate-900">Catatan Item:</strong> {(item as any).keeper_notes}
+                                    </p>
+                                  )}
                                   {(item as any).reject_reason && (
                                     <p className="text-[10px] text-red-600 italic font-mono uppercase bg-red-50 p-1 mt-1">Rejected: {(item as any).reject_reason}</p>
                                   )}

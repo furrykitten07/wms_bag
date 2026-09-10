@@ -299,7 +299,7 @@ export async function convertHtmlToPdfArrayBuffer(htmlString: string): Promise<A
       logging: false,
       backgroundColor: "#ffffff",
       windowWidth: 794
-    });
+    } as any);
 
     const imgData = canvas.toDataURL("image/jpeg", 0.98);
     const pdf = new jsPDF({

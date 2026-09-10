@@ -20,6 +20,7 @@ import {
   MaterialReturn,
   TransactionType,
   DispatchStatus,
+  ReceivingStatus,
   DigitalSignature
 } from "./types.js";
 import { 
@@ -231,6 +232,60 @@ function getLocalFallbackData<T>(url: string, options: RequestInit = {}): T {
   if (path.startsWith("/api/warehouse/locations")) return localLocations as any;
   if (path.startsWith("/api/vendors")) return localVendors as any;
   if (path.startsWith("/api/spk")) return localSPKs as any;
+  if (path === "/api/receiving" && options.method === "POST") {
+    const newRec: InboundReceiving = {
+      id: `rec-${Date.now()}`,
+      purchase_order_num: body.purchase_order_num || `PO-2026-${Math.floor(10000 + Math.random() * 90000)}`,
+      delivery_note_num: body.delivery_note_num || `DN-${Date.now().toString().slice(-5)}`,
+      spk_number: body.spk_number,
+      spk_id: body.spk_id,
+      vendor_id: body.vendor_id || "vnd-1",
+      vendor_name: body.vendor_name || "Vendor Logistik BAG",
+      items: body.items || [],
+      status: body.status || ReceivingStatus.ACCEPTED,
+      keeper_notes: body.keeper_notes,
+      reject_reason: body.reject_reason,
+      return_note_num: body.return_note_num,
+      photo_evidence_url: body.photo_evidence_url || "",
+      signature_data_url: body.signature_data_url || "",
+      received_date: body.received_date || new Date().toISOString(),
+      completion_date: body.completion_date || (body.status === ReceivingStatus.ACCEPTED || body.status === ReceivingStatus.VERIFIED ? new Date().toISOString() : undefined),
+      audit_logs: body.audit_logs || [{
+        timestamp: new Date().toISOString(),
+        username: currentUsername || "Penjaga Gudang",
+        action: "Penerimaan Dicatat",
+        notes: (body.status === ReceivingStatus.ACCEPTED || body.status === ReceivingStatus.VERIFIED) ? "Fisik & QTY Terverifikasi Sesuai & Lengkap" : "Dicatat dengan catatan fisik / ketidaksesuaian barang",
+        status_before: "-",
+        status_after: body.status || ReceivingStatus.PENDING
+      }],
+      created_by: currentUsername || "Penjaga Gudang"
+    };
+    localReceiving = [newRec, ...localReceiving];
+    return newRec as any;
+  }
+  if (path.startsWith("/api/receiving/") && options.method === "PUT") {
+    const id = path.split("/").pop();
+    const idx = localReceiving.findIndex(r => r.id === id);
+    if (idx !== -1) {
+      const oldRec = localReceiving[idx];
+      const newStatus = body.status || oldRec.status;
+      localReceiving[idx] = {
+        ...oldRec,
+        ...body,
+        items: body.items || oldRec.items,
+        status: newStatus,
+        keeper_notes: body.keeper_notes !== undefined ? body.keeper_notes : oldRec.keeper_notes,
+        completion_date: body.completion_date !== undefined ? body.completion_date : (newStatus === ReceivingStatus.ACCEPTED || newStatus === ReceivingStatus.VERIFIED ? (oldRec.completion_date || new Date().toISOString()) : oldRec.completion_date),
+        audit_logs: body.audit_logs !== undefined ? body.audit_logs : (oldRec.audit_logs || [])
+      };
+      return localReceiving[idx] as any;
+    }
+  }
+  if (path.startsWith("/api/receiving/") && options.method === "DELETE") {
+    const id = path.split("/").pop();
+    localReceiving = localReceiving.filter(r => r.id !== id);
+    return { success: true, id } as any;
+  }
   if (path.startsWith("/api/receiving")) return localReceiving as any;
   if (path.startsWith("/api/dispatch")) return localDispatches as any;
   if (path.startsWith("/api/requests")) return [] as any;

@@ -37,7 +37,7 @@ import {
   ShieldCheck,
   CheckCircle
 } from "lucide-react";
-import { OutboundDispatch, DispatchStatus, UserRole, SparePart, MaterialRequest, SPKWorkOrder, MaterialReturn } from "../types.js";
+import { OutboundDispatch, DispatchStatus, UserRole, SparePart, MaterialRequest, SPKWorkOrder, MaterialReturn, InboundReceiving, ReceivingStatus } from "../types.js";
 
 interface DispatchViewProps {
   dispatchList: OutboundDispatch[];
@@ -55,6 +55,7 @@ interface DispatchViewProps {
   materialReturns?: MaterialReturn[];
   onUpdateReturn?: (id: string, update: Partial<MaterialReturn>) => Promise<any>;
   onDeleteDispatch?: (id: string) => Promise<any>;
+  receivingList?: InboundReceiving[];
 }
 
 export default function DispatchView({
@@ -72,13 +73,18 @@ export default function DispatchView({
   onUpdateSPK,
   materialReturns = [],
   onUpdateReturn,
-  onDeleteDispatch
+  onDeleteDispatch,
+  receivingList = []
 }: DispatchViewProps) {
   const [activeTab, setActiveTab] = useState<"queue" | "archive">("queue");
   const [activeActionId, setActiveActionId] = useState<string | null>(null);
   const [search, setSearch] = useState("");
   const [statusFilter, setStatusFilter] = useState("All");
   const [vesselFilter, setVesselFilter] = useState("All");
+
+  const isAlfinRole = role === UserRole.WAREHOUSE_STAFF || role === UserRole.SUPER_ADMIN;
+  const isEmirRole = role === UserRole.LOGISTICS_MANAGER || role === UserRole.SUPER_ADMIN;
+  const isSumbonoRole = role === UserRole.VP_RENDALHAR || role === UserRole.SUPER_ADMIN;
 
   // Date/Time Filter states for Outbound Dispatch (TUG 8)
   const [timePreset, setTimePreset] = useState<"all" | "week" | "month" | "july2026" | "custom">("all");
@@ -108,7 +114,7 @@ export default function DispatchView({
   const [warehouseName, setWarehouseName] = useState("Gudang Merak");
   const [deliveryDestination, setDeliveryDestination] = useState("");
   const [notes, setNotes] = useState("");
-  const [dispatchStatusFlg, setDispatchStatusFlg] = useState<DispatchStatus>(DispatchStatus.DRAFT);
+  const [dispatchStatusFlg, setDispatchStatusFlg] = useState<DispatchStatus | string>(DispatchStatus.DRAFT);
   const [isLoading, setIsLoading] = useState(false);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
 
@@ -127,45 +133,128 @@ export default function DispatchView({
 
   const [dispatchItems, setDispatchItems] = useState<any[]>([]);
 
+  // Helper to calculate multi-shipment status and history for an SPK / TUG 5
+  const getMultiShipmentHistoryForSPK = (spkRef?: string, tug5Ref?: string) => {
+    if (!spkRef && !tug5Ref) {
+      return { count: 0, dispatches: [] as OutboundDispatch[], totalRequested: 0, totalDispatched: 0, isAllComplete: false, hasPartial: false };
+    }
+
+    const matches = (dispatchList || []).filter(d => 
+      Boolean(d) && (
+        (spkRef && (d.work_order_ref === spkRef || d.spk_number === spkRef)) ||
+        (tug5Ref && d.request_reference === tug5Ref)
+      )
+    );
+
+    matches.sort((a, b) => new Date(a.dispatch_date || a.created_at || 0).getTime() - new Date(b.dispatch_date || b.created_at || 0).getTime());
+
+    let totalRequested = 0;
+    let totalDispatched = 0;
+
+    matches.forEach(d => {
+      if (!d || !d.items) return;
+      d.items.forEach(i => {
+        if (!i) return;
+        totalRequested += (i.qty_requested || i.requested_qty || 0);
+        totalDispatched += (i.qty_dispatched || 0);
+      });
+    });
+
+    const hasPartial = matches.some(d => Boolean(d) && (d.is_partial || d.status === "DISPATCHED_PARTIAL"));
+    const isAllComplete = matches.length > 0 && !hasPartial;
+
+    return {
+      count: matches.length,
+      dispatches: matches,
+      totalRequested,
+      totalDispatched,
+      isAllComplete,
+      hasPartial
+    };
+  };
+
   React.useEffect(() => {
     if (dispatchSource === "tug5" && selectedTug5Id && requests) {
-      const selectedMR = requests.find(r => r.id === selectedTug5Id);
+      const selectedMR = requests.find(r => Boolean(r) && r.id === selectedTug5Id);
       if (selectedMR) {
         setWName(selectedMR.warehouse_name || "GUDANG UTAMA");
         setDDest(selectedMR.delivery_address || "Port Agent / Vessel Side");
         setNotesText(selectedMR.remarks || "");
-        
-        const items = selectedMR.items.map(itm => {
-          const isSent = !(itm.item_status === "Pending" || itm.item_status === "Returned");
+
+        // Cross reference with Inbound Receiving data to check actual received QTY vs SPK QTY
+        const matchedInbound = (receivingList || []).find(r => 
+          Boolean(r) && (
+            (r.spk_number && selectedMR.work_order_ref && r.spk_number === selectedMR.work_order_ref) ||
+            (r.spk_id && selectedMR.work_order_ref && r.spk_id === selectedMR.work_order_ref) ||
+            (r.spk_number && selectedMR.request_number && r.spk_number === selectedMR.request_number)
+          )
+        );
+
+        // Find existing dispatches for this SPK / TUG 5 reference
+        const prevDispatches = (dispatchList || []).filter(d => 
+          Boolean(d) && (
+            (selectedMR.work_order_ref && (d.work_order_ref === selectedMR.work_order_ref || d.spk_number === selectedMR.work_order_ref)) ||
+            (d.request_reference === selectedMR.request_number)
+          )
+        );
+
+        const items = (selectedMR.items || []).map(itm => {
+          if (!itm) return null;
+          const totalReq = itm.requested_qty || 1;
+
+          // Look up Inbound Receiving item matching this spare part
+          const inboundItem = matchedInbound ? (matchedInbound.items || []).find(i => 
+            Boolean(i) && (i.spare_part_id === itm.spare_part_id || i.part_number === itm.part_number)
+          ) : null;
+
+          // Physical QTY received in Warehouse during Inbound Receiving
+          const maxInboundQty = inboundItem ? (inboundItem.qty_received ?? totalReq) : totalReq;
+          const inboundNotes = inboundItem?.keeper_notes || inboundItem?.reject_reason || "";
+
+          // Calculate previously dispatched quantity across earlier batches
+          const previouslyDispatched = prevDispatches.reduce((sum, d) => {
+            if (!d || !d.items) return sum;
+            const found = d.items.find(di => Boolean(di) && (di.spare_part_id === itm.spare_part_id || di.part_number === itm.part_number));
+            return sum + (found?.qty_dispatched || 0);
+          }, 0);
+
+          // Default initial dispatch quantity for this phase capped by maxInboundQty received in warehouse
+          const availableInboundToDispatch = Math.max(0, maxInboundQty - previouslyDispatched);
+          const remainingToDispatch = Math.max(0, Math.min(totalReq - previouslyDispatched, availableInboundToDispatch));
+
           return {
             spare_part_id: itm.spare_part_id,
             spare_part_name: itm.spare_part_name,
             part_number: itm.part_number,
-            qty_requested: itm.requested_qty || 1,
-            qty_approved: itm.requested_qty || 1,
-            qty_dispatched: isSent ? (itm.requested_qty || 1) : 0,
-            qty_remaining: isSent ? 0 : (itm.requested_qty || 1),
+            qty_requested: totalReq,
+            qty_approved: totalReq,
+            qty_inbound_received: maxInboundQty,
+            inbound_notes: inboundNotes,
+            previously_dispatched: previouslyDispatched,
+            qty_dispatched: remainingToDispatch,
+            qty_remaining: 0,
             unit: itm.unit || "PCS",
             unit_price: (itm as any).unit_price !== undefined ? Number((itm as any).unit_price) : 0,
-            notes: (itm.item_status === "Pending" ? "[BELUM DATANG] " : itm.item_status === "Returned" ? "[DIRETUR] " : "") + (itm.notes || "")
+            notes: itm.notes || ""
           };
-        });
+        }).filter(Boolean);
         setDispatchItems(items);
       }
     } else if (!selectedTug5Id && dispatchSource === "tug5") {
       setDispatchItems([]);
     }
-  }, [selectedTug5Id, dispatchSource, requests]);
+  }, [selectedTug5Id, dispatchSource, requests, dispatchList, receivingList]);
 
   React.useEffect(() => {
     if (dispatchSource === "tug10" && selectedTug10Id && materialReturns) {
-      const selectedReturn = materialReturns.find(r => r.id === selectedTug10Id);
+      const selectedReturn = materialReturns.find(r => Boolean(r) && r.id === selectedTug10Id);
       if (selectedReturn) {
         setWName(selectedReturn.warehouse_name || "GUDANG PENURUNAN");
         setDDest("Target Vessel Side");
         setNotesText(`[TRANSFER ANTAR KAPAL] Penurunan barang dari kapal ${selectedReturn.vessel_name} via TUG 10 [${selectedReturn.return_number}]. ` + (selectedReturn.notes || ""));
         
-        const items = selectedReturn.items.map(itm => {
+        const items = (selectedReturn.items || []).map(itm => {
+          if (!itm) return null;
           return {
             spare_part_id: itm.spare_part_id,
             spare_part_name: itm.part_name,
@@ -178,7 +267,7 @@ export default function DispatchView({
             unit_price: (itm as any).unit_price !== undefined ? Number((itm as any).unit_price) : 0,
             notes: `[TRANSFER DARI KAPAL ${selectedReturn.vessel_name.toUpperCase()}] ` + (itm.notes || "")
           };
-        });
+        }).filter(Boolean);
         setDispatchItems(items);
       }
     } else if (!selectedTug10Id && dispatchSource === "tug10") {
@@ -196,30 +285,116 @@ export default function DispatchView({
           setIsLoading(false);
           return;
         }
-        const selectedMR = requests.find(r => r.id === selectedTug5Id);
+        const selectedMR = requests.find(r => Boolean(r) && r.id === selectedTug5Id);
         if (!selectedMR) {
           alert("Dokumen TUG 5 tidak ditemukan.");
           setIsLoading(false);
           return;
         }
 
-        const hasIncompleteItems = selectedMR.items.some(
-          itm => itm.item_status === "Pending" || itm.item_status === "Returned"
+        const prevDispatches = (dispatchList || []).filter(d => 
+          Boolean(d) && (
+            (selectedMR.work_order_ref && (d.work_order_ref === selectedMR.work_order_ref || d.spk_number === selectedMR.work_order_ref)) ||
+            (d.request_reference === selectedMR.request_number)
+          )
         );
+
+        const currentPhase = prevDispatches.length + 1;
+
+        const matchedInbound = (receivingList || []).find(r => 
+          Boolean(r) && (
+            (r.spk_number && selectedMR.work_order_ref && r.spk_number === selectedMR.work_order_ref) ||
+            (r.spk_id && selectedMR.work_order_ref && r.spk_id === selectedMR.work_order_ref) ||
+            (r.spk_number && selectedMR.request_number && r.spk_number === selectedMR.request_number)
+          )
+        );
+
+        const isInboundPartial = matchedInbound ? (
+          matchedInbound.status === ReceivingStatus.PARTIAL_REJECT || 
+          matchedInbound.status === ReceivingStatus.FULL_REJECT || 
+          (matchedInbound.status as string) === "PARTIAL_REJECT" || 
+          (matchedInbound.status as string) === "FULL_REJECT" || 
+          matchedInbound.items.some(i => {
+            const targetQty = i.qty_spk ?? i.qty_ordered ?? 0;
+            const st = i.status || i.qc_status;
+            return i.qty_received < targetQty || st === "PARTIAL" || st === "REJECTED" || st === "Rejected";
+          })
+        ) : false;
+
+        const inboundIncompleteList = matchedInbound ? matchedInbound.items
+          .filter(i => {
+            const targetQty = i.qty_spk ?? i.qty_ordered ?? 0;
+            const st = i.status || i.qc_status;
+            return i.qty_received < targetQty || st === "REJECTED" || st === "Rejected" || st === "PARTIAL" || Boolean(i.keeper_notes);
+          })
+          .map(i => {
+            const targetQty = i.qty_spk ?? i.qty_ordered ?? 0;
+            const name = i.part_name || i.spare_part_name || i.part_number;
+            return `[INBOUND PARSIAL] ${name}: SPK ${targetQty} → Diterima Inbound ${i.qty_received} (Kurang ${targetQty - i.qty_received}${i.keeper_notes ? ` - ${i.keeper_notes}` : ""})`;
+          }) : [];
+
+        // Check if any item remains unfulfilled after this phase
+        const isPartialDispatch = dispatchItems.some(i => {
+          const prev = i.previously_dispatched || 0;
+          const current = i.qty_dispatched || 0;
+          const req = i.qty_requested || 0;
+          return (prev + current) < req;
+        });
+
+        const isPartial = isPartialDispatch || isInboundPartial;
+
+        // Summary of incomplete items
+        const incItems = dispatchItems
+          .filter(i => {
+            const prev = i.previously_dispatched || 0;
+            const current = i.qty_dispatched || 0;
+            const req = i.qty_requested || 0;
+            return (prev + current) < req;
+          })
+          .map(i => {
+            const prev = i.previously_dispatched || 0;
+            const current = i.qty_dispatched || 0;
+            const req = i.qty_requested || 0;
+            const sisa = req - (prev + current);
+            return `[OUTBOUND TAHAP ${currentPhase}] ${i.spare_part_name}: SPK ${req} ${i.unit} → Terkirim Kumulatif (${prev + current}), Sisa ${sisa} ${i.unit}`;
+          });
+
+        const allIncompletes = Array.from(new Set([...inboundIncompleteList, ...incItems]));
+        const incompleteSummary = allIncompletes.join(" | ");
+
+        const phaseNotes = isPartial 
+          ? `[PENGIRIMAN PARSIAL TAHAP ${currentPhase}] ` + notesText 
+          : (currentPhase > 1 ? `[PENGIRIMAN SUSULAN LENGKAP TAHAP ${currentPhase}] ` : "") + notesText;
 
         const payload: Partial<OutboundDispatch> = {
           request_reference: selectedMR.request_number,
           vessel_name: selectedMR.vessel_name,
           warehouse_name: wName,
           delivery_destination: dDest,
-          notes: notesText,
+          notes: phaseNotes,
           courier_name: cName,
           tracking_number: tNumber,
           driver_pic: dPic,
           work_order_ref: selectedMR.work_order_ref || "",
           account_code: selectedMR.account_code || "BPP",
           function_code: selectedMR.function_code || "ARMADA",
-          items: dispatchItems
+          items: dispatchItems,
+          is_partial: isPartial,
+          shipment_phase: currentPhase,
+          incomplete_items_summary: incompleteSummary,
+          status: isPartial ? "DISPATCHED_PARTIAL" : DispatchStatus.DISPATCHED,
+          dispatch_logs: [
+            {
+              timestamp: new Date().toISOString(),
+              action: `PENGIRIMAN TAHAP ${currentPhase}`,
+              user: role || "Petugas Gudang",
+              notes: isPartial 
+                ? `Outbound Dispatch Tahap ${currentPhase} (Parsial). Terdapat barang yang belum lengkap dikirim.`
+                : `Outbound Dispatch Tahap ${currentPhase} (Lengkap & Terverifikasi).`,
+              phase: currentPhase,
+              dispatched_items_summary: dispatchItems.map(i => `${i.spare_part_name} (${i.qty_dispatched} ${i.unit})`).join(", ")
+            }
+          ]
         };
 
         const createdDisp = await onCreateDispatch(payload);
@@ -228,7 +403,7 @@ export default function DispatchView({
         if (selectedMR.work_order_ref && spkList && onUpdateSPK) {
           const matchedSPK = spkList.find(s => s.spk_number === selectedMR.work_order_ref);
           if (matchedSPK) {
-            const newSpkStatus = hasIncompleteItems ? "Incomplete" : "Dispatched";
+            const newSpkStatus = isPartial ? "Incomplete" : "Dispatched";
             await onUpdateSPK(matchedSPK.id, { status: newSpkStatus });
           }
         }
@@ -244,11 +419,11 @@ export default function DispatchView({
         setWName("GUDANG UTAMA");
         setDDest("Port Agent / Vessel Side");
 
-        let successMsg = "Pengiriman (TUG 8) berhasil dibuat dan disinkronisasikan!";
+        let successMsg = `Pengiriman Tahap ${currentPhase} (TUG 8) berhasil diterbitkan!`;
         if (selectedMR.work_order_ref) {
-          successMsg += hasIncompleteItems 
-            ? `\n\n⚠️ Karena beberapa barang belum lengkap, status SPK ${selectedMR.work_order_ref} telah di-update menjadi INCOMPLETE.`
-            : `\n\n✓ Seluruh kargo lengkap, status SPK ${selectedMR.work_order_ref} telah di-update menjadi DISPATCHED.`;
+          successMsg += isPartial 
+            ? `\n\n⚠️ Pengiriman ini dikategorikan PARSIAL (Tahap ${currentPhase}). SPK ${selectedMR.work_order_ref} berstatus INCOMPLETE untuk menunggu pengiriman susulan Tahap ${currentPhase + 1}.`
+            : `\n\n✓ Seluruh kargo telah lengkap 100% terkirim! Status SPK ${selectedMR.work_order_ref} di-update menjadi DISPATCHED.`;
         }
         alert(successMsg);
       } else {
@@ -1048,6 +1223,18 @@ export default function DispatchView({
                         </div>
                         <div className="text-[10px] text-slate-450 mt-1 flex flex-col gap-0.5">
                           <span className="font-mono text-[9px] uppercase">Ref TUG 5: <span className="font-bold text-blue-800">{item.request_reference}</span></span>
+                          {item.work_order_ref && <span className="font-mono text-[9px] uppercase">WO: <span className="font-bold text-rose-700">{item.work_order_ref}</span></span>}
+                          {(() => {
+                            const multiHist = getMultiShipmentHistoryForSPK(item.work_order_ref || item.spk_number, item.request_reference);
+                            if (multiHist.count > 1) {
+                              return (
+                                <span className="bg-purple-100 text-purple-900 border border-purple-300 px-1.5 py-0.5 rounded text-[8.5px] font-black w-fit mt-0.5 flex items-center gap-1">
+                                  📦 Shipment Multi-Tahap ({item.shipment_phase || 1} dari {multiHist.count})
+                                </span>
+                              );
+                            }
+                            return null;
+                          })()}
                           <span className="font-sans italic">Dest: {item.delivery_destination || "Sesuai alamat TUG 5"}</span>
                         </div>
                       </td>
@@ -1094,16 +1281,40 @@ export default function DispatchView({
 
                       {/* Status */}
                       <td className="p-3.5 text-center">
-                        <span className={`px-2.5 py-1 rounded text-[9px] font-black uppercase tracking-wider shadow-2xs inline-block border ${
-                          item.status === DispatchStatus.DRAFT ? "bg-slate-100 text-slate-700 border-slate-200"
-                          : item.status === DispatchStatus.PICKING ? "bg-amber-100 text-amber-800 border-amber-250 font-black"
-                          : item.status === DispatchStatus.PACKED ? "bg-indigo-100 text-indigo-800 border-indigo-250"
-                          : item.status === DispatchStatus.READY_TO_DISPATCH || item.status === "Ready To Dispatch" as any ? "bg-blue-100 text-blue-800 border-blue-250 animate-pulse"
-                          : item.status === DispatchStatus.DISPATCHED ? "bg-orange-100 text-orange-800 border-orange-250 font-black"
-                          : "bg-emerald-100 text-emerald-800 border-emerald-250"
-                        }`}>
-                          {item.status}
-                        </span>
+                        {(() => {
+                          const isPartialDisp = item.is_partial || item.status === "DISPATCHED_PARTIAL";
+                          const phaseLabel = item.shipment_phase ? ` (Tahap ${item.shipment_phase})` : "";
+                          
+                          if (isPartialDisp) {
+                            return (
+                              <span className="bg-amber-100 text-amber-900 border border-amber-300 px-2.5 py-1 rounded text-[9.5px] font-black uppercase tracking-wider shadow-2xs inline-flex items-center gap-1" title={item.incomplete_items_summary}>
+                                <AlertTriangle className="w-3 h-3 text-amber-600 shrink-0" />
+                                ⚠️ Dispatched Parsial{phaseLabel}
+                              </span>
+                            );
+                          }
+
+                          if (item.status === DispatchStatus.DISPATCHED || item.status === DispatchStatus.COMPLETED || item.status === DispatchStatus.DELIVERED) {
+                            return (
+                              <span className="bg-emerald-100 text-emerald-900 border border-emerald-300 px-2.5 py-1 rounded text-[9.5px] font-black uppercase tracking-wider shadow-2xs inline-flex items-center gap-1">
+                                <CheckCircle className="w-3 h-3 text-emerald-600 shrink-0" />
+                                ✓ Dispatched Lengkap{phaseLabel}
+                              </span>
+                            );
+                          }
+
+                          return (
+                            <span className={`px-2.5 py-1 rounded text-[9px] font-black uppercase tracking-wider shadow-2xs inline-block border ${
+                              item.status === DispatchStatus.DRAFT ? "bg-slate-100 text-slate-700 border-slate-200"
+                              : item.status === DispatchStatus.PICKING ? "bg-amber-100 text-amber-800 border-amber-250 font-black"
+                              : item.status === DispatchStatus.PACKED ? "bg-indigo-100 text-indigo-800 border-indigo-250"
+                              : item.status === DispatchStatus.READY_TO_DISPATCH || item.status === "Ready To Dispatch" as any ? "bg-blue-100 text-blue-800 border-blue-250 animate-pulse"
+                              : "bg-emerald-100 text-emerald-800 border-emerald-250"
+                            }`}>
+                              {item.status}
+                            </span>
+                          );
+                        })()}
                       </td>
 
                       {/* Actions */}
@@ -1447,6 +1658,29 @@ export default function DispatchView({
                   </div>
                 </div>
 
+                {/* Partial Dispatch Status Warning Box */}
+                {(selectedDispatch.is_partial || selectedDispatch.incomplete_items_summary) && (
+                  <div className="bg-amber-50 border-2 border-amber-300 p-3.5 rounded-lg space-y-2 text-xs text-amber-900">
+                    <div className="flex items-center justify-between">
+                      <div className="flex items-center gap-1.5 font-bold text-amber-950">
+                        <AlertTriangle className="w-4 h-4 text-amber-600 shrink-0" />
+                        <span>⚠️ DISPATCH PARSIAL - BARANG BELUM LENGKAP</span>
+                      </div>
+                      {selectedDispatch.shipment_phase && (
+                        <span className="bg-amber-200 text-amber-950 font-mono text-[10px] font-black px-2 py-0.5 rounded">
+                          Tahap ke-{selectedDispatch.shipment_phase}
+                        </span>
+                      )}
+                    </div>
+                    {selectedDispatch.incomplete_items_summary && (
+                      <div className="bg-white/90 p-2.5 rounded border border-amber-200 text-[11px] font-mono text-amber-950 leading-relaxed">
+                        <span className="font-bold block text-[9.5px] text-amber-700 uppercase">Catatan & Summary Barang Belum Lengkap:</span>
+                        {selectedDispatch.incomplete_items_summary}
+                      </div>
+                    )}
+                  </div>
+                )}
+
                 {/* 3-Level Approval Stepper */}
                 <div className="bg-slate-900 text-white rounded-xl p-4 border border-slate-800 space-y-3">
                   <div className="flex justify-between items-center border-b border-slate-800 pb-2">
@@ -1761,6 +1995,26 @@ export default function DispatchView({
                               <span className="font-sans text-[8px] text-slate-500 block uppercase font-normal mt-0.5">Approved: {itm.qty_requested}</span>
                             </div>
 
+                            {/* Unit Price Editable Input */}
+                            <div className="font-mono text-xs bg-slate-50 p-1.5 border border-slate-200 rounded text-center min-w-[110px]">
+                              <span className="text-[8px] text-slate-400 block uppercase font-bold leading-none mb-1">Harga Stn (IDR)</span>
+                              <div className="relative">
+                                <span className="absolute left-1.5 top-0.5 text-[9px] text-slate-400 font-bold">Rp</span>
+                                <input
+                                  type="number"
+                                  min="0"
+                                  value={itm.unit_price !== undefined ? itm.unit_price : 0}
+                                  onChange={async (e) => {
+                                    const val = Math.max(0, parseInt(e.target.value) || 0);
+                                    const updatedItems = selectedDispatch.items.map((item, i) => i === idx ? { ...item, unit_price: val } : item);
+                                    setSelectedDispatch({ ...selectedDispatch, items: updatedItems });
+                                    await onUpdateDispatch(selectedDispatch.id, { items: updatedItems });
+                                  }}
+                                  className="w-full bg-white border border-slate-250 rounded px-1 pl-5 py-0.5 text-xs font-bold text-slate-800 text-right focus:outline-none focus:border-blue-500"
+                                />
+                              </div>
+                            </div>
+
                           </div>
                         </div>
 
@@ -1841,6 +2095,112 @@ export default function DispatchView({
 
                   </div>
                 </div>
+
+                {/* PANEL LOG MULTI-PENGIRIMAN SPK (TUG 8 LEDGER) */}
+                {(() => {
+                  const multiHist = getMultiShipmentHistoryForSPK(selectedDispatch.work_order_ref || selectedDispatch.spk_number, selectedDispatch.request_reference);
+                  if (multiHist.count === 0) return null;
+
+                  const percentComplete = multiHist.totalRequested > 0 ? Math.min(100, Math.round((multiHist.totalDispatched / multiHist.totalRequested) * 100)) : 100;
+
+                  return (
+                    <div className="mt-6 bg-slate-900 text-white rounded-xl p-4 border border-slate-800 space-y-3.5 shadow-md">
+                      <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center border-b border-slate-800 pb-2.5 gap-2">
+                        <div className="flex items-center gap-2">
+                          <Truck className="w-4 h-4 text-orange-400 shrink-0" />
+                          <h4 className="text-xs font-black font-display uppercase tracking-wider text-slate-100">
+                            RIWAYAT LOG MULTI-PENGIRIMAN SPK (TUG 8 MULTI-DISPATCH LEDGER)
+                          </h4>
+                        </div>
+                        <div className="flex items-center gap-2">
+                          <span className="bg-blue-500/20 text-blue-300 border border-blue-500/40 px-2.5 py-0.5 rounded-full text-[10px] font-bold">
+                            Total {multiHist.count}x Pengiriman
+                          </span>
+                          <span className={`px-2.5 py-0.5 rounded-full text-[10px] font-black uppercase border ${multiHist.isAllComplete ? 'bg-emerald-500/20 text-emerald-300 border-emerald-500/40' : 'bg-amber-500/20 text-amber-300 border-amber-500/40'}`}>
+                            {multiHist.isAllComplete ? '✓ SPK 100% TERKIRIM LENGKAP' : '⚠️ SPK MASIH PARSIAL'}
+                          </span>
+                        </div>
+                      </div>
+
+                      {/* Progress Bar Multi-Pengiriman */}
+                      <div className="space-y-1 bg-slate-800/80 p-3 rounded-lg border border-slate-700/80 font-mono text-[11px]">
+                        <div className="flex justify-between items-center text-[10px] text-slate-300">
+                          <span>Progres Pengiriman Kumulatif SPK:</span>
+                          <span className="font-bold text-amber-300">{multiHist.totalDispatched} dari {multiHist.totalRequested} Item ({percentComplete}%)</span>
+                        </div>
+                        <div className="w-full bg-slate-700 rounded-full h-2 overflow-hidden">
+                          <div className={`h-full transition-all duration-500 ${percentComplete === 100 ? 'bg-emerald-500' : 'bg-amber-500'}`} style={{ width: `${percentComplete}%` }}></div>
+                        </div>
+                      </div>
+
+                      {/* List Dispatches in Timeline */}
+                      <div className="space-y-2">
+                        <h5 className="text-[10px] font-mono font-bold uppercase tracking-wider text-slate-400 flex items-center gap-1.5">
+                          <History className="w-3.5 h-3.5 text-blue-400" />
+                          DAFTAR PHASES & LOG SURAT JALAN / TUG 8 UNTUK SPK #{selectedDispatch.work_order_ref || selectedDispatch.request_reference}:
+                        </h5>
+
+                        <div className="space-y-2 max-h-56 overflow-y-auto pr-1">
+                          {multiHist.dispatches.map((dsp, idx) => {
+                            const phaseNum = dsp.shipment_phase || (idx + 1);
+                            const isThisCurrent = dsp.id === selectedDispatch.id;
+
+                            return (
+                              <div 
+                                key={dsp.id} 
+                                className={`p-3 rounded-lg border text-[11px] font-sans transition-all ${
+                                  isThisCurrent 
+                                    ? "bg-slate-800 border-blue-500 ring-1 ring-blue-500/40" 
+                                    : "bg-slate-800/50 border-slate-700"
+                                }`}
+                              >
+                                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-1.5 border-b border-slate-700 pb-1.5 mb-1.5">
+                                  <div className="flex items-center gap-2">
+                                    <span className="bg-blue-600 text-white font-mono font-extrabold px-2 py-0.5 rounded text-[10px]">
+                                      TAHAP {phaseNum}
+                                    </span>
+                                    <span className="font-mono font-bold text-rose-400 text-[11px]">
+                                      {dsp.tug8_number || dsp.dispatch_number || "TUG 8"}
+                                    </span>
+                                    {isThisCurrent && (
+                                      <span className="bg-emerald-500/20 text-emerald-400 text-[9px] px-1.5 py-0.2 rounded font-bold border border-emerald-500/30">
+                                        Dokumen Ini
+                                      </span>
+                                    )}
+                                  </div>
+                                  <div className="flex items-center gap-2 font-mono text-[10px] text-slate-400">
+                                    <span>📅 {dsp.dispatch_date ? new Date(dsp.dispatch_date).toLocaleDateString("id-ID") : "-"}</span>
+                                    <span>&bull; Driver: <strong className="text-slate-200">{dsp.driver_pic || dsp.courier_name || "Internal"}</strong></span>
+                                  </div>
+                                </div>
+
+                                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 text-[10.5px]">
+                                  <div className="text-slate-300">
+                                    <span className="text-slate-400">Barang Dikirim: </span>
+                                    <strong className="text-white">
+                                      {dsp.items.map(i => `${i.qty_dispatched || i.qty_requested} ${i.unit || 'PCS'} ${i.spare_part_name}`).join(", ")}
+                                    </strong>
+                                  </div>
+                                  <div>
+                                    {dsp.is_partial || dsp.status === "DISPATCHED_PARTIAL" ? (
+                                      <span className="bg-amber-500/20 text-amber-300 border border-amber-500/40 px-2 py-0.5 rounded text-[9.5px] font-bold">
+                                        ⚠️ Pengiriman Parsial
+                                      </span>
+                                    ) : (
+                                      <span className="bg-emerald-500/20 text-emerald-300 border border-emerald-500/40 px-2 py-0.5 rounded text-[9.5px] font-bold">
+                                        ✓ Pengiriman Lengkap
+                                      </span>
+                                    )}
+                                  </div>
+                                </div>
+                              </div>
+                            );
+                          })}
+                        </div>
+                      </div>
+                    </div>
+                  );
+                })()}
 
               </div>
 
@@ -2011,26 +2371,226 @@ export default function DispatchView({
                       </span>
                     </div>
 
-                    {selectedTug5Id && (() => {
-                      const selMR = requests.find(r => r.id === selectedTug5Id);
-                      if (!selMR) return null;
+                      {selectedTug5Id && (() => {
+                        const selMR = requests.find(r => Boolean(r) && r.id === selectedTug5Id);
+                        if (!selMR) return null;
+
+                        const matchedInbound = (receivingList || []).find(r => 
+                          Boolean(r) && (
+                            (r.spk_number && selMR.work_order_ref && r.spk_number === selMR.work_order_ref) ||
+                            (r.spk_id && selMR.work_order_ref && r.spk_id === selMR.work_order_ref) ||
+                            (r.spk_number && selMR.request_number && r.spk_number === selMR.request_number)
+                          )
+                        );
+
+                        const isInboundPartial = matchedInbound ? (
+                          matchedInbound.status === ReceivingStatus.PARTIAL_REJECT || 
+                          matchedInbound.status === ReceivingStatus.FULL_REJECT || 
+                          (matchedInbound.status as string) === "PARTIAL_REJECT" || 
+                          (matchedInbound.status as string) === "FULL_REJECT" || 
+                          matchedInbound.items.some(i => {
+                            const targetQty = i.qty_spk ?? i.qty_ordered ?? 0;
+                            const st = i.status || i.qc_status;
+                            return i.qty_received < targetQty || st === "PARTIAL" || st === "REJECTED" || st === "Rejected";
+                          })
+                        ) : false;
+
+                        const inboundIncompleteList = matchedInbound ? matchedInbound.items
+                          .filter(i => {
+                            const targetQty = i.qty_spk ?? i.qty_ordered ?? 0;
+                            const st = i.status || i.qc_status;
+                            return i.qty_received < targetQty || st === "REJECTED" || st === "Rejected" || st === "PARTIAL" || Boolean(i.keeper_notes);
+                          })
+                          .map(i => {
+                            const targetQty = i.qty_spk ?? i.qty_ordered ?? 0;
+                            const name = i.part_name || i.spare_part_name || i.part_number;
+                            const selisih = Math.max(0, targetQty - i.qty_received);
+                            return {
+                              part_name: name,
+                              part_number: i.part_number,
+                              qty_target: targetQty,
+                              qty_received: i.qty_received,
+                              qty_shortage: selisih,
+                              notes: i.keeper_notes || i.reject_reason || "Barang belum diterima lengkap saat Inbound Receiving"
+                            };
+                          }) : [];
+
+                        const prevDispatches = (dispatchList || []).filter(d => 
+                          Boolean(d) && (
+                            (selMR.work_order_ref && (d.work_order_ref === selMR.work_order_ref || d.spk_number === selMR.work_order_ref)) ||
+                            (d.request_reference === selMR.request_number)
+                          )
+                        );
+
+                      const currentPhase = prevDispatches.length + 1;
+                      const isPartialThisBatch = dispatchItems.some(i => ((i.previously_dispatched || 0) + (i.qty_dispatched || 0)) < (i.qty_requested || 0)) || isInboundPartial;
+
                       return (
-                        <div className="grid grid-cols-2 md:grid-cols-4 gap-4 bg-white p-3.5 rounded-lg border border-blue-100/70 text-xs">
-                          <div>
-                            <span className="text-slate-400 font-mono text-[10px] block uppercase">Kapal Penerima</span>
-                            <span className="font-bold text-slate-900">{selMR.vessel_name}</span>
+                        <div className="space-y-3">
+                          <div className="grid grid-cols-2 md:grid-cols-4 gap-4 bg-white p-3.5 rounded-lg border border-blue-100/70 text-xs">
+                            <div>
+                              <span className="text-slate-400 font-mono text-[10px] block uppercase">Kapal Penerima</span>
+                              <span className="font-bold text-slate-900">{selMR.vessel_name}</span>
+                            </div>
+                            <div>
+                              <span className="text-slate-400 font-mono text-[10px] block uppercase">No. Work Order / SPK</span>
+                              <span className="font-bold text-slate-900">{selMR.work_order_ref || "NP"}</span>
+                            </div>
+                            <div>
+                              <span className="text-slate-400 font-mono text-[10px] block uppercase">Tahap Pengiriman</span>
+                              <span className="font-bold text-blue-700 font-mono">Tahap ke-{currentPhase} {prevDispatches.length > 0 ? `(Susulan)` : `(Awal)`}</span>
+                            </div>
+                            <div>
+                              <span className="text-slate-400 font-mono text-[10px] block uppercase">Status Pengiriman</span>
+                              <span className={`font-black uppercase text-[10.5px] ${isPartialThisBatch ? 'text-amber-700' : 'text-emerald-700'}`}>
+                                {isPartialThisBatch ? "⚠️ PARSIAL (BELUM LENGKAP)" : "✓ LENGKAP (100%)"}
+                              </span>
+                            </div>
                           </div>
-                          <div>
-                            <span className="text-slate-400 font-mono text-[10px] block uppercase">No. Work Order</span>
-                            <span className="font-bold text-slate-900">{selMR.work_order_ref || "NP"}</span>
-                          </div>
-                          <div>
-                            <span className="text-slate-400 font-mono text-[10px] block uppercase">Kode Akun</span>
-                            <span className="font-bold text-slate-900">{selMR.account_code || "BPP"}</span>
-                          </div>
-                          <div>
-                            <span className="text-slate-400 font-mono text-[10px] block uppercase">Kode Fungsi</span>
-                            <span className="font-bold text-slate-900">{selMR.function_code || "ARMADA"}</span>
+
+                          {/* INBOUND RECEIVING PARTIAL WARNING BANNER */}
+                          {isInboundPartial && (
+                            <div className="bg-amber-50/90 border-2 border-amber-300 rounded-xl p-3.5 space-y-2.5 shadow-xs">
+                              <div className="flex items-center justify-between">
+                                <div className="flex items-center gap-2 text-amber-900 font-bold text-xs">
+                                  <AlertTriangle className="w-4 h-4 text-amber-600 shrink-0 animate-bounce" />
+                                  <span>⚠️ PERHATIAN: DATA INBOUND RECEIVING PARSIAL / BELUM LENGKAP</span>
+                                </div>
+                                <span className="bg-amber-200 text-amber-950 font-mono text-[10px] font-black px-2.5 py-0.5 rounded-full uppercase">
+                                  Status Inbound: {matchedInbound?.status || "PARTIAL_REJECT"}
+                                </span>
+                              </div>
+
+                              <p className="text-[11px] text-amber-800 leading-relaxed">
+                                Dokumen TUG 5 / SPK ini tercatat memiliki suku cadang yang <strong>belum lengkap diterima saat Inbound Receiving di Gudang</strong>. QTY pengiriman default telah disesuaikan dengan fisik barang yang diterima.
+                              </p>
+
+                              {matchedInbound?.keeper_notes && (
+                                <div className="bg-white/80 p-2 rounded border border-amber-200 text-[11px] text-amber-950 font-mono">
+                                  <span className="font-bold block text-[9.5px] text-amber-700 uppercase">Catatan Petugas Receiving:</span>
+                                  "{matchedInbound.keeper_notes}"
+                                </div>
+                              )}
+
+                              {inboundIncompleteList.length > 0 && (
+                                <div className="space-y-1 pt-1 border-t border-amber-200/60">
+                                  <span className="text-[10px] font-bold text-amber-900 uppercase block font-mono">Rincian Barang Belum Masuk Gudang (Kurang/Reject):</span>
+                                  <div className="grid grid-cols-1 gap-1 max-h-32 overflow-y-auto pr-1">
+                                    {inboundIncompleteList.map((inc, idx) => (
+                                      <div key={idx} className="bg-white p-2 rounded border border-amber-200 text-xs flex items-center justify-between">
+                                        <div>
+                                          <span className="font-bold text-slate-900">{inc.part_name}</span> <span className="font-mono text-slate-400 text-[10px]">({inc.part_number})</span>
+                                          <div className="text-amber-800 text-[11px] font-mono mt-0.5">
+                                            Target SPK: <strong>{inc.qty_target}</strong> &bull; Diterima Inbound: <strong>{inc.qty_received}</strong> (Kurang: <strong className="text-rose-700">{inc.qty_shortage}</strong>)
+                                          </div>
+                                        </div>
+                                        {inc.notes && (
+                                          <span className="text-[10px] bg-amber-100 text-amber-800 px-2 py-0.5 rounded font-mono italic max-w-[180px] truncate" title={inc.notes}>
+                                            {inc.notes}
+                                          </span>
+                                        )}
+                                      </div>
+                                    ))}
+                                  </div>
+                                </div>
+                              )}
+                            </div>
+                          )}
+
+                          {prevDispatches.length > 0 && (
+                            <div className="bg-blue-100/70 border border-blue-200 p-2.5 rounded-lg text-xs font-mono flex items-center justify-between text-blue-900">
+                              <span className="font-bold flex items-center gap-1.5">
+                                <History className="w-4 h-4 text-blue-600 shrink-0" />
+                                Terdeteksi {prevDispatches.length}x Pengiriman Sebelumnya Untuk SPK #{selMR.work_order_ref || selMR.request_number}
+                              </span>
+                              <span className="text-[10px] bg-blue-200 px-2 py-0.5 rounded font-black">
+                                Pengiriman Tahap ke-{currentPhase}
+                              </span>
+                            </div>
+                          )}
+
+                          {/* Interactive Item Table */}
+                          <div className="bg-white p-3.5 rounded-lg border border-slate-200 space-y-2">
+                            <div className="flex items-center justify-between">
+                              <span className="text-[10px] font-bold text-slate-600 uppercase tracking-wider block">
+                                Atur QTY Suku Cadang Yang Dikirim Pada Tahap Ini ({dispatchItems.length} Item)
+                              </span>
+                              <span className="text-[9.5px] font-mono text-slate-400">
+                                Anda dapat mengubah QTY dikirim jika pengiriman dilakukan parsial.
+                              </span>
+                            </div>
+
+                            <div className="overflow-x-auto max-h-56 overflow-y-auto border border-slate-200 rounded-lg">
+                              <table className="w-full text-left text-[11px] border-collapse">
+                                <thead>
+                                  <tr className="bg-slate-50 text-slate-700 border-b border-slate-200 font-mono text-[10px] uppercase">
+                                    <th className="p-2.5">Suku Cadang / Part Number</th>
+                                    <th className="p-2.5 text-center w-16">Unit</th>
+                                    <th className="p-2.5 text-center w-20 text-slate-600">Target SPK</th>
+                                    <th className="p-2.5 text-center w-24 text-amber-800 bg-amber-50/50">Diterima Inbound</th>
+                                    <th className="p-2.5 text-center w-24 text-slate-500">Pernah Dikirim</th>
+                                    <th className="p-2.5 text-center w-28 font-bold text-blue-800 bg-blue-50/50">QTY Kirim Tahap Ini</th>
+                                    <th className="p-2.5 text-center w-20 text-rose-700">Sisa Belum Kirim</th>
+                                    <th className="p-2.5 text-center w-28">Status Item</th>
+                                  </tr>
+                                </thead>
+                                <tbody className="divide-y divide-slate-100 text-slate-800 font-sans">
+                                  {dispatchItems.map((itm, index) => {
+                                    const prev = itm.previously_dispatched || 0;
+                                    const req = itm.qty_requested || 0;
+                                    const curr = itm.qty_dispatched || 0;
+                                    const inboundQty = (itm as any).qty_inbound_received !== undefined ? (itm as any).qty_inbound_received : req;
+                                    const remaining = Math.max(0, req - prev - curr);
+                                    const isItemComplete = (prev + curr) >= req;
+                                    const isInboundShort = inboundQty < req;
+
+                                    return (
+                                      <tr key={index} className="hover:bg-slate-50">
+                                        <td className="p-2.5">
+                                          <div className="font-bold text-slate-900">{itm.spare_part_name}</div>
+                                          <div className="text-[10px] text-slate-400 font-mono">{itm.part_number}</div>
+                                          {itm.inbound_notes && (
+                                            <div className="text-[9.5px] text-amber-700 italic font-mono mt-0.5">Catatan Inbound: {itm.inbound_notes}</div>
+                                          )}
+                                        </td>
+                                        <td className="p-2.5 text-center font-mono font-bold text-slate-600">{itm.unit}</td>
+                                        <td className="p-2.5 text-center font-mono font-bold">{req}</td>
+                                        <td className="p-2.5 text-center font-mono font-bold bg-amber-50/30">
+                                          <span className={isInboundShort ? "text-amber-900 font-black" : "text-slate-800"}>{inboundQty}</span>
+                                          {isInboundShort && (
+                                            <span className="text-[9px] text-rose-600 block font-normal">Kurang {req - inboundQty}</span>
+                                          )}
+                                        </td>
+                                        <td className="p-2.5 text-center font-mono text-slate-500">{prev}</td>
+                                        <td className="p-2.5 text-center bg-blue-50/30">
+                                          <input
+                                            type="number"
+                                            min="0"
+                                            max={req - prev}
+                                            value={itm.qty_dispatched}
+                                            onChange={(e) => {
+                                              const val = Math.max(0, parseInt(e.target.value) || 0);
+                                              setDispatchItems(prevItems => prevItems.map((item, i) => i === index ? { ...item, qty_dispatched: val } : item));
+                                            }}
+                                            className="w-20 bg-white border border-blue-300 rounded p-1 text-center font-mono font-black text-blue-900 focus:outline-none focus:ring-1 focus:ring-blue-500"
+                                          />
+                                        </td>
+                                        <td className="p-2.5 text-center font-mono font-bold text-rose-700">
+                                          {remaining > 0 ? remaining : 0}
+                                        </td>
+                                        <td className="p-2.5 text-center">
+                                          {isItemComplete ? (
+                                            <span className="bg-emerald-100 text-emerald-800 px-2 py-0.5 rounded text-[9.5px] font-bold">✓ Lengkap</span>
+                                          ) : (
+                                            <span className="bg-amber-100 text-amber-800 px-2 py-0.5 rounded text-[9.5px] font-bold">⚠️ Parsial</span>
+                                          )}
+                                        </td>
+                                      </tr>
+                                    );
+                                  })}
+                                </tbody>
+                              </table>
+                            </div>
                           </div>
                         </div>
                       );
