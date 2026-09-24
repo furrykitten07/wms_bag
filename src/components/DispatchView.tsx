@@ -58,6 +58,9 @@ interface DispatchViewProps {
   receivingList?: InboundReceiving[];
 }
 
+const ALDI_SIGNATURE_URL = `data:image/svg+xml;utf8,<svg xmlns="http://www.w3.org/2000/svg" width="220" height="70" viewBox="0 0 220 70"><path d="M 20 42 C 45 15, 60 55, 90 28 C 110 15, 130 52, 160 32 C 180 22, 190 48, 200 40" stroke="%230f2b5c" stroke-width="2.5" fill="none" stroke-linecap="round"/><path d="M 35 52 L 185 48" stroke="%231e293b" stroke-width="1.8" fill="none" stroke-linecap="round"/><text x="75" y="62" font-family="cursive" font-size="11" font-weight="bold" fill="%230f2b5c">Aldi Hidayat</text></svg>`;
+const ALFIN_SIGNATURE_URL = `data:image/svg+xml;utf8,<svg xmlns="http://www.w3.org/2000/svg" width="220" height="70" viewBox="0 0 220 70"><path d="M 15 42 C 35 15, 50 58, 80 25 C 100 12, 120 52, 150 30 C 170 20, 185 45, 205 35" stroke="%230f2b5c" stroke-width="2.5" fill="none" stroke-linecap="round"/><path d="M 30 50 L 180 46" stroke="%231e293b" stroke-width="1.8" fill="none" stroke-linecap="round"/><text x="45" y="62" font-family="cursive" font-size="11" font-weight="bold" fill="%230f2b5c">Maghfur M. Alfin</text></svg>`;
+
 export default function DispatchView({
   dispatchList,
   parts,
@@ -82,7 +85,8 @@ export default function DispatchView({
   const [statusFilter, setStatusFilter] = useState("All");
   const [vesselFilter, setVesselFilter] = useState("All");
 
-  const isAlfinRole = role === UserRole.WAREHOUSE_STAFF || role === UserRole.SUPER_ADMIN;
+  const isAldiRole = role === UserRole.WAREHOUSE_STAFF || role === UserRole.SUPER_ADMIN;
+  const isAlfinRole = role === UserRole.KEPALA_GUDANG || role === UserRole.SUPER_ADMIN;
   const isEmirRole = role === UserRole.LOGISTICS_MANAGER || role === UserRole.SUPER_ADMIN;
   const isSumbonoRole = role === UserRole.VP_RENDALHAR || role === UserRole.SUPER_ADMIN;
 
@@ -836,7 +840,7 @@ export default function DispatchView({
   const handleBulkDelete = async () => {
     if (selectedDspIds.length === 0 || !onDeleteDispatch) return;
     const confirmMsg = `Apakah Anda yakin ingin menghapus ${selectedDspIds.length} dokumen TUG 8 yang dichecklist?`;
-    if (!confirm(confirmMsg)) return;
+    if (!window.confirm(confirmMsg)) return;
 
     setIsBulkDeleting(true);
     const totalToDelete = selectedDspIds.length;
@@ -848,7 +852,7 @@ export default function DispatchView({
       alert(`Berhasil menghapus ${totalToDelete} dokumen TUG 8.`);
     } catch (err: any) {
       console.error("Bulk delete error:", err);
-      alert("Terjadi kesalahan saat menghapus dokumen TUG 8.");
+      alert("Terjadi kesalahan saat menghapus dokumen TUG 8: " + (err?.message || err));
     } finally {
       setIsBulkDeleting(false);
     }
@@ -862,7 +866,7 @@ export default function DispatchView({
   const statsArchiveCount = safeDispatchList.filter(d => d.status === DispatchStatus.DELIVERED || d.status === DispatchStatus.COMPLETED || d.status === "Completed" as any).length;
 
   return (
-    <div className="flex-1 flex flex-col h-full bg-slate-50 border-l border-slate-200">
+    <div className="flex-1 flex flex-col min-h-0 bg-slate-50 border-l border-slate-200">
       
       {/* Upper Brand / Title Area */}
       <div className="bg-white border-b border-slate-200 px-6 py-5 flex flex-col md:flex-row md:items-center justify-between gap-4 shrink-0 shadow-xs no-print">
@@ -1155,7 +1159,7 @@ export default function DispatchView({
           </span>
         </div>
 
-        <div className="flex-1 overflow-auto">
+        <div className="flex-1 overflow-auto pb-16">
           {filtered.length === 0 ? (
             <div className="p-16 text-center">
               <ClipboardList className="w-10 h-10 text-slate-300 mx-auto mb-2" />
@@ -1195,7 +1199,11 @@ export default function DispatchView({
               <tbody className="divide-y divide-slate-100 text-slate-700">
                 {paginatedDsp.map((item, idx) => {
                   const itemsCount = item.items.length;
-                  const partsSummary = item.items.map(i => `${i.qty_dispatched || i.qty_requested}x ${i.part_number}`).join(", ");
+                  const partsSummary = item.items.map(i => {
+                    const qty = i.qty_dispatched || i.qty_requested || (i as any).requested_qty || (i as any).qty || (i as any).quantity || 1;
+                    const pNum = i.part_number && i.part_number !== "-" ? i.part_number : (i.spare_part_name || "Item");
+                    return `${qty}x ${pNum}`;
+                  }).join(", ");
                   const isSelected = selectedDspIds.includes(item.id);
 
                   return (
@@ -1327,10 +1335,15 @@ export default function DispatchView({
                                 e.stopPropagation();
                                 setActiveActionId(activeActionId === item.id ? null : item.id);
                               }}
-                              className="inline-flex items-center justify-center gap-1.5 px-3 py-2 bg-slate-900 text-white hover:bg-blue-600 rounded-lg text-[10px] font-bold uppercase tracking-wider shadow-sm transition-all duration-200 cursor-pointer border border-slate-850"
+                              className={`inline-flex items-center justify-center gap-2 px-3.5 py-2 rounded-xl text-xs font-sans font-bold transition-all duration-200 cursor-pointer shadow-xs active:scale-95 border ${
+                                activeActionId === item.id
+                                  ? "bg-blue-600 border-blue-600 text-white shadow-md ring-2 ring-blue-500/20"
+                                  : "bg-white border-slate-300 hover:border-slate-400 text-slate-800 hover:bg-slate-50 hover:shadow"
+                              }`}
                             >
+                              <SlidersHorizontal className={`w-3.5 h-3.5 ${activeActionId === item.id ? "text-white" : "text-blue-600"}`} />
                               <span>Actions</span>
-                              <ChevronDown className="w-3 h-3" />
+                              <ChevronDown className={`w-3.5 h-3.5 transition-transform duration-200 ${activeActionId === item.id ? 'rotate-180 text-white' : 'text-slate-400'}`} />
                             </button>
 
                             {activeActionId === item.id && (
@@ -1342,39 +1355,76 @@ export default function DispatchView({
                                     setActiveActionId(null);
                                   }}
                                 />
-                                <div className="absolute right-0 mt-1.5 w-52 bg-white border border-slate-250 rounded-lg shadow-xl z-50 overflow-hidden text-left py-1.5 text-slate-700 animate-in fade-in duration-100 ring-1 ring-black/5">
-                                  {role !== UserRole.VESSEL_CREW ? (
-                                    <button
-                                      type="button"
-                                      onClick={(e) => {
-                                        e.stopPropagation();
-                                        setActiveActionId(null);
-                                        handleOpenUpdateModal(item);
-                                      }}
-                                      className="w-full px-4 py-2 text-xs font-semibold hover:bg-slate-100 text-slate-800 flex items-center gap-2 cursor-pointer transition-colors text-left"
-                                    >
-                                      <SlidersHorizontal className="w-3.5 h-3.5 text-blue-500" />
-                                      <span>Update Status</span>
-                                    </button>
-                                  ) : (
-                                    <button
-                                      type="button"
-                                      onClick={(e) => {
-                                        e.stopPropagation();
-                                        setActiveActionId(null);
-                                        handleOpenUpdateModal(item);
-                                      }}
-              className="w-full px-4 py-2 text-xs font-semibold hover:bg-slate-100 text-slate-800 flex items-center gap-2 cursor-pointer transition-colors text-left"
-                                    >
-                                      <Eye className="w-3.5 h-3.5 text-slate-550" />
-                                      <span>Lihat Detail</span>
-                                    </button>
-                                  )}
+                                <div className={`absolute right-0 ${idx >= paginatedDsp.length - 2 && paginatedDsp.length > 2 ? "bottom-full mb-2" : "top-full mt-2"} w-72 bg-white border border-slate-200 rounded-2xl shadow-2xl z-50 overflow-hidden text-left p-1.5 animate-in fade-in zoom-in-95 duration-150 ring-1 ring-black/5 divide-y divide-slate-100 text-slate-700`}>
+                                  
+                                  {/* Header Info */}
+                                  <div className="px-3.5 py-2.5 bg-slate-50/80 rounded-xl mb-1">
+                                    <div className="flex items-center justify-between">
+                                      <span className="text-[10px] font-mono font-bold text-slate-400 uppercase tracking-wider">TUG 8 Dispatch</span>
+                                      <span className="text-[9px] font-mono font-extrabold px-1.5 py-0.5 rounded bg-blue-100 text-blue-700 border border-blue-200">{item.status}</span>
+                                    </div>
+                                    <div className="font-mono text-xs font-black text-slate-800 truncate mt-0.5">{item.tug8_number || item.bon_pengeluaran_number || item.id}</div>
+                                    <div className="text-[10.5px] text-slate-500 font-medium truncate">{item.vessel_name}</div>
+                                  </div>
 
-                                  {/* Quick Level 1 Signature Button (Alfin / Verifikator) */}
-                                  {isAlfinRole && !item.alfin_signed && (
-                                    <>
-                                      <div className="border-t border-slate-100 my-1"></div>
+                                  {/* SECTION 1: PERSETUJUAN & TTD DIGITAL (4 ROLES) */}
+                                  <div className="py-1.5 space-y-1">
+                                    <div className="px-2 py-1 text-[9px] font-mono font-black uppercase tracking-widest text-slate-400 flex items-center gap-1.5">
+                                      <ShieldCheck className="w-3.5 h-3.5 text-emerald-500" />
+                                      <span>Approval & Tanda Tangan</span>
+                                    </div>
+
+                                    {/* 1. ALDI HIDAYAT (PETUGAS GUDANG) */}
+                                    {item.aldi_signed ? (
+                                      <div className="px-2.5 py-1.5 bg-emerald-50/80 border border-emerald-200/80 rounded-lg flex items-center justify-between">
+                                        <div className="flex items-center gap-1.5">
+                                          <CheckCircle className="w-3.5 h-3.5 text-emerald-600 shrink-0" />
+                                          <div>
+                                            <div className="text-[11px] font-bold text-emerald-900 leading-tight">Aldi Hidayat</div>
+                                            <div className="text-[9px] text-emerald-700 font-mono">Petugas Gudang &bull; Signed</div>
+                                          </div>
+                                        </div>
+                                        <span className="text-[9px] font-mono font-bold text-emerald-600 bg-emerald-100 px-1.5 py-0.5 rounded">✓ ACC</span>
+                                      </div>
+                                    ) : (
+                                      <button
+                                        type="button"
+                                        onClick={async (e) => {
+                                          e.stopPropagation();
+                                          setActiveActionId(null);
+                                          const now = new Date().toISOString();
+                                          if (onUpdateDispatch) {
+                                            await onUpdateDispatch(item.id, {
+                                              aldi_signed: true,
+                                              aldi_signed_at: now,
+                                              aldi_signature_url: ALDI_SIGNATURE_URL
+                                            });
+                                          }
+                                        }}
+                                        className="w-full px-2.5 py-2 text-xs font-bold bg-teal-50 hover:bg-teal-100 text-teal-800 rounded-lg border border-teal-200 flex items-center justify-between cursor-pointer transition-colors text-left"
+                                        title="Beri Tanda Tangan Digital Petugas Gudang (Aldi Hidayat)"
+                                      >
+                                        <div className="flex items-center gap-2">
+                                          <CheckCircle className="w-3.5 h-3.5 text-teal-600" />
+                                          <span>✓ TTD Petugas Gudang (Aldi)</span>
+                                        </div>
+                                        <span className="text-[9px] font-mono bg-teal-200 text-teal-900 px-1.5 py-0.5 rounded font-black">ACC</span>
+                                      </button>
+                                    )}
+
+                                    {/* 2. MAGHFUR MUHAMMAD ALFIN (KEPALA GUDANG) */}
+                                    {item.alfin_signed ? (
+                                      <div className="px-2.5 py-1.5 bg-emerald-50/80 border border-emerald-200/80 rounded-lg flex items-center justify-between">
+                                        <div className="flex items-center gap-1.5">
+                                          <CheckCircle className="w-3.5 h-3.5 text-emerald-600 shrink-0" />
+                                          <div>
+                                            <div className="text-[11px] font-bold text-emerald-900 leading-tight">M. Alfin</div>
+                                            <div className="text-[9px] text-emerald-700 font-mono">Kepala Gudang &bull; Signed</div>
+                                          </div>
+                                        </div>
+                                        <span className="text-[9px] font-mono font-bold text-emerald-600 bg-emerald-100 px-1.5 py-0.5 rounded">✓ ACC</span>
+                                      </div>
+                                    ) : (
                                       <button
                                         type="button"
                                         onClick={async (e) => {
@@ -1385,22 +1435,34 @@ export default function DispatchView({
                                             await onUpdateDispatch(item.id, {
                                               alfin_signed: true,
                                               alfin_signed_at: now,
-                                              alfin_signature_url: "https://api.dicebear.com/7.x/initials/svg?seed=MaghfurAlfin"
+                                              alfin_signature_url: ALFIN_SIGNATURE_URL
                                             });
                                           }
                                         }}
-                                        className="w-full px-4 py-2 text-xs font-bold hover:bg-emerald-50 text-emerald-700 flex items-center gap-2 cursor-pointer transition-colors text-left"
+                                        className="w-full px-2.5 py-2 text-xs font-bold bg-emerald-50 hover:bg-emerald-100 text-emerald-800 rounded-lg border border-emerald-200 flex items-center justify-between cursor-pointer transition-colors text-left"
+                                        title="Beri Tanda Tangan Digital Kepala Gudang (Maghfur Muhammad Alfin)"
                                       >
-                                        <CheckCircle className="w-3.5 h-3.5 text-emerald-600" />
-                                        <span>✓ TTD Level 1 (Alfin)</span>
+                                        <div className="flex items-center gap-2">
+                                          <CheckCircle className="w-3.5 h-3.5 text-emerald-600" />
+                                          <span>✓ TTD Kepala Gudang (Alfin)</span>
+                                        </div>
+                                        <span className="text-[9px] font-mono bg-emerald-200 text-emerald-900 px-1.5 py-0.5 rounded font-black">ACC</span>
                                       </button>
-                                    </>
-                                  )}
+                                    )}
 
-                                  {/* Quick Level 2 Signature Button (Emir / Manager Logistik) */}
-                                  {isEmirRole && !item.emir_signed && (
-                                    <>
-                                      <div className="border-t border-slate-100 my-1"></div>
+                                    {/* 3. MOHAMAT EMIR FERDIAN (MANAGER LOGISTIK) */}
+                                    {item.emir_signed ? (
+                                      <div className="px-2.5 py-1.5 bg-emerald-50/80 border border-emerald-200/80 rounded-lg flex items-center justify-between">
+                                        <div className="flex items-center gap-1.5">
+                                          <CheckCircle className="w-3.5 h-3.5 text-emerald-600 shrink-0" />
+                                          <div>
+                                            <div className="text-[11px] font-bold text-emerald-900 leading-tight">Emir Ferdian</div>
+                                            <div className="text-[9px] text-emerald-700 font-mono">Manager Logistik &bull; Signed</div>
+                                          </div>
+                                        </div>
+                                        <span className="text-[9px] font-mono font-bold text-emerald-600 bg-emerald-100 px-1.5 py-0.5 rounded">✓ ACC</span>
+                                      </div>
+                                    ) : (
                                       <button
                                         type="button"
                                         onClick={async (e) => {
@@ -1415,18 +1477,30 @@ export default function DispatchView({
                                             });
                                           }
                                         }}
-                                        className="w-full px-4 py-2 text-xs font-bold hover:bg-amber-50 text-amber-800 flex items-center gap-2 cursor-pointer transition-colors text-left"
+                                        className="w-full px-2.5 py-2 text-xs font-bold bg-amber-50 hover:bg-amber-100 text-amber-900 rounded-lg border border-amber-200 flex items-center justify-between cursor-pointer transition-colors text-left"
+                                        title="Beri Tanda Tangan Digital Manager Logistik (Mohamat Emir Ferdian)"
                                       >
-                                        <CheckCircle className="w-3.5 h-3.5 text-amber-600" />
-                                        <span>✓ TTD Level 2 (Emir)</span>
+                                        <div className="flex items-center gap-2">
+                                          <CheckCircle className="w-3.5 h-3.5 text-amber-600" />
+                                          <span>✓ TTD Level 2 (Emir)</span>
+                                        </div>
+                                        <span className="text-[9px] font-mono bg-amber-200 text-amber-900 px-1.5 py-0.5 rounded font-black">ACC</span>
                                       </button>
-                                    </>
-                                  )}
+                                    )}
 
-                                  {/* Quick Level 3 Signature Button (Sumbono / VP Rendalhar) */}
-                                  {isSumbonoRole && !item.sumbono_signed && (
-                                    <>
-                                      <div className="border-t border-slate-100 my-1"></div>
+                                    {/* 4. SUMBONO (VP RENDALHAR) */}
+                                    {item.sumbono_signed ? (
+                                      <div className="px-2.5 py-1.5 bg-emerald-50/80 border border-emerald-200/80 rounded-lg flex items-center justify-between">
+                                        <div className="flex items-center gap-1.5">
+                                          <CheckCircle className="w-3.5 h-3.5 text-emerald-600 shrink-0" />
+                                          <div>
+                                            <div className="text-[11px] font-bold text-emerald-900 leading-tight">Sumbono</div>
+                                            <div className="text-[9px] text-emerald-700 font-mono">VP Rendalhar &bull; Signed</div>
+                                          </div>
+                                        </div>
+                                        <span className="text-[9px] font-mono font-bold text-emerald-600 bg-emerald-100 px-1.5 py-0.5 rounded">✓ ACC</span>
+                                      </div>
+                                    ) : (
                                       <button
                                         type="button"
                                         onClick={async (e) => {
@@ -1442,57 +1516,96 @@ export default function DispatchView({
                                             });
                                           }
                                         }}
-                                        className="w-full px-4 py-2 text-xs font-bold hover:bg-indigo-50 text-indigo-700 flex items-center gap-2 cursor-pointer transition-colors text-left"
+                                        className="w-full px-2.5 py-2 text-xs font-bold bg-indigo-50 hover:bg-indigo-100 text-indigo-900 rounded-lg border border-indigo-200 flex items-center justify-between cursor-pointer transition-colors text-left"
+                                        title="Beri Tanda Tangan Digital VP Rendalhar (Sumbono)"
                                       >
-                                        <CheckCircle className="w-3.5 h-3.5 text-indigo-600" />
-                                        <span>✓ Sahkan & TTD (Sumbono)</span>
+                                        <div className="flex items-center gap-2">
+                                          <CheckCircle className="w-3.5 h-3.5 text-indigo-600" />
+                                          <span>✓ Sahkan & TTD (Sumbono)</span>
+                                        </div>
+                                        <span className="text-[9px] font-mono bg-indigo-200 text-indigo-900 px-1.5 py-0.5 rounded font-black">ACC</span>
                                       </button>
-                                    </>
-                                  )}
+                                    )}
+                                  </div>
 
-                                  <div className="border-t border-slate-100 my-1"></div>
-
-                                  <button
-                                    type="button"
-                                    onClick={(e) => {
-                                      e.stopPropagation();
-                                      setActiveActionId(null);
-                                      onPreviewDocument("bon", item);
-                                    }}
-                                    className="w-full px-4 py-2 text-xs font-semibold hover:bg-slate-100 text-rose-700 flex items-center gap-2 cursor-pointer transition-colors text-left"
-                                  >
-                                    <Printer className="w-3.5 h-3.5 text-rose-500" />
-                                    <span>Cetak TUG 8 Note</span>
-                                  </button>
-
-                                  <button
-                                    type="button"
-                                    onClick={(e) => {
-                                      e.stopPropagation();
-                                      setActiveActionId(null);
-                                      onPreviewDocument("surat_jalan", item);
-                                    }}
-                                    className="w-full px-4 py-2 text-xs font-semibold hover:bg-slate-100 text-emerald-700 flex items-center gap-2 cursor-pointer transition-colors text-left"
-                                  >
-                                    <Printer className="w-3.5 h-3.5 text-emerald-500" />
-                                    <span>Cetak Surat Jalan</span>
-                                  </button>
-
-                                  {onDeleteDispatch && (
+                                  {/* SECTION 2: DOKUMEN & OPERASIONAL */}
+                                  <div className="py-1.5 space-y-0.5">
+                                    <div className="px-2 py-1 text-[9px] font-mono font-black uppercase tracking-widest text-slate-400">
+                                      Operasional
+                                    </div>
                                     <button
                                       type="button"
-                                      onClick={async (e) => {
+                                      onClick={(e) => {
                                         e.stopPropagation();
                                         setActiveActionId(null);
-                                        if (confirm(`Apakah Anda yakin ingin menghapus data Pengeluaran Barang TUG 8 [${item.tug8_number || item.bon_pengeluaran_number || item.id}]?`)) {
-                                          await onDeleteDispatch(item.id);
-                                        }
+                                        handleOpenUpdateModal(item);
                                       }}
-                                      className="w-full px-4 py-2 text-xs font-semibold hover:bg-rose-50 text-rose-600 flex items-center gap-2 cursor-pointer transition-colors text-left border-t border-slate-100"
+                                      className="w-full px-2.5 py-1.5 text-xs font-medium hover:bg-slate-100 text-slate-700 rounded-lg flex items-center gap-2 cursor-pointer transition-colors text-left"
                                     >
-                                      <Trash2 className="w-3.5 h-3.5 text-rose-500" />
-                                      <span>Hapus Data TUG 8</span>
+                                      {role !== UserRole.VESSEL_CREW ? (
+                                        <>
+                                          <SlidersHorizontal className="w-3.5 h-3.5 text-blue-500" />
+                                          <span>Update Status & Driver</span>
+                                        </>
+                                      ) : (
+                                        <>
+                                          <Eye className="w-3.5 h-3.5 text-slate-550" />
+                                          <span>Lihat Detail Dispatch</span>
+                                        </>
+                                      )}
                                     </button>
+
+                                    <button
+                                      type="button"
+                                      onClick={(e) => {
+                                        e.stopPropagation();
+                                        setActiveActionId(null);
+                                        onPreviewDocument("bon", item);
+                                      }}
+                                      className="w-full px-2.5 py-1.5 text-xs font-medium hover:bg-slate-100 text-rose-700 rounded-lg flex items-center gap-2 cursor-pointer transition-colors text-left"
+                                    >
+                                      <Printer className="w-3.5 h-3.5 text-rose-500" />
+                                      <span>Cetak TUG 8 Note (PDF)</span>
+                                    </button>
+
+                                    <button
+                                      type="button"
+                                      onClick={(e) => {
+                                        e.stopPropagation();
+                                        setActiveActionId(null);
+                                        onPreviewDocument("surat_jalan", item);
+                                      }}
+                                      className="w-full px-2.5 py-1.5 text-xs font-medium hover:bg-slate-100 text-emerald-700 flex items-center gap-2 cursor-pointer transition-colors text-left"
+                                    >
+                                      <Printer className="w-3.5 h-3.5 text-emerald-500" />
+                                      <span>Cetak Surat Jalan (PDF)</span>
+                                    </button>
+                                  </div>
+
+                                  {/* SECTION 3: HAPUS DATA */}
+                                  {onDeleteDispatch && (
+                                    <div className="pt-1">
+                                      <button
+                                        type="button"
+                                        onClick={async (e) => {
+                                          e.stopPropagation();
+                                          setActiveActionId(null);
+                                          const docName = item.tug8_number || item.bon_pengeluaran_number || item.id;
+                                          if (window.confirm(`Apakah Anda yakin ingin menghapus data Pengeluaran Barang TUG 8 [${docName}]?`)) {
+                                            try {
+                                              await onDeleteDispatch(item.id);
+                                              alert(`Data TUG 8 [${docName}] berhasil dihapus.`);
+                                            } catch (err: any) {
+                                              alert(`Gagal menghapus data: ${err?.message || err}`);
+                                            }
+                                          }
+                                        }}
+                                        className="w-full px-2.5 py-1.5 text-xs font-medium hover:bg-rose-50 text-rose-600 rounded-lg flex items-center gap-2 cursor-pointer transition-colors text-left"
+                                      >
+                                        <Trash2 className="w-3.5 h-3.5 text-rose-500" />
+                                        <span>Hapus Data TUG 8</span>
+                                      </button>
+                                    </div>
                                   )}
                                 </div>
                               </>
@@ -1506,10 +1619,11 @@ export default function DispatchView({
               </tbody>
             </table>
           )}
+          <div className="h-12" />
         </div>
 
-        {/* Modern Sticky Pagination Bar for Dispatch TUG 8 */}
-        <div className="bg-white border-t border-slate-200 px-6 py-3 flex flex-col sm:flex-row items-center justify-between gap-3 font-sans text-xs shrink-0 shadow-md sticky bottom-0 z-20 no-print">
+        {/* Modern Pagination Bar for Dispatch TUG 8 */}
+        <div className="bg-white border-t border-slate-200 px-6 py-3 flex flex-col sm:flex-row items-center justify-between gap-3 font-sans text-xs shrink-0 shadow-sm z-20 no-print">
           {/* Left: Record Range Summary & Per Page Selector */}
           <div className="flex items-center gap-4 text-slate-600 font-medium">
             <div className="flex items-center gap-2">
@@ -1681,20 +1795,48 @@ export default function DispatchView({
                   </div>
                 )}
 
-                {/* 3-Level Approval Stepper */}
+                {/* 4-Tahap Approval Stepper */}
                 <div className="bg-slate-900 text-white rounded-xl p-4 border border-slate-800 space-y-3">
                   <div className="flex justify-between items-center border-b border-slate-800 pb-2">
                     <span className="text-xs font-black font-display uppercase tracking-wider text-slate-200 flex items-center gap-1.5">
                       <ShieldCheck className="w-4 h-4 text-emerald-400" />
-                      Approval TUG 8 & TTD Digital
+                      Approval TUG 8 & TTD Digital (4 Tahap)
                     </span>
                   </div>
 
                   <div className="space-y-2 pt-1">
-                    {/* LEVEL 1: ALFIN */}
+                    {/* TAHAP 1: ALDI HIDAYAT (PETUGAS GUDANG) */}
+                    <div className={`p-2.5 rounded-lg border text-xs flex items-center justify-between ${selectedDispatch.aldi_signed ? 'bg-teal-950/40 border-teal-500/40 text-teal-100' : 'bg-slate-800/80 border-slate-700 text-slate-300'}`}>
+                      <div>
+                        <div className="font-bold">Tahap 1: Aldi Hidayat (Petugas Gudang)</div>
+                        <div className="text-[9.5px] text-teal-300 font-mono">
+                          {selectedDispatch.aldi_signed ? `✓ Signed: ${selectedDispatch.aldi_signed_at ? new Date(selectedDispatch.aldi_signed_at).toLocaleDateString("id-ID") : "Terverifikasi"}` : "⏳ Pending Approval"}
+                        </div>
+                      </div>
+                      {!selectedDispatch.aldi_signed && isAldiRole && (
+                        <button
+                          type="button"
+                          onClick={async () => {
+                            const now = new Date().toISOString();
+                            if (onUpdateDispatch) {
+                              await onUpdateDispatch(selectedDispatch.id, {
+                                aldi_signed: true,
+                                aldi_signed_at: now,
+                                aldi_signature_url: ALDI_SIGNATURE_URL
+                              });
+                            }
+                          }}
+                          className="px-2.5 py-1 bg-teal-600 hover:bg-teal-500 text-white font-bold text-[10px] uppercase rounded cursor-pointer"
+                        >
+                          TTD Petugas Gudang
+                        </button>
+                      )}
+                    </div>
+
+                    {/* TAHAP 2: ALFIN */}
                     <div className={`p-2.5 rounded-lg border text-xs flex items-center justify-between ${selectedDispatch.alfin_signed ? 'bg-emerald-950/40 border-emerald-500/40 text-emerald-100' : 'bg-slate-800/80 border-slate-700 text-slate-300'}`}>
                       <div>
-                        <div className="font-bold">L1: Maghfur Alfin (Verifikator)</div>
+                        <div className="font-bold">L1: Maghfur Alfin (Kepala Gudang)</div>
                         <div className="text-[9.5px] text-slate-400 font-mono">
                           {selectedDispatch.alfin_signed ? `✓ Signed: ${selectedDispatch.alfin_signed_at ? new Date(selectedDispatch.alfin_signed_at).toLocaleDateString("id-ID") : "Terverifikasi"}` : "⏳ Pending Approval"}
                         </div>
@@ -1714,7 +1856,7 @@ export default function DispatchView({
                           }}
                           className="px-2.5 py-1 bg-emerald-600 hover:bg-emerald-500 text-white font-bold text-[10px] uppercase rounded cursor-pointer"
                         >
-                          TTD Alfin
+                          TTD Kepala Gudang
                         </button>
                       )}
                     </div>
@@ -2233,6 +2375,27 @@ export default function DispatchView({
 
               {/* Right side Commit buttons */}
               <div className="flex justify-end gap-3 w-full sm:w-auto shrink-0">
+                {role !== UserRole.VESSEL_CREW && onDeleteDispatch && (
+                  <button
+                    type="button"
+                    disabled={isLoading}
+                    onClick={async () => {
+                      const docName = selectedDispatch.tug8_number || selectedDispatch.bon_pengeluaran_number || selectedDispatch.id;
+                      if (window.confirm(`Apakah Anda yakin ingin menghapus data dokumen TUG 8 [${docName}]?`)) {
+                        try {
+                          await onDeleteDispatch(selectedDispatch.id);
+                          setSelectedDispatch(null);
+                          alert(`Data TUG 8 [${docName}] berhasil dihapus.`);
+                        } catch (err: any) {
+                          alert(`Gagal menghapus data: ${err?.message || err}`);
+                        }
+                      }
+                    }}
+                    className="w-full sm:w-auto px-4 py-2.5 bg-rose-600 hover:bg-rose-700 disabled:opacity-50 text-white font-bold uppercase rounded-md text-xs cursor-pointer transition-colors text-center flex items-center justify-center gap-1.5"
+                  >
+                    <Trash2 className="w-4 h-4" /> Hapus Data TUG 8
+                  </button>
+                )}
                 <button
                   type="button"
                   disabled={isLoading}

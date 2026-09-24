@@ -17,6 +17,12 @@ interface PrintDocumentProps {
   timeFilter?: string;
   spkList?: SPKWorkOrder[];
   signatures?: DigitalSignature[];
+  selectedDocTypes?: {
+    inbound?: boolean;
+    tug5?: boolean;
+    tug8?: boolean;
+    tug10?: boolean;
+  };
   onClose: () => void;
 }
 
@@ -24,18 +30,7 @@ import { sanitizeSignatureUrl, createSVGSignatureDataUrl } from "../utils/signat
 
 const getSignatureForSlot = (roleOrTitle: string, name?: string, signaturesList?: DigitalSignature[], docData?: any) => {
   const rLower = roleOrTitle.toLowerCase().trim();
-  
-  // USER DIRECTIVE: Kepala Gudang, Pemeriksa, and Penerima signatures MUST BE LEFT EMPTY / BLANK FOR TUG 8 AND ALL DOCUMENTS
-  if (
-    rLower.includes("kepala gudang") || 
-    rLower.includes("kepala_gudang") ||
-    rLower.includes("pemeriksa") ||
-    rLower.includes("penerima") ||
-    rLower.includes("carrier") ||
-    rLower.includes("captain")
-  ) {
-    return null;
-  }
+  const nLower = (name || "").toLowerCase().trim();
 
   if (docData) {
     if (rLower.includes("vp") || rLower.includes("sumbono")) {
@@ -48,9 +43,16 @@ const getSignatureForSlot = (roleOrTitle: string, name?: string, signaturesList?
         return sanitizeSignatureUrl(docData.emir_signature_url, "Mohamat Emir Ferdian");
       }
     }
-    if (rLower.includes("verifikator") || rLower.includes("petugas") || rLower.includes("alfin")) {
-      if (docData.alfin_signed) {
-        return sanitizeSignatureUrl(docData.alfin_signature_url, "Maghfur Muhammad Alfin");
+    // Kepala Gudang (MAGHFUR MUHAMMAD ALFIN)
+    if (rLower.includes("kepala gudang") || rLower.includes("kepala_gudang") || nLower.includes("alfin")) {
+      if (docData.alfin_signed || docData.kepala_gudang_signed) {
+        return sanitizeSignatureUrl(docData.alfin_signature_url || docData.kepala_gudang_signature_url, "MAGHFUR MUHAMMAD ALFIN");
+      }
+    }
+    // Petugas Gudang (Aldi Hidayat)
+    if (rLower.includes("petugas gudang") || rLower.includes("petugas_gudang") || nLower.includes("aldi")) {
+      if (docData.aldi_signed || docData.petugas_gudang_signed) {
+        return sanitizeSignatureUrl(docData.aldi_signature_url || docData.petugas_gudang_signature_url, "Aldi Hidayat");
       }
     }
   }
@@ -62,12 +64,22 @@ const getSignatureForSlot = (roleOrTitle: string, name?: string, signaturesList?
       if (saved) sigs = JSON.parse(saved);
     } catch (e) {}
   }
-
-  const nLower = (name || "").toLowerCase().trim();
-
   if (nLower && !nLower.includes("...") && nLower !== "(-)") {
     const matchName = (sigs || []).find(s => s.user_name.toLowerCase().trim() === nLower);
     if (matchName) return sanitizeSignatureUrl(matchName.signature_url, name || matchName.user_name);
+  }
+
+  // Explicit mappings for Kepala Gudang & Petugas Gudang
+  if (rLower.includes("kepala gudang") || rLower.includes("kepala_gudang")) {
+    const matchKG = (sigs || []).find(s => s.role_title.toLowerCase().includes("kepala gudang") || s.user_name.toLowerCase().includes("alfin"));
+    if (matchKG) return sanitizeSignatureUrl(matchKG.signature_url, "MAGHFUR MUHAMMAD ALFIN");
+    return createSVGSignatureDataUrl("MAGHFUR MUHAMMAD ALFIN");
+  }
+
+  if (rLower.includes("petugas gudang") || rLower.includes("petugas_gudang")) {
+    const matchPG = (sigs || []).find(s => s.role_title.toLowerCase().includes("petugas gudang") || s.user_name.toLowerCase().includes("aldi"));
+    if (matchPG) return sanitizeSignatureUrl(matchPG.signature_url, "Aldi Hidayat");
+    return createSVGSignatureDataUrl("Aldi Hidayat");
   }
 
   const matchRole = (sigs || []).find(s => {
@@ -92,8 +104,18 @@ export default function PrintDocument({
   timeFilter,
   spkList,
   signatures,
+  selectedDocTypes,
   onClose
 }: PrintDocumentProps) {
+  // Dynamic Document Filter (Inbound, TUG 5, TUG 8, TUG 10)
+  const activeDocTypes = useMemo(() => {
+    return selectedDocTypes || (data as any)?.selectedDocTypes || {
+      inbound: true,
+      tug5: true,
+      tug8: true,
+      tug10: true
+    };
+  }, [selectedDocTypes, data]);
   // Pagination & Print Mode State
   const [currentPage, setCurrentPage] = useState<number>(1);
   const [pageSize, setPageSize] = useState<number>(15);
@@ -771,18 +793,30 @@ export default function PrintDocument({
                     </div>
 
                     <div className="space-y-1">
-                      <div className="flex justify-between border-b border-slate-200 pb-1">
-                        <span className="text-slate-500">DOKUMEN TUG 5 (PERMINTAAN):</span>
-                        <strong className="text-indigo-800 font-bold">{docData.tug5_number || "TUG5-2026-001"}</strong>
-                      </div>
-                      <div className="flex justify-between border-b border-slate-200 pb-1">
-                        <span className="text-slate-500">DOKUMEN TUG 8 (OUTBOUND PENGIRIMAN):</span>
-                        <strong className="text-emerald-800 font-bold">{docData.tug8_number || "TUG8-2026-001"}</strong>
-                      </div>
-                      <div className="flex justify-between">
-                        <span className="text-slate-500">DOKUMEN TUG 10 (RETURN PENGEMBALIAN):</span>
-                        <strong className="text-amber-800 font-bold">{docData.tug10_number || "TUG10-2026-001"}</strong>
-                      </div>
+                      {activeDocTypes.inbound !== false && (
+                        <div className="flex justify-between border-b border-slate-200 pb-1">
+                          <span className="text-slate-500">1. DOKUMEN INBOUND (PENERIMAAN GUDANG):</span>
+                          <strong className="text-blue-800 font-bold">{docData.inbound_number || docData.purchase_order_num || "Terkonfirmasi"}</strong>
+                        </div>
+                      )}
+                      {activeDocTypes.tug5 !== false && (
+                        <div className="flex justify-between border-b border-slate-200 pb-1">
+                          <span className="text-slate-500">2. DOKUMEN TUG 5 (PERMINTAAN):</span>
+                          <strong className="text-indigo-800 font-bold">{docData.tug5_number || "-"}</strong>
+                        </div>
+                      )}
+                      {activeDocTypes.tug8 !== false && (
+                        <div className="flex justify-between border-b border-slate-200 pb-1">
+                          <span className="text-slate-500">3. DOKUMEN TUG 8 (OUTBOUND PENGIRIMAN):</span>
+                          <strong className="text-emerald-800 font-bold">{docData.tug8_number || "-"}</strong>
+                        </div>
+                      )}
+                      {activeDocTypes.tug10 !== false && (
+                        <div className="flex justify-between">
+                          <span className="text-slate-500">4. DOKUMEN TUG 10 (RETURN PENGEMBALIAN):</span>
+                          <strong className="text-amber-800 font-bold">{docData.tug10_number || "-"}</strong>
+                        </div>
+                      )}
                     </div>
                   </div>
                 </div>
@@ -931,9 +965,18 @@ export default function PrintDocument({
                             <th className="px-4 py-2 border-r border-slate-300 text-left">NAMA SUKU CADANG / BARANG</th>
                             <th className="px-4 py-2 border-r border-slate-300 text-center">PART NUMBER</th>
                             <th className="px-4 py-2 border-r border-slate-300 text-center">STN</th>
-                            <th className="px-4 py-2 border-r border-slate-300 text-center">QTY SPK</th>
-                            <th className="px-4 py-2 border-r border-slate-300 text-center text-emerald-800">QTY DIKIRIM (TUG 8)</th>
-                            <th className="px-4 py-2 border-r border-slate-300 text-center text-amber-800">QTY KEMBALI (TUG 10)</th>
+                            {activeDocTypes.inbound !== false && (
+                              <th className="px-4 py-2 border-r border-slate-300 text-center text-blue-800">QTY MASUK (INBOUND)</th>
+                            )}
+                            {activeDocTypes.tug5 !== false && (
+                              <th className="px-4 py-2 border-r border-slate-300 text-center text-indigo-800">QTY SPK / TUG 5</th>
+                            )}
+                            {activeDocTypes.tug8 !== false && (
+                              <th className="px-4 py-2 border-r border-slate-300 text-center text-emerald-800">QTY DIKIRIM (TUG 8)</th>
+                            )}
+                            {activeDocTypes.tug10 !== false && (
+                              <th className="px-4 py-2 border-r border-slate-300 text-center text-amber-800">QTY KEMBALI (TUG 10)</th>
+                            )}
                             <th className="px-4 py-2 border-r border-slate-300 text-center text-blue-900 font-bold">QTY TERPAKAI (NET)</th>
                             <th className="px-4 py-2 text-left">STATUS & LOKASI</th>
                           </>
@@ -1010,19 +1053,29 @@ export default function PrintDocument({
                             <td className="px-4 py-2 border-r border-slate-300 text-slate-400">(-)</td>
                             <td className="px-4 py-2 border-r border-slate-300 font-mono text-[11px] text-center text-slate-400">(-)</td>
                             <td className="px-4 py-2 border-r border-slate-300 text-center uppercase font-mono text-[11px] text-slate-400">(-)</td>
-                            <td className="px-4 py-2 border-r border-slate-300 text-center font-mono text-slate-400">(-)</td>
-                            <td className="px-4 py-2 border-r border-slate-300 text-center font-mono text-slate-400">(-)</td>
-                            <td className="px-4 py-2 border-r border-slate-300 text-center font-mono text-slate-400">(-)</td>
+                            {activeDocTypes.inbound !== false && (
+                              <td className="px-4 py-2 border-r border-slate-300 text-center font-mono text-slate-400">(-)</td>
+                            )}
+                            {activeDocTypes.tug5 !== false && (
+                              <td className="px-4 py-2 border-r border-slate-300 text-center font-mono text-slate-400">(-)</td>
+                            )}
+                            {activeDocTypes.tug8 !== false && (
+                              <td className="px-4 py-2 border-r border-slate-300 text-center font-mono text-slate-400">(-)</td>
+                            )}
+                            {activeDocTypes.tug10 !== false && (
+                              <td className="px-4 py-2 border-r border-slate-300 text-center font-mono text-slate-400">(-)</td>
+                            )}
                             <td className="px-4 py-2 border-r border-slate-300 text-center font-mono text-slate-400">(-)</td>
                             <td className="px-4 py-2 font-mono text-[10px] text-slate-500 italic">NIHIL / TIDAK ADA TRANSAKSI SPK PADA PERIODE TANGGAL INI (-)</td>
                           </tr>
                         ) : (
                           paginatedList.map((item: any, idx: number) => {
                             const itemNum = pageSize > 0 ? (currentPage - 1) * pageSize + idx + 1 : idx + 1;
-                            const qtySpk = item.qty_to_pick || item.qty_spk || 1;
-                            const qtyOutbound = item.qty_dispatched !== undefined ? item.qty_dispatched : (item.qty_tug8 !== undefined ? item.qty_tug8 : qtySpk);
+                            const qtyInbound = item.qty_inbound !== undefined ? item.qty_inbound : (item.qty_received !== undefined ? item.qty_received : 0);
+                            const qtySpk = item.qty_to_pick || item.qty_spk || item.qty_tug5 || 1;
+                            const qtyOutbound = item.qty_dispatched !== undefined ? item.qty_dispatched : (item.qty_tug8 !== undefined ? item.qty_tug8 : 0);
                             const qtyReturned = item.qty_returned !== undefined ? item.qty_returned : (item.qty_tug10 !== undefined ? item.qty_tug10 : 0);
-                            const qtyNet = Math.max(0, qtyOutbound - qtyReturned);
+                            const qtyNet = item.qty_net !== undefined ? item.qty_net : Math.max(0, (qtyOutbound || qtyInbound) - qtyReturned);
 
                             return (
                               <tr key={idx} className="hover:bg-slate-50 text-[11px] font-semibold text-slate-900 border-b border-slate-300">
@@ -1036,15 +1089,26 @@ export default function PrintDocument({
                                 <td className="px-4 py-2 border-r border-slate-300 text-center uppercase font-mono text-[11px]">
                                   {item.unit || "(-)"}
                                 </td>
-                                <td className="px-4 py-2 border-r border-slate-300 text-center font-mono font-bold text-slate-700">
-                                  {qtySpk}
-                                </td>
-                                <td className="px-4 py-2 border-r border-slate-300 text-center font-mono font-black text-emerald-800 bg-emerald-50/40">
-                                  +{qtyOutbound}
-                                </td>
-                                <td className="px-4 py-2 border-r border-slate-300 text-center font-mono font-black text-amber-800 bg-amber-50/40">
-                                  {qtyReturned > 0 ? `-${qtyReturned}` : "(-)"}
-                                </td>
+                                {activeDocTypes.inbound !== false && (
+                                  <td className="px-4 py-2 border-r border-slate-300 text-center font-mono font-black text-blue-800 bg-blue-50/40">
+                                    {qtyInbound > 0 ? `+${qtyInbound}` : "-"}
+                                  </td>
+                                )}
+                                {activeDocTypes.tug5 !== false && (
+                                  <td className="px-4 py-2 border-r border-slate-300 text-center font-mono font-bold text-slate-700">
+                                    {qtySpk}
+                                  </td>
+                                )}
+                                {activeDocTypes.tug8 !== false && (
+                                  <td className="px-4 py-2 border-r border-slate-300 text-center font-mono font-black text-emerald-800 bg-emerald-50/40">
+                                    {qtyOutbound > 0 ? `+${qtyOutbound}` : "-"}
+                                  </td>
+                                )}
+                                {activeDocTypes.tug10 !== false && (
+                                  <td className="px-4 py-2 border-r border-slate-300 text-center font-mono font-black text-amber-800 bg-amber-50/40">
+                                    {qtyReturned > 0 ? `-${qtyReturned}` : "0"}
+                                  </td>
+                                )}
                                 <td className="px-4 py-2 border-r border-slate-300 text-center font-mono font-black text-blue-900 bg-blue-50/50">
                                   {qtyNet}
                                 </td>
@@ -1253,17 +1317,17 @@ export default function PrintDocument({
                     <div className="flex flex-col justify-between h-24">
                       <span>Kepala Gudang :</span>
                       <div className="border-t border-slate-400 pt-1 flex flex-col items-center relative">
-                        {getSignatureForSlot("Kepala Gudang", "Gudang Merak", signatures) && (
+                        {getSignatureForSlot("Kepala Gudang", "MAGHFUR MUHAMMAD ALFIN", signatures, data) && (
                           <div className="absolute bottom-5 left-0 right-0 flex items-center justify-center pointer-events-none h-12">
                             <img
-                              src={getSignatureForSlot("Kepala Gudang", "Gudang Merak", signatures)!}
+                              src={getSignatureForSlot("Kepala Gudang", "MAGHFUR MUHAMMAD ALFIN", signatures, data)!}
                               alt="Tanda Tangan Kepala Gudang"
                               className="max-h-12 max-w-[140px] object-contain mix-blend-multiply select-none"
                             />
                           </div>
                         )}
-                        <span className="text-slate-955 font-black">&nbsp;</span>
-                        <span className="text-slate-500 text-[7px] font-mono font-normal leading-tight normal-case italic mt-0.5">Gudang Merak</span>
+                        <span className="text-slate-955 font-black">MAGHFUR MUHAMMAD ALFIN</span>
+                        <span className="text-slate-500 text-[7px] font-mono font-normal leading-tight normal-case italic mt-0.5">Kepala Gudang</span>
                       </div>
                     </div>
 
@@ -1285,19 +1349,19 @@ export default function PrintDocument({
                     </div>
 
                     <div className="flex flex-col justify-between h-24">
-                      <span>Penerima / Pembuat :</span>
+                      <span>Penerima / Pembuat (Petugas Gudang) :</span>
                       <div className="border-t border-slate-400 pt-1 flex flex-col items-center relative">
-                        {getSignatureForSlot("Penerima", undefined, signatures) && (
+                        {(getSignatureForSlot("Petugas Gudang", "Aldi Hidayat", signatures, data) || getSignatureForSlot("Penerima", undefined, signatures)) && (
                           <div className="absolute bottom-5 left-0 right-0 flex items-center justify-center pointer-events-none h-12">
                             <img
-                              src={getSignatureForSlot("Penerima", undefined, signatures)!}
-                              alt="Tanda Tangan Penerima"
+                              src={(getSignatureForSlot("Petugas Gudang", "Aldi Hidayat", signatures, data) || getSignatureForSlot("Penerima", undefined, signatures))!}
+                              alt="Tanda Tangan Petugas Gudang"
                               className="max-h-12 max-w-[140px] object-contain mix-blend-multiply select-none"
                             />
                           </div>
                         )}
-                        <span className="text-slate-955 font-black">&nbsp;</span>
-                        <span className="text-slate-500 text-[7px] font-mono font-normal leading-tight lowercase italic mt-0.5 font-sans">( ....................................... )</span>
+                        <span className="text-slate-955 font-black">Aldi Hidayat</span>
+                        <span className="text-slate-500 text-[7px] font-mono font-normal leading-tight italic mt-0.5 normal-case">Petugas Gudang</span>
                       </div>
                     </div>
                   </div>
@@ -1340,33 +1404,33 @@ export default function PrintDocument({
                     <div className="flex flex-col justify-between h-20">
                       <span>Kepala Gudang :</span>
                       <div className="border-t border-slate-400 pt-1 flex flex-col items-center relative">
-                        {getSignatureForSlot("Kepala Gudang", "Gudang Merak", signatures, data) && (
+                        {getSignatureForSlot("Kepala Gudang", "MAGHFUR MUHAMMAD ALFIN", signatures, data) && (
                           <div className="absolute bottom-5 left-0 right-0 flex items-center justify-center pointer-events-none h-12">
                             <img
-                              src={getSignatureForSlot("Kepala Gudang", "Gudang Merak", signatures, data)!}
+                              src={getSignatureForSlot("Kepala Gudang", "MAGHFUR MUHAMMAD ALFIN", signatures, data)!}
                               alt="Tanda Tangan Kepala Gudang"
                               className="max-h-12 max-w-[140px] object-contain mix-blend-multiply select-none"
                             />
                           </div>
                         )}
-                        <span className="text-slate-955 font-black">&nbsp;</span>
-                        <span className="text-slate-500 text-[7px] font-mono font-normal leading-tight normal-case italic mt-0.5">Gudang Merak</span>
+                        <span className="text-slate-955 font-black">MAGHFUR MUHAMMAD ALFIN</span>
+                        <span className="text-slate-500 text-[7px] font-mono font-normal leading-tight normal-case italic mt-0.5">Kepala Gudang</span>
                       </div>
                     </div>
 
                     <div className="flex flex-col justify-between h-20">
                       <span>Petugas Gudang :</span>
                       <div className="border-t border-slate-400 pt-1 flex flex-col items-center relative">
-                        {getSignatureForSlot("Petugas Gudang", "MAGHFUR MUHAMMAD ALFIN", signatures, data) && (
+                        {getSignatureForSlot("Petugas Gudang", "Aldi Hidayat", signatures, data) && (
                           <div className="absolute bottom-5 left-0 right-0 flex items-center justify-center pointer-events-none h-12">
                             <img
-                              src={getSignatureForSlot("Petugas Gudang", "MAGHFUR MUHAMMAD ALFIN", signatures, data)!}
+                              src={getSignatureForSlot("Petugas Gudang", "Aldi Hidayat", signatures, data)!}
                               alt="Tanda Tangan Petugas Gudang"
                               className="max-h-12 max-w-[140px] object-contain mix-blend-multiply select-none"
                             />
                           </div>
                         )}
-                        <span className="text-slate-955 font-black">MAGHFUR MUHAMMAD ALFIN</span>
+                        <span className="text-slate-955 font-black">Aldi Hidayat</span>
                         <span className="text-slate-500 text-[7px] font-mono font-normal leading-tight normal-case italic mt-0.5 font-sans">Petugas Gudang</span>
                       </div>
                     </div>
@@ -1393,34 +1457,34 @@ export default function PrintDocument({
                     <div className="flex flex-col justify-between h-24">
                       <span>Kepala Gudang :</span>
                       <div className="border-t border-slate-400 pt-1 flex flex-col items-center relative">
-                        {getSignatureForSlot("Kepala Gudang", "Gudang Merak", signatures) && (
+                        {getSignatureForSlot("Kepala Gudang", "MAGHFUR MUHAMMAD ALFIN", signatures, data) && (
                           <div className="absolute bottom-5 left-0 right-0 flex items-center justify-center pointer-events-none h-12">
                             <img
-                              src={getSignatureForSlot("Kepala Gudang", "Gudang Merak", signatures)!}
+                              src={getSignatureForSlot("Kepala Gudang", "MAGHFUR MUHAMMAD ALFIN", signatures, data)!}
                               alt="Tanda Tangan Kepala Gudang"
                               className="max-h-12 max-w-[140px] object-contain mix-blend-multiply select-none"
                             />
                           </div>
                         )}
-                        <span className="text-slate-955 font-black">&nbsp;</span>
-                        <span className="text-slate-500 text-[7px] font-mono font-normal leading-tight normal-case italic mt-0.5">Gudang Merak</span>
+                        <span className="text-slate-955 font-black">MAGHFUR MUHAMMAD ALFIN</span>
+                        <span className="text-slate-500 text-[7px] font-mono font-normal leading-tight normal-case italic mt-0.5">Kepala Gudang</span>
                       </div>
                     </div>
 
                     <div className="flex flex-col justify-between h-24">
-                      <span>Pemeriksa :</span>
+                      <span>Petugas Gudang :</span>
                       <div className="border-t border-slate-400 pt-1 flex flex-col items-center relative">
-                        {getSignatureForSlot("Captain", "Capt. H. Wijaya", signatures) && (
+                        {getSignatureForSlot("Petugas Gudang", "Aldi Hidayat", signatures, data) && (
                           <div className="absolute bottom-5 left-0 right-0 flex items-center justify-center pointer-events-none h-12">
                             <img
-                              src={getSignatureForSlot("Captain", "Capt. H. Wijaya", signatures)!}
-                              alt="Tanda Tangan Captain"
+                              src={getSignatureForSlot("Petugas Gudang", "Aldi Hidayat", signatures, data)!}
+                              alt="Tanda Tangan Petugas Gudang"
                               className="max-h-12 max-w-[140px] object-contain mix-blend-multiply select-none"
                             />
                           </div>
                         )}
-                        <span className="text-slate-955 font-black">&nbsp;</span>
-                        <span className="text-slate-500 text-[7px] font-mono font-normal leading-tight normal-case italic mt-0.5">Captain</span>
+                        <span className="text-slate-955 font-black">Aldi Hidayat</span>
+                        <span className="text-slate-500 text-[7px] font-mono font-normal leading-tight normal-case italic mt-0.5">Petugas Gudang</span>
                       </div>
                     </div>
 
@@ -1444,19 +1508,19 @@ export default function PrintDocument({
                 ) : type === "spk_report" ? (
                   <div className="grid grid-cols-3 gap-6 text-center uppercase tracking-wider text-[9px] font-bold text-slate-800">
                     <div className="flex flex-col justify-between h-24">
-                      <span>Dibuat Oleh (Staff Logistik Gudang):</span>
+                      <span>Dibuat Oleh (Petugas Gudang):</span>
                       <div className="border-t border-slate-900 pt-1 flex flex-col items-center relative">
-                        {getSignatureForSlot("Staff Admin Logistik", undefined, signatures) && (
+                        {getSignatureForSlot("Petugas Gudang", "Aldi Hidayat", signatures) && (
                           <div className="absolute bottom-5 left-0 right-0 flex items-center justify-center pointer-events-none h-12">
                             <img
-                              src={getSignatureForSlot("Staff Admin Logistik", undefined, signatures)!}
-                              alt="Tanda Tangan Staff Admin"
+                              src={getSignatureForSlot("Petugas Gudang", "Aldi Hidayat", signatures)!}
+                              alt="Tanda Tangan Petugas Gudang"
                               className="max-h-12 max-w-[140px] object-contain mix-blend-multiply select-none"
                             />
                           </div>
                         )}
-                        <span className="text-slate-900 font-black min-h-[14px]"></span>
-                        <span className="text-slate-500 text-[8px] font-mono font-normal">Staff Admin Logistik WMS</span>
+                        <span className="text-slate-900 font-black min-h-[14px]">Aldi Hidayat</span>
+                        <span className="text-slate-500 text-[8px] font-mono font-normal">Petugas Gudang WMS</span>
                       </div>
                     </div>
 

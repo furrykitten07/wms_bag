@@ -247,42 +247,38 @@ export default function Sidebar({
           </div>
         </button>
 
-        {/* ADMINISTRATION (SUPER ADMIN ONLY) */}
-        {currentUser.role === UserRole.SUPER_ADMIN && (
-          <>
-            <div className="text-[10px] font-bold text-slate-400 uppercase px-2 mt-4 mb-2 tracking-widest font-display">
-              Administration
-            </div>
+        {/* ADMINISTRATION (DATABASE USER & ROLE, DIGITAL SIGNATURES) */}
+        <div className="text-[10px] font-bold text-slate-400 uppercase px-2 mt-4 mb-2 tracking-widest font-display">
+          Administration
+        </div>
 
-            <button
-              onClick={() => setCurrentTab("users-management")}
-              className={`flex items-center justify-between px-3 py-2.5 rounded-md text-xs font-semibold tracking-tight transition-all duration-150 ${
-                currentTab === "users-management" 
-                  ? "bg-white text-blue-600 border border-slate-200 shadow-xs font-bold" 
-                  : "text-slate-650 hover:bg-slate-200/70 hover:text-slate-900"
-              }`}
-            >
-              <div className="flex items-center gap-2.5">
-                <UsersRound className={`w-4 h-4 ${currentTab === "users-management" ? "text-blue-500" : "text-slate-400"} shrink-0`} />
-                <span>Database User & Role</span>
-              </div>
-            </button>
+        <button
+          onClick={() => setCurrentTab("users-management")}
+          className={`flex items-center justify-between px-3 py-2.5 rounded-md text-xs font-semibold tracking-tight transition-all duration-150 ${
+            currentTab === "users-management" 
+              ? "bg-white text-blue-600 border border-slate-200 shadow-xs font-bold" 
+              : "text-slate-650 hover:bg-slate-200/70 hover:text-slate-900"
+          }`}
+        >
+          <div className="flex items-center gap-2.5">
+            <UsersRound className={`w-4 h-4 ${currentTab === "users-management" ? "text-blue-500" : "text-slate-400"} shrink-0`} />
+            <span>Database User & Role</span>
+          </div>
+        </button>
 
-            <button
-              onClick={() => setCurrentTab("signature-management")}
-              className={`flex items-center justify-between px-3 py-2.5 rounded-md text-xs font-semibold tracking-tight transition-all duration-150 ${
-                currentTab === "signature-management" 
-                  ? "bg-white text-blue-600 border border-slate-200 shadow-xs font-bold" 
-                  : "text-slate-650 hover:bg-slate-200/70 hover:text-slate-900"
-              }`}
-            >
-              <div className="flex items-center gap-2.5">
-                <FileSignature className={`w-4 h-4 ${currentTab === "signature-management" ? "text-blue-500" : "text-slate-400"} shrink-0`} />
-                <span>Tanda Tangan Digital</span>
-              </div>
-            </button>
-          </>
-        )}
+        <button
+          onClick={() => setCurrentTab("signature-management")}
+          className={`flex items-center justify-between px-3 py-2.5 rounded-md text-xs font-semibold tracking-tight transition-all duration-150 ${
+            currentTab === "signature-management" 
+              ? "bg-white text-blue-600 border border-slate-200 shadow-xs font-bold" 
+              : "text-slate-650 hover:bg-slate-200/70 hover:text-slate-900"
+          }`}
+        >
+          <div className="flex items-center gap-2.5">
+            <FileSignature className={`w-4 h-4 ${currentTab === "signature-management" ? "text-blue-500" : "text-slate-400"} shrink-0`} />
+            <span>Tanda Tangan Digital</span>
+          </div>
+        </button>
       </div>
     </nav>
   );

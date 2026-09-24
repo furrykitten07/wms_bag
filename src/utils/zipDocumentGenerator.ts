@@ -12,18 +12,8 @@ import { sanitizeSignatureUrl, createSVGSignatureDataUrl } from "./signatureUtil
 
 function getSignatureForSlot(roleOrTitle: string, name?: string, signaturesList?: DigitalSignature[]): string | null {
   const rLower = roleOrTitle.toLowerCase().trim();
+  const nLower = (name || "").toLowerCase().trim();
   
-  // USER DIRECTIVE: Kepala Gudang, Pemeriksa, and Penerima signatures MUST BE LEFT EMPTY / BLANK FOR TUG 8 AND ALL DOCUMENTS
-  if (
-    rLower.includes("kepala gudang") || 
-    rLower.includes("kepala_gudang") ||
-    rLower.includes("pemeriksa") ||
-    rLower.includes("penerima") ||
-    rLower.includes("carrier") ||
-    rLower.includes("captain")
-  ) {
-    return null;
-  }
   let sigs = signaturesList;
   if (!sigs || sigs.length === 0) {
     try {
@@ -32,11 +22,21 @@ function getSignatureForSlot(roleOrTitle: string, name?: string, signaturesList?
     } catch (e) {}
   }
 
-  const nLower = (name || "").toLowerCase().trim();
-
   if (nLower && !nLower.includes("...") && nLower !== "(-)") {
     const matchName = (sigs || []).find(s => s.user_name.toLowerCase().trim() === nLower);
     if (matchName) return sanitizeSignatureUrl(matchName.signature_url, name || matchName.user_name);
+  }
+
+  if (rLower.includes("kepala gudang") || rLower.includes("kepala_gudang")) {
+    const matchKG = (sigs || []).find(s => s.role_title.toLowerCase().includes("kepala gudang") || s.user_name.toLowerCase().includes("alfin"));
+    if (matchKG) return sanitizeSignatureUrl(matchKG.signature_url, "MAGHFUR MUHAMMAD ALFIN");
+    return createSVGSignatureDataUrl("MAGHFUR MUHAMMAD ALFIN");
+  }
+
+  if (rLower.includes("petugas gudang") || rLower.includes("petugas_gudang")) {
+    const matchPG = (sigs || []).find(s => s.role_title.toLowerCase().includes("petugas gudang") || s.user_name.toLowerCase().includes("aldi"));
+    if (matchPG) return sanitizeSignatureUrl(matchPG.signature_url, "Aldi Hidayat");
+    return createSVGSignatureDataUrl("Aldi Hidayat");
   }
 
   const matchRole = (sigs || []).find(s => {
@@ -72,8 +72,8 @@ export function generateSingleTUGHTML(
 
   const sigManager = getSignatureForSlot("Manager Logistik", "Mohamat Emir Ferdian", signatures);
   const sigVP = getSignatureForSlot("VP RENDALHAR", "Sumbono", signatures);
-  const sigGudang = getSignatureForSlot("Kepala Gudang", "Gudang Merak", signatures);
-  const sigPetugasGudang = getSignatureForSlot("Petugas Gudang", "MAGHFUR MUHAMMAD ALFIN", signatures);
+  const sigGudang = getSignatureForSlot("Kepala Gudang", "MAGHFUR MUHAMMAD ALFIN", signatures);
+  const sigPetugasGudang = getSignatureForSlot("Petugas Gudang", "Aldi Hidayat", signatures);
 
   const cleanAddress = (req.delivery_address || "Pelabuhan Merak, Cilegon, Banten")
     .replace(/,\s*SPK\s+[^,]+/gi, "")
@@ -236,8 +236,8 @@ export function generateSingleTUGHTML(
                     <span style="font-size: 8.5px; color: #334155; font-family: monospace;">KEPALA GUDANG :</span>
                     <div style="border-top: 1.5px solid #64748b; padding-top: 4px; position: relative;">
                         ${sigGudang ? `<div style="position: absolute; bottom: 20px; left: 0; right: 0; display: flex; justify-content: center; pointer-events: none;"><img src="${sigGudang}" style="max-height: 44px; max-width: 130px; object-fit: contain;" /></div>` : ""}
-                        <div style="font-weight: 900; color: #0f172a; font-size: 9.5px;">&nbsp;</div>
-                        <div style="font-size: 7.5px; font-family: monospace; font-weight: normal; font-style: italic; color: #64748b; text-transform: none; margin-top: 1px;">Gudang Merak</div>
+                        <div style="font-weight: 900; color: #0f172a; font-size: 9.5px;">MAGHFUR MUHAMMAD ALFIN</div>
+                        <div style="font-size: 7.5px; font-family: monospace; font-weight: normal; font-style: italic; color: #64748b; text-transform: none; margin-top: 1px;">Kepala Gudang</div>
                     </div>
                 </div>
 
@@ -245,7 +245,7 @@ export function generateSingleTUGHTML(
                     <span style="font-size: 8.5px; color: #334155; font-family: monospace;">PETUGAS GUDANG :</span>
                     <div style="border-top: 1.5px solid #64748b; padding-top: 4px; position: relative;">
                         ${sigPetugasGudang ? `<div style="position: absolute; bottom: 20px; left: 0; right: 0; display: flex; justify-content: center; pointer-events: none;"><img src="${sigPetugasGudang}" style="max-height: 44px; max-width: 130px; object-fit: contain;" /></div>` : ""}
-                        <div style="font-weight: 900; color: #0f172a; font-size: 9.5px;">MAGHFUR MUHAMMAD ALFIN</div>
+                        <div style="font-weight: 900; color: #0f172a; font-size: 9.5px;">Aldi Hidayat</div>
                         <div style="font-size: 7.5px; font-family: monospace; font-weight: normal; font-style: italic; color: #64748b; text-transform: none; margin-top: 1px;">Petugas Gudang</div>
                     </div>
                 </div>

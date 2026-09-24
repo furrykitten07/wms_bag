@@ -32,17 +32,28 @@ import {
   Calendar,
   UserCheck,
   RefreshCw,
-  BadgeCheck
+  BadgeCheck,
+  Plus,
+  UploadCloud,
+  ImageIcon,
+  Sparkles,
+  Maximize2,
+  Building2,
+  Tag,
+  Download
 } from "lucide-react";
-import { InboundReceiving, ReceivingStatus, SparePart, UserRole, SPKWorkOrder } from "../types.js";
+import { InboundReceiving, ReceivingStatus, SparePart, UserRole, SPKWorkOrder, WarehouseLocation } from "../types.js";
 import { demoSPKs } from "../demoSeedData.js";
+import { api } from "../api.js";
 
 interface ReceivingViewProps {
   receivingList: InboundReceiving[];
   parts: SparePart[];
   spkList?: SPKWorkOrder[];
+  locations?: WarehouseLocation[];
   role: UserRole;
   onAddReceiving: (rec: Partial<InboundReceiving>) => Promise<any>;
+  onAddPart?: (partData: Partial<SparePart>) => Promise<any>;
   onVerifyReceiving: (id: string, update: { status: ReceivingStatus; items: any[]; reject_reason?: string; return_note_num?: string; signature_data_url?: string; keeper_notes?: string }) => Promise<any>;
   onPreviewDocument: (rec: InboundReceiving) => void;
   onDeleteReceiving?: (id: string) => Promise<any>;
@@ -52,8 +63,10 @@ export default function ReceivingView({
   receivingList,
   parts,
   spkList,
+  locations = [],
   role,
   onAddReceiving,
+  onAddPart,
   onVerifyReceiving,
   onPreviewDocument,
   onDeleteReceiving
@@ -263,14 +276,165 @@ export default function ReceivingView({
     setSignatureDataUrl("");
   };
 
-  // Manual PO creation state
-  const [newPoForm, setNewPoForm] = useState({
-    purchase_order_num: "",
-    delivery_note_num: "",
-    vendor_id: "vnd-1",
-    selectedPartId: parts[0]?.id || "",
-    qty_ordered: 5
+  // Sync newly typed part to Catalog Sparepart (localStorage and storage events)
+  const syncNewPartToCatalog = (part: {
+    id: string;
+    part_name: string;
+    part_number: string;
+    sku?: string;
+    unit?: string;
+    category?: string;
+    location_id?: string;
+    description?: string;
+  }) => {
+    try {
+      const saved = localStorage.getItem("spare_part_catalog_data");
+      let currentCatalog: any[] = [];
+      if (saved) {
+        try {
+          const parsed = JSON.parse(saved);
+          if (Array.isArray(parsed)) currentCatalog = parsed;
+        } catch (e) {
+          currentCatalog = [];
+        }
+      }
+      
+      const key = (part.part_number || part.id).trim().toLowerCase();
+      const nameKey = (part.part_name || "").trim().toLowerCase();
+      const exists = currentCatalog.some(item => 
+        (item.part_number && item.part_number.trim().toLowerCase() === key) ||
+        (item.part_name && item.part_name.trim().toLowerCase() === nameKey)
+      );
+
+      if (!exists) {
+        const newCatItem = {
+          id: `SP-CAT-${Date.now().toString().slice(-5)}`,
+          part_name: part.part_name,
+          part_number: part.part_number,
+          sku: part.sku || `SKU-${part.part_number}`,
+          description: part.description || `${part.part_name} — Suku cadang terdaftar dari Penerimaan Barang Manual.`,
+          unit: part.unit || "PCS",
+          hierarchy: [part.category || "General Spares", "Depot Gudang", "Manual Inbound"],
+          specification: `Lokasi Rak: ${part.location_id || 'loc-1'}, Terdaftar via Non-SPK`,
+          manufacturer: "Vendor Maritim / Supplier",
+          vessel_compatibility: "Semua Armada Kapal",
+          weight_kg: 1.0
+        };
+
+        const updated = [newCatItem, ...currentCatalog];
+        localStorage.setItem("spare_part_catalog_data", JSON.stringify(updated));
+        window.dispatchEvent(new Event("storage"));
+        window.dispatchEvent(new CustomEvent("catalog_updated", { detail: newCatItem }));
+      }
+    } catch (err) {
+      console.error("Failed to sync new part to catalog:", err);
+    }
+  };
+
+  // Manual Non-SPK Multi-Item & Photo Receiving state
+  const [manualPoNum, setManualPoNum] = useState("");
+  const [manualDnNum, setManualDnNum] = useState("");
+  const [manualVendorName, setManualVendorName] = useState("Vendor Non-SPK / Manual");
+  const [manualPhotoUrl, setManualPhotoUrl] = useState("");
+  const [manualOverallNotes, setManualOverallNotes] = useState("");
+  const [isSavingManual, setIsSavingManual] = useState(false);
+  const [previewPhotoModal, setPreviewPhotoModal] = useState<string | null>(null);
+
+  interface ManualItemRow {
+    tempId: string;
+    spare_part_id: string;
+    spare_part_name: string;
+    part_number: string;
+    unit: string;
+    category: string;
+    qty: number;
+    location_id: string;
+    keeper_notes: string;
+    photo_url?: string;
+    isNewPart: boolean;
+  }
+
+  const createInitialManualItem = (): ManualItemRow => ({
+    tempId: `item-${Date.now()}-${Math.random().toString(36).substring(7)}`,
+    spare_part_id: "",
+    spare_part_name: "",
+    part_number: "",
+    unit: "PCS",
+    category: "General Spares",
+    qty: 1,
+    location_id: locations[0]?.id || "loc-1",
+    keeper_notes: "",
+    photo_url: "",
+    isNewPart: false
   });
+
+  const [manualItems, setManualItems] = useState<ManualItemRow[]>([createInitialManualItem()]);
+  const [activeItemSearchIdx, setActiveItemSearchIdx] = useState<number | null>(null);
+
+  const handleAddManualItemRow = () => {
+    setManualItems(prev => [...prev, createInitialManualItem()]);
+  };
+
+  const handleRemoveManualItemRow = (index: number) => {
+    if (manualItems.length <= 1) return;
+    setManualItems(prev => prev.filter((_, i) => i !== index));
+    if (activeItemSearchIdx === index) setActiveItemSearchIdx(null);
+  };
+
+  const handlePhotoUpload = async (e: React.ChangeEvent<HTMLInputElement>, targetItemIdx?: number) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    try {
+      const base64 = await new Promise<string>((resolve, reject) => {
+        const reader = new FileReader();
+        reader.onload = (event) => {
+          const img = new Image();
+          img.onload = () => {
+            const canvas = document.createElement("canvas");
+            let width = img.width;
+            let height = img.height;
+            const maxDim = 1200;
+            if (width > maxDim || height > maxDim) {
+              if (width > height) {
+                height = Math.round((height * maxDim) / width);
+                width = maxDim;
+              } else {
+                width = Math.round((width * maxDim) / height);
+                height = maxDim;
+              }
+            }
+            canvas.width = width;
+            canvas.height = height;
+            const ctx = canvas.getContext("2d");
+            if (ctx) {
+              ctx.drawImage(img, 0, 0, width, height);
+              resolve(canvas.toDataURL("image/jpeg", 0.78));
+            } else {
+              resolve(event.target?.result as string);
+            }
+          };
+          img.onerror = () => resolve(event.target?.result as string);
+          img.src = event.target?.result as string;
+        };
+        reader.onerror = reject;
+        reader.readAsDataURL(file);
+      });
+
+      if (targetItemIdx !== undefined) {
+        setManualItems(prev => {
+          const up = [...prev];
+          up[targetItemIdx].photo_url = base64;
+          return up;
+        });
+      } else {
+        setManualPhotoUrl(base64);
+      }
+    } catch (err) {
+      console.error("Gagal membaca file gambar:", err);
+      alert("Gagal membaca file gambar.");
+    }
+  };
 
   const handleOpenVerifyModal = (rec: InboundReceiving) => {
     setActiveReceiving(rec);
@@ -520,41 +684,161 @@ export default function ReceivingView({
   };
 
   const handleCreateInboundPo = async () => {
-    if (!newPoForm.purchase_order_num) {
-      alert("Nomor PO wajib diisi");
+    if (!manualPoNum.trim()) {
+      alert("Nomor PO / Referensi Dokumen wajib diisi!");
       return;
     }
 
+    if (manualItems.length === 0) {
+      alert("Tambahkan minimal 1 item barang.");
+      return;
+    }
+
+    for (let i = 0; i < manualItems.length; i++) {
+      const itm = manualItems[i];
+      if (!itm.spare_part_name.trim()) {
+        alert(`Nama item pada baris #${i + 1} tidak boleh kosong!`);
+        return;
+      }
+      if (!itm.qty || itm.qty <= 0) {
+        alert(`Jumlah QTY pada baris #${i + 1} harus lebih dari 0!`);
+        return;
+      }
+    }
+
+    setIsSavingManual(true);
     try {
-      const part = parts.find(p => p.id === newPoForm.selectedPartId) || parts[0];
-      await onAddReceiving({
-        purchase_order_num: newPoForm.purchase_order_num,
-        delivery_note_num: newPoForm.delivery_note_num || `DN-${Math.floor(1000 + Math.random() * 9000)}`,
-        vendor_id: part.vendor_id,
-        items: [{
-          spare_part_id: part.id,
-          spare_part_name: part.part_name,
-          part_number: part.part_number,
-          qty_ordered: Number(newPoForm.qty_ordered),
-          qty_received: Number(newPoForm.qty_ordered),
+      const preparedItems = [];
+      const newItemsCreated: string[] = [];
+
+      for (let i = 0; i < manualItems.length; i++) {
+        const itm = manualItems[i];
+        let finalPartId = itm.spare_part_id;
+        const finalPartName = itm.spare_part_name.trim();
+        const finalPartNum = itm.part_number.trim() || `PN-${Date.now().toString().slice(-5)}${i + 1}`;
+        const finalUnit = itm.unit || "PCS";
+        const finalCat = itm.category || "General Spares";
+        const finalLoc = itm.location_id || locations[0]?.id || "loc-1";
+
+        // Check if item already exists in parts by ID, part_number, or exact part_name
+        let existingPart = parts.find(p => p.id === finalPartId);
+        if (!existingPart && finalPartNum && finalPartNum !== "-") {
+          existingPart = parts.find(p => p.part_number?.toLowerCase() === finalPartNum.toLowerCase());
+        }
+        if (!existingPart) {
+          existingPart = parts.find(p => p.part_name?.toLowerCase() === finalPartName.toLowerCase());
+        }
+
+        if (existingPart) {
+          finalPartId = existingPart.id;
+        } else {
+          // If not in database, create new sparepart in Master and Catalog!
+          const newPartId = `sp-${Date.now()}-${i}-${Math.floor(Math.random() * 1000)}`;
+          finalPartId = newPartId;
+          const newPartPayload: Partial<SparePart> = {
+            id: newPartId,
+            part_name: finalPartName,
+            part_number: finalPartNum,
+            sku: `SKU-${finalPartNum.replace(/[^a-zA-Z0-9]/g, "").slice(0, 10) || Date.now().toString().slice(-4)}`,
+            unit: finalUnit,
+            category: finalCat,
+            vendor_id: "vnd-1",
+            brand: "Generic",
+            maker: manualVendorName || "OEM / Supplier",
+            minimum_stock: 2,
+            maximum_stock: 100,
+            reorder_point: 5,
+            current_stock: 0,
+            reserved_stock: 0,
+            location_id: finalLoc,
+            description: `Suku cadang baru dari penerimaan manual PO ${manualPoNum}`
+          };
+
+          // 1. Create in Sparepart Master Database
+          if (onAddPart) {
+            try {
+              await onAddPart(newPartPayload);
+            } catch (pErr) {
+              console.warn("onAddPart error, trying fallback api.createSparePart:", pErr);
+              await api.createSparePart(newPartPayload);
+            }
+          } else {
+            await api.createSparePart(newPartPayload);
+          }
+
+          // 2. Sync to Catalog Sparepart (localStorage and events)
+          syncNewPartToCatalog({
+            id: newPartId,
+            part_name: finalPartName,
+            part_number: finalPartNum,
+            sku: newPartPayload.sku,
+            unit: finalUnit,
+            category: finalCat,
+            location_id: finalLoc,
+            description: newPartPayload.description
+          });
+
+          newItemsCreated.push(finalPartName);
+        }
+
+        preparedItems.push({
+          spare_part_id: finalPartId,
+          spare_part_name: finalPartName,
+          part_number: finalPartNum,
+          unit: finalUnit,
+          qty_ordered: Number(itm.qty),
+          qty_received: Number(itm.qty),
           qty_rejected: 0,
-          qc_status: "Verified",
-          item_matched: "Sesuai",
+          qc_status: "Verified" as const,
+          item_matched: "Sesuai" as const,
           qty_matched_status: "QTY Sesuai",
-          keeper_notes: "Input manual penyerahan penerimaan gudang"
-        }],
-        status: ReceivingStatus.ACCEPTED
+          keeper_notes: itm.keeper_notes ? `[Input Manual] ${itm.keeper_notes}` : "Input manual penyerahan penerimaan gudang",
+          photo_url: itm.photo_url || ""
+        });
+      }
+
+      // Create Receiving Inbound record
+      const initialLogs = [{
+        timestamp: new Date().toISOString(),
+        username: role === UserRole.SUPER_ADMIN ? "Super Admin" : "Penjaga Gudang",
+        action: "Penerimaan Manual Dicatat (Non-SPK)",
+        notes: manualOverallNotes || `Input penerimaan manual ${preparedItems.length} item. Fisik barang langsung terverifikasi lengkap di stok gudang.`,
+        status_before: "-",
+        status_after: ReceivingStatus.ACCEPTED
+      }];
+
+      const overallPhotoEvidence = manualPhotoUrl || preparedItems.find(i => i.photo_url)?.photo_url || "";
+
+      await onAddReceiving({
+        purchase_order_num: manualPoNum.trim(),
+        delivery_note_num: manualDnNum.trim() || `DN-MANUAL-${Math.floor(1000 + Math.random() * 9000)}`,
+        vendor_id: "vnd-manual",
+        vendor_name: manualVendorName.trim() || "Vendor Non-SPK / Manual",
+        items: preparedItems,
+        status: ReceivingStatus.ACCEPTED,
+        photo_evidence_url: overallPhotoEvidence,
+        keeper_notes: manualOverallNotes || "Penerimaan barang fisik manual gudang terverifikasi langsung.",
+        received_date: new Date().toISOString(),
+        completion_date: new Date().toISOString(),
+        audit_logs: initialLogs
       });
+
       setIsNewRecOpen(false);
-      setNewPoForm({
-        purchase_order_num: "",
-        delivery_note_num: "",
-        vendor_id: "vnd-1",
-        selectedPartId: parts[0]?.id || "",
-        qty_ordered: 5
-      });
-    } catch(e: any) {
-      alert(e.message || "Gagal menyimpan PO manual");
+      setManualPoNum("");
+      setManualDnNum("");
+      setManualVendorName("Vendor Non-SPK / Manual");
+      setManualPhotoUrl("");
+      setManualOverallNotes("");
+      setManualItems([createInitialManualItem()]);
+
+      const newMsg = newItemsCreated.length > 0 
+        ? `\n\n✨ ${newItemsCreated.length} item baru telah otomatis didaftarkan ke Sparepart Master & Catalog Sparepart:\n• ${newItemsCreated.join("\n• ")}`
+        : "";
+      alert(`✅ Berhasil menyimpan penerimaan manual (${preparedItems.length} item)!${newMsg}`);
+    } catch (e: any) {
+      alert(e.message || "Gagal menyimpan penerimaan barang manual");
+    } finally {
+      setIsSavingManual(false);
     }
   };
 
@@ -618,7 +902,7 @@ export default function ReceivingView({
   };
 
   return (
-    <div className="flex-1 flex flex-col h-full bg-slate-50 border-l border-slate-200">
+    <div className="flex-1 flex flex-col min-h-0 bg-slate-50 border-l border-slate-200">
       
       {/* Module Title Header */}
       <div className="bg-white border-b border-slate-200 px-6 py-5 flex flex-col md:flex-row md:items-center justify-between gap-4 shrink-0 shadow-xs">
@@ -705,7 +989,7 @@ export default function ReceivingView({
           </div>
         </div>
 
-        <div className="flex-1 overflow-auto">
+        <div className="flex-1 overflow-auto pb-16">
           {filtered.length === 0 ? (
             <div className="p-12 text-center text-slate-500 text-xs italic font-mono uppercase">
               Belum ada rekor penerimaan barang yang terdaftar.
@@ -730,6 +1014,7 @@ export default function ReceivingView({
                   <th className="p-3.5">No. SPK / Ref Pekerjaan</th>
                   <th className="p-3.5">No. Surat Jalan (DN)</th>
                   <th className="p-3.5">Vendor / Asal Kapal</th>
+                  <th className="p-3.5 text-center">Bukti Foto Fisik</th>
                   <th className="p-3.5">Jumlah Item &amp; QTY Datang</th>
                   <th className="p-3.5">Tanggal Penerimaan</th>
                   <th className="p-3.5 text-center">Status Verifikasi</th>
@@ -770,8 +1055,52 @@ export default function ReceivingView({
                       </td>
                       <td className="p-3.5 font-mono text-slate-600">{item.delivery_note_num}</td>
                       <td className="p-3.5 truncate max-w-[160px] font-bold text-slate-900">{item.vendor_name}</td>
+                      
+                      {/* DEDICATED PHOTO EVIDENCE COLUMN */}
+                      <td className="p-3.5 text-center" onClick={(e) => e.stopPropagation()}>
+                        {(() => {
+                          const itemPhoto = item.photo_evidence_url || item.items?.find((i: any) => i.photo_url)?.photo_url;
+                          if (itemPhoto) {
+                            return (
+                              <div 
+                                className="inline-flex flex-col items-center gap-1 group cursor-pointer"
+                                onClick={() => setPreviewPhotoModal(itemPhoto)}
+                                title="Klik untuk memperbesar / melihat foto bukti fisik"
+                              >
+                                <div className="relative w-12 h-12 rounded-lg overflow-hidden border-2 border-blue-400 group-hover:border-blue-600 shadow-xs transition-all bg-slate-100 flex items-center justify-center">
+                                  <img 
+                                    src={itemPhoto} 
+                                    alt="Bukti Fisik" 
+                                    className="w-full h-full object-cover group-hover:scale-110 transition-transform" 
+                                  />
+                                  <div className="absolute inset-0 bg-blue-900/30 opacity-0 group-hover:opacity-100 flex items-center justify-center transition-opacity">
+                                    <Maximize2 className="w-3.5 h-3.5 text-white" />
+                                  </div>
+                                </div>
+                                <span className="text-[9.5px] font-mono font-bold text-blue-700 hover:text-blue-900 flex items-center gap-0.5">
+                                  <Camera className="w-3 h-3 text-blue-600" /> Lihat Foto
+                                </span>
+                              </div>
+                            );
+                          }
+                          return (
+                            <div className="inline-flex flex-col items-center gap-1 text-slate-400">
+                              <div className="w-9 h-9 rounded-lg border border-dashed border-slate-250 bg-slate-50 flex items-center justify-center">
+                                <ImageIcon className="w-4 h-4 text-slate-300" />
+                              </div>
+                              <span className="text-[9px] font-mono text-slate-400">Tanpa Foto</span>
+                            </div>
+                          );
+                        })()}
+                      </td>
+
                       <td className="p-3.5">
                         <span className="font-bold block text-slate-900">{itemsCount} jenis barang</span>
+                        {item.items && item.items.length > 0 && (
+                          <div className="text-[10px] text-slate-600 font-sans max-w-[220px] truncate" title={item.items.map(i => `${i.spare_part_name} (${i.qty_received || i.qty_ordered} ${i.unit || 'PCS'})`).join(', ')}>
+                            {item.items.map(i => `${i.spare_part_name} (${i.qty_received || i.qty_ordered})`).join(' • ')}
+                          </div>
+                        )}
                         <span className={`text-[10px] font-mono font-bold block ${
                           item.status === ReceivingStatus.FULL_REJECT || item.items.some(i => i.item_matched === "Tidak Sesuai")
                             ? "text-rose-600 font-extrabold"
@@ -1129,6 +1458,55 @@ export default function ReceivingView({
               {/* TAB 1: PEMERIKSAAN FISIK & ITEMS */}
               {detailTab === "items" && (
                 <>
+                  {/* PROMINENT PHOTO EVIDENCE PREVIEW */}
+                  {(() => {
+                    const photoToDisplay = activeReceiving.photo_evidence_url || verificationItems.find(v => v.photo_url)?.photo_url;
+                    if (!photoToDisplay) return null;
+                    return (
+                      <div className="bg-gradient-to-r from-blue-50/90 via-slate-50 to-indigo-50/70 border-2 border-blue-200 rounded-xl p-3.5 flex flex-col sm:flex-row sm:items-center justify-between gap-3 shadow-xs">
+                        <div className="flex items-center gap-3">
+                          <div 
+                            className="w-16 h-16 rounded-xl overflow-hidden bg-slate-100 border-2 border-blue-400 shrink-0 cursor-pointer relative group shadow-xs hover:border-blue-600 transition-all"
+                            onClick={() => setPreviewPhotoModal(photoToDisplay)}
+                            title="Klik untuk memperbesar foto bukti fisik"
+                          >
+                            <img 
+                              src={photoToDisplay} 
+                              alt="Foto Bukti Fisik Penerimaan" 
+                              className="w-full h-full object-cover group-hover:scale-110 transition-transform" 
+                            />
+                            <div className="absolute inset-0 bg-slate-900/30 opacity-0 group-hover:opacity-100 flex items-center justify-center transition-opacity">
+                              <Maximize2 className="w-4 h-4 text-white drop-shadow" />
+                            </div>
+                          </div>
+                          <div>
+                            <div className="flex items-center gap-2">
+                              <span className="bg-blue-600 text-white text-[9.5px] font-mono font-bold px-2 py-0.5 rounded-full flex items-center gap-1">
+                                <Camera className="w-3 h-3" /> Bukti Foto Terlampir
+                              </span>
+                            </div>
+                            <h4 className="text-xs font-bold text-slate-900 mt-1 font-display uppercase tracking-tight">
+                              Foto Bukti Fisik Barang Datang / Surat Jalan
+                            </h4>
+                            <p className="text-[11px] text-slate-500 mt-0.5">
+                              Pemeriksaan fisik gudang — Klik gambar untuk melihat ukuran penuh.
+                            </p>
+                          </div>
+                        </div>
+                        <div className="flex items-center gap-2 self-end sm:self-center">
+                          <button
+                            type="button"
+                            onClick={() => setPreviewPhotoModal(photoToDisplay)}
+                            className="px-3 py-1.5 bg-blue-600 hover:bg-blue-700 text-white rounded-lg text-xs font-mono font-bold shadow-xs cursor-pointer flex items-center gap-1.5 transition-all"
+                          >
+                            <Maximize2 className="w-3.5 h-3.5" />
+                            <span>Lihat Foto Penuh</span>
+                          </button>
+                        </div>
+                      </div>
+                    );
+                  })()}
+
                   <div className="space-y-3">
                     <h4 className="text-[10px] font-bold text-slate-600 uppercase tracking-widest font-mono flex items-center gap-1.5">
                       <ClipboardCheck className="w-4 h-4 text-blue-600" />
@@ -1139,14 +1517,28 @@ export default function ReceivingView({
                       {verificationItems.map((vItem, idx) => (
                         <div key={idx} className="p-4 bg-white hover:bg-slate-50/70 space-y-2.5">
                           <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
-                            <div className="min-w-0">
-                              <span className="font-mono text-xs bg-slate-100 text-slate-800 px-2 py-0.5 rounded font-bold border border-slate-200">
-                                Part No: {vItem.part_number}
-                              </span>
-                              <p className="font-bold text-sm text-slate-900 mt-1">{vItem.spare_part_name}</p>
-                              <p className="text-[11px] font-bold text-blue-700 mt-0.5">
-                                QTY Dipesan (SPK): {vItem.qty_ordered} {vItem.unit || "PCS"}
-                              </p>
+                            <div className="flex items-center gap-3 min-w-0">
+                              {vItem.photo_url && (
+                                <div 
+                                  className="w-12 h-12 rounded-lg overflow-hidden border-2 border-blue-300 hover:border-blue-500 shrink-0 cursor-pointer relative group shadow-2xs"
+                                  onClick={() => setPreviewPhotoModal(vItem.photo_url || null)}
+                                  title="Klik untuk memperbesar foto item ini"
+                                >
+                                  <img src={vItem.photo_url} alt={vItem.spare_part_name} className="w-full h-full object-cover group-hover:scale-110 transition-transform" />
+                                  <div className="absolute inset-0 bg-blue-900/30 opacity-0 group-hover:opacity-100 flex items-center justify-center transition-opacity">
+                                    <Maximize2 className="w-3.5 h-3.5 text-white" />
+                                  </div>
+                                </div>
+                              )}
+                              <div className="min-w-0">
+                                <span className="font-mono text-xs bg-slate-100 text-slate-800 px-2 py-0.5 rounded font-bold border border-slate-200">
+                                  Part No: {vItem.part_number}
+                                </span>
+                                <p className="font-bold text-sm text-slate-900 mt-1">{vItem.spare_part_name}</p>
+                                <p className="text-[11px] font-bold text-blue-700 mt-0.5">
+                                  QTY Dipesan (SPK): {vItem.qty_ordered} {vItem.unit || "PCS"}
+                                </p>
+                              </div>
                             </div>
 
                             {/* QC controls */}
@@ -1340,6 +1732,36 @@ export default function ReceivingView({
                     )}
                   </div>
 
+                  {/* PRATINJAU FOTO BUKTI FISIK GUDANG JIKA ADA */}
+                  {activeReceiving.photo_evidence_url && (
+                    <div className="bg-slate-50 border border-slate-200 rounded-xl p-4 space-y-2">
+                      <div className="flex items-center justify-between">
+                        <h4 className="text-xs font-bold font-display uppercase tracking-tight text-slate-800 flex items-center gap-2">
+                          <Camera className="w-4 h-4 text-blue-600" />
+                          Foto Bukti Fisik Penerimaan Barang
+                        </h4>
+                        <button
+                          type="button"
+                          onClick={() => setPreviewPhotoModal(activeReceiving.photo_evidence_url || null)}
+                          className="text-[10px] font-bold text-blue-600 hover:text-blue-800 bg-blue-50 px-2 py-1 rounded border border-blue-200 cursor-pointer flex items-center gap-1"
+                        >
+                          <Maximize2 className="w-3 h-3" />
+                          Lihat Ukuran Penuh
+                        </button>
+                      </div>
+                      <div 
+                        className="rounded-lg overflow-hidden border border-slate-200 bg-white max-h-60 flex items-center justify-center cursor-pointer group"
+                        onClick={() => setPreviewPhotoModal(activeReceiving.photo_evidence_url || null)}
+                      >
+                        <img 
+                          src={activeReceiving.photo_evidence_url} 
+                          alt="Foto Bukti Penerimaan" 
+                          className="max-h-60 w-auto object-contain group-hover:scale-105 transition-transform" 
+                        />
+                      </div>
+                    </div>
+                  )}
+
                   {/* Notice Banner - No Approval Required */}
                   <div className="bg-emerald-50 border border-emerald-200 rounded-lg p-3 text-xs text-emerald-900 flex items-center gap-2 font-medium">
                     <CheckCircle2 className="w-4 h-4 text-emerald-600 shrink-0" />
@@ -1531,11 +1953,13 @@ export default function ReceivingView({
 
       {/* NEW SPK-BASED INBOUND GOODS RECEIVING MODAL */}
       {isNewRecOpen && (
-        <div className="fixed inset-0 bg-slate-950/60 backdrop-blur-xs flex items-center justify-center z-50 p-4 overflow-y-auto">
-          <div className="bg-white text-slate-800 rounded-xl shadow-2xl w-full max-w-2xl overflow-hidden border border-slate-200">
+        <div className="fixed inset-0 bg-slate-950/60 backdrop-blur-xs flex items-center justify-center z-50 p-3 sm:p-4 overflow-y-auto">
+          <div className={`bg-white text-slate-800 rounded-xl shadow-2xl w-full ${
+            receivingSourceMode === "manual" ? "max-w-4xl" : "max-w-2xl"
+          } max-h-[92vh] flex flex-col overflow-hidden border border-slate-200 transition-all duration-150`}>
             
             {/* Modal Header */}
-            <div className="bg-slate-900 text-white px-6 py-4 flex justify-between items-center border-b border-slate-800">
+            <div className="bg-slate-900 text-white px-6 py-4 flex justify-between items-center border-b border-slate-800 shrink-0">
               <div className="flex items-center gap-2">
                 <ClipboardCheck className="w-5 h-5 text-blue-400" />
                 <h3 className="font-display font-extrabold text-xs uppercase tracking-widest">
@@ -1550,7 +1974,7 @@ export default function ReceivingView({
               </button>
             </div>
 
-            <div className="p-6 space-y-5 font-sans text-xs">
+            <div className="p-6 space-y-5 font-sans text-xs flex-1 overflow-y-auto">
               
               {/* Mode Toggle Switcher */}
               <div className="flex bg-slate-100 p-1 rounded-lg border border-slate-200">
@@ -1772,97 +2196,625 @@ export default function ReceivingView({
 
                 </div>
               ) : (
-                /* Manual PO Form */
-                <div className="space-y-4">
+                /* Multi-Item Manual / Non-SPK Receiving Form */
+                <div className="space-y-5">
+                  
+                  {/* Header Meta: PO, Surat Jalan, Vendor */}
+                  <div className="bg-slate-50 border border-slate-200 p-4 rounded-xl space-y-3">
+                    <div className="flex items-center justify-between pb-1 border-b border-slate-200">
+                      <span className="font-mono text-[10px] font-extrabold uppercase text-slate-700 tracking-wider flex items-center gap-1.5">
+                        <FileCheck className="w-3.5 h-3.5 text-blue-600" />
+                        Informasi Referensi &amp; Dokumen Penerimaan Manual
+                      </span>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setManualPoNum(`PO-${new Date().getFullYear()}-M${Math.floor(1000 + Math.random() * 9000)}`);
+                          if (!manualDnNum) setManualDnNum(`DN-MANUAL-${Math.floor(1000 + Math.random() * 9000)}`);
+                        }}
+                        className="text-[10px] font-mono font-bold text-blue-600 hover:text-blue-700 cursor-pointer bg-white px-2 py-0.5 rounded border border-blue-200 shadow-2xs"
+                      >
+                        ⚡ Buat No. PO Otomatis
+                      </button>
+                    </div>
+
+                    <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+                      <div>
+                        <label className="text-[10px] uppercase font-bold text-slate-600 font-mono block mb-1">
+                          Nomor Referensi PO / Dokumen *
+                        </label>
+                        <input
+                          type="text"
+                          required
+                          value={manualPoNum}
+                          onChange={(e) => setManualPoNum(e.target.value)}
+                          placeholder="PO-2026-M8841"
+                          className="w-full bg-white border border-slate-300 p-2 text-xs font-mono font-bold text-slate-900 rounded-lg focus:ring-1 focus:ring-blue-500 outline-none"
+                        />
+                      </div>
+
+                      <div>
+                        <label className="text-[10px] uppercase font-bold text-slate-600 font-mono block mb-1">
+                          Nomor Surat Jalan (DN)
+                        </label>
+                        <input
+                          type="text"
+                          value={manualDnNum}
+                          onChange={(e) => setManualDnNum(e.target.value)}
+                          placeholder="DN-VND-442"
+                          className="w-full bg-white border border-slate-300 p-2 text-xs font-mono text-slate-900 rounded-lg focus:ring-1 focus:ring-blue-500 outline-none"
+                        />
+                      </div>
+
+                      <div>
+                        <label className="text-[10px] uppercase font-bold text-slate-600 font-mono block mb-1">
+                          Nama Vendor / Asal Pengirim
+                        </label>
+                        <input
+                          type="text"
+                          value={manualVendorName}
+                          onChange={(e) => setManualVendorName(e.target.value)}
+                          placeholder="PT. Bahtera Logistik / Vendor Bebas"
+                          className="w-full bg-white border border-slate-300 p-2 text-xs text-slate-900 rounded-lg focus:ring-1 focus:ring-blue-500 outline-none font-semibold"
+                        />
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* Attachment Foto / Gambar Bukti Fisik Barang (Opsional) */}
+                  <div className="bg-slate-50 border border-slate-200 p-4 rounded-xl space-y-3">
+                    <div className="flex items-center justify-between">
+                      <div className="flex items-center gap-2">
+                        <Camera className="w-4 h-4 text-blue-600" />
+                        <div>
+                          <h4 className="font-bold text-xs text-slate-900 font-display uppercase tracking-wide">
+                            Lampiran Foto / Bukti Fisik Barang Datang (Opsional)
+                          </h4>
+                          <p className="text-[10px] text-slate-500">
+                            Unggah foto fisik barang, dokumen surat jalan, atau kondisi kemasan barang datang.
+                          </p>
+                        </div>
+                      </div>
+
+                      {manualPhotoUrl && (
+                        <button
+                          type="button"
+                          onClick={() => setManualPhotoUrl("")}
+                          className="text-[10px] font-mono font-bold text-rose-600 hover:text-rose-700 bg-rose-50 px-2 py-1 rounded border border-rose-200 cursor-pointer"
+                        >
+                          Hapus Foto
+                        </button>
+                      )}
+                    </div>
+
+                    {manualPhotoUrl ? (
+                      <div className="flex items-center gap-3 bg-white p-2.5 rounded-lg border border-slate-200">
+                        <div 
+                          className="w-20 h-16 rounded overflow-hidden bg-slate-100 border border-slate-300 shrink-0 cursor-pointer relative group"
+                          onClick={() => setPreviewPhotoModal(manualPhotoUrl)}
+                        >
+                          <img src={manualPhotoUrl} alt="Bukti Fisik" className="w-full h-full object-cover group-hover:scale-105 transition-transform" />
+                          <div className="absolute inset-0 bg-slate-900/30 opacity-0 group-hover:opacity-100 flex items-center justify-center transition-opacity">
+                            <Maximize2 className="w-3.5 h-3.5 text-white" />
+                          </div>
+                        </div>
+                        <div className="min-w-0 flex-1">
+                          <span className="text-[11px] font-bold text-emerald-700 flex items-center gap-1">
+                            <CheckCircle2 className="w-3.5 h-3.5" /> Foto Bukti Terlampir
+                          </span>
+                          <p className="text-[10px] text-slate-500 mt-0.5">
+                            Foto telah siap disimpan bersama data penerimaan barang masuk ini.
+                          </p>
+                        </div>
+                        <button
+                          type="button"
+                          onClick={() => setPreviewPhotoModal(manualPhotoUrl)}
+                          className="px-2.5 py-1 bg-slate-100 hover:bg-slate-200 text-slate-700 font-mono text-[10px] font-bold rounded cursor-pointer"
+                        >
+                          Perbesar
+                        </button>
+                      </div>
+                    ) : (
+                      <label className="border-2 border-dashed border-slate-300 hover:border-blue-400 bg-white hover:bg-blue-50/30 transition-all rounded-xl p-3 flex flex-col sm:flex-row items-center justify-center gap-2.5 cursor-pointer text-center">
+                        <UploadCloud className="w-5 h-5 text-blue-600 shrink-0" />
+                        <div>
+                          <span className="text-xs font-bold text-blue-700">Pilih Foto dari Galeri / Kamera</span>
+                          <span className="text-[10px] text-slate-500 ml-1">(JPG, PNG, WebP)</span>
+                        </div>
+                        <input
+                          type="file"
+                          accept="image/*"
+                          className="hidden"
+                          onChange={(e) => handlePhotoUpload(e)}
+                        />
+                      </label>
+                    )}
+                  </div>
+
+                  {/* Multi-Item Interactive Input Section */}
+                  <div className="space-y-3">
+                    <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 pb-1 border-b border-slate-200">
+                      <div>
+                        <h4 className="font-bold text-xs text-slate-900 uppercase font-mono tracking-wider flex items-center gap-2">
+                          <Boxes className="w-4 h-4 text-blue-600" />
+                          Daftar Item Suku Cadang Masuk (Multi-Item Input)
+                        </h4>
+                        <p className="text-[10px] text-slate-500">
+                          Bisa ketik nama item baru langsung (otomatis disinkronkan ke Master &amp; Catalog) atau cari dari suku cadang terdaftar.
+                        </p>
+                      </div>
+
+                      <button
+                        type="button"
+                        onClick={handleAddManualItemRow}
+                        className="px-3 py-1.5 bg-blue-600 hover:bg-blue-700 text-white rounded-lg text-xs font-mono font-bold uppercase cursor-pointer flex items-center gap-1.5 shadow-2xs transition-colors self-start sm:self-auto"
+                      >
+                        <Plus className="w-3.5 h-3.5" />
+                        <span>+ Tambah Item Barang</span>
+                      </button>
+                    </div>
+
+                    <div className="space-y-3">
+                      {manualItems.map((item, idx) => {
+                        const matchedParts = parts.filter(p => {
+                          const q = (item.spare_part_name || "").toLowerCase().trim();
+                          if (!q) return false;
+                          return p.part_name.toLowerCase().includes(q) || (p.part_number && p.part_number.toLowerCase().includes(q));
+                        }).slice(0, 6);
+
+                        return (
+                          <div 
+                            key={item.tempId} 
+                            className="bg-white border-2 border-slate-200 hover:border-slate-300 rounded-xl p-4 space-y-3 shadow-xs relative transition-all"
+                          >
+                            {/* Row Header */}
+                            <div className="flex items-center justify-between pb-2 border-b border-slate-100">
+                              <div className="flex items-center gap-2 flex-wrap">
+                                <span className="bg-slate-900 text-white font-mono text-[10px] font-black px-2 py-0.5 rounded">
+                                  #{idx + 1}
+                                </span>
+                                <span className="font-bold text-xs text-slate-800">
+                                  Item Barang Masuk
+                                </span>
+                                {item.isNewPart && (
+                                  <span className="bg-indigo-100 text-indigo-900 border border-indigo-250 text-[10px] font-mono font-black px-2 py-0.5 rounded-full flex items-center gap-1">
+                                    <Sparkles className="w-3 h-3 text-indigo-600" />
+                                    ✨ Item Baru (Otomatis Dibuat ke Master &amp; Catalog)
+                                  </span>
+                                )}
+                              </div>
+
+                              {manualItems.length > 1 && (
+                                <button
+                                  type="button"
+                                  onClick={() => handleRemoveManualItemRow(idx)}
+                                  className="text-rose-600 hover:text-rose-800 bg-rose-50 hover:bg-rose-100 px-2.5 py-1 rounded-lg text-[10px] font-mono font-bold flex items-center gap-1 cursor-pointer transition-colors"
+                                  title="Hapus baris item ini"
+                                >
+                                  <Trash2 className="w-3 h-3" />
+                                  <span>Hapus Baris</span>
+                                </button>
+                              )}
+                            </div>
+
+                            {/* Main Item Fields */}
+                            <div className="grid grid-cols-1 md:grid-cols-12 gap-3">
+                              
+                              {/* Item Name (Searchable / Custom typeable) */}
+                              <div className="md:col-span-5 relative">
+                                <label className="text-[10px] uppercase font-bold text-slate-600 font-mono block mb-1">
+                                  Pilih / Ketik Nama Item Sparepart *
+                                </label>
+                                <div className="relative">
+                                  <input
+                                    type="text"
+                                    required
+                                    value={item.spare_part_name}
+                                    onFocus={() => setActiveItemSearchIdx(idx)}
+                                    onChange={(e) => {
+                                      const text = e.target.value;
+                                      setManualItems(prev => {
+                                        const up = [...prev];
+                                        up[idx].spare_part_name = text;
+                                        
+                                        const matched = parts.find(p => 
+                                          p.part_name.toLowerCase() === text.trim().toLowerCase() ||
+                                          (p.part_number && p.part_number.toLowerCase() === text.trim().toLowerCase())
+                                        );
+
+                                        if (matched) {
+                                          up[idx].spare_part_id = matched.id;
+                                          up[idx].part_number = matched.part_number;
+                                          up[idx].unit = matched.unit || "PCS";
+                                          up[idx].category = matched.category || "General Spares";
+                                          up[idx].location_id = matched.location_id || locations[0]?.id || "loc-1";
+                                          up[idx].isNewPart = false;
+                                        } else {
+                                          up[idx].spare_part_id = "";
+                                          up[idx].isNewPart = text.trim().length > 0;
+                                        }
+                                        return up;
+                                      });
+                                    }}
+                                    placeholder="Ketik nama item baru atau cari dari master..."
+                                    className="w-full bg-slate-50 border border-slate-300 p-2 text-xs font-bold text-slate-900 rounded-lg focus:ring-2 focus:ring-blue-500 focus:bg-white outline-none"
+                                  />
+                                  <Search className="w-3.5 h-3.5 text-slate-400 absolute right-2.5 top-3 pointer-events-none" />
+                                </div>
+
+                                {/* Autocomplete Dropdown List */}
+                                {activeItemSearchIdx === idx && matchedParts.length > 0 && (
+                                  <div className="absolute left-0 right-0 top-full mt-1 bg-white border border-slate-200 rounded-lg shadow-xl z-30 max-h-48 overflow-y-auto divide-y divide-slate-100">
+                                    <div className="p-1.5 bg-slate-100 text-[9px] font-mono font-bold text-slate-600 uppercase">
+                                      Pilih Dari Suku Cadang Terdaftar:
+                                    </div>
+                                    {matchedParts.map(p => (
+                                      <button
+                                        key={p.id}
+                                        type="button"
+                                        onClick={() => {
+                                          setManualItems(prev => {
+                                            const up = [...prev];
+                                            up[idx].spare_part_id = p.id;
+                                            up[idx].spare_part_name = p.part_name;
+                                            up[idx].part_number = p.part_number;
+                                            up[idx].unit = p.unit || "PCS";
+                                            up[idx].category = p.category || "General Spares";
+                                            up[idx].location_id = p.location_id || locations[0]?.id || "loc-1";
+                                            up[idx].isNewPart = false;
+                                            return up;
+                                          });
+                                          setActiveItemSearchIdx(null);
+                                        }}
+                                        className="w-full text-left p-2.5 hover:bg-blue-50 flex items-center justify-between text-xs cursor-pointer transition-colors"
+                                      >
+                                        <div>
+                                          <p className="font-bold text-slate-900">{p.part_name}</p>
+                                          <span className="font-mono text-[10px] text-slate-500 font-semibold">
+                                            PN: {p.part_number} | Kategori: {p.category}
+                                          </span>
+                                        </div>
+                                        <div className="text-right shrink-0">
+                                          <span className="font-mono text-[10px] font-black text-blue-700 bg-blue-50 px-1.5 py-0.5 rounded">
+                                            Stok: {p.current_stock} {p.unit}
+                                          </span>
+                                        </div>
+                                      </button>
+                                    ))}
+                                    <div 
+                                      className="p-2 text-center bg-slate-50 text-[10px] font-mono text-blue-700 font-bold hover:bg-slate-100 cursor-pointer"
+                                      onClick={() => setActiveItemSearchIdx(null)}
+                                    >
+                                      ✓ Gunakan sebagai item baru: "{item.spare_part_name}"
+                                    </div>
+                                  </div>
+                                )}
+                              </div>
+
+                              {/* Part Number */}
+                              <div className="md:col-span-3">
+                                <label className="text-[10px] uppercase font-bold text-slate-600 font-mono block mb-1">
+                                  Part Number (Nomor Suku Cadang)
+                                </label>
+                                <input
+                                  type="text"
+                                  value={item.part_number}
+                                  onChange={(e) => {
+                                    const val = e.target.value;
+                                    setManualItems(prev => {
+                                      const up = [...prev];
+                                      up[idx].part_number = val;
+                                      return up;
+                                    });
+                                  }}
+                                  placeholder="Contoh: 746673-51108"
+                                  className="w-full bg-slate-50 border border-slate-300 p-2 text-xs font-mono font-bold text-slate-800 rounded-lg focus:ring-1 focus:ring-blue-500 outline-none"
+                                />
+                              </div>
+
+                              {/* Unit / Satuan */}
+                              <div className="md:col-span-2">
+                                <label className="text-[10px] uppercase font-bold text-slate-600 font-mono block mb-1">
+                                  Satuan (Unit)
+                                </label>
+                                <select
+                                  value={item.unit}
+                                  onChange={(e) => {
+                                    const val = e.target.value;
+                                    setManualItems(prev => {
+                                      const up = [...prev];
+                                      up[idx].unit = val;
+                                      return up;
+                                    });
+                                  }}
+                                  className="w-full bg-slate-50 border border-slate-300 p-2 text-xs font-bold text-slate-900 rounded-lg focus:ring-1 focus:ring-blue-500 outline-none cursor-pointer"
+                                >
+                                  {["PCS", "SET", "UNIT", "KG", "LTR", "METER", "BOX", "ROLL", "LOT", "PACK"].map(u => (
+                                    <option key={u} value={u}>{u}</option>
+                                  ))}
+                                </select>
+                              </div>
+
+                              {/* QTY Received */}
+                              <div className="md:col-span-2">
+                                <label className="text-[10px] uppercase font-bold text-slate-600 font-mono block mb-1">
+                                  Jumlah QTY Datang *
+                                </label>
+                                <input
+                                  type="number"
+                                  min={1}
+                                  required
+                                  value={item.qty}
+                                  onChange={(e) => {
+                                    const val = Math.max(1, Number(e.target.value) || 1);
+                                    setManualItems(prev => {
+                                      const up = [...prev];
+                                      up[idx].qty = val;
+                                      return up;
+                                    });
+                                  }}
+                                  className="w-full bg-slate-50 border border-slate-300 p-2 text-xs text-center font-mono font-black text-blue-700 rounded-lg focus:ring-1 focus:ring-blue-500 outline-none"
+                                />
+                              </div>
+
+                            </div>
+
+                            {/* Secondary Fields: Category, Location, Notes, Item Photo */}
+                            <div className="grid grid-cols-1 md:grid-cols-12 gap-3 pt-1 border-t border-slate-100">
+                              
+                              {/* Kategori */}
+                              <div className="md:col-span-3">
+                                <label className="text-[9px] uppercase font-bold text-slate-500 font-mono block mb-1">
+                                  Kategori Suku Cadang
+                                </label>
+                                <select
+                                  value={item.category}
+                                  onChange={(e) => {
+                                    const val = e.target.value;
+                                    setManualItems(prev => {
+                                      const up = [...prev];
+                                      up[idx].category = val;
+                                      return up;
+                                    });
+                                  }}
+                                  className="w-full bg-slate-50 border border-slate-200 p-1.5 text-[11px] font-medium text-slate-700 rounded-md outline-none cursor-pointer"
+                                >
+                                  {["General Spares", "Propulsion System", "Main Engine", "Auxiliary Engine", "Deck Machinery", "Electrical & Automation", "Safety & Navigation", "Consumables"].map(c => (
+                                    <option key={c} value={c}>{c}</option>
+                                  ))}
+                                </select>
+                              </div>
+
+                              {/* Lokasi Rak Gudang */}
+                              <div className="md:col-span-3">
+                                <label className="text-[9px] uppercase font-bold text-slate-500 font-mono block mb-1">
+                                  Lokasi Rak Penyimpanan
+                                </label>
+                                <select
+                                  value={item.location_id}
+                                  onChange={(e) => {
+                                    const val = e.target.value;
+                                    setManualItems(prev => {
+                                      const up = [...prev];
+                                      up[idx].location_id = val;
+                                      return up;
+                                    });
+                                  }}
+                                  className="w-full bg-slate-50 border border-slate-200 p-1.5 text-[11px] font-mono text-slate-700 rounded-md outline-none cursor-pointer"
+                                >
+                                  {locations.length > 0 ? (
+                                    locations.map(l => (
+                                      <option key={l.id} value={l.id}>{l.code || `${l.warehouse} - ${l.zone}`} ({l.id})</option>
+                                    ))
+                                  ) : (
+                                    <>
+                                      <option value="loc-1">Rak Gudang Utama (loc-1)</option>
+                                      <option value="loc-2">Rak Mesin / Engine (loc-2)</option>
+                                      <option value="loc-3">Rak Deck &amp; Navigasi (loc-3)</option>
+                                    </>
+                                  )}
+                                </select>
+                              </div>
+
+                              {/* Item Keeper Notes */}
+                              <div className="md:col-span-4">
+                                <label className="text-[9px] uppercase font-bold text-slate-500 font-mono block mb-1">
+                                  Catatan Fisik Item (Opsional)
+                                </label>
+                                <input
+                                  type="text"
+                                  value={item.keeper_notes}
+                                  onChange={(e) => {
+                                    const val = e.target.value;
+                                    setManualItems(prev => {
+                                      const up = [...prev];
+                                      up[idx].keeper_notes = val;
+                                      return up;
+                                    });
+                                  }}
+                                  placeholder="Contoh: Kondisi segel baru, kemasan utuh..."
+                                  className="w-full bg-slate-50 border border-slate-200 p-1.5 text-[11px] text-slate-800 rounded-md outline-none"
+                                />
+                              </div>
+
+                              {/* Optional Item Photo */}
+                              <div className="md:col-span-2 flex flex-col justify-end">
+                                {item.photo_url ? (
+                                  <div className="flex items-center gap-1.5">
+                                    <div 
+                                      className="w-8 h-8 rounded border border-slate-300 overflow-hidden cursor-pointer"
+                                      onClick={() => setPreviewPhotoModal(item.photo_url || null)}
+                                    >
+                                      <img src={item.photo_url} alt="Item" className="w-full h-full object-cover" />
+                                    </div>
+                                    <button
+                                      type="button"
+                                      onClick={() => {
+                                        setManualItems(prev => {
+                                          const up = [...prev];
+                                          up[idx].photo_url = "";
+                                          return up;
+                                        });
+                                      }}
+                                      className="text-rose-600 text-[10px] hover:underline cursor-pointer"
+                                    >
+                                      Hapus
+                                    </button>
+                                  </div>
+                                ) : (
+                                  <label className="flex items-center gap-1 px-2 py-1.5 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-md text-[10px] font-mono font-bold cursor-pointer justify-center transition-colors">
+                                    <Camera className="w-3 h-3 text-slate-500" />
+                                    <span>+ Foto Item</span>
+                                    <input
+                                      type="file"
+                                      accept="image/*"
+                                      className="hidden"
+                                      onChange={(e) => handlePhotoUpload(e, idx)}
+                                    />
+                                  </label>
+                                )}
+                              </div>
+
+                            </div>
+                          </div>
+                        );
+                      })}
+                    </div>
+
+                    {/* Summary Bar */}
+                    <div className="bg-blue-50/80 border border-blue-200 p-3 rounded-xl flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+                      <div className="flex items-center gap-2">
+                        <Boxes className="w-4 h-4 text-blue-600 shrink-0" />
+                        <span className="text-xs font-bold text-blue-900">
+                          Total Rincian: <span className="font-black font-mono text-blue-700">{manualItems.length} Jenis Barang</span> | Total QTY: <span className="font-black font-mono text-blue-700">{manualItems.reduce((acc, i) => acc + (Number(i.qty) || 0), 0)} Unit</span>
+                        </span>
+                      </div>
+                      <div className="text-[10px] font-mono text-blue-700">
+                        {manualItems.filter(i => i.isNewPart).length > 0 ? (
+                          <span className="font-extrabold text-indigo-700">
+                            ✨ {manualItems.filter(i => i.isNewPart).length} item baru akan didaftarkan ke Master &amp; Catalog
+                          </span>
+                        ) : (
+                          <span>Semua item terverifikasi</span>
+                        )}
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* Overall Keeper Notes */}
                   <div>
                     <label className="text-[10px] uppercase font-bold text-slate-600 font-mono block mb-1">
-                      Nomor Referensi PO / Dokumen *
+                      Catatan Penjaga Gudang (Keseluruhan)
                     </label>
-                    <input
-                      type="text"
-                      required
-                      value={newPoForm.purchase_order_num}
-                      onChange={(e) => setNewPoForm({ ...newPoForm, purchase_order_num: e.target.value })}
-                      placeholder="PO-2026-X9921"
-                      className="w-full bg-slate-50 border border-slate-300 p-2 text-xs font-mono font-bold text-slate-800 rounded-lg"
+                    <textarea
+                      rows={2}
+                      value={manualOverallNotes}
+                      onChange={(e) => setManualOverallNotes(e.target.value)}
+                      placeholder="Tuliskan catatan pemeriksaan fisik penerimaan manual non-SPK..."
+                      className="w-full bg-slate-50 border border-slate-300 rounded-lg p-2 text-xs text-slate-800 focus:ring-1 focus:ring-blue-500 outline-none"
                     />
                   </div>
 
-                  <div>
-                    <label className="text-[10px] uppercase font-bold text-slate-600 font-mono block mb-1">
-                      Nomor Surat Jalan (DN)
-                    </label>
-                    <input
-                      type="text"
-                      value={newPoForm.delivery_note_num}
-                      onChange={(e) => setNewPoForm({ ...newPoForm, delivery_note_num: e.target.value })}
-                      placeholder="DN-VND-442"
-                      className="w-full bg-slate-50 border border-slate-300 p-2 text-xs font-mono rounded-lg"
-                    />
+                  {/* Informational Banner */}
+                  <div className="p-3 bg-emerald-50 border border-emerald-200 text-emerald-900 rounded-lg text-[11px] flex items-center gap-2 font-medium">
+                    <CheckCircle2 className="w-4 h-4 text-emerald-600 shrink-0" />
+                    <span>
+                      <strong>Verifikasi Langsung Penjaga Gudang (Tanpa Approval):</strong> Semua barang penerimaan manual ini langsung masuk ke <strong>Stok Fisik Gudang</strong> dan disinkronkan ke <strong>Sparepart Master &amp; Catalog Sparepart</strong> sehingga siap digunakan untuk <strong>TUG 5</strong>.
+                    </span>
                   </div>
 
-                  <div>
-                    <label className="text-[10px] uppercase font-bold text-slate-600 font-mono block mb-1">
-                      Pilih Item Sparepart
-                    </label>
-                    <select
-                      value={newPoForm.selectedPartId}
-                      onChange={(e) => setNewPoForm({ ...newPoForm, selectedPartId: e.target.value })}
-                      className="w-full bg-slate-50 border border-slate-300 p-2 text-xs text-slate-900 font-bold rounded-lg cursor-pointer"
-                    >
-                      {parts.map(p => (
-                        <option key={p.id} value={p.id}>
-                          {p.part_name} ({p.part_number})
-                        </option>
-                      ))}
-                    </select>
-                  </div>
-
-                  <div>
-                    <label className="text-[10px] uppercase font-bold text-slate-600 font-mono block mb-1">
-                      Jumlah QTY Datang
-                    </label>
-                    <input
-                      type="number"
-                      value={newPoForm.qty_ordered}
-                      onChange={(e) => setNewPoForm({ ...newPoForm, qty_ordered: Number(e.target.value) })}
-                      className="w-full bg-slate-50 border border-slate-300 p-2 text-xs text-slate-900 font-mono rounded-lg"
-                    />
-                  </div>
                 </div>
               )}
 
-              {/* Modal Footer Actions */}
-              <div className="bg-slate-900 border-t border-slate-200 p-4 -mx-6 -mb-6 flex justify-end gap-3 font-mono">
+            </div>
+
+            {/* Modal Footer Actions (Sticky Bottom) */}
+            <div className="bg-slate-900 border-t border-slate-800 p-4 px-6 flex justify-end gap-3 font-mono shrink-0">
+              <button
+                type="button"
+                onClick={() => setIsNewRecOpen(false)}
+                className="px-4 py-2 bg-slate-800 hover:bg-slate-700 text-slate-300 rounded-lg text-xs font-bold uppercase cursor-pointer"
+              >
+                Batal
+              </button>
+
+              {receivingSourceMode === "spk" ? (
                 <button
                   type="button"
-                  onClick={() => setIsNewRecOpen(false)}
-                  className="px-4 py-2 bg-slate-800 hover:bg-slate-700 text-slate-300 rounded-lg text-xs font-bold uppercase cursor-pointer"
+                  onClick={handleCreateInboundFromSpk}
+                  disabled={!selectedSpkNumber}
+                  className="px-5 py-2 bg-emerald-600 hover:bg-emerald-500 disabled:opacity-50 text-white rounded-lg text-xs font-bold uppercase transition-colors cursor-pointer flex items-center gap-1.5 shadow-xs"
                 >
-                  Batal
+                  <CheckCircle2 className="w-4 h-4" />
+                  <span>Konfirmasi &amp; Simpan Penerimaan Gudang</span>
                 </button>
+              ) : (
+                <button
+                  type="button"
+                  onClick={handleCreateInboundPo}
+                  disabled={isSavingManual}
+                  className="px-5 py-2 bg-blue-600 hover:bg-blue-500 disabled:opacity-50 text-white rounded-lg text-xs font-bold uppercase transition-colors cursor-pointer flex items-center gap-1.5 shadow-xs"
+                >
+                  <CheckCircle2 className="w-4 h-4" />
+                  <span>{isSavingManual ? "Menyimpan &amp; Sinkronisasi..." : "Simpan Penerimaan Manual"}</span>
+                </button>
+              )}
+            </div>
 
-                {receivingSourceMode === "spk" ? (
-                  <button
-                    type="button"
-                    onClick={handleCreateInboundFromSpk}
-                    disabled={!selectedSpkNumber}
-                    className="px-5 py-2 bg-emerald-600 hover:bg-emerald-500 disabled:opacity-50 text-white rounded-lg text-xs font-bold uppercase transition-colors cursor-pointer flex items-center gap-1.5"
-                  >
-                    <CheckCircle2 className="w-4 h-4" />
-                    <span>Konfirmasi &amp; Simpan Penerimaan Gudang</span>
-                  </button>
-                ) : (
-                  <button
-                    type="button"
-                    onClick={handleCreateInboundPo}
-                    className="px-5 py-2 bg-blue-600 hover:bg-blue-500 text-white rounded-lg text-xs font-bold uppercase transition-colors cursor-pointer"
-                  >
-                    Simpan Penerimaan Manual
-                  </button>
-                )}
+          </div>
+        </div>
+      )}
+
+      {/* FULL SCREEN PHOTO LIGHTBOX MODAL */}
+      {previewPhotoModal && (
+        <div 
+          className="fixed inset-0 bg-slate-950/85 backdrop-blur-sm flex items-center justify-center z-[70] p-4 cursor-pointer"
+          onClick={() => setPreviewPhotoModal(null)}
+        >
+          <div 
+            className="bg-slate-900 rounded-2xl max-w-4xl max-h-[92vh] overflow-hidden border border-slate-700 shadow-2xl flex flex-col items-center relative"
+            onClick={(e) => e.stopPropagation()}
+          >
+            {/* Modal Top Header Bar */}
+            <div className="w-full bg-slate-850 px-5 py-3 border-b border-slate-800 flex items-center justify-between text-white">
+              <div className="flex items-center gap-2 font-display text-xs font-bold uppercase tracking-wider text-slate-200">
+                <Camera className="w-4 h-4 text-blue-400" />
+                <span>Foto Bukti Fisik Penerimaan Barang Masuk</span>
               </div>
+              <div className="flex items-center gap-2">
+                <a
+                  href={previewPhotoModal}
+                  download={`bukti-penerimaan-${Date.now()}.jpg`}
+                  className="px-3 py-1.5 bg-slate-800 hover:bg-slate-700 text-blue-400 hover:text-blue-300 text-xs font-mono font-bold rounded-lg border border-slate-700 flex items-center gap-1.5 transition-colors cursor-pointer"
+                  title="Unduh file foto ini ke komputer"
+                >
+                  <Download className="w-3.5 h-3.5" />
+                  <span>Unduh Foto</span>
+                </a>
+                <button
+                  type="button"
+                  onClick={() => setPreviewPhotoModal(null)}
+                  className="bg-slate-800 hover:bg-rose-900/80 hover:text-rose-200 text-slate-400 p-1.5 rounded-lg border border-slate-700 cursor-pointer transition-colors"
+                  title="Tutup"
+                >
+                  <X className="w-4 h-4" />
+                </button>
+              </div>
+            </div>
 
+            {/* Photo Image Display */}
+            <div className="p-4 flex items-center justify-center bg-slate-950/50 max-h-[75vh] overflow-auto">
+              <img 
+                src={previewPhotoModal} 
+                alt="Foto Bukti Penerimaan Barang" 
+                className="max-h-[72vh] max-w-full w-auto object-contain rounded-lg shadow-md border border-slate-800"
+              />
+            </div>
+
+            {/* Bottom Footer Info */}
+            <div className="w-full bg-slate-900 px-5 py-2.5 border-t border-slate-800 text-center text-slate-400 font-mono text-[11px] flex items-center justify-between">
+              <span>Dokumen Bukti Fisik Penerimaan Gudang Logistik PT. BAG</span>
+              <span className="text-slate-500">Klik area luar atau tombol silang untuk menutup</span>
             </div>
           </div>
         </div>

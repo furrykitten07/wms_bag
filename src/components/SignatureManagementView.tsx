@@ -69,6 +69,7 @@ export default function SignatureManagementView({
     "Sumbono",
     "Capt. H. Wijaya",
     "MAGHFUR MUHAMMAD ALFIN",
+    "Aldi Hidayat",
     "Ahmad Subarjo",
     "Lainnya (Ketik Manual)"
   ];

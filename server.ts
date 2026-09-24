@@ -47,13 +47,15 @@ import { deriveTUG6FromTUG5 } from "./src/utils/criticalItemsMatcher.js";
 const app = express();
 const PORT = 3000;
 
-app.use(express.json());
+app.use(express.json({ limit: "50mb" }));
+app.use(express.urlencoded({ limit: "50mb", extended: true }));
 
 // --- IN-MEMORY DATABASE STATE (STATEFUL DURING SERVER LIFETIME) ---
 
 const users: User[] = [
   { id: "usr-1", username: "superadmin", name: "Fikri Haikal (Superadmin)", email: "superadmin@maritime-logistics.com", role: UserRole.SUPER_ADMIN, password: "admin123" },
-  { id: "usr-3", username: "alfin", name: "Maghfur Muhammad Alfin", email: "alfin.rendalhar@maritime-logistics.com", role: UserRole.WAREHOUSE_STAFF, password: "admin123" },
+  { id: "usr-3", username: "alfin", name: "Maghfur Muhammad Alfin", email: "alfin.rendalhar@maritime-logistics.com", role: UserRole.KEPALA_GUDANG, password: "admin123" },
+  { id: "usr-6", username: "aldi", name: "Aldi Hidayat", email: "aldi.hidayat@maritime-logistics.com", role: UserRole.WAREHOUSE_STAFF, password: "admin123" },
   { id: "usr-4", username: "emir", name: "Mohamat Emir Ferdian", email: "emir.ferdian@maritime-logistics.com", role: UserRole.LOGISTICS_MANAGER, password: "admin123" },
   { id: "usr-5", username: "sumbono", name: "Sumbono", email: "sumbono@maritime-logistics.com", role: UserRole.VP_RENDALHAR, password: "admin123" }
 ];
@@ -94,7 +96,7 @@ let materialRequests: MaterialRequest[] = demoMaterialRequests.map(mr => ({
   sumbono_signature_url: undefined
 }));
 let materialRequestsTUG6: MaterialRequest[] = demoMaterialRequestsTUG6;
-let dispatch: OutboundDispatch[] = demoDispatches;
+let dispatch: OutboundDispatch[] = [];
 let receiving: InboundReceiving[] = demoReceiving;
 let materialReturns: MaterialReturn[] = demoMaterialReturns;
 
@@ -400,9 +402,10 @@ app.get("/api/auth/me", (req, res) => {
 
 // DIGITAL SIGNATURES ENDPOINTS
 let signatures: any[] = [
-  { id: "sig-2", role_title: "Verifikator Rendalhar (Level 1 Approval)", user_name: "Maghfur Muhammad Alfin", signature_url: "https://api.dicebear.com/7.x/initials/svg?seed=MaghfurAlfin", notes: "Tanda tangan verifikasi dokumen Rendalhar Level 1" },
-  { id: "sig-3", role_title: "Manager Logistik (Level 2 Approval)", user_name: "Mohamat Emir Ferdian", signature_url: "https://api.dicebear.com/7.x/initials/svg?seed=EmirFerdian", notes: "Tanda tangan persetujuan operasional logistik Level 2" },
-  { id: "sig-4", role_title: "VP Rendalhar (Level 3 Pengesahan)", user_name: "Sumbono", signature_url: "https://api.dicebear.com/7.x/initials/svg?seed=Sumbono", notes: "Tanda tangan pengesahan VP Rendalhar Level 3" }
+  { id: "sig-1", role_title: "Manager Logistik", user_name: "Mohamat Emir Ferdian", signature_url: `data:image/svg+xml;utf8,<svg xmlns="http://www.w3.org/2000/svg" width="220" height="70" viewBox="0 0 220 70"><path d="M 15 45 C 35 15, 45 65, 75 30 C 95 15, 115 55, 145 35 C 165 25, 185 50, 205 38" stroke="%230f172a" stroke-width="2.5" fill="none" stroke-linecap="round"/><path d="M 40 52 L 180 48" stroke="%231e293b" stroke-width="1.8" fill="none" stroke-linecap="round"/><text x="125" y="62" font-family="cursive" font-size="11" font-weight="bold" fill="%23334155">M. Emir Ferdian</text></svg>`, notes: "Tanda Tangan Utama Manager Logistik" },
+  { id: "sig-2", role_title: "VP RENDALHAR", user_name: "Sumbono", signature_url: `data:image/svg+xml;utf8,<svg xmlns="http://www.w3.org/2000/svg" width="220" height="70" viewBox="0 0 220 70"><path d="M 20 40 C 35 10, 50 60, 80 20 C 110 5, 130 55, 160 30 C 180 20, 195 45, 205 35" stroke="%230f172a" stroke-width="2.5" fill="none" stroke-linecap="round"/><path d="M 30 48 C 80 55, 140 45, 190 48" stroke="%231e293b" stroke-width="1.8" fill="none" stroke-linecap="round"/><text x="140" y="62" font-family="cursive" font-size="11" font-weight="bold" fill="%23334155">Sumbono</text></svg>`, notes: "Tanda Tangan VP RENDALHAR" },
+  { id: "sig-4", role_title: "Kepala Gudang", user_name: "MAGHFUR MUHAMMAD ALFIN", signature_url: `data:image/svg+xml;utf8,<svg xmlns="http://www.w3.org/2000/svg" width="220" height="70" viewBox="0 0 220 70"><path d="M 15 42 C 35 15, 50 58, 80 25 C 100 12, 120 52, 150 30 C 170 20, 185 45, 205 35" stroke="%230f172a" stroke-width="2.5" fill="none" stroke-linecap="round"/><path d="M 30 50 L 180 46" stroke="%231e293b" stroke-width="1.8" fill="none" stroke-linecap="round"/><text x="45" y="62" font-family="cursive" font-size="11" font-weight="bold" fill="%23334155">Maghfur M. Alfin</text></svg>`, notes: "Tanda Tangan Kepala Gudang" },
+  { id: "sig-5", role_title: "Petugas Gudang", user_name: "Aldi Hidayat", signature_url: `data:image/svg+xml;utf8,<svg xmlns="http://www.w3.org/2000/svg" width="220" height="70" viewBox="0 0 220 70"><path d="M 20 42 C 45 15, 60 55, 90 28 C 110 15, 130 52, 160 32 C 180 22, 190 48, 200 40" stroke="%230f172a" stroke-width="2.5" fill="none" stroke-linecap="round"/><path d="M 35 52 L 185 48" stroke="%231e293b" stroke-width="1.8" fill="none" stroke-linecap="round"/><text x="75" y="62" font-family="cursive" font-size="11" font-weight="bold" fill="%23334155">Aldi Hidayat</text></svg>`, notes: "Tanda Tangan Petugas Gudang" }
 ];
 
 app.get("/api/signatures", async (req, res) => {
@@ -882,11 +885,107 @@ app.get("/api/receiving", (req, res) => {
   res.json(receiving);
 });
 
-app.post("/api/receiving", (req, res) => {
+app.post("/api/receiving", async (req, res) => {
   const userHeader = req.headers["x-user-username"] as string;
   const body = req.body;
   const vendorObj = vendors.find(v => v.id === body.vendor_id) || vendors[0];
 
+  const processedItems: any[] = [];
+  for (const itm of (body.items || [])) {
+    let part = spareParts.find(p => p.id === itm.spare_part_id);
+    if (!part && itm.part_number && itm.part_number !== "-" && itm.part_number !== "PN-GENERIC") {
+      part = spareParts.find(p => p.part_number?.toLowerCase() === itm.part_number?.toLowerCase());
+    }
+    if (!part && itm.spare_part_name) {
+      part = spareParts.find(p => p.part_name?.toLowerCase() === itm.spare_part_name?.toLowerCase());
+    }
+
+    // If still not found, create new spare part in spareParts and database
+    if (!part) {
+      const newPartId = itm.spare_part_id && !itm.spare_part_id.startsWith("new-") ? itm.spare_part_id : `sp-${Date.now()}-${Math.floor(Math.random() * 1000)}`;
+      const cleanPn = itm.part_number || `PN-${Date.now().toString().slice(-5)}`;
+      const cleanSku = itm.sku || `SKU-${Date.now().toString().slice(-4)}`;
+      part = {
+        id: newPartId,
+        sku: cleanSku,
+        part_number: cleanPn,
+        alternative_part_number: itm.alternative_part_number || "",
+        part_name: itm.spare_part_name || "General Marine Spares",
+        category: itm.category || "General Spares",
+        vendor_id: body.vendor_id || "vnd-1",
+        vessel_compatibility: "Semua Armada Kapal",
+        unit: itm.unit || "PCS",
+        brand: itm.brand || "Generic",
+        maker: itm.maker || "OEM / Supplier",
+        minimum_stock: 2,
+        maximum_stock: 100,
+        reorder_point: 5,
+        current_stock: 0,
+        reserved_stock: 0,
+        location_id: itm.location_id || "loc-1",
+        barcode: `BC-${Math.floor(Math.random() * 900000) + 100000}`,
+        qr_code: `QR_${cleanPn}`,
+        description: itm.description || `Suku cadang otomatis dari penerimaan manual PO ${body.purchase_order_num || ""}`,
+        created_by: userHeader || "Budi Santoso",
+        updated_by: userHeader || "Budi Santoso",
+        created_at: new Date().toISOString(),
+        updated_at: new Date().toISOString()
+      };
+      spareParts.push(part);
+
+      if (isDbConnected()) {
+        try {
+          const pool = getPool();
+          if (pool) {
+            const qrCodeVal = part.qr_code || part.part_number || part.sku;
+            const qrUrlVal = `https://api.qrserver.com/v1/create-qr-code/?size=250x250&data=${encodeURIComponent(part.sku || part.part_number)}`;
+            const qrSlugVal = part.sku;
+            const barcodeVal = part.barcode || part.sku || part.id;
+            await pool.query(
+              `INSERT INTO spare_parts (
+                id, sku, part_number, alternative_part_number, part_name, category, vendor_id,
+                vessel_compatibility, unit, brand, maker, minimum_stock, maximum_stock,
+                reorder_point, current_stock, reserved_stock, location_id, barcode, qr_code, qr_url, qr_slug, description
+              ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+              [
+                part.id, part.sku, part.part_number, part.alternative_part_number || null,
+                part.part_name, part.category, part.vendor_id || null,
+                JSON.stringify(["Semua Armada Kapal"]),
+                part.unit, part.brand || null, part.maker || null, part.minimum_stock,
+                part.maximum_stock, part.reorder_point, part.current_stock, 0,
+                part.location_id || null, barcodeVal, qrCodeVal, qrUrlVal, qrSlugVal, part.description || null
+              ]
+            );
+            console.log(`✅ [MySQL DB] Auto-created new spare part '${part.part_name}' from Inbound PO`);
+          }
+        } catch (dbErr: any) {
+          console.error("❌ [MySQL DB] Failed to auto-create spare part from Inbound:", dbErr.message);
+        }
+      }
+    }
+
+    const qtyOrdered = Number(itm.qty_ordered || itm.qty_received || 1);
+    const qtyReceived = Number(itm.qty_received !== undefined ? itm.qty_received : qtyOrdered);
+    const qtyRejected = Number(itm.qty_rejected || 0);
+
+    processedItems.push({
+      spare_part_id: part.id,
+      spare_part_name: part.part_name,
+      part_number: part.part_number,
+      unit: itm.unit || part.unit || "PCS",
+      qty_ordered: qtyOrdered,
+      qty_received: qtyReceived,
+      qty_rejected: qtyRejected,
+      qc_status: itm.qc_status || (body.status === ReceivingStatus.ACCEPTED ? "Verified" : "Pending"),
+      item_matched: itm.item_matched || "Sesuai",
+      qty_matched_status: itm.qty_matched_status || "QTY Sesuai",
+      keeper_notes: itm.keeper_notes || "",
+      reject_reason: itm.reject_reason,
+      photo_url: itm.photo_url || ""
+    });
+  }
+
+  const finalStatus = (body.status as ReceivingStatus) || ReceivingStatus.ACCEPTED;
   const newReceiving: InboundReceiving = {
     id: `rec-${Date.now()}`,
     purchase_order_num: body.purchase_order_num || `PO-2026-${Math.floor(10000 + Math.random() * 90000)}`,
@@ -895,42 +994,63 @@ app.post("/api/receiving", (req, res) => {
     spk_id: body.spk_id,
     vendor_id: vendorObj.id,
     vendor_name: body.vendor_name || vendorObj.name,
-    items: (body.items || []).map((itm: any) => {
-      const part = spareParts.find(p => p.id === itm.spare_part_id);
-      return {
-        spare_part_id: itm.spare_part_id,
-        spare_part_name: itm.spare_part_name || (part ? part.part_name : "General Marine Spares"),
-        part_number: itm.part_number || (part ? part.part_number : "PN-GENERIC"),
-        qty_ordered: Number(itm.qty_ordered || 1),
-        qty_received: Number(itm.qty_received || 0),
-        qty_rejected: Number(itm.qty_rejected || 0),
-        qc_status: itm.qc_status || "Pending",
-        item_matched: itm.item_matched || "Sesuai",
-        qty_matched_status: itm.qty_matched_status || "QTY Sesuai",
-        keeper_notes: itm.keeper_notes || "",
-        reject_reason: itm.reject_reason
-      };
-    }),
-    status: (body.status as ReceivingStatus) || ReceivingStatus.PENDING,
+    items: processedItems,
+    status: finalStatus,
     keeper_notes: body.keeper_notes,
     reject_reason: body.reject_reason,
     return_note_num: body.return_note_num,
     photo_evidence_url: body.photo_evidence_url || "",
     signature_data_url: body.signature_data_url || "",
     received_date: body.received_date || new Date().toISOString(),
-    completion_date: body.completion_date || (body.status === ReceivingStatus.ACCEPTED || body.status === ReceivingStatus.VERIFIED ? new Date().toISOString() : undefined),
+    completion_date: body.completion_date || (finalStatus === ReceivingStatus.ACCEPTED || finalStatus === ReceivingStatus.VERIFIED ? new Date().toISOString() : undefined),
     audit_logs: body.audit_logs || [{
       timestamp: new Date().toISOString(),
       username: userHeader || "Penjaga Gudang",
       action: "Penerimaan Dicatat",
-      notes: (body.status === ReceivingStatus.ACCEPTED || body.status === ReceivingStatus.VERIFIED) ? "Fisik & QTY Terverifikasi Sesuai & Lengkap" : "Dicatat dengan catatan fisik / ketidaksesuaian barang",
+      notes: (finalStatus === ReceivingStatus.ACCEPTED || finalStatus === ReceivingStatus.VERIFIED) ? "Fisik & QTY Terverifikasi Sesuai & Lengkap (Inbound)" : "Dicatat dengan catatan fisik / ketidaksesuaian barang",
       status_before: "-",
-      status_after: body.status || ReceivingStatus.PENDING
+      status_after: finalStatus
     }],
     created_by: userHeader || "Budi Santoso"
   };
 
-  receiving.unshift(newReceiving);
+  // Remove existing ledger entries for this PO before adding new ones to prevent duplicate accumulation
+  if (newReceiving.purchase_order_num) {
+    for (let i = ledger.length - 1; i >= 0; i--) {
+      if (ledger[i].reference_number === newReceiving.purchase_order_num || ledger[i].reference_number === `PO-${newReceiving.id}`) {
+        ledger.splice(i, 1);
+      }
+    }
+  }
+
+  // If status is ACCEPTED or VERIFIED, credit stocks and ledger immediately
+  if (finalStatus === ReceivingStatus.ACCEPTED || finalStatus === ReceivingStatus.VERIFIED) {
+    for (const itm of newReceiving.items) {
+      const qtyToCredit = itm.qty_received;
+      if (qtyToCredit > 0) {
+        const part = spareParts.find(p => p.id === itm.spare_part_id);
+        if (part) {
+          createLedgerEntry(
+            TransactionType.RECEIVING,
+            part.id,
+            qtyToCredit,
+            0,
+            newReceiving.purchase_order_num,
+            `Penerimaan barang fisik masuk PO ${newReceiving.purchase_order_num} dari ${newReceiving.vendor_name}`,
+            userHeader || "Penjaga Gudang",
+            `Vendor: ${newReceiving.vendor_name}`
+          );
+        }
+      }
+    }
+  }
+
+  const existingIdx = receiving.findIndex(r => r.purchase_order_num === newReceiving.purchase_order_num || r.id === newReceiving.id);
+  if (existingIdx !== -1) {
+    receiving[existingIdx] = newReceiving;
+  } else {
+    receiving.unshift(newReceiving);
+  }
   createAudit("Inbound Created", "Receiving", `Logged receiving order for PO ${newReceiving.purchase_order_num}`, userHeader);
   res.status(201).json(newReceiving);
 });
@@ -1013,12 +1133,38 @@ app.delete("/api/receiving/:id", (req, res) => {
   }
   const removedRec = receiving[idx];
   receiving.splice(idx, 1);
+  if (removedRec.purchase_order_num) {
+    for (let i = ledger.length - 1; i >= 0; i--) {
+      if (ledger[i].reference_number === removedRec.purchase_order_num || ledger[i].reference_number === `PO-${removedRec.id}`) {
+        ledger.splice(i, 1);
+      }
+    }
+  }
   createAudit("Delete Inbound", "Receiving", `Deleted receiving order PO ${removedRec.purchase_order_num}`, userHeader);
   res.json({ success: true, id });
 });
 
 // DISPATCH (OUTBOUND)
-app.get("/api/dispatch", (req, res) => {
+app.get("/api/dispatch", async (req, res) => {
+  if (isDbConnected()) {
+    try {
+      const pool = getPool();
+      if (pool) {
+        const [rows]: any = await pool.query("SELECT * FROM outbound_dispatches ORDER BY created_at DESC");
+        const parsedRows = rows.map((r: any) => ({
+          ...r,
+          items: typeof r.items === "string" ? JSON.parse(r.items) : (r.items || []),
+          is_partial: Boolean(r.is_partial),
+          alfin_signed: Boolean(r.alfin_signed),
+          emir_signed: Boolean(r.emir_signed),
+          sumbono_signed: Boolean(r.sumbono_signed)
+        }));
+        return res.json(parsedRows);
+      }
+    } catch (err: any) {
+      console.error("❌ [MySQL DB] Failed to fetch outbound_dispatches:", err.message);
+    }
+  }
   res.json(dispatch);
 });
 
@@ -1108,7 +1254,7 @@ app.put("/api/dispatch/:id", (req, res) => {
   const { id } = req.params;
   const updateBody = req.body;
 
-  const dspIdx = dispatch.findIndex(d => d.id === id);
+  const dspIdx = dispatch.findIndex(d => d && d.id === id);
   if (dspIdx === -1) {
     res.status(404).json({ error: "Dispatch record not found" });
     return;
@@ -1248,15 +1394,23 @@ app.post("/api/dispatch/:id/action-log", (req, res) => {
   res.json({ success: true });
 });
 
-app.delete("/api/dispatch/:id", (req, res) => {
+app.delete("/api/dispatch/:id", async (req, res) => {
   const userHeader = req.headers["x-user-username"] as string;
   const { id } = req.params;
-  const idx = dispatch.findIndex(d => d.id === id);
+  const idx = dispatch.findIndex(d => d && d.id === id);
   if (idx === -1) {
     return res.status(404).json({ error: "Dispatch record not found" });
   }
   const removedDsp = dispatch[idx];
   dispatch.splice(idx, 1);
+  try {
+    const dbPool = getPool();
+    if (dbPool) {
+      await dbPool.query("DELETE FROM outbound_dispatches WHERE id = ?", [id]);
+    }
+  } catch (err: any) {
+    console.error("ℹ️ [MySQL DB] Outbound dispatch delete:", err.message);
+  }
   createAudit("Delete Dispatch", "Dispatch", `Deleted dispatch document ${removedDsp.bon_pengeluaran_number || removedDsp.dispatch_number || id}`, userHeader);
   res.json({ success: true, id });
 });
@@ -1266,7 +1420,7 @@ app.post("/api/demo/seed", (req, res) => {
   spareParts = [...demoSpareParts];
   spkRequests = [...demoSPKs];
   materialRequests = [...demoMaterialRequests];
-  dispatch = [...demoDispatches];
+  dispatch = [];
   receiving = [...demoReceiving];
   materialReturns = [...demoMaterialReturns];
   
@@ -1502,7 +1656,7 @@ app.put("/api/material-requests/:id", (req, res) => {
     // Cascade automatic generation of Outbound Dispatch (TUG 8 doc) upon approval
     if (oldStatus !== "Approved" && newStatus === "Approved") {
       const currentYear = new Date().getFullYear();
-      const sameYearDispatches = dispatch.filter(d => d.dispatch_number && d.dispatch_number.startsWith(`DSP-${currentYear}`));
+      const sameYearDispatches = dispatch.filter(d => d && d.dispatch_number && d.dispatch_number.startsWith(`DSP-${currentYear}`));
       const nextSeq = sameYearDispatches.length + 1;
       const dspNum = `DSP-${currentYear}-${String(nextSeq).padStart(5, "0")}`;
       const tug8Num = `TUG8-${currentYear}-${String(nextSeq).padStart(5, "0")}`;
@@ -2300,7 +2454,7 @@ app.post("/api/approvals/:id/decide", (req, res) => {
 
       // If approved, dynamically queue a Dispatch OUTBOUND item!
       if (decision === "Approved") {
-        const matchingDispatch = dispatch.find(d => d.request_reference === vreq.request_number);
+        const matchingDispatch = dispatch.find(d => d && d.request_reference === vreq.request_number);
         if (!matchingDispatch) {
           const newDisp: OutboundDispatch = {
             id: `dsp-${Date.now()}`,
@@ -2348,8 +2502,32 @@ app.post("/api/approvals/:id/decide", (req, res) => {
   res.json(task);
 });
 
+// Helper to keep ledger clean & synchronized with active transactions
+function sanitizeLedger() {
+  const activeReceivingPOs = new Set(receiving.map(r => r.purchase_order_num).filter(Boolean));
+  const seenInbound = new Set<string>();
+
+  for (let i = ledger.length - 1; i >= 0; i--) {
+    const entry = ledger[i];
+    if (entry.transaction_type === TransactionType.RECEIVING) {
+      // If reference doesn't exist in active receiving POs, purge orphaned entry
+      if (!entry.reference_number || !activeReceivingPOs.has(entry.reference_number)) {
+        ledger.splice(i, 1);
+        continue;
+      }
+      const key = `${entry.reference_number}_${entry.spare_part_id || entry.part_number}`;
+      if (seenInbound.has(key)) {
+        ledger.splice(i, 1);
+      } else {
+        seenInbound.add(key);
+      }
+    }
+  }
+}
+
 // MOVEMENT LEDGER (STOCK TRANSACTION CARD HISTORY)
 app.get("/api/ledger", (req, res) => {
+  sanitizeLedger();
   res.json(ledger);
 });
 
@@ -2372,7 +2550,7 @@ app.get("/api/dashboard/summary", (req, res) => {
   );
 
   const pendingApprovalsCount = pendingTug5List.length;
-  const activeDispatchesCount = dispatch.filter(d => d.status !== DispatchStatus.DELIVERED).length;
+  const activeDispatchesCount = dispatch.filter(d => d && d.status !== DispatchStatus.DELIVERED).length;
   const totalReceivingCount = receiving.length;
 
   res.json({

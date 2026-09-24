@@ -1,4 +1,4 @@
-import React, { useState, useMemo } from "react";
+import React, { useState, useMemo, useEffect } from "react";
 import QRCode from "react-qr-code";
 import { 
   Search, 
@@ -318,6 +318,27 @@ export default function SparePartCatalogView({ parts = [] }: SparePartCatalogVie
     }
     return INITIAL_CATALOG_DATA;
   });
+
+  // Listen to catalog updates from receiving or other tabs
+  useEffect(() => {
+    const handleUpdate = () => {
+      const saved = localStorage.getItem("spare_part_catalog_data");
+      if (saved) {
+        try {
+          const parsed = JSON.parse(saved);
+          if (Array.isArray(parsed)) {
+            setCatalogData(parsed);
+          }
+        } catch (e) {}
+      }
+    };
+    window.addEventListener("storage", handleUpdate);
+    window.addEventListener("catalog_updated", handleUpdate);
+    return () => {
+      window.removeEventListener("storage", handleUpdate);
+      window.removeEventListener("catalog_updated", handleUpdate);
+    };
+  }, []);
 
   // Helper to fetch live current stock from SPARE PART MASTER
   const getItemStock = (item: CatalogItem): number => {

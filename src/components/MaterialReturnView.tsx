@@ -33,7 +33,8 @@ import {
   ChevronDown,
   Edit3,
   RefreshCw,
-  ShieldCheck
+  ShieldCheck,
+  SlidersHorizontal
 } from "lucide-react";
 import { 
   User as UserType, 
@@ -59,6 +60,9 @@ interface MaterialReturnViewProps {
   spkList?: SPKWorkOrder[];
 }
 
+const ALDI_SIGNATURE_URL = `data:image/svg+xml;utf8,<svg xmlns="http://www.w3.org/2000/svg" width="220" height="70" viewBox="0 0 220 70"><path d="M 20 42 C 45 15, 60 55, 90 28 C 110 15, 130 52, 160 32 C 180 22, 190 48, 200 40" stroke="%230f2b5c" stroke-width="2.5" fill="none" stroke-linecap="round"/><path d="M 35 52 L 185 48" stroke="%231e293b" stroke-width="1.8" fill="none" stroke-linecap="round"/><text x="75" y="62" font-family="cursive" font-size="11" font-weight="bold" fill="%230f2b5c">Aldi Hidayat</text></svg>`;
+const ALFIN_SIGNATURE_URL = `data:image/svg+xml;utf8,<svg xmlns="http://www.w3.org/2000/svg" width="220" height="70" viewBox="0 0 220 70"><path d="M 15 42 C 35 15, 50 58, 80 25 C 100 12, 120 52, 150 30 C 170 20, 185 45, 205 35" stroke="%230f2b5c" stroke-width="2.5" fill="none" stroke-linecap="round"/><path d="M 30 50 L 180 46" stroke="%231e293b" stroke-width="1.8" fill="none" stroke-linecap="round"/><text x="45" y="62" font-family="cursive" font-size="11" font-weight="bold" fill="%230f2b5c">Maghfur M. Alfin</text></svg>`;
+
 export default function MaterialReturnView({
   returns,
   parts,
@@ -82,7 +86,8 @@ export default function MaterialReturnView({
   const uLower = (currentUser?.username || "").toLowerCase();
   const rLower = (currentUser?.role || "").toLowerCase();
 
-  const isAlfinRole = uLower.includes("alfin") || rLower.includes("verifikator") || rLower.includes("petugas") || rLower.includes("admin") || uLower.includes("superadmin") || rLower.includes("super");
+  const isAldiRole = uLower.includes("aldi") || rLower.includes("petugas") || rLower.includes("staff") || uLower.includes("superadmin") || rLower.includes("super");
+  const isAlfinRole = uLower.includes("alfin") || rLower.includes("kepala") || uLower.includes("superadmin") || rLower.includes("super");
   const isEmirRole = uLower.includes("emir") || rLower.includes("manager") || rLower.includes("logistik") || uLower.includes("superadmin") || rLower.includes("super");
   const isSumbonoRole = uLower.includes("sumbono") || rLower.includes("vp") || rLower.includes("rendalhar") || uLower.includes("superadmin") || rLower.includes("super");
 
@@ -1577,61 +1582,104 @@ export default function MaterialReturnView({
                                 {ret.status}
                               </span>
                             </td>
-                            <td className="p-3.5 text-center relative" onClick={(e) => e.stopPropagation()}>
-                              <div className="flex items-center justify-center">
-                                <div className="relative inline-block text-left">
-                                  <button
-                                    type="button"
-                                    onClick={(e) => {
-                                      e.stopPropagation();
-                                      setActiveActionId(activeActionId === ret.id ? null : ret.id);
-                                    }}
-                                    className="inline-flex items-center justify-center gap-1.5 px-3 py-2 bg-slate-900 text-white hover:bg-blue-600 rounded-lg text-[10px] font-bold uppercase tracking-wider shadow-sm transition-all duration-200 cursor-pointer border border-slate-850"
-                                  >
-                                    <span>Actions</span>
-                                    <ChevronDown className="w-3 h-3" />
-                                  </button>
+                            <td className="p-3.5 text-right no-print relative" onClick={(e) => e.stopPropagation()}>
+                                <div className="flex items-center justify-end">
+                                  <div className="relative inline-block text-left">
+                                    <button
+                                      type="button"
+                                      onClick={(e) => {
+                                        e.stopPropagation();
+                                        setActiveActionId(activeActionId === ret.id ? null : ret.id);
+                                      }}
+                                      className={`inline-flex items-center justify-center gap-2 px-3.5 py-2 rounded-xl text-xs font-sans font-bold transition-all duration-200 cursor-pointer shadow-xs active:scale-95 border ${
+                                        activeActionId === ret.id
+                                          ? "bg-blue-600 border-blue-600 text-white shadow-md ring-2 ring-blue-500/20"
+                                          : "bg-white border-slate-300 hover:border-slate-400 text-slate-800 hover:bg-slate-50 hover:shadow"
+                                      }`}
+                                    >
+                                      <SlidersHorizontal className={`w-3.5 h-3.5 ${activeActionId === ret.id ? "text-white" : "text-blue-600"}`} />
+                                      <span>Actions</span>
+                                      <ChevronDown className={`w-3.5 h-3.5 transition-transform duration-200 ${activeActionId === ret.id ? 'rotate-180 text-white' : 'text-slate-400'}`} />
+                                    </button>
 
-                                  {activeActionId === ret.id && (
-                                    <>
-                                      <div 
-                                        className="fixed inset-0 z-10" 
-                                        onClick={(e) => {
-                                          e.stopPropagation();
-                                          setActiveActionId(null);
-                                        }}
-                                      />
-                                      <div className="absolute right-0 mt-1.5 w-52 bg-white border border-slate-250 rounded-lg shadow-xl z-50 overflow-hidden text-left py-1.5 text-slate-700 animate-in fade-in duration-100 ring-1 ring-black/5">
-                                        <button
-                                          type="button"
+                                    {activeActionId === ret.id && (
+                                      <>
+                                        <div 
+                                          className="fixed inset-0 z-10" 
                                           onClick={(e) => {
                                             e.stopPropagation();
                                             setActiveActionId(null);
-                                            onPreviewTUG10(ret);
                                           }}
-                                          className="w-full px-4 py-2 text-xs font-semibold hover:bg-slate-100 text-slate-800 flex items-center gap-2 cursor-pointer transition-colors text-left"
-                                        >
-                                          <Printer className="w-3.5 h-3.5 text-blue-500" />
-                                          <span>Cetak TUG 10 Form</span>
-                                        </button>
+                                        />
+                                        <div className={`absolute right-0 ${idx >= paginatedReturns.length - 2 && paginatedReturns.length > 2 ? "bottom-full mb-2" : "top-full mt-2"} w-72 bg-white border border-slate-200 rounded-2xl shadow-2xl z-50 overflow-hidden text-left p-1.5 animate-in fade-in zoom-in-95 duration-150 ring-1 ring-black/5 divide-y divide-slate-100 text-slate-700`}>
+                                          
+                                          {/* Header Info */}
+                                          <div className="px-3.5 py-2.5 bg-slate-50/80 rounded-xl mb-1">
+                                            <div className="flex items-center justify-between">
+                                              <span className="text-[10px] font-mono font-bold text-slate-400 uppercase tracking-wider">TUG 10 Return</span>
+                                              <span className="text-[9px] font-mono font-extrabold px-1.5 py-0.5 rounded bg-blue-100 text-blue-700 border border-blue-200">{ret.status}</span>
+                                            </div>
+                                            <div className="font-mono text-xs font-black text-slate-800 truncate mt-0.5">{ret.return_number}</div>
+                                            <div className="text-[10.5px] text-slate-500 font-medium truncate">{ret.vessel_name}</div>
+                                          </div>
 
-                                        <button
-                                          type="button"
-                                          onClick={(e) => {
-                                            e.stopPropagation();
-                                            setActiveActionId(null);
-                                            setEditingNotesId(ret.id);
-                                            setCurrentNotesValue(ret.notes || "");
-                                          }}
-                                          className="w-full px-4 py-2 text-xs font-semibold hover:bg-slate-100 text-slate-800 flex items-center gap-2 cursor-pointer transition-colors text-left"
-                                        >
-                                          <FileText className="w-3.5 h-3.5 text-emerald-500" />
-                                          <span>Edit Keterangan</span>
-                                        </button>
-                                          {/* Quick Level 1 Signature Button (Alfin / Verifikator) */}
-                                          {isAlfinRole && !ret.alfin_signed && (
-                                            <>
-                                              <div className="border-t border-slate-100 my-1"></div>
+                                          {/* SECTION 1: PERSETUJUAN & TTD DIGITAL (4 ROLES) */}
+                                          <div className="py-1.5 space-y-1">
+                                            <div className="px-2 py-1 text-[9px] font-mono font-black uppercase tracking-widest text-slate-400 flex items-center gap-1.5">
+                                              <ShieldCheck className="w-3.5 h-3.5 text-emerald-500" />
+                                              <span>Approval & Tanda Tangan</span>
+                                            </div>
+
+                                            {/* 1. ALDI HIDAYAT (PETUGAS GUDANG) */}
+                                            {ret.aldi_signed ? (
+                                              <div className="px-2.5 py-1.5 bg-emerald-50/80 border border-emerald-200/80 rounded-lg flex items-center justify-between">
+                                                <div className="flex items-center gap-1.5">
+                                                  <CheckCircle className="w-3.5 h-3.5 text-emerald-600 shrink-0" />
+                                                  <div>
+                                                    <div className="text-[11px] font-bold text-emerald-900 leading-tight">Aldi Hidayat</div>
+                                                    <div className="text-[9px] text-emerald-700 font-mono">Petugas Gudang &bull; Signed</div>
+                                                  </div>
+                                                </div>
+                                                <span className="text-[9px] font-mono font-bold text-emerald-600 bg-emerald-100 px-1.5 py-0.5 rounded">✓ ACC</span>
+                                              </div>
+                                            ) : (
+                                              <button
+                                                type="button"
+                                                onClick={async (e) => {
+                                                  e.stopPropagation();
+                                                  setActiveActionId(null);
+                                                  const now = new Date().toISOString();
+                                                  await onUpdateReturn(ret.id, {
+                                                    aldi_signed: true,
+                                                    aldi_signed_at: now,
+                                                    aldi_signature_url: ALDI_SIGNATURE_URL,
+                                                    status: ret.status === "Draft" ? "Submitted" : ret.status
+                                                  });
+                                                }}
+                                                className="w-full px-2.5 py-2 text-xs font-bold bg-teal-50 hover:bg-teal-100 text-teal-800 rounded-lg border border-teal-200 flex items-center justify-between cursor-pointer transition-colors text-left"
+                                                title="Beri Tanda Tangan Digital Petugas Gudang (Aldi Hidayat)"
+                                              >
+                                                <div className="flex items-center gap-2">
+                                                  <CheckCircle className="w-3.5 h-3.5 text-teal-600" />
+                                                  <span>✓ TTD Petugas Gudang (Aldi)</span>
+                                                </div>
+                                                <span className="text-[9px] font-mono bg-teal-200 text-teal-900 px-1.5 py-0.5 rounded font-black">ACC</span>
+                                              </button>
+                                            )}
+
+                                            {/* 2. MAGHFUR MUHAMMAD ALFIN (KEPALA GUDANG) */}
+                                            {ret.alfin_signed ? (
+                                              <div className="px-2.5 py-1.5 bg-emerald-50/80 border border-emerald-200/80 rounded-lg flex items-center justify-between">
+                                                <div className="flex items-center gap-1.5">
+                                                  <CheckCircle className="w-3.5 h-3.5 text-emerald-600 shrink-0" />
+                                                  <div>
+                                                    <div className="text-[11px] font-bold text-emerald-900 leading-tight">M. Alfin</div>
+                                                    <div className="text-[9px] text-emerald-700 font-mono">Kepala Gudang &bull; Signed</div>
+                                                  </div>
+                                                </div>
+                                                <span className="text-[9px] font-mono font-bold text-emerald-600 bg-emerald-100 px-1.5 py-0.5 rounded">✓ ACC</span>
+                                              </div>
+                                            ) : (
                                               <button
                                                 type="button"
                                                 onClick={async (e) => {
@@ -1641,22 +1689,34 @@ export default function MaterialReturnView({
                                                   await onUpdateReturn(ret.id, {
                                                     alfin_signed: true,
                                                     alfin_signed_at: now,
-                                                    alfin_signature_url: "https://api.dicebear.com/7.x/initials/svg?seed=MaghfurAlfin",
+                                                    alfin_signature_url: ALFIN_SIGNATURE_URL,
                                                     status: ret.status === "Draft" ? "Submitted" : ret.status
                                                   });
                                                 }}
-                                                className="w-full px-4 py-2 text-xs font-bold hover:bg-emerald-50 text-emerald-700 flex items-center gap-2 cursor-pointer transition-colors text-left"
+                                                className="w-full px-2.5 py-2 text-xs font-bold bg-emerald-50 hover:bg-emerald-100 text-emerald-800 rounded-lg border border-emerald-200 flex items-center justify-between cursor-pointer transition-colors text-left"
+                                                title="Beri Tanda Tangan Digital Kepala Gudang (Maghfur Muhammad Alfin)"
                                               >
-                                                <CheckCircle className="w-3.5 h-3.5 text-emerald-600" />
-                                                <span>✓ TTD Level 1 (Alfin)</span>
+                                                <div className="flex items-center gap-2">
+                                                  <CheckCircle className="w-3.5 h-3.5 text-emerald-600" />
+                                                  <span>✓ TTD Kepala Gudang (Alfin)</span>
+                                                </div>
+                                                <span className="text-[9px] font-mono bg-emerald-200 text-emerald-900 px-1.5 py-0.5 rounded font-black">ACC</span>
                                               </button>
-                                            </>
-                                          )}
+                                            )}
 
-                                          {/* Quick Level 2 Signature Button (Emir / Manager Logistik) */}
-                                          {isEmirRole && !ret.emir_signed && (
-                                            <>
-                                              <div className="border-t border-slate-100 my-1"></div>
+                                            {/* 3. MOHAMAT EMIR FERDIAN (MANAGER LOGISTIK) */}
+                                            {ret.emir_signed ? (
+                                              <div className="px-2.5 py-1.5 bg-emerald-50/80 border border-emerald-200/80 rounded-lg flex items-center justify-between">
+                                                <div className="flex items-center gap-1.5">
+                                                  <CheckCircle className="w-3.5 h-3.5 text-emerald-600 shrink-0" />
+                                                  <div>
+                                                    <div className="text-[11px] font-bold text-emerald-900 leading-tight">Emir Ferdian</div>
+                                                    <div className="text-[9px] text-emerald-700 font-mono">Manager Logistik &bull; Signed</div>
+                                                  </div>
+                                                </div>
+                                                <span className="text-[9px] font-mono font-bold text-emerald-600 bg-emerald-100 px-1.5 py-0.5 rounded">✓ ACC</span>
+                                              </div>
+                                            ) : (
                                               <button
                                                 type="button"
                                                 onClick={async (e) => {
@@ -1669,18 +1729,30 @@ export default function MaterialReturnView({
                                                     emir_signature_url: "https://api.dicebear.com/7.x/initials/svg?seed=EmirFerdian"
                                                   });
                                                 }}
-                                                className="w-full px-4 py-2 text-xs font-bold hover:bg-amber-50 text-amber-800 flex items-center gap-2 cursor-pointer transition-colors text-left"
+                                                className="w-full px-2.5 py-2 text-xs font-bold bg-amber-50 hover:bg-amber-100 text-amber-900 rounded-lg border border-amber-200 flex items-center justify-between cursor-pointer transition-colors text-left"
+                                                title="Beri Tanda Tangan Digital Manager Logistik (Mohamat Emir Ferdian)"
                                               >
-                                                <CheckCircle className="w-3.5 h-3.5 text-amber-600" />
-                                                <span>✓ TTD Level 2 (Emir)</span>
+                                                <div className="flex items-center gap-2">
+                                                  <CheckCircle className="w-3.5 h-3.5 text-amber-600" />
+                                                  <span>✓ TTD Level 2 (Emir)</span>
+                                                </div>
+                                                <span className="text-[9px] font-mono bg-amber-200 text-amber-900 px-1.5 py-0.5 rounded font-black">ACC</span>
                                               </button>
-                                            </>
-                                          )}
+                                            )}
 
-                                          {/* Quick Level 3 Signature Button (Sumbono / VP Rendalhar) */}
-                                          {isSumbonoRole && !ret.sumbono_signed && (
-                                            <>
-                                              <div className="border-t border-slate-100 my-1"></div>
+                                            {/* 4. SUMBONO (VP RENDALHAR) */}
+                                            {ret.sumbono_signed ? (
+                                              <div className="px-2.5 py-1.5 bg-emerald-50/80 border border-emerald-200/80 rounded-lg flex items-center justify-between">
+                                                <div className="flex items-center gap-1.5">
+                                                  <CheckCircle className="w-3.5 h-3.5 text-emerald-600 shrink-0" />
+                                                  <div>
+                                                    <div className="text-[11px] font-bold text-emerald-900 leading-tight">Sumbono</div>
+                                                    <div className="text-[9px] text-emerald-700 font-mono">VP Rendalhar &bull; Signed</div>
+                                                  </div>
+                                                </div>
+                                                <span className="text-[9px] font-mono font-bold text-emerald-600 bg-emerald-100 px-1.5 py-0.5 rounded">✓ ACC</span>
+                                              </div>
+                                            ) : (
                                               <button
                                                 type="button"
                                                 onClick={async (e) => {
@@ -1694,61 +1766,34 @@ export default function MaterialReturnView({
                                                     status: "Approved"
                                                   });
                                                 }}
-                                                className="w-full px-4 py-2 text-xs font-bold hover:bg-indigo-50 text-indigo-700 flex items-center gap-2 cursor-pointer transition-colors text-left"
+                                                className="w-full px-2.5 py-2 text-xs font-bold bg-indigo-50 hover:bg-indigo-100 text-indigo-900 rounded-lg border border-indigo-200 flex items-center justify-between cursor-pointer transition-colors text-left"
+                                                title="Beri Tanda Tangan Digital VP Rendalhar (Sumbono)"
                                               >
-                                                <CheckCircle className="w-3.5 h-3.5 text-indigo-600" />
-                                                <span>✓ Sahkan & TTD (Sumbono)</span>
+                                                <div className="flex items-center gap-2">
+                                                  <CheckCircle className="w-3.5 h-3.5 text-indigo-600" />
+                                                  <span>✓ Sahkan & TTD (Sumbono)</span>
+                                                </div>
+                                                <span className="text-[9px] font-mono bg-indigo-200 text-indigo-900 px-1.5 py-0.5 rounded font-black">ACC</span>
                                               </button>
-                                            </>
-                                          )}
+                                            )}
+                                          </div>
 
-                                        {(ret.status === "Draft" || ret.status === "Rejected") && (
-                                          <button
-                                            type="button"
-                                            onClick={(e) => {
-                                              e.stopPropagation();
-                                              setActiveActionId(null);
-                                              handleEditReturn(ret);
-                                            }}
-                                            className="w-full px-4 py-2 text-xs font-semibold hover:bg-slate-100 text-slate-800 flex items-center gap-2 cursor-pointer transition-colors text-left"
-                                          >
-                                            <Edit3 className="w-3.5 h-3.5 text-amber-500" />
-                                            <span>Edit Pengembalian</span>
-                                          </button>
-                                        )}
-
-                                        <button
-                                          type="button"
-                                          onClick={async (e) => {
-                                            e.stopPropagation();
-                                            setActiveActionId(null);
-                                            if (confirm(`Apakah Anda yakin ingin menghapus Dokumen Pengembalian TUG 10: [${ret.return_number}]?`)) {
-                                              await onDeleteReturn(ret.id);
-                                              if (selectedReturnId === ret.id) setSelectedReturnId(null);
-                                            }
-                                          }}
-                                          className="w-full px-4 py-2 text-xs font-semibold hover:bg-rose-50 text-rose-600 flex items-center gap-2 cursor-pointer transition-colors text-left border-t border-slate-100"
-                                        >
-                                          <Trash2 className="w-3.5 h-3.5 text-rose-500" />
-                                          <span>Hapus Dokumen TUG 10</span>
-                                        </button>
-
-                                        {ret.status === "Submitted" && currentUser.role === UserRole.WAREHOUSE_ADMIN && (
-                                          <>
-                                            <div className="border-t border-slate-100 my-1"></div>
+                                          {/* SECTION 2: DOKUMEN & OPERASIONAL */}
+                                          <div className="py-1.5 space-y-0.5">
+                                            <div className="px-2 py-1 text-[9px] font-mono font-black uppercase tracking-widest text-slate-400">
+                                              Operasional
+                                            </div>
                                             <button
                                               type="button"
-                                              onClick={async (e) => {
+                                              onClick={(e) => {
                                                 e.stopPropagation();
                                                 setActiveActionId(null);
-                                                if (confirm("Setujui pengembalian suku cadang ke gudang pusat & update log mutasi?")) {
-                                                  await onUpdateReturn(ret.id, { status: "Approved" });
-                                                }
+                                                setSelectedReturnId(ret.id); setIsDetailsOpen(true);
                                               }}
-                                              className="w-full px-4 py-2 text-xs font-bold hover:bg-emerald-50 text-emerald-700 flex items-center gap-2 cursor-pointer transition-colors text-left"
+                                              className="w-full px-2.5 py-1.5 text-xs font-medium hover:bg-slate-100 text-slate-700 rounded-lg flex items-center gap-2 cursor-pointer transition-colors text-left"
                                             >
-                                              <CheckCircle className="w-3.5 h-3.5 text-emerald-600" />
-                                              <span>Setujui TUG 10</span>
+                                              <Eye className="w-3.5 h-3.5 text-slate-500" />
+                                              <span>Lihat Detail TUG 10</span>
                                             </button>
 
                                             <button
@@ -1756,22 +1801,52 @@ export default function MaterialReturnView({
                                               onClick={(e) => {
                                                 e.stopPropagation();
                                                 setActiveActionId(null);
-                                                setSelectedReturnId(ret.id);
-                                                setShowRejectModal(true);
+                                                onPreviewTUG10(ret);
                                               }}
-                                              className="w-full px-4 py-2 text-xs font-bold hover:bg-rose-50 text-rose-700 flex items-center gap-2 cursor-pointer transition-colors text-left"
+                                              className="w-full px-2.5 py-1.5 text-xs font-medium hover:bg-slate-100 text-blue-700 rounded-lg flex items-center gap-2 cursor-pointer transition-colors text-left"
                                             >
-                                              <XCircle className="w-3.5 h-3.5 text-rose-600" />
-                                              <span>Tolak Pengembalian</span>
+                                              <Printer className="w-3.5 h-3.5 text-blue-500" />
+                                              <span>Cetak TUG 10 (PDF)</span>
                                             </button>
-                                          </>
-                                        )}
-                                      </div>
-                                    </>
-                                  )}
+
+                                            <button
+                                              type="button"
+                                              onClick={(e) => {
+                                                e.stopPropagation();
+                                                setActiveActionId(null);
+                                                setEditingNotesId(ret.id);
+                                                setCurrentNotesValue(ret.notes || "");
+                                              }}
+                                              className="w-full px-2.5 py-1.5 text-xs font-medium hover:bg-slate-100 text-slate-700 rounded-lg flex items-center gap-2 cursor-pointer transition-colors text-left"
+                                            >
+                                              <FileText className="w-3.5 h-3.5 text-emerald-500" />
+                                              <span>Edit Keterangan</span>
+                                            </button>
+                                          </div>
+
+                                          {/* SECTION 3: HAPUS DOKUMEN */}
+                                          <div className="pt-1">
+                                            <button
+                                              type="button"
+                                              onClick={async (e) => {
+                                                e.stopPropagation();
+                                                setActiveActionId(null);
+                                                if (confirm(`Apakah Anda yakin ingin menghapus dokumen TUG 10 [${ret.return_number}]?`)) {
+                                                  await onDeleteReturn(ret.id);
+                                                }
+                                              }}
+                                              className="w-full px-2.5 py-1.5 text-xs font-medium hover:bg-rose-50 text-rose-600 rounded-lg flex items-center gap-2 cursor-pointer transition-colors text-left"
+                                            >
+                                              <Trash2 className="w-3.5 h-3.5 text-rose-500" />
+                                              <span>Hapus TUG 10</span>
+                                            </button>
+                                          </div>
+                                        </div>
+                                      </>
+                                    )}
+                                  </div>
                                 </div>
-                              </div>
-                            </td>
+                              </td>
                           </tr>
                         );
                       })
@@ -1932,20 +2007,47 @@ export default function MaterialReturnView({
                     )}
                   </div>
 
-                  {/* 3-Level Approval Stepper */}
+                  {/* 4-Tahap Approval Stepper */}
                   <div className="bg-slate-900 text-white rounded-xl p-4 border border-slate-800 space-y-3 font-mono">
                     <div className="flex justify-between items-center border-b border-slate-800 pb-2">
                       <span className="text-xs font-black font-display uppercase tracking-wider text-slate-200 flex items-center gap-1.5">
                         <ShieldCheck className="w-4 h-4 text-emerald-400" />
-                        Approval TUG 10 & TTD Digital
+                        Approval TUG 10 & TTD Digital (4 Tahap)
                       </span>
                     </div>
 
                     <div className="space-y-2 pt-1">
-                      {/* LEVEL 1: ALFIN */}
+                      {/* TAHAP 1: ALDI HIDAYAT (PETUGAS GUDANG) */}
+                      <div className={`p-2.5 rounded-lg border text-xs flex items-center justify-between ${activeReturn.aldi_signed ? 'bg-teal-950/40 border-teal-500/40 text-teal-100' : 'bg-slate-800/80 border-slate-700 text-slate-300'}`}>
+                        <div>
+                          <div className="font-bold">Tahap 1: Aldi Hidayat (Petugas Gudang)</div>
+                          <div className="text-[9.5px] text-teal-300">
+                            {activeReturn.aldi_signed ? `✓ Signed: ${activeReturn.aldi_signed_at ? new Date(activeReturn.aldi_signed_at).toLocaleDateString("id-ID") : "Terverifikasi"}` : "⏳ Pending Approval"}
+                          </div>
+                        </div>
+                        {!activeReturn.aldi_signed && isAldiRole && (
+                          <button
+                            type="button"
+                            onClick={async () => {
+                              const now = new Date().toISOString();
+                              await onUpdateReturn(activeReturn.id, {
+                                aldi_signed: true,
+                                aldi_signed_at: now,
+                                aldi_signature_url: ALDI_SIGNATURE_URL,
+                                status: activeReturn.status === "Draft" ? "Submitted" : activeReturn.status
+                              });
+                            }}
+                            className="px-2.5 py-1 bg-teal-600 hover:bg-teal-500 text-white font-bold text-[10px] uppercase rounded cursor-pointer"
+                          >
+                            TTD Petugas Gudang
+                          </button>
+                        )}
+                      </div>
+
+                      {/* TAHAP 2: ALFIN */}
                       <div className={`p-2.5 rounded-lg border text-xs flex items-center justify-between ${activeReturn.alfin_signed ? 'bg-emerald-950/40 border-emerald-500/40 text-emerald-100' : 'bg-slate-800/80 border-slate-700 text-slate-300'}`}>
                         <div>
-                          <div className="font-bold">L1: Maghfur Alfin (Verifikator)</div>
+                          <div className="font-bold">L1: Maghfur Alfin (Kepala Gudang)</div>
                           <div className="text-[9.5px] text-slate-400">
                             {activeReturn.alfin_signed ? `✓ Signed: ${activeReturn.alfin_signed_at ? new Date(activeReturn.alfin_signed_at).toLocaleDateString("id-ID") : "Terverifikasi"}` : "⏳ Pending Approval"}
                           </div>
@@ -1964,7 +2066,7 @@ export default function MaterialReturnView({
                             }}
                             className="px-2.5 py-1 bg-emerald-600 hover:bg-emerald-500 text-white font-bold text-[10px] uppercase rounded cursor-pointer"
                           >
-                            TTD Alfin
+                            TTD Kepala Gudang
                           </button>
                         )}
                       </div>

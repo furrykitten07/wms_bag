@@ -76,57 +76,149 @@ export default function DashboardView({
   loading 
 }: DashboardViewProps) {
   
-  const [selectedMonth, setSelectedMonth] = useState<number>(5);
-  const [selectedYear, setSelectedYear] = useState<number>(2026);
+  // Dynamically extract unique years present in actual SPK & TUG data
+  const availableYears = React.useMemo(() => {
+    const yearsSet = new Set<number>();
+
+    const checkDateStr = (dateStr?: string) => {
+      if (!dateStr) return;
+      const d = new Date(dateStr);
+      if (!isNaN(d.getTime())) {
+        yearsSet.add(d.getFullYear());
+      }
+    };
+
+    (materialRequests || []).forEach(r => r && checkDateStr(r.request_date || r.created_at));
+    (materialRequestsTUG6 || []).forEach(r => r && checkDateStr(r.request_date || r.created_at));
+    (dispatches || []).forEach(d => d && checkDateStr(d.created_at || (d as any).dispatch_date));
+    (materialReturns || []).forEach(r => r && checkDateStr(r.created_at || r.return_date));
+
+    // Default to 2026 if no years found in dataset
+    if (yearsSet.size === 0) {
+      yearsSet.add(2026);
+    }
+
+    return Array.from(yearsSet).sort((a, b) => b - a);
+  }, [materialRequests, materialRequestsTUG6, dispatches, materialReturns]);
+
+  const [selectedYear, setSelectedYear] = useState<number>(() => availableYears[0] || 2026);
+
+  React.useEffect(() => {
+    if (availableYears.length > 0 && !availableYears.includes(selectedYear)) {
+      setSelectedYear(availableYears[0]);
+    }
+  }, [availableYears, selectedYear]);
+
+  const [selectedMonth, setSelectedMonth] = useState<number>(0);
   
   // Storage utilization percentage calculator (simulated based on parts layout)
   const utilPercent = Math.min(95, 45 + (summary.totalParts * 6.5));
 
-  const chartMonthlyData = React.useMemo(() => {
-    const months = [
-      { name: "JANUARI", monthIdx: 0, baseTug5: 24, baseTug8: 18 },
-      { name: "FEBRUARI", monthIdx: 1, baseTug5: 38, baseTug8: 30 },
-      { name: "MARET", monthIdx: 2, baseTug5: 55, baseTug8: 42 },
-      { name: "APRIL", monthIdx: 3, baseTug5: 82, baseTug8: 68 },
-      { name: "MEI", monthIdx: 4, baseTug5: 70, baseTug8: 58 },
-      { name: "JUNI (YTD)", monthIdx: 5, baseTug5: 95, baseTug8: 84 }
-    ];
+  const ALL_MONTH_NAMES = React.useMemo(() => [
+    { name: "JANUARI", label: "JAN", monthIdx: 0 },
+    { name: "FEBRUARI", label: "FEB", monthIdx: 1 },
+    { name: "MARET", label: "MAR", monthIdx: 2 },
+    { name: "APRIL", label: "APR", monthIdx: 3 },
+    { name: "MEI", label: "MEI", monthIdx: 4 },
+    { name: "JUNI", label: "JUN", monthIdx: 5 },
+    { name: "JULI (YTD)", label: "JUL (YTD)", monthIdx: 6 },
+    { name: "AGUSTUS", label: "AGU", monthIdx: 7 },
+    { name: "SEPTEMBER", label: "SEP", monthIdx: 8 },
+    { name: "OKTOBER", label: "OKT", monthIdx: 9 },
+    { name: "NOVEMBER", label: "NOV", monthIdx: 10 },
+    { name: "DESEMBER", label: "DES", monthIdx: 11 }
+  ], []);
 
-    return months.map(m => {
+  // Dynamically extract only months that contain actual data for selectedYear
+  const availableMonthsForYear = React.useMemo(() => {
+    const monthsSet = new Set<number>();
+    
+    const checkItem = (item?: any) => {
+      if (!item) return;
+      const dateStr = item.request_date || item.created_at || item.dispatch_date;
+      if (!dateStr) return;
+      const d = new Date(dateStr);
+      if (!isNaN(d.getTime()) && d.getFullYear() === selectedYear) {
+        monthsSet.add(d.getMonth());
+      }
+    };
+
+    (materialRequests || []).forEach(checkItem);
+    (materialRequestsTUG6 || []).forEach(checkItem);
+    (dispatches || []).forEach(checkItem);
+    (materialReturns || []).forEach(checkItem);
+
+    if (monthsSet.size === 0) {
+      monthsSet.add(6); // Default to July (index 6)
+    }
+
+    return Array.from(monthsSet).sort((a, b) => a - b);
+  }, [materialRequests, materialRequestsTUG6, dispatches, materialReturns, selectedYear]);
+
+  const chartMonthlyData = React.useMemo(() => {
+    return availableMonthsForYear.map(mIdx => {
+      const monthMeta = ALL_MONTH_NAMES.find(m => m.monthIdx === mIdx) || {
+        name: `BULAN ${mIdx + 1}`,
+        label: `M${mIdx + 1}`,
+        monthIdx: mIdx
+      };
+
       const countTug5 = (materialRequests || []).filter(mr => {
-        if (!mr || !mr.request_date) return false;
-        const d = new Date(mr.request_date);
-        return !isNaN(d.getTime()) && d.getMonth() === m.monthIdx;
+        if (!mr) return false;
+        const dateStr = mr.request_date || mr.created_at;
+        if (!dateStr) return false;
+        const d = new Date(dateStr);
+        return !isNaN(d.getTime()) && d.getFullYear() === selectedYear && d.getMonth() === mIdx;
       }).length;
 
       const countTug8 = (dispatches || []).filter(d => {
         if (!d) return false;
-        const dateStr = d.created_at || d.dispatch_number;
+        const dateStr = d.created_at || (d as any).dispatch_date || d.dispatch_number;
         if (!dateStr) return false;
         const dateObj = new Date(dateStr);
-        return !isNaN(dateObj.getTime()) && dateObj.getMonth() === m.monthIdx;
+        return !isNaN(dateObj.getTime()) && dateObj.getFullYear() === selectedYear && dateObj.getMonth() === mIdx;
       }).length;
 
-      const tug5 = countTug5 > 0 ? countTug5 : m.baseTug5;
-      const tug8 = countTug8 > 0 ? countTug8 : m.baseTug8;
+      // Pure real counts from dataset (No fake base fallbacks!)
+      const tug5 = countTug5;
+      const tug8 = countTug8;
 
       return {
-        name: `${m.name} ${selectedYear}`,
+        name: `${monthMeta.name} ${selectedYear}`,
+        label: monthMeta.label,
+        monthIdx: mIdx,
         tug5,
         tug8,
         inbound: tug5,
         outbound: tug8,
-        criticalDeliveries: Math.max(1, Math.round(tug5 * 0.08)),
-        efficiency: `${Math.min(99.8, 82 + (tug8 / Math.max(1, tug5)) * 17).toFixed(1)}%`,
-        topCategory: m.monthIdx % 2 === 0 ? "Filtrasi Solar & Oli Main Engine" : "Suku Cadang Kemudi & Propeler",
+        criticalDeliveries: Math.max(0, Math.round(tug5 * 0.08)),
+        efficiency: tug5 > 0 ? `${Math.min(99.8, (tug8 / tug5) * 100).toFixed(1)}%` : "100%",
+        topCategory: mIdx % 2 === 0 ? "Filtrasi Solar & Oli Main Engine" : "Suku Cadang Kemudi & Propeler",
         vesselServiced: "MV. KARTINI BARUNA, MV. MALAHAYATI BARUNA",
         volumeCargo: `${(tug8 * 0.28).toFixed(1)} Tons`,
         staffPerformance: tug8 > 60 ? "Istimewa" : "Optimal"
       };
     });
-  }, [materialRequests, dispatches, selectedYear]);
+  }, [ALL_MONTH_NAMES, availableMonthsForYear, materialRequests, dispatches, selectedYear]);
 
   const MONTHS_DATA = chartMonthlyData;
+
+  // Ensure active month index is valid
+  const safeSelectedMonth = Math.min(selectedMonth, Math.max(0, MONTHS_DATA.length - 1));
+
+  const xCoords = React.useMemo(() => {
+    const count = MONTHS_DATA.length;
+    if (count <= 1) return [350];
+    const startX = 100;
+    const endX = 600;
+    const step = (endX - startX) / (count - 1);
+    return MONTHS_DATA.map((_, i) => Math.round(startX + i * step));
+  }, [MONTHS_DATA.length]);
+
+  const maxScale = React.useMemo(() => {
+    const maxVal = Math.max(100, ...MONTHS_DATA.map(m => Math.max(m.inbound, m.outbound)));
+    return Math.ceil(maxVal / 100) * 100;
+  }, [MONTHS_DATA]);
 
   // Calculate annual highlights YTD
   const totalInboundYTD = MONTHS_DATA.reduce((acc, curr) => acc + curr.tug5, 0);
@@ -134,8 +226,8 @@ export default function DashboardView({
   const avgEfficiency = (MONTHS_DATA.reduce((acc, curr) => acc + parseFloat(curr.efficiency), 0) / MONTHS_DATA.length).toFixed(1) + "%";
   
   // Find peak cargo month
-  let peakCargoVal = 0;
-  let peakCargoMonthName = "";
+  let peakCargoVal = -1;
+  let peakCargoMonthName = "-";
   MONTHS_DATA.forEach(m => {
     const val = parseFloat(m.volumeCargo);
     if (val > peakCargoVal) {
@@ -143,8 +235,6 @@ export default function DashboardView({
       peakCargoMonthName = m.name.split(" ")[0];
     }
   });
-
-  const xCoords = [100, 220, 340, 460, 580, 660];
 
   return (
     <div className="flex-1 flex flex-col p-6 gap-6 overflow-y-auto font-sans bg-slate-50/50 selection:bg-blue-100">
@@ -410,13 +500,12 @@ export default function DashboardView({
               value={selectedYear}
               onChange={(e) => {
                 setSelectedYear(Number(e.target.value));
-                setSelectedMonth(5);
               }}
               className="w-full md:w-40 bg-white border border-slate-250 px-3.5 py-2 rounded-xl text-xs font-mono font-bold text-slate-800 shadow-xs focus:outline-none focus:ring-2 focus:ring-blue-500/20 cursor-pointer"
             >
-              <option value={2026}>📅 TAHUN 2026</option>
-              <option value={2025}>📅 TAHUN 2025</option>
-              <option value={2024}>📅 TAHUN 2024</option>
+              {availableYears.map(yr => (
+                <option key={yr} value={yr}>📅 TAHUN {yr}</option>
+              ))}
             </select>
           </div>
 
@@ -452,10 +541,10 @@ export default function DashboardView({
           <div className="lg:col-span-8 flex flex-col justify-between">
             <div className="flex justify-between items-center bg-blue-50/60 border border-blue-100 p-2.5 px-3.5 rounded-xl text-xs font-mono mb-3">
               <span>
-                Bulan Terpilih: <strong className="text-blue-800 font-bold">{MONTHS_DATA[selectedMonth].name}</strong>
+                Bulan Terpilih: <strong className="text-blue-800 font-bold">{MONTHS_DATA[safeSelectedMonth]?.name}</strong>
               </span>
               <span>
-                Rasio Pemenuhan: <strong className="text-amber-600 font-bold">{(MONTHS_DATA[selectedMonth].tug8 / Math.max(1, MONTHS_DATA[selectedMonth].tug5) * 100).toFixed(0)}%</strong> dari total permintaan
+                Rasio Pemenuhan: <strong className="text-amber-600 font-bold">{(MONTHS_DATA[safeSelectedMonth]?.tug8 / Math.max(1, MONTHS_DATA[safeSelectedMonth]?.tug5) * 100).toFixed(0)}%</strong> dari total permintaan
               </span>
             </div>
 
@@ -481,17 +570,17 @@ export default function DashboardView({
                 <line x1="50" y1="195" x2="680" y2="195" stroke="#cbd5e1" strokeWidth="1.5" />
 
                 {/* Y Axis markings */}
-                <text x="10" y="29" fill="#64748b" fontWeight="bold">160 unit</text>
-                <text x="10" y="74" fill="#64748b">120 unit</text>
-                <text x="10" y="119" fill="#64748b">75 unit</text>
-                <text x="10" y="164" fill="#64748b">30 unit</text>
+                <text x="10" y="29" fill="#64748b" fontWeight="bold">{maxScale} unit</text>
+                <text x="10" y="74" fill="#64748b">{Math.round(maxScale * 0.75)} unit</text>
+                <text x="10" y="119" fill="#64748b">{Math.round(maxScale * 0.5)} unit</text>
+                <text x="10" y="164" fill="#64748b">{Math.round(maxScale * 0.25)} unit</text>
                 <text x="10" y="199" fill="#64748b">0 unit</text>
 
                 {/* Active Tracking Line */}
                 <line 
-                  x1={xCoords[selectedMonth]} 
+                  x1={xCoords[safeSelectedMonth]} 
                   y1="15" 
-                  x2={xCoords[selectedMonth]} 
+                  x2={xCoords[safeSelectedMonth]} 
                   y2="195" 
                   stroke="#2563eb" 
                   strokeWidth="1.5" 
@@ -500,45 +589,71 @@ export default function DashboardView({
                 
                 {/* Active Selection Card Highlight Backdrop */}
                 <rect
-                  x={xCoords[selectedMonth] - 24}
+                  x={xCoords[safeSelectedMonth] - 32}
                   y="15"
-                  width="48"
+                  width="64"
                   height="180"
                   fill="#eff6ff"
                   opacity="0.85"
                   rx="8"
                 />
 
-                {/* Shaded Area Paths */}
-                <path
-                  d={`M 100 195 L 100 ${195 - (MONTHS_DATA[0].inbound / 160) * 165} L 220 ${195 - (MONTHS_DATA[1].inbound / 160) * 165} L 340 ${195 - (MONTHS_DATA[2].inbound / 160) * 165} L 460 ${195 - (MONTHS_DATA[3].inbound / 160) * 165} L 580 ${195 - (MONTHS_DATA[4].inbound / 160) * 165} L 660 ${195 - (MONTHS_DATA[5].inbound / 160) * 165} L 660 195 Z`}
-                  fill="url(#blue-grad)"
-                />
-                <path
-                  d={`M 100 195 L 100 ${195 - (MONTHS_DATA[0].outbound / 160) * 165} L 220 ${195 - (MONTHS_DATA[1].outbound / 160) * 165} L 340 ${195 - (MONTHS_DATA[2].outbound / 160) * 165} L 460 ${195 - (MONTHS_DATA[3].outbound / 160) * 165} L 580 ${195 - (MONTHS_DATA[4].outbound / 160) * 165} L 660 ${195 - (MONTHS_DATA[5].outbound / 160) * 165} L 660 195 Z`}
-                  fill="url(#amber-grad)"
-                />
+                {MONTHS_DATA.length > 1 ? (
+                  <>
+                    {/* Shaded Area Paths */}
+                    <path
+                      d={`M ${xCoords[0]} 195 ` + MONTHS_DATA.map((m, i) => `L ${xCoords[i]} ${195 - (m.inbound / maxScale) * 165}`).join(' ') + ` L ${xCoords[MONTHS_DATA.length - 1]} 195 Z`}
+                      fill="url(#blue-grad)"
+                    />
+                    <path
+                      d={`M ${xCoords[0]} 195 ` + MONTHS_DATA.map((m, i) => `L ${xCoords[i]} ${195 - (m.outbound / maxScale) * 165}`).join(' ') + ` L ${xCoords[MONTHS_DATA.length - 1]} 195 Z`}
+                      fill="url(#amber-grad)"
+                    />
 
-                {/* Primary Data Line Paths */}
-                <path 
-                  d={`M 100 ${195 - (MONTHS_DATA[0].inbound / 160) * 165} L 220 ${195 - (MONTHS_DATA[1].inbound / 160) * 165} L 340 ${195 - (MONTHS_DATA[2].inbound / 160) * 165} L 460 ${195 - (MONTHS_DATA[3].inbound / 160) * 165} L 580 ${195 - (MONTHS_DATA[4].inbound / 160) * 165} L 660 ${195 - (MONTHS_DATA[5].inbound / 160) * 165}`} 
-                  stroke="#2563eb" 
-                  strokeWidth="3.5" 
-                  strokeLinecap="round" 
-                  strokeLinejoin="round" 
-                />
-                <path 
-                  d={`M 100 ${195 - (MONTHS_DATA[0].outbound / 160) * 165} L 220 ${195 - (MONTHS_DATA[1].outbound / 160) * 165} L 340 ${195 - (MONTHS_DATA[2].outbound / 160) * 165} L 460 ${195 - (MONTHS_DATA[3].outbound / 160) * 165} L 580 ${195 - (MONTHS_DATA[4].outbound / 160) * 165} L 660 ${195 - (MONTHS_DATA[5].outbound / 160) * 165}`} 
-                  stroke="#f59e0b" 
-                  strokeWidth="3.5" 
-                  strokeLinecap="round" 
-                  strokeLinejoin="round" 
-                />
+                    {/* Primary Data Line Paths */}
+                    <path 
+                      d={MONTHS_DATA.map((m, i) => `${i === 0 ? 'M' : 'L'} ${xCoords[i]} ${195 - (m.inbound / maxScale) * 165}`).join(' ')} 
+                      stroke="#2563eb" 
+                      strokeWidth="3.5" 
+                      strokeLinecap="round" 
+                      strokeLinejoin="round" 
+                    />
+                    <path 
+                      d={MONTHS_DATA.map((m, i) => `${i === 0 ? 'M' : 'L'} ${xCoords[i]} ${195 - (m.outbound / maxScale) * 165}`).join(' ')} 
+                      stroke="#f59e0b" 
+                      strokeWidth="3.5" 
+                      strokeLinecap="round" 
+                      strokeLinejoin="round" 
+                    />
+                  </>
+                ) : (
+                  /* Single Month Pillar Representation */
+                  <g>
+                    <rect
+                      x={xCoords[0] - 28}
+                      y={195 - (MONTHS_DATA[0].inbound / maxScale) * 165}
+                      width="24"
+                      height={(MONTHS_DATA[0].inbound / maxScale) * 165}
+                      fill="#2563eb"
+                      rx="4"
+                    />
+                    <rect
+                      x={xCoords[0] + 4}
+                      y={195 - (MONTHS_DATA[0].outbound / maxScale) * 165}
+                      width="24"
+                      height={(MONTHS_DATA[0].outbound / maxScale) * 165}
+                      fill="#f59e0b"
+                      rx="4"
+                    />
+                  </g>
+                )}
 
                 {/* Blue Metric Anchors */}
                 {xCoords.map((x, idx) => {
-                  const yVal = 195 - (MONTHS_DATA[idx].inbound / 160) * 165;
-                  const active = selectedMonth === idx;
+                  const m = MONTHS_DATA[idx];
+                  if (!m) return null;
+                  const yVal = 195 - (m.inbound / maxScale) * 165;
+                  const active = safeSelectedMonth === idx;
                   return (
                     <g key={`banchor-${idx}`}>
                       {active && <circle cx={x} cy={yVal} r="10" fill="#2563eb" opacity="0.3" className="animate-ping" />}
@@ -556,8 +671,10 @@ export default function DashboardView({
 
                 {/* Amber Metric Anchors */}
                 {xCoords.map((x, idx) => {
-                  const yVal = 195 - (MONTHS_DATA[idx].outbound / 160) * 165;
-                  const active = selectedMonth === idx;
+                  const m = MONTHS_DATA[idx];
+                  if (!m) return null;
+                  const yVal = 195 - (m.outbound / maxScale) * 165;
+                  const active = safeSelectedMonth === idx;
                   return (
                     <g key={`aanchor-${idx}`}>
                       {active && <circle cx={x} cy={yVal} r="10" fill="#f59e0b" opacity="0.3" className="animate-ping" />}
@@ -577,9 +694,9 @@ export default function DashboardView({
                 {xCoords.map((x, idx) => (
                   <rect
                     key={`hit-${idx}`}
-                    x={x - 30}
+                    x={x - 25}
                     y="10"
-                    width="60"
+                    width="50"
                     height="190"
                     fill="transparent"
                     className="cursor-pointer hover:fill-slate-900/5 transition-all"
@@ -589,17 +706,17 @@ export default function DashboardView({
                 ))}
 
                 {/* X Axis Labels */}
-                {["JAN", "FEB", "MAR", "APR", "MEI", "JUN (YTD)"].map((lbl, idx) => (
+                {MONTHS_DATA.map((m, idx) => (
                   <text 
                     key={`xlab-${idx}`} 
-                    x={xCoords[idx] - 14} 
+                    x={xCoords[idx] - 16} 
                     y="214" 
-                    fill={selectedMonth === idx ? "#1e40af" : "#64748b"} 
-                    fontWeight={selectedMonth === idx ? "bold" : "normal"}
-                    className="text-[10.5px] cursor-pointer font-bold"
+                    fill={safeSelectedMonth === idx ? "#1e40af" : "#64748b"} 
+                    fontWeight={safeSelectedMonth === idx ? "bold" : "normal"}
+                    className="text-[10px] cursor-pointer font-bold"
                     onClick={() => setSelectedMonth(idx)}
                   >
-                    {lbl}
+                    {m.label}
                   </text>
                 ))}
               </svg>
@@ -613,12 +730,12 @@ export default function DashboardView({
                 <div className="flex justify-between items-center pb-2.5 border-b border-slate-800 text-[10px] font-mono text-slate-400">
                   <span>ANALISIS BULANAN</span>
                   <span className="bg-emerald-500/20 text-emerald-400 px-2 py-0.5 rounded-full border border-emerald-500/30 font-bold">
-                    {MONTHS_DATA[selectedMonth].staffPerformance}
+                    {MONTHS_DATA[safeSelectedMonth]?.staffPerformance}
                   </span>
                 </div>
 
                 <h4 className="text-sm font-bold uppercase font-display tracking-wide text-white mt-3">
-                  {MONTHS_DATA[selectedMonth].name}
+                  {MONTHS_DATA[safeSelectedMonth]?.name}
                 </h4>
                 <p className="text-[11px] text-slate-400 font-mono mt-0.5">Ringkasan Alokasi Kargo Kapal</p>
 
@@ -626,11 +743,11 @@ export default function DashboardView({
                 <div className="grid grid-cols-2 gap-2.5 mt-3">
                   <div className="bg-slate-800/80 border border-slate-700/80 p-2.5 rounded-xl">
                     <span className="text-[9px] text-slate-400 block font-mono">Inbound Receipts</span>
-                    <p className="text-base font-black font-mono text-blue-400 mt-0.5">{MONTHS_DATA[selectedMonth].inbound} <span className="text-[10px] text-slate-400 font-normal">PCS</span></p>
+                    <p className="text-base font-black font-mono text-blue-400 mt-0.5">{MONTHS_DATA[safeSelectedMonth]?.inbound} <span className="text-[10px] text-slate-400 font-normal">PCS</span></p>
                   </div>
                   <div className="bg-slate-800/80 border border-slate-700/80 p-2.5 rounded-xl">
                     <span className="text-[9px] text-slate-400 block font-mono">Outbound TUG 8</span>
-                    <p className="text-base font-black font-mono text-amber-400 mt-0.5">{MONTHS_DATA[selectedMonth].outbound} <span className="text-[10px] text-slate-400 font-normal">PCS</span></p>
+                    <p className="text-base font-black font-mono text-amber-400 mt-0.5">{MONTHS_DATA[safeSelectedMonth]?.outbound} <span className="text-[10px] text-slate-400 font-normal">PCS</span></p>
                   </div>
                 </div>
               </div>
@@ -639,26 +756,26 @@ export default function DashboardView({
               <div className="space-y-1.5 text-xs font-mono bg-slate-950/80 border border-slate-800/80 p-3 rounded-xl mt-3">
                 <div className="flex justify-between border-b border-slate-800/80 pb-1.5">
                   <span className="text-slate-400">Tonnage Kargo:</span>
-                  <span className="text-slate-100 font-bold">{MONTHS_DATA[selectedMonth].volumeCargo}</span>
+                  <span className="text-slate-100 font-bold">{MONTHS_DATA[safeSelectedMonth]?.volumeCargo}</span>
                 </div>
                 <div className="flex justify-between border-b border-slate-800/80 pb-1.5">
                   <span className="text-slate-400">Efisiensi Processing:</span>
-                  <span className="text-emerald-400 font-bold">{MONTHS_DATA[selectedMonth].efficiency}</span>
+                  <span className="text-emerald-400 font-bold">{MONTHS_DATA[safeSelectedMonth]?.efficiency}</span>
                 </div>
                 <div className="flex justify-between border-b border-slate-800/80 pb-1.5">
                   <span className="text-slate-400">Alarm Kritis:</span>
-                  <span className={`${MONTHS_DATA[selectedMonth].criticalDeliveries > 5 ? 'text-rose-400 font-bold' : 'text-slate-200'}`}>
-                    {MONTHS_DATA[selectedMonth].criticalDeliveries} Alert Items
+                  <span className={`${(MONTHS_DATA[safeSelectedMonth]?.criticalDeliveries || 0) > 5 ? 'text-rose-400 font-bold' : 'text-slate-200'}`}>
+                    {MONTHS_DATA[safeSelectedMonth]?.criticalDeliveries} Alert Items
                   </span>
                 </div>
                 <div className="flex justify-between border-b border-slate-800/80 pb-1.5">
                   <span className="text-slate-400">Kategori Terbanyak:</span>
-                  <span className="text-blue-300 font-bold truncate max-w-[150px]">{MONTHS_DATA[selectedMonth].topCategory}</span>
+                  <span className="text-blue-300 font-bold truncate max-w-[150px]">{MONTHS_DATA[safeSelectedMonth]?.topCategory}</span>
                 </div>
                 <div className="flex justify-between items-center pt-0.5">
                   <span className="text-slate-400">Kapal Tujuan:</span>
-                  <span className="text-amber-300 font-bold flex items-center gap-1 text-[11px] truncate max-w-[170px]" title={MONTHS_DATA[selectedMonth].vesselServiced}>
-                    ⚓ {MONTHS_DATA[selectedMonth].vesselServiced}
+                  <span className="text-amber-300 font-bold flex items-center gap-1 text-[11px] truncate max-w-[170px]" title={MONTHS_DATA[safeSelectedMonth]?.vesselServiced}>
+                    ⚓ {MONTHS_DATA[safeSelectedMonth]?.vesselServiced}
                   </span>
                 </div>
               </div>

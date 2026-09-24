@@ -347,38 +347,36 @@ export async function seedDatabase(force: boolean = false) {
     // 1. Always ensure core system accounts exist in MySQL
     const defaultUsers = [
       { id: "usr-1", username: "superadmin", name: "Fikri Haikal (Superadmin)", email: "superadmin@maritime-logistics.com", role: "Super Admin", password: "admin123", vessel_name: null },
-      { id: "usr-3", username: "alfin", name: "Maghfur Muhammad Alfin", email: "alfin.rendalhar@maritime-logistics.com", role: "Petugas Gudang", password: "admin123", vessel_name: null },
+      { id: "usr-3", username: "alfin", name: "Maghfur Muhammad Alfin", email: "alfin.rendalhar@maritime-logistics.com", role: "Kepala Gudang", password: "admin123", vessel_name: null },
+      { id: "usr-6", username: "aldi", name: "Aldi Hidayat", email: "aldi.hidayat@maritime-logistics.com", role: "Petugas Gudang", password: "admin123", vessel_name: null },
       { id: "usr-4", username: "emir", name: "Mohamat Emir Ferdian", email: "emir.ferdian@maritime-logistics.com", role: "Manager Logistik", password: "admin123", vessel_name: null },
       { id: "usr-5", username: "sumbono", name: "Sumbono", email: "sumbono@maritime-logistics.com", role: "VP Rendalhar", password: "admin123", vessel_name: null }
     ];
     for (const u of defaultUsers) {
       await dbPool.query(
-        "INSERT IGNORE INTO users (id, username, name, email, role, password, vessel_name) VALUES (?, ?, ?, ?, ?, ?, ?)",
+        "INSERT INTO users (id, username, name, email, role, password, vessel_name) VALUES (?, ?, ?, ?, ?, ?, ?) ON DUPLICATE KEY UPDATE name=VALUES(name), role=VALUES(role)",
         [u.id, u.username, u.name, u.email, u.role, u.password, u.vessel_name]
       );
     }
 
     // Check if remaining tables have data
     const [userRows]: any = await dbPool.query("SELECT COUNT(*) as count FROM users");
-    if (userRows[0].count > 4 && !force) {
+    if (userRows[0].count > 5 && !force) {
       console.log("ℹ️ [MySQL DB] Core tables populated. Skipping full auto-seed.");
       return;
     }
 
     // Digital Signatures
     const signatures = [
-      { id: "sig-2", role_title: "Verifikator Rendalhar (Level 1 Approval)", user_name: "Maghfur Muhammad Alfin", signature_url: `data:image/svg+xml;utf8,<svg xmlns="http://www.w3.org/2000/svg" width="220" height="70" viewBox="0 0 220 70"><path d="M 15 42 C 35 15, 50 58, 80 25 C 100 12, 120 52, 150 30 C 170 20, 185 45, 205 35" stroke="%230f2b5c" stroke-width="2.5" fill="none" stroke-linecap="round"/><path d="M 30 50 L 180 46" stroke="%231e293b" stroke-width="1.8" fill="none" stroke-linecap="round"/><text x="50" y="62" font-family="cursive" font-size="11" font-weight="bold" fill="%230f2b5c">Maghfur M. Alfin</text></svg>`, notes: "Tanda tangan verifikasi dokumen Rendalhar Level 1" },
-      { id: "sig-3", role_title: "Manager Logistik (Level 2 Approval)", user_name: "Mohamat Emir Ferdian", signature_url: `data:image/svg+xml;utf8,<svg xmlns="http://www.w3.org/2000/svg" width="220" height="70" viewBox="0 0 220 70"><path d="M 15 45 C 35 15, 45 65, 75 30 C 95 15, 115 55, 145 35 C 165 25, 185 50, 205 38" stroke="%230f2b5c" stroke-width="2.5" fill="none" stroke-linecap="round"/><path d="M 40 52 L 180 48" stroke="%231e293b" stroke-width="1.8" fill="none" stroke-linecap="round"/><text x="60" y="62" font-family="cursive" font-size="11" font-weight="bold" fill="%230f2b5c">M. Emir Ferdian</text></svg>`, notes: "Tanda tangan persetujuan operasional logistik Level 2" },
-      { id: "sig-4", role_title: "VP Rendalhar (Level 3 Pengesahan)", user_name: "Sumbono", signature_url: `data:image/svg+xml;utf8,<svg xmlns="http://www.w3.org/2000/svg" width="220" height="70" viewBox="0 0 220 70"><path d="M 20 40 C 35 10, 50 60, 80 20 C 110 5, 130 55, 160 30 C 180 20, 195 45, 205 35" stroke="%230f2b5c" stroke-width="2.5" fill="none" stroke-linecap="round"/><path d="M 30 48 C 80 55, 140 45, 190 48" stroke="%231e293b" stroke-width="1.8" fill="none" stroke-linecap="round"/><text x="75" y="62" font-family="cursive" font-size="11" font-weight="bold" fill="%230f2b5c">Sumbono</text></svg>`, notes: "Tanda tangan pengesahan VP Rendalhar Level 3" }
+      { id: "sig-1", role_title: "Manager Logistik", user_name: "Mohamat Emir Ferdian", signature_url: `data:image/svg+xml;utf8,<svg xmlns="http://www.w3.org/2000/svg" width="220" height="70" viewBox="0 0 220 70"><path d="M 15 45 C 35 15, 45 65, 75 30 C 95 15, 115 55, 145 35 C 165 25, 185 50, 205 38" stroke="%230f2b5c" stroke-width="2.5" fill="none" stroke-linecap="round"/><path d="M 40 52 L 180 48" stroke="%231e293b" stroke-width="1.8" fill="none" stroke-linecap="round"/><text x="60" y="62" font-family="cursive" font-size="11" font-weight="bold" fill="%230f2b5c">M. Emir Ferdian</text></svg>`, notes: "Tanda tangan persetujuan operasional logistik" },
+      { id: "sig-2", role_title: "VP RENDALHAR", user_name: "Sumbono", signature_url: `data:image/svg+xml;utf8,<svg xmlns="http://www.w3.org/2000/svg" width="220" height="70" viewBox="0 0 220 70"><path d="M 20 40 C 35 10, 50 60, 80 20 C 110 5, 130 55, 160 30 C 180 20, 195 45, 205 35" stroke="%230f2b5c" stroke-width="2.5" fill="none" stroke-linecap="round"/><path d="M 30 48 C 80 55, 140 45, 190 48" stroke="%231e293b" stroke-width="1.8" fill="none" stroke-linecap="round"/><text x="75" y="62" font-family="cursive" font-size="11" font-weight="bold" fill="%230f2b5c">Sumbono</text></svg>`, notes: "Tanda tangan pengesahan VP Rendalhar" },
+      { id: "sig-4", role_title: "Kepala Gudang", user_name: "MAGHFUR MUHAMMAD ALFIN", signature_url: `data:image/svg+xml;utf8,<svg xmlns="http://www.w3.org/2000/svg" width="220" height="70" viewBox="0 0 220 70"><path d="M 15 42 C 35 15, 50 58, 80 25 C 100 12, 120 52, 150 30 C 170 20, 185 45, 205 35" stroke="%230f2b5c" stroke-width="2.5" fill="none" stroke-linecap="round"/><path d="M 30 50 L 180 46" stroke="%231e293b" stroke-width="1.8" fill="none" stroke-linecap="round"/><text x="45" y="62" font-family="cursive" font-size="11" font-weight="bold" fill="%230f2b5c">Maghfur M. Alfin</text></svg>`, notes: "Tanda tangan Kepala Gudang" },
+      { id: "sig-5", role_title: "Petugas Gudang", user_name: "Aldi Hidayat", signature_url: `data:image/svg+xml;utf8,<svg xmlns="http://www.w3.org/2000/svg" width="220" height="70" viewBox="0 0 220 70"><path d="M 20 42 C 45 15, 60 55, 90 28 C 110 15, 130 52, 160 32 C 180 22, 190 48, 200 40" stroke="%230f2b5c" stroke-width="2.5" fill="none" stroke-linecap="round"/><path d="M 35 52 L 185 48" stroke="%231e293b" stroke-width="1.8" fill="none" stroke-linecap="round"/><text x="75" y="62" font-family="cursive" font-size="11" font-weight="bold" fill="%230f2b5c">Aldi Hidayat</text></svg>`, notes: "Tanda tangan Petugas Gudang" }
     ];
     for (const s of signatures) {
       await dbPool.query(
-        "INSERT IGNORE INTO digital_signatures (id, role_title, user_name, signature_url, notes) VALUES (?, ?, ?, ?, ?)",
+        "INSERT INTO digital_signatures (id, role_title, user_name, signature_url, notes) VALUES (?, ?, ?, ?, ?) ON DUPLICATE KEY UPDATE role_title=VALUES(role_title), user_name=VALUES(user_name), signature_url=VALUES(signature_url)",
         [s.id, s.role_title, s.user_name, s.signature_url, s.notes]
-      );
-      await dbPool.query(
-        "UPDATE digital_signatures SET signature_url = ? WHERE id = ? OR user_name = ?",
-        [s.signature_url, s.id, s.user_name]
       );
     }
 
@@ -520,24 +518,12 @@ export async function seedDatabase(force: boolean = false) {
       console.error("ℹ️ [MySQL DB] Reset material requests:", e.message);
     }
 
-    // 7. TUG 8 Outbound Dispatches (30 items)
-    for (const dsp of demoDispatches) {
-      if (!dsp || !dsp.id) continue;
-      await dbPool.query(
-        `INSERT IGNORE INTO outbound_dispatches (
-          id, dispatch_number, tug8_number, bon_pengeluaran_number, surat_jalan_number,
-          manifest_number, spk_id, spk_number, vessel_name, destination_port, warehouse_origin,
-          transporter_name, vehicle_number, driver_name, driver_phone, status, items, created_by
-        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-        [
-          dsp.id, dsp.dispatch_number || null, dsp.tug8_number || null, dsp.bon_pengeluaran_number || null,
-          dsp.surat_jalan_number || null, dsp.manifest_number || null, dsp.spk_id || null,
-          dsp.spk_number || null, dsp.vessel_name, dsp.destination_port || "Tanjung Priok",
-          dsp.warehouse_origin || "Jakarta HQ Warehouse", dsp.transporter_name || null,
-          dsp.vehicle_number || null, dsp.driver_name || null, dsp.driver_phone || null,
-          dsp.status, JSON.stringify(dsp.items || []), dsp.created_by || "Ahmad Subarjo"
-        ]
-      );
+    // 7. Clear old dummy/seed Outbound Dispatches
+    try {
+      await dbPool.query("DELETE FROM outbound_dispatches");
+      console.log("✅ [MySQL DB] Cleared old dummy outbound dispatches.");
+    } catch (e: any) {
+      console.error("ℹ️ [MySQL DB] Clear outbound dispatches:", e.message);
     }
 
     // 8. Inbound Receivings (25 items)

@@ -104,6 +104,12 @@ export default function App() {
     mutationList?: any[];
     stats?: any;
     timeFilter?: string;
+    selectedDocTypes?: {
+      inbound?: boolean;
+      tug5?: boolean;
+      tug8?: boolean;
+      tug10?: boolean;
+    };
   }>({
     isOpen: false,
     type: "stock_report"
@@ -387,8 +393,12 @@ export default function App() {
 
   // RECEIVING ACTION: SIMULATE NEW ARRIVAL DELIVERY
   const handleAddReceiving = async (recData: Partial<InboundReceiving>) => {
-    await api.createReceiving(recData);
+    const created = await api.createReceiving(recData);
+    if (created && created.id) {
+      setReceivingList(prev => [created, ...prev.filter(r => r && r.id !== created.id)]);
+    }
     await syncAllTables();
+    return created;
   };
 
   // RECEIVING ACTION: QC VERIFY & COMMIT TO PHYSICAL STORAGE
@@ -722,7 +732,7 @@ export default function App() {
             // Check if action is specifically waiting on current user's level
             const isActionRequiredForMe = (doc: any) => {
               if (!doc || doc.status === "Rejected") return false;
-              if (u.includes("alfin") || r.includes("verifikator") || r.includes("petugas")) return !doc.alfin_signed;
+              if (u.includes("alfin") || r.includes("kepala") || r.includes("verifikator") || r.includes("petugas")) return !doc.alfin_signed;
               if (u.includes("emir") || r.includes("manager")) return doc.alfin_signed && !doc.emir_signed;
               if (u.includes("sumbono") || r.includes("vp")) return doc.emir_signed && !doc.sumbono_signed;
               return !doc.alfin_signed || !doc.emir_signed || !doc.sumbono_signed;
@@ -935,8 +945,10 @@ export default function App() {
               receivingList={receivingList}
               parts={parts}
               spkList={spkList}
+              locations={locations}
               role={currentUser!.role}
               onAddReceiving={handleAddReceiving}
+              onAddPart={handleAddPart}
               onVerifyReceiving={handleVerifyReceiving}
               onDeleteReceiving={handleDeleteReceiving}
               onPreviewDocument={(rec) => {
@@ -1003,20 +1015,22 @@ export default function App() {
               spkList={spkList}
               materialRequests={materialRequests}
               materialReturns={materialReturns}
-              onPrintReport={(filteredMovements, stats, timeFilter) => {
+              onPrintReport={(filteredMovements, stats, timeFilter, selectedDocTypes) => {
                 setPrintDoc({
                   isOpen: true,
                   type: "mutation_report",
                   mutationList: filteredMovements,
                   stats,
-                  timeFilter
+                  timeFilter,
+                  selectedDocTypes
                 });
               }}
-              onPrintSPKReport={(spkData) => {
+              onPrintSPKReport={(spkData, selectedDocTypes) => {
                 setPrintDoc({
                   isOpen: true,
                   type: "spk_report",
-                  data: spkData
+                  data: { ...spkData, selectedDocTypes },
+                  selectedDocTypes
                 });
               }}
             />
@@ -1076,7 +1090,7 @@ export default function App() {
           )}
 
           {/* Database User & Role Management (Super Admin only) */}
-          {currentTab === "users-management" && currentUser?.role === UserRole.SUPER_ADMIN && (
+          {currentTab === "users-management" && (
             <UsersManagementView 
               users={simulatedUsers}
               currentUser={currentUser}
@@ -1113,6 +1127,7 @@ export default function App() {
           timeFilter={printDoc.timeFilter}
           spkList={spkList}
           signatures={signatures}
+          selectedDocTypes={printDoc.selectedDocTypes}
           onClose={() => setPrintDoc({ isOpen: false, type: "stock_report" })}
         />
       )}

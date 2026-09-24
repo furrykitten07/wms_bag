@@ -23,6 +23,7 @@ import {
   ReceivingStatus,
   DigitalSignature
 } from "./types.js";
+import { supabase, isSupabaseConfigured, uploadSignatureToStorage } from "./supabaseClient.js";
 import { 
   demoSpareParts, 
   demoSPKs, 
@@ -57,18 +58,18 @@ export const defaultSignatures: DigitalSignature[] = [
   {
     id: "sig-4",
     role_title: "Kepala Gudang",
-    user_name: "Gudang Merak",
-    signature_url: `data:image/svg+xml;utf8,<svg xmlns="http://www.w3.org/2000/svg" width="220" height="70" viewBox="0 0 220 70"><path d="M 20 42 C 45 15, 60 55, 90 28 C 110 15, 130 52, 160 32 C 180 22, 190 48, 200 40" stroke="%230f172a" stroke-width="2.5" fill="none" stroke-linecap="round"/><path d="M 35 52 L 185 48" stroke="%231e293b" stroke-width="1.8" fill="none" stroke-linecap="round"/><text x="110" y="62" font-family="cursive" font-size="11" font-weight="bold" fill="%23334155">Kepala Gudang Merak</text></svg>`,
-    notes: "Tanda Tangan Kepala Gudang Merak",
+    user_name: "MAGHFUR MUHAMMAD ALFIN",
+    signature_url: `data:image/svg+xml;utf8,<svg xmlns="http://www.w3.org/2000/svg" width="220" height="70" viewBox="0 0 220 70"><path d="M 15 42 C 35 15, 50 58, 80 25 C 100 12, 120 52, 150 30 C 170 20, 185 45, 205 35" stroke="%230f172a" stroke-width="2.5" fill="none" stroke-linecap="round"/><path d="M 30 50 L 180 46" stroke="%231e293b" stroke-width="1.8" fill="none" stroke-linecap="round"/><text x="45" y="62" font-family="cursive" font-size="11" font-weight="bold" fill="%23334155">Maghfur M. Alfin</text></svg>`,
+    notes: "Tanda Tangan Kepala Gudang",
     created_at: "2026-08-01T10:00:00.000Z",
     updated_at: "2026-08-01T10:00:00.000Z"
   },
   {
     id: "sig-5",
     role_title: "Petugas Gudang",
-    user_name: "MAGHFUR MUHAMMAD ALFIN",
-    signature_url: `data:image/svg+xml;utf8,<svg xmlns="http://www.w3.org/2000/svg" width="220" height="70" viewBox="0 0 220 70"><path d="M 15 42 C 35 15, 50 58, 80 25 C 100 12, 120 52, 150 30 C 170 20, 185 45, 205 35" stroke="%230f172a" stroke-width="2.5" fill="none" stroke-linecap="round"/><path d="M 30 50 L 180 46" stroke="%231e293b" stroke-width="1.8" fill="none" stroke-linecap="round"/><text x="60" y="62" font-family="cursive" font-size="11" font-weight="bold" fill="%23334155">Maghfur M. Alfin</text></svg>`,
-    notes: "Tanda Tangan Petugas Gudang TUG 5 %26 6",
+    user_name: "Aldi Hidayat",
+    signature_url: `data:image/svg+xml;utf8,<svg xmlns="http://www.w3.org/2000/svg" width="220" height="70" viewBox="0 0 220 70"><path d="M 20 42 C 45 15, 60 55, 90 28 C 110 15, 130 52, 160 32 C 180 22, 190 48, 200 40" stroke="%230f172a" stroke-width="2.5" fill="none" stroke-linecap="round"/><path d="M 35 52 L 185 48" stroke="%231e293b" stroke-width="1.8" fill="none" stroke-linecap="round"/><text x="75" y="62" font-family="cursive" font-size="11" font-weight="bold" fill="%23334155">Aldi Hidayat</text></svg>`,
+    notes: "Tanda Tangan Petugas Gudang",
     created_at: "2026-08-01T10:00:00.000Z",
     updated_at: "2026-08-01T10:00:00.000Z"
   }
@@ -78,16 +79,39 @@ function loadLocalSignatures(): DigitalSignature[] {
   try {
     const saved = localStorage.getItem("wms_digital_signatures");
     if (saved) {
-      const parsed = JSON.parse(saved);
+      let parsed = JSON.parse(saved);
       if (Array.isArray(parsed) && parsed.length > 0) {
-        // Ensure Petugas Gudang signature is present
-        const hasPetugasGudang = parsed.some((s: any) => 
-          s.role_title === "Petugas Gudang" || s.user_name === "MAGHFUR MUHAMMAD ALFIN"
-        );
-        if (!hasPetugasGudang) {
-          parsed.push(defaultSignatures[4]);
-          localStorage.setItem("wms_digital_signatures", JSON.stringify(parsed));
-        }
+        // Enforce updated role assignments for Kepala Gudang & Petugas Gudang
+        parsed = parsed.map((s: any) => {
+          if (s.role_title === "Kepala Gudang" || s.id === "sig-4") {
+            return {
+              ...s,
+              id: "sig-4",
+              role_title: "Kepala Gudang",
+              user_name: "MAGHFUR MUHAMMAD ALFIN",
+              notes: "Tanda Tangan Kepala Gudang",
+              signature_url: (s.signature_url && !s.signature_url.includes("Merak")) ? s.signature_url : defaultSignatures[2].signature_url
+            };
+          }
+          if (s.role_title === "Petugas Gudang" || s.id === "sig-5") {
+            return {
+              ...s,
+              id: "sig-5",
+              role_title: "Petugas Gudang",
+              user_name: "Aldi Hidayat",
+              notes: "Tanda Tangan Petugas Gudang",
+              signature_url: (s.signature_url && !s.signature_url.includes("Maghfur")) ? s.signature_url : defaultSignatures[3].signature_url
+            };
+          }
+          return s;
+        });
+
+        const hasKepalaGudang = parsed.some((s: any) => s.role_title === "Kepala Gudang");
+        if (!hasKepalaGudang) parsed.push(defaultSignatures[2]);
+        const hasPetugasGudang = parsed.some((s: any) => s.role_title === "Petugas Gudang");
+        if (!hasPetugasGudang) parsed.push(defaultSignatures[3]);
+
+        localStorage.setItem("wms_digital_signatures", JSON.stringify(parsed));
         return parsed;
       }
     }
@@ -124,7 +148,8 @@ export function getCurrentUserHeader(): string {
 // Local fallback state
 let localUsers: User[] = [
   { id: "usr-1", username: "superadmin", name: "Fikri Haikal (Superadmin)", email: "superadmin@maritime-logistics.com", role: UserRole.SUPER_ADMIN, password: "admin123" },
-  { id: "usr-3", username: "alfin", name: "Maghfur Muhammad Alfin", email: "alfin.rendalhar@maritime-logistics.com", role: UserRole.WAREHOUSE_STAFF, password: "admin123" },
+  { id: "usr-3", username: "alfin", name: "Maghfur Muhammad Alfin", email: "alfin.rendalhar@maritime-logistics.com", role: UserRole.KEPALA_GUDANG, password: "admin123" },
+  { id: "usr-6", username: "aldi", name: "Aldi Hidayat", email: "aldi.hidayat@maritime-logistics.com", role: UserRole.WAREHOUSE_STAFF, password: "admin123" },
   { id: "usr-4", username: "emir", name: "Mohamat Emir Ferdian", email: "emir.ferdian@maritime-logistics.com", role: UserRole.LOGISTICS_MANAGER, password: "admin123" },
   { id: "usr-5", username: "sumbono", name: "Sumbono", email: "sumbono@maritime-logistics.com", role: UserRole.VP_RENDALHAR, password: "admin123" }
 ];
@@ -148,12 +173,53 @@ let localLocations: WarehouseLocation[] = [
   { id: "loc-9", code: "C3", warehouse: "Jakarta HQ Warehouse", zone: "Zone C (High level, 2m+, Use Ladder!)", rack: "Rack C", shelf: "Level 3 (High)", bin: "C3-H" }
 ];
 
+function loadLocalReceiving(): InboundReceiving[] {
+  try {
+    const saved = localStorage.getItem("wms_local_receiving");
+    if (saved) {
+      const parsed = JSON.parse(saved);
+      if (Array.isArray(parsed) && parsed.length > 0) return parsed;
+    }
+  } catch (e) {}
+  return [...demoReceiving];
+}
+
+function saveLocalReceiving(data: InboundReceiving[]) {
+  try {
+    localStorage.setItem("wms_local_receiving", JSON.stringify(data));
+  } catch (e) {}
+}
+
+function loadLocalDispatches(): OutboundDispatch[] {
+  try {
+    const saved = localStorage.getItem("wms_local_dispatch");
+    if (saved) {
+      const parsed = JSON.parse(saved);
+      if (Array.isArray(parsed)) {
+        // Filter out any dummy July 2026 / demo data records
+        const cleaned = parsed.filter((d: any) => d && !String(d.id || "").startsWith("dsp-juli"));
+        if (cleaned.length !== parsed.length) {
+          saveLocalDispatches(cleaned);
+        }
+        return cleaned;
+      }
+    }
+  } catch (e) {}
+  return [];
+}
+
+function saveLocalDispatches(data: OutboundDispatch[]) {
+  try {
+    localStorage.setItem("wms_local_dispatch", JSON.stringify(data));
+  } catch (e) {}
+}
+
 let localSpareParts: SparePart[] = [...demoSpareParts];
 let localSPKs: SPKWorkOrder[] = [...demoSPKs];
 let localMaterialRequests: MaterialRequest[] = [...demoMaterialRequests];
 let localMaterialRequestsTUG6: MaterialRequest[] = [...demoMaterialRequestsTUG6];
-let localDispatches: OutboundDispatch[] = [];
-let localReceiving: InboundReceiving[] = [...demoReceiving];
+let localDispatches: OutboundDispatch[] = loadLocalDispatches();
+let localReceiving: InboundReceiving[] = loadLocalReceiving();
 let localMaterialReturns: MaterialReturn[] = [...demoMaterialReturns];
 
 let localLedger: MovementLedgerEntry[] = demoSpareParts.slice(0, 15).map((p, idx) => ({
@@ -261,6 +327,7 @@ function getLocalFallbackData<T>(url: string, options: RequestInit = {}): T {
       created_by: currentUsername || "Penjaga Gudang"
     };
     localReceiving = [newRec, ...localReceiving];
+    saveLocalReceiving(localReceiving);
     return newRec as any;
   }
   if (path.startsWith("/api/receiving/") && options.method === "PUT") {
@@ -278,15 +345,69 @@ function getLocalFallbackData<T>(url: string, options: RequestInit = {}): T {
         completion_date: body.completion_date !== undefined ? body.completion_date : (newStatus === ReceivingStatus.ACCEPTED || newStatus === ReceivingStatus.VERIFIED ? (oldRec.completion_date || new Date().toISOString()) : oldRec.completion_date),
         audit_logs: body.audit_logs !== undefined ? body.audit_logs : (oldRec.audit_logs || [])
       };
+      saveLocalReceiving(localReceiving);
       return localReceiving[idx] as any;
     }
   }
   if (path.startsWith("/api/receiving/") && options.method === "DELETE") {
     const id = path.split("/").pop();
     localReceiving = localReceiving.filter(r => r.id !== id);
+    saveLocalReceiving(localReceiving);
     return { success: true, id } as any;
   }
   if (path.startsWith("/api/receiving")) return localReceiving as any;
+  if (path === "/api/dispatch" && options.method === "POST") {
+    const nowStr = new Date().toISOString();
+    const dspNum = `DSP-2026-${Math.floor(10000 + Math.random() * 90000)}`;
+    const bpbNum = body.bon_pengeluaran_number || `BPB-2026-${Math.floor(10000 + Math.random() * 90000)}`;
+    const newDsp: OutboundDispatch = {
+      id: `dsp-${Date.now()}`,
+      dispatch_number: dspNum,
+      tug8_number: bpbNum,
+      request_reference: body.request_reference || "Direct WMS Order",
+      vessel_name: body.vessel_name || "MV. KARTINI BARUNA",
+      consignee: body.consignee || `Port Agent - ${body.vessel_name || "Baruna Vessel"}`,
+      items: body.items || [],
+      status: body.status || DispatchStatus.WAITING,
+      bon_pengeluaran_number: bpbNum,
+      surat_jalan_number: body.surat_jalan_number || `SJL-2026-${Math.floor(1000 + Math.random() * 9000)}`,
+      manifest_number: body.manifest_number || `MNF-2026-${Math.floor(10000 + Math.random() * 90000)}`,
+      courier_name: body.courier_name || "Internal Cargo",
+      tracking_number: body.tracking_number || "-",
+      driver_pic: body.driver_pic || "-",
+      warehouse_name: body.warehouse_name || "Gudang Merak",
+      delivery_destination: body.delivery_destination || "Port Agent / Vessel Side",
+      notes: body.notes || "",
+      created_by: currentUsername || "Petugas Gudang",
+      created_at: nowStr,
+      updated_at: nowStr,
+      work_order_ref: body.work_order_ref || "",
+      account_code: body.account_code || "BPP",
+      function_code: body.function_code || "ARMADA"
+    };
+    localDispatches = [newDsp, ...localDispatches];
+    saveLocalDispatches(localDispatches);
+    return newDsp as any;
+  }
+  if (path.startsWith("/api/dispatch/") && options.method === "PUT") {
+    const id = path.split("/").pop();
+    const idx = localDispatches.findIndex(d => d && d.id === id);
+    if (idx !== -1) {
+      localDispatches[idx] = {
+        ...localDispatches[idx],
+        ...body,
+        updated_at: new Date().toISOString()
+      };
+      saveLocalDispatches(localDispatches);
+      return localDispatches[idx] as any;
+    }
+  }
+  if (path.startsWith("/api/dispatch/") && options.method === "DELETE") {
+    const id = path.split("/").pop();
+    localDispatches = localDispatches.filter(d => d && d.id !== id);
+    saveLocalDispatches(localDispatches);
+    return { success: true, id } as any;
+  }
   if (path.startsWith("/api/dispatch")) return localDispatches as any;
   if (path.startsWith("/api/requests")) return [] as any;
   if (path.startsWith("/api/approvals")) return [] as any;
@@ -364,6 +485,7 @@ function getLocalFallbackData<T>(url: string, options: RequestInit = {}): T {
     localMaterialRequests = [...demoMaterialRequests];
     localMaterialRequestsTUG6 = [...demoMaterialRequestsTUG6];
     localDispatches = [];
+    saveLocalDispatches(localDispatches);
     localReceiving = [...demoReceiving];
     localMaterialReturns = [...demoMaterialReturns];
     return { success: true, counts: { parts: localSpareParts.length } } as any;
@@ -372,6 +494,100 @@ function getLocalFallbackData<T>(url: string, options: RequestInit = {}): T {
 }
 
 async function fetcher<T>(url: string, options: RequestInit = {}): Promise<T> {
+  const method = (options.method || "GET").toUpperCase();
+  const body = options.body ? JSON.parse(options.body as string) : {};
+
+  // If Supabase is configured with valid credentials, interact with Supabase directly
+  if (isSupabaseConfigured) {
+    try {
+      const urlObj = new URL(url, "http://localhost");
+      const path = urlObj.pathname;
+
+      if (path === "/api/material-requests" && method === "GET") {
+        const { data, error } = await supabase.from("material_requests").select("*").order("created_at", { ascending: false });
+        if (!error && data) return data as any;
+      }
+      if (path === "/api/material-requests-tug6" && method === "GET") {
+        const { data, error } = await supabase.from("material_requests").select("*").order("created_at", { ascending: false });
+        if (!error && data) return data as any;
+      }
+      if (path.startsWith("/api/material-requests/") && method === "PUT") {
+        const id = path.split("/").pop();
+        const { data, error } = await supabase.from("material_requests").update({ ...body, updated_at: new Date().toISOString() }).eq("id", id).select().single();
+        if (!error && data) return data as any;
+      }
+      if (path.startsWith("/api/material-requests/") && method === "DELETE") {
+        const id = path.split("/").pop();
+        const { error } = await supabase.from("material_requests").delete().eq("id", id);
+        if (!error) return { success: true, id } as any;
+      }
+      if (path === "/api/material-requests" && method === "POST") {
+        const { data, error } = await supabase.from("material_requests").insert([body]).select().single();
+        if (!error && data) return data as any;
+      }
+
+      if (path === "/api/dispatch" && method === "GET") {
+        const { data, error } = await supabase.from("outbound_dispatches").select("*").order("created_at", { ascending: false });
+        if (!error && data) return data as any;
+      }
+      if (path.startsWith("/api/dispatch/") && method === "PUT") {
+        const id = path.split("/").pop();
+        const { data, error } = await supabase.from("outbound_dispatches").update({ ...body, updated_at: new Date().toISOString() }).eq("id", id).select().single();
+        if (!error && data) return data as any;
+      }
+      if (path.startsWith("/api/dispatch/") && method === "DELETE") {
+        const id = path.split("/").pop();
+        const { error } = await supabase.from("outbound_dispatches").delete().eq("id", id);
+        if (!error) return { success: true, id } as any;
+      }
+      if (path === "/api/dispatch" && method === "POST") {
+        const { data, error } = await supabase.from("outbound_dispatches").insert([body]).select().single();
+        if (!error && data) return data as any;
+      }
+
+      if (path === "/api/material-returns" && method === "GET") {
+        const { data, error } = await supabase.from("material_returns").select("*").order("created_at", { ascending: false });
+        if (!error && data) return data as any;
+      }
+      if (path.startsWith("/api/material-returns/") && method === "PUT") {
+        const id = path.split("/").pop();
+        const { data, error } = await supabase.from("material_returns").update({ ...body, updated_at: new Date().toISOString() }).eq("id", id).select().single();
+        if (!error && data) return data as any;
+      }
+      if (path.startsWith("/api/material-returns/") && method === "DELETE") {
+        const id = path.split("/").pop();
+        const { error } = await supabase.from("material_returns").delete().eq("id", id);
+        if (!error) return { success: true, id } as any;
+      }
+      if (path === "/api/material-returns" && method === "POST") {
+        const { data, error } = await supabase.from("material_returns").insert([body]).select().single();
+        if (!error && data) return data as any;
+      }
+
+      if (path === "/api/spare-parts" && method === "GET") {
+        const { data, error } = await supabase.from("spare_parts").select("*");
+        if (!error && data) return data as any;
+      }
+
+      if (path === "/api/spk" && method === "GET") {
+        const { data, error } = await supabase.from("spk_work_orders").select("*");
+        if (!error && data) return data as any;
+      }
+
+      if (path === "/api/users" && method === "GET") {
+        const { data, error } = await supabase.from("users").select("*");
+        if (!error && data) return data as any;
+      }
+
+      if (path === "/api/digital-signatures" && method === "GET") {
+        const { data, error } = await supabase.from("digital_signatures").select("*");
+        if (!error && data) return data as any;
+      }
+    } catch (supabaseErr) {
+      console.warn("Supabase call failed, falling back to local:", supabaseErr);
+    }
+  }
+
   const headers = {
     "Content-Type": "application/json",
     "x-user-username": currentUsername,
@@ -396,6 +612,10 @@ async function fetcher<T>(url: string, options: RequestInit = {}): Promise<T> {
 }
 
 export const api = {
+  // Supabase Storage & Connectivity
+  uploadSignature: uploadSignatureToStorage,
+  isSupabaseConnected: () => isSupabaseConfigured,
+
   // Auth & Profile
   async login(username: string, password?: string): Promise<{ success: boolean; user: User }> {
     return fetcher<{ success: boolean; user: User }>("/api/auth/login", {

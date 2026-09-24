@@ -184,6 +184,13 @@ export default function UsersManagementView({
             Super Admin
           </span>
         );
+      case UserRole.KEPALA_GUDANG:
+        return (
+          <span className="inline-flex items-center gap-1 bg-teal-50 text-teal-800 px-2.5 py-0.5 rounded-full text-[10px] font-bold border border-teal-200 uppercase tracking-wider">
+            <Shield className="w-3 h-3 text-teal-600" />
+            Kepala Gudang
+          </span>
+        );
       case UserRole.WAREHOUSE_STAFF:
         return (
           <span className="inline-flex items-center gap-1 bg-emerald-50 text-emerald-800 px-2.5 py-0.5 rounded-full text-[10px] font-bold border border-emerald-200 uppercase tracking-wider">
@@ -687,7 +694,8 @@ export default function UsersManagementView({
                   onChange={(e) => setFormRole(e.target.value as UserRole)}
                   className="w-full bg-white border border-slate-300 rounded-lg px-2.5 py-1.5 text-xs text-slate-800 focus:outline-none focus:ring-1 focus:ring-blue-500"
                 >
-                  <option value={UserRole.WAREHOUSE_STAFF}>Petugas Gudang (Maghfur Muhammad Alfin)</option>
+                  <option value={UserRole.KEPALA_GUDANG}>Kepala Gudang (Maghfur Muhammad Alfin)</option>
+                  <option value={UserRole.WAREHOUSE_STAFF}>Petugas Gudang (Aldi Hidayat)</option>
                   <option value={UserRole.WAREHOUSE_ADMIN}>Staff Gudang</option>
                   <option value={UserRole.VERIFIER_RENDALHAR}>Verifikator Rendalhar (Level 1 Approval)</option>
                   <option value={UserRole.LOGISTICS_MANAGER}>Manager Logistik (Level 2 Approval - Emir)</option>

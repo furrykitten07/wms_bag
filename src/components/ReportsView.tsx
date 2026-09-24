@@ -35,7 +35,10 @@ import {
   Send,
   RotateCcw,
   Building2,
-  FileSpreadsheet
+  FileSpreadsheet,
+  Eye,
+  Image as ImageIcon,
+  X
 } from "lucide-react";
 
 interface ReportsViewProps {
@@ -46,8 +49,8 @@ interface ReportsViewProps {
   spkList?: SPKWorkOrder[];
   materialRequests?: MaterialRequest[];
   materialReturns?: MaterialReturn[];
-  onPrintReport: (filteredMovements: MovementLedgerEntry[], stats: any, timeFilter: string) => void;
-  onPrintSPKReport?: (spkData: any) => void;
+  onPrintReport: (filteredMovements: MovementLedgerEntry[], stats: any, timeFilter: string, selectedDocTypes?: { inbound?: boolean; tug5?: boolean; tug8?: boolean; tug10?: boolean }) => void;
+  onPrintSPKReport?: (spkData: any, selectedDocTypes?: { inbound?: boolean; tug5?: boolean; tug8?: boolean; tug10?: boolean }) => void;
 }
 
 export default function ReportsView({ 
@@ -63,6 +66,27 @@ export default function ReportsView({
 }: ReportsViewProps) {
   // View Mode: "spk" (Grouped by SPK & TUG Flow), "ref" (Grouped by Reference Number), or "flat" (Flat Movement Ledger)
   const [viewMode, setViewMode] = useState<"spk" | "ref" | "flat">("spk");
+
+  // Checklist Filter for Documents (Inbound, TUG 5, TUG 8, TUG 10)
+  const [docTypesFilter, setDocTypesFilter] = useState<{
+    inbound: boolean;
+    tug5: boolean;
+    tug8: boolean;
+    tug10: boolean;
+  }>({
+    inbound: true,
+    tug5: true,
+    tug8: true,
+    tug10: true
+  });
+
+  // Photo Preview Modal
+  const [previewPhotoModal, setPreviewPhotoModal] = useState<{
+    isOpen: boolean;
+    title: string;
+    imageUrl: string;
+    details?: string;
+  } | null>(null);
 
   // Filters State
   const [timeFilter, setTimeFilter] = useState<"week" | "month" | "all" | "custom">("month");
@@ -96,20 +120,41 @@ export default function ReportsView({
 
   // Compile all combined movements from movements, receivingList (Inbound), and dispatchList (Outbound)
   const allCombinedMovements = useMemo(() => {
-    const list: MovementLedgerEntry[] = [...movements];
-    const existingIds = new Set(movements.map(m => m.id));
+    // 1. Valid POs from receivingList
+    const validReceivingPOs = new Set((receivingList || []).map(r => r.purchase_order_num).filter(Boolean));
+    const seenTxKeys = new Set<string>();
 
-    // 1. Convert Inbound Receiving records into ledger entries
+    const sanitizedMovements: MovementLedgerEntry[] = [];
+    (movements || []).forEach(m => {
+      if (!m) return;
+      if (m.transaction_type === TransactionType.RECEIVING) {
+        // If receivingList is loaded and PO is not in receivingList, ignore orphaned receiving ledger entries
+        if (Array.isArray(receivingList) && (!m.reference_number || !validReceivingPOs.has(m.reference_number))) {
+          return;
+        }
+      }
+      const uniqueKey = `${m.transaction_type}_${m.reference_number}_${m.spare_part_id || m.part_number}`;
+      if (!seenTxKeys.has(uniqueKey)) {
+        seenTxKeys.add(uniqueKey);
+        sanitizedMovements.push(m);
+      }
+    });
+
+    const list: MovementLedgerEntry[] = [...sanitizedMovements];
+
+    // 2. Convert Inbound Receiving records into ledger entries ONLY if not already in list
     if (receivingList && receivingList.length > 0) {
       receivingList.forEach(rec => {
         if (!rec || !rec.items) return;
         (rec.items || []).forEach((item, idx) => {
           if (!item) return;
-          const entryId = `rec-${rec.id}-${item.spare_part_id || idx}`;
-          if (!existingIds.has(entryId)) {
+          const refCode = rec.purchase_order_num || rec.delivery_note_num || `PO-${rec.id}`;
+          const uniqueKey = `${TransactionType.RECEIVING}_${refCode}_${item.spare_part_id || item.part_number || idx}`;
+          if (!seenTxKeys.has(uniqueKey)) {
+            seenTxKeys.add(uniqueKey);
             const qty = item.qty_received || item.qty_ordered || 0;
             list.push({
-              id: entryId,
+              id: `rec-${rec.id}-${item.spare_part_id || idx}`,
               transaction_type: TransactionType.RECEIVING,
               spare_part_id: item.spare_part_id,
               spare_part_name: item.spare_part_name,
@@ -118,27 +163,29 @@ export default function ReportsView({
               qty_out: 0,
               before_stock: 0,
               after_stock: qty,
-              reference_number: rec.purchase_order_num || rec.delivery_note_num || `PO-${rec.id}`,
+              reference_number: refCode,
               remarks: `Inbound PO | Vendor: ${rec.vendor_name || '-'} | DN: ${rec.delivery_note_num || '-'} | Status: ${rec.status}`,
               transaction_date: rec.received_date || new Date().toISOString(),
-              created_by: rec.created_by || "Ahmad Subarjo (Staff 1)"
+              created_by: rec.created_by || "Staff Gudang"
             });
           }
         });
       });
     }
 
-    // 2. Convert Outbound Dispatch records into ledger entries
+    // 3. Convert Outbound Dispatch records into ledger entries ONLY if not already in list
     if (dispatchList && dispatchList.length > 0) {
       dispatchList.forEach(dsp => {
         if (!dsp || !dsp.items) return;
         (dsp.items || []).forEach((item, idx) => {
           if (!item) return;
-          const entryId = `dsp-${dsp.id}-${item.spare_part_id || idx}`;
-          if (!existingIds.has(entryId)) {
+          const refCode = dsp.tug8_number || dsp.dispatch_number || dsp.surat_jalan_number || dsp.bon_pengeluaran_number || `DSP-${dsp.id}`;
+          const uniqueKey = `${TransactionType.DISPATCH}_${refCode}_${item.spare_part_id || item.part_number || idx}`;
+          if (!seenTxKeys.has(uniqueKey)) {
+            seenTxKeys.add(uniqueKey);
             const qty = item.qty_dispatched || item.qty_requested || 0;
             list.push({
-              id: entryId,
+              id: `dsp-${dsp.id}-${item.spare_part_id || idx}`,
               transaction_type: TransactionType.DISPATCH,
               spare_part_id: item.spare_part_id,
               spare_part_name: item.spare_part_name,
@@ -147,10 +194,10 @@ export default function ReportsView({
               qty_out: qty,
               before_stock: qty,
               after_stock: 0,
-              reference_number: dsp.tug8_number || dsp.dispatch_number || dsp.surat_jalan_number || dsp.bon_pengeluaran_number || `DSP-${dsp.id}`,
+              reference_number: refCode,
               remarks: `Outbound TUG 8 | Kapal: ${dsp.vessel_name || '-'} | Tujuan: ${dsp.destination_port || 'Pelabuhan'} | Transporter: ${dsp.transporter_name || '-'}`,
               transaction_date: dsp.dispatch_date || dsp.created_at || new Date().toISOString(),
-              created_by: dsp.created_by || "Ahmad Subarjo (Staff 1)"
+              created_by: dsp.created_by || "Staff Gudang"
             });
           }
         });
@@ -198,14 +245,35 @@ export default function ReportsView({
       }
     ];
 
-    return spks.map(spk => {
+    const linkedReceivingIds = new Set<string>();
+
+    const spkEntries = spks.map(spk => {
       if (!spk) return null;
+
+      // 1. Connect Inbound Receiving
+      const matchingReceiving = (receivingList || []).find(
+        r => r && (
+          (r.spk_number && r.spk_number === spk.spk_number) ||
+          ((r as any).spk_id && (r as any).spk_id === spk.id) ||
+          ((r as any).work_order_ref && (r as any).work_order_ref === spk.spk_number) ||
+          (r.purchase_order_num && spk.spk_number && spk.spk_number.includes(r.purchase_order_num))
+        )
+      );
+      if (matchingReceiving) {
+        linkedReceivingIds.add(matchingReceiving.id);
+      }
+
+      // 2. Connect TUG 5 (Permintaan)
       const matchingTug5 = (materialRequests || []).find(
         mr => mr && (mr.work_order_ref === spk.spk_number || mr.spk_number === spk.spk_number || (mr as any).spk_id === spk.id)
       );
+
+      // 3. Connect TUG 8 (Pengeluaran)
       const matchingTug8 = (dispatchList || []).find(
         d => d && (d.spk_number === spk.spk_number || d.spk_id === spk.id || d.work_order_ref === spk.spk_number)
       );
+
+      // 4. Connect TUG 10 (Pengembalian / Return)
       const matchingTug10 = (materialReturns || []).find(
         r => r && (r.spk_number === spk.spk_number || r.spk_id === spk.id || r.work_order_number === spk.spk_number)
       );
@@ -220,16 +288,43 @@ export default function ReportsView({
             spare_part_id: it.spare_part_id,
             spare_part_name: it.spare_part_name,
             part_number: it.part_number,
-            unit: it.unit,
+            unit: it.unit || "PCS",
             qty_spk: it.qty_to_pick,
+            qty_inbound: 0,
             qty_tug5: 0,
             qty_tug8: 0,
             qty_tug10: 0,
+            photo_url: undefined,
             remarks: `Alokasi Kapal ${v.vessel_name || '-'}`
           };
         });
       });
 
+      // Populate Inbound Receiving Data
+      if (matchingReceiving && matchingReceiving.items) {
+        matchingReceiving.items.forEach(it => {
+          if (!it) return;
+          const curr = itemMap[it.spare_part_id] || {
+            spare_part_id: it.spare_part_id,
+            spare_part_name: it.spare_part_name,
+            part_number: it.part_number,
+            unit: it.unit || "PCS",
+            qty_spk: 0,
+            qty_inbound: 0,
+            qty_tug5: 0,
+            qty_tug8: 0,
+            qty_tug10: 0,
+            remarks: `Inbound PO: ${matchingReceiving.purchase_order_num || '-'}`
+          };
+          curr.qty_inbound = (curr.qty_inbound || 0) + (it.qty_received || it.qty_ordered || 0);
+          if (it.photo_url || matchingReceiving.photo_evidence_url) {
+            curr.photo_url = it.photo_url || matchingReceiving.photo_evidence_url;
+          }
+          itemMap[it.spare_part_id] = curr;
+        });
+      }
+
+      // Populate TUG 5 Data
       if (matchingTug5 && matchingTug5.items) {
         matchingTug5.items.forEach(it => {
           if (!it) return;
@@ -237,8 +332,9 @@ export default function ReportsView({
             spare_part_id: it.spare_part_id,
             spare_part_name: it.spare_part_name,
             part_number: it.part_number,
-            unit: it.unit,
+            unit: it.unit || "PCS",
             qty_spk: 0,
+            qty_inbound: 0,
             qty_tug5: 0,
             qty_tug8: 0,
             qty_tug10: 0,
@@ -249,6 +345,7 @@ export default function ReportsView({
         });
       }
 
+      // Populate TUG 8 Data
       if (matchingTug8 && matchingTug8.items) {
         matchingTug8.items.forEach(it => {
           if (!it) return;
@@ -256,8 +353,9 @@ export default function ReportsView({
             spare_part_id: it.spare_part_id,
             spare_part_name: it.spare_part_name || (it as any).part_name,
             part_number: it.part_number,
-            unit: it.unit,
+            unit: it.unit || "PCS",
             qty_spk: 0,
+            qty_inbound: 0,
             qty_tug5: 0,
             qty_tug8: 0,
             qty_tug10: 0,
@@ -268,6 +366,7 @@ export default function ReportsView({
         });
       }
 
+      // Populate TUG 10 Data
       if (matchingTug10 && matchingTug10.items) {
         matchingTug10.items.forEach(it => {
           if (!it) return;
@@ -275,8 +374,9 @@ export default function ReportsView({
             spare_part_id: it.spare_part_id,
             spare_part_name: it.part_name || (it as any).spare_part_name,
             part_number: it.part_number,
-            unit: it.unit,
+            unit: it.unit || "PCS",
             qty_spk: 0,
+            qty_inbound: 0,
             qty_tug5: 0,
             qty_tug8: 0,
             qty_tug10: 0,
@@ -298,6 +398,7 @@ export default function ReportsView({
 
       return {
         id: spk.id,
+        is_standalone_inbound: false,
         spk_number: spk.spk_number || "SPK-WO",
         target_port: spk.target_port || "Pelabuhan Merak",
         vessel_name: primaryVessel,
@@ -305,6 +406,10 @@ export default function ReportsView({
         created_at: spk.created_at || new Date().toISOString(),
         created_by: spk.created_by || "Superadmin",
         remarks: (spk as any).remarks || "",
+        inbound_number: matchingReceiving?.purchase_order_num || (matchingReceiving ? `PO-${matchingReceiving.id}` : "-"),
+        inbound_vendor: matchingReceiving?.vendor_name || "-",
+        delivery_note_num: matchingReceiving?.delivery_note_num || "-",
+        photo_evidence_url: matchingReceiving?.photo_evidence_url,
         tug5_number: matchingTug5?.tug5_number || matchingTug5?.request_number || `TUG5-${(spk.spk_number || 'WO').split('-').pop()}`,
         tug8_number: matchingTug8?.tug8_number || matchingTug8?.dispatch_number || `TUG8-${(spk.spk_number || 'WO').split('-').pop()}`,
         tug10_number: matchingTug10?.return_number || `TUG10-${(spk.spk_number || 'WO').split('-').pop()}`,
@@ -314,11 +419,58 @@ export default function ReportsView({
         items: itemsList
       };
     }).filter(Boolean);
-  }, [spkList, materialRequests, dispatchList, materialReturns]);
+
+    // Also include standalone Inbound Receivings (Manual/Non-SPK POs with Photos)
+    const standaloneInboundEntries = (receivingList || [])
+      .filter(rec => rec && !linkedReceivingIds.has(rec.id))
+      .map(rec => ({
+        id: `standalone-rec-${rec.id}`,
+        is_standalone_inbound: true,
+        spk_number: rec.purchase_order_num || `INBOUND-${rec.id}`,
+        target_port: rec.delivery_note_num ? `Surat Jalan: ${rec.delivery_note_num}` : "Gudang Logistik Merak",
+        vessel_name: rec.vendor_name ? `Vendor: ${rec.vendor_name}` : "Penerimaan Masuk",
+        status: rec.status || "VERIFIED",
+        created_at: rec.received_date || rec.created_at || new Date().toISOString(),
+        created_by: rec.created_by || "Staff Gudang",
+        remarks: `Penerimaan Barang Inbound QC (PO: ${rec.purchase_order_num || '-'})`,
+        inbound_number: rec.purchase_order_num || `PO-${rec.id}`,
+        inbound_vendor: rec.vendor_name || "-",
+        delivery_note_num: rec.delivery_note_num || "-",
+        photo_evidence_url: rec.photo_evidence_url,
+        tug5_number: "-",
+        tug8_number: "-",
+        tug10_number: "-",
+        transporter_name: rec.vendor_name,
+        driver_name: undefined,
+        vehicle_number: undefined,
+        items: (rec.items || []).map(it => ({
+          spare_part_id: it.spare_part_id,
+          spare_part_name: it.spare_part_name,
+          part_number: it.part_number,
+          unit: it.unit || "PCS",
+          qty_spk: 0,
+          qty_inbound: it.qty_received || it.qty_ordered || 0,
+          qty_tug5: 0,
+          qty_tug8: 0,
+          qty_tug10: 0,
+          qty_net: it.qty_received || it.qty_ordered || 0,
+          photo_url: it.photo_url || rec.photo_evidence_url,
+          remarks: `Inbound Masuk | Vendor: ${rec.vendor_name || '-'} | DN: ${rec.delivery_note_num || '-'}`
+        }))
+      }));
+
+    return [...spkEntries, ...standaloneInboundEntries];
+  }, [spkList, materialRequests, dispatchList, materialReturns, receivingList]);
 
   const filteredSPKList = useMemo(() => {
     return spkGroupedList.filter((s): s is NonNullable<typeof s> => {
       if (!s) return false;
+
+      // 0. Filter standalone inbounds if Inbound checklist is disabled
+      if ((s as any).is_standalone_inbound && !docTypesFilter.inbound) {
+        return false;
+      }
+
       // 1. Time Filters
       if (s.created_at) {
         const spkDate = new Date(s.created_at);
@@ -356,6 +508,8 @@ export default function ReportsView({
         const matchesSpk = s.spk_number.toLowerCase().includes(q);
         const matchesPort = s.target_port.toLowerCase().includes(q);
         const matchesVessel = s.vessel_name.toLowerCase().includes(q);
+        const matchesInbound = (s as any).inbound_number ? (s as any).inbound_number.toLowerCase().includes(q) : false;
+        const matchesVendor = (s as any).inbound_vendor ? (s as any).inbound_vendor.toLowerCase().includes(q) : false;
         const matchesTug5 = s.tug5_number ? s.tug5_number.toLowerCase().includes(q) : false;
         const matchesTug8 = s.tug8_number ? s.tug8_number.toLowerCase().includes(q) : false;
         const matchesTug10 = s.tug10_number ? s.tug10_number.toLowerCase().includes(q) : false;
@@ -363,13 +517,13 @@ export default function ReportsView({
           it.spare_part_name.toLowerCase().includes(q) || it.part_number.toLowerCase().includes(q)
         );
 
-        if (!matchesSpk && !matchesPort && !matchesVessel && !matchesTug5 && !matchesTug8 && !matchesTug10 && !matchesItems) {
+        if (!matchesSpk && !matchesPort && !matchesVessel && !matchesInbound && !matchesVendor && !matchesTug5 && !matchesTug8 && !matchesTug10 && !matchesItems) {
           return false;
         }
       }
       return true;
     });
-  }, [spkGroupedList, timeFilter, dateFrom, dateTo, searchQuery]);
+  }, [spkGroupedList, timeFilter, dateFrom, dateTo, searchQuery, docTypesFilter]);
 
   // Get list of unique categories for filtration
   const categories = useMemo(() => {
@@ -447,28 +601,34 @@ export default function ReportsView({
     let totalOutQty = 0;
     let totalInTransactions = 0;
     let totalOutTransactions = 0;
+    const uniqueInboundRefs = new Set<string>();
+    const uniqueOutboundRefs = new Set<string>();
 
     filteredData.forEach(m => {
       const isInbound = m.qty_in > 0 || m.transaction_type === TransactionType.RECEIVING;
       const isOutbound = m.qty_out > 0 || m.transaction_type === TransactionType.DISPATCH || m.transaction_type === TransactionType.VESSEL_CONSUMPTION;
 
       if (isInbound) {
-        totalInQty += m.qty_in || 1;
+        totalInQty += (m.qty_in || 0);
         totalInTransactions++;
+        if (m.reference_number) uniqueInboundRefs.add(m.reference_number);
       }
       if (isOutbound) {
-        totalOutQty += m.qty_out || 1;
+        totalOutQty += (m.qty_out || 0);
         totalOutTransactions++;
+        if (m.reference_number) uniqueOutboundRefs.add(m.reference_number);
       }
     });
 
+    const totalInDocs = uniqueInboundRefs.size;
+    const totalOutDocs = uniqueOutboundRefs.size;
     const netImpact = totalInQty - totalOutQty;
 
     // Find the most active item in the period
     const itemActivityMap: { [key: string]: { name: string; num: string; count: number } } = {};
     filteredData.forEach(m => {
       const current = itemActivityMap[m.spare_part_id] || { name: m.spare_part_name, num: m.part_number, count: 0 };
-      current.count += (m.qty_in + m.qty_out);
+      current.count += ((m.qty_in || 0) + (m.qty_out || 0));
       itemActivityMap[m.spare_part_id] = current;
     });
 
@@ -486,6 +646,8 @@ export default function ReportsView({
       totalOutQty,
       totalInTransactions,
       totalOutTransactions,
+      totalInDocs,
+      totalOutDocs,
       netImpact,
       mostActiveItem,
       totalCount: filteredData.length
@@ -612,7 +774,7 @@ export default function ReportsView({
     const textTimeFilter = timeFilter === "week" ? "7 Hari Terakhir" : timeFilter === "month" ? "30 Hari Terakhir" : `${dateFrom} s/d ${dateTo}`;
     if (viewMode === "spk" && filteredSPKList.length > 0) {
       if (onPrintSPKReport) {
-        onPrintSPKReport(filteredSPKList[0]);
+        onPrintSPKReport(filteredSPKList[0], docTypesFilter);
         return;
       }
     }
@@ -621,7 +783,7 @@ export default function ReportsView({
       totalOut: stats.totalOutQty,
       netImpact: stats.netImpact,
       totalCount: stats.totalCount
-    }, textTimeFilter);
+    }, textTimeFilter, docTypesFilter);
   };
 
   return (
@@ -764,6 +926,110 @@ export default function ReportsView({
 
         </div>
 
+        {/* CHECKLIST BOX FILTER UNTUK CETAK DOKUMEN LAPORAN */}
+        <div className="bg-slate-50/80 border border-slate-200 rounded-lg p-3 space-y-2">
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 border-b border-slate-200/80 pb-2">
+            <div className="flex items-center gap-1.5">
+              <CheckCircle className="w-4 h-4 text-blue-600" />
+              <span className="text-xs font-bold text-slate-800 uppercase tracking-wider font-mono">
+                Pilih Dokumen yang Ditampilkan & Dicetak (Checklist)
+              </span>
+              <span className="text-[10px] text-slate-500 font-sans hidden sm:inline">
+                &mdash; Pilih jenis dokumen yang ingin diikutsertakan dalam alur & rekap laporan
+              </span>
+            </div>
+            <div className="flex items-center gap-1.5 text-[10px] font-mono">
+              <button
+                type="button"
+                onClick={() => setDocTypesFilter({ inbound: true, tug5: true, tug8: true, tug10: true })}
+                className="px-2 py-0.5 bg-white border border-slate-200 hover:bg-slate-100 rounded text-slate-700 font-bold transition-colors cursor-pointer"
+              >
+                Pilih Semua
+              </button>
+              <button
+                type="button"
+                onClick={() => setDocTypesFilter({ inbound: true, tug5: true, tug8: true, tug10: false })}
+                className="px-2 py-0.5 bg-blue-50 border border-blue-200 hover:bg-blue-100 rounded text-blue-700 font-bold transition-colors cursor-pointer"
+              >
+                Inbound + TUG 5 + 8
+              </button>
+              <button
+                type="button"
+                onClick={() => setDocTypesFilter({ inbound: true, tug5: false, tug8: false, tug10: false })}
+                className="px-2 py-0.5 bg-emerald-50 border border-emerald-200 hover:bg-emerald-100 rounded text-emerald-700 font-bold transition-colors cursor-pointer"
+              >
+                Inbound Saja
+              </button>
+            </div>
+          </div>
+
+          <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 pt-1">
+            {/* Inbound Checkbox */}
+            <label className={`flex items-center gap-2.5 p-2 rounded-lg border cursor-pointer select-none transition-all ${
+              docTypesFilter.inbound ? "bg-emerald-50 border-emerald-300 text-emerald-950 font-bold shadow-xs" : "bg-white border-slate-200 text-slate-500 hover:bg-slate-100"
+            }`}>
+              <input
+                type="checkbox"
+                checked={docTypesFilter.inbound}
+                onChange={(e) => setDocTypesFilter(prev => ({ ...prev, inbound: e.target.checked }))}
+                className="w-4 h-4 rounded text-emerald-600 focus:ring-emerald-500 accent-emerald-600 cursor-pointer"
+              />
+              <div className="flex flex-col min-w-0">
+                <span className="text-xs font-mono truncate">Inbound (Masuk / PO)</span>
+                <span className="text-[10px] text-slate-400 font-normal truncate">Penerimaan Gudang / QC</span>
+              </div>
+            </label>
+
+            {/* TUG 5 Checkbox */}
+            <label className={`flex items-center gap-2.5 p-2 rounded-lg border cursor-pointer select-none transition-all ${
+              docTypesFilter.tug5 ? "bg-indigo-50 border-indigo-300 text-indigo-950 font-bold shadow-xs" : "bg-white border-slate-200 text-slate-500 hover:bg-slate-100"
+            }`}>
+              <input
+                type="checkbox"
+                checked={docTypesFilter.tug5}
+                onChange={(e) => setDocTypesFilter(prev => ({ ...prev, tug5: e.target.checked }))}
+                className="w-4 h-4 rounded text-indigo-600 focus:ring-indigo-500 accent-indigo-600 cursor-pointer"
+              />
+              <div className="flex flex-col min-w-0">
+                <span className="text-xs font-mono truncate">TUG 5 (Permintaan)</span>
+                <span className="text-[10px] text-slate-400 font-normal truncate">Bon Permintaan Barang</span>
+              </div>
+            </label>
+
+            {/* TUG 8 Checkbox */}
+            <label className={`flex items-center gap-2.5 p-2 rounded-lg border cursor-pointer select-none transition-all ${
+              docTypesFilter.tug8 ? "bg-blue-50 border-blue-300 text-blue-950 font-bold shadow-xs" : "bg-white border-slate-200 text-slate-500 hover:bg-slate-100"
+            }`}>
+              <input
+                type="checkbox"
+                checked={docTypesFilter.tug8}
+                onChange={(e) => setDocTypesFilter(prev => ({ ...prev, tug8: e.target.checked }))}
+                className="w-4 h-4 rounded text-blue-600 focus:ring-blue-500 accent-blue-600 cursor-pointer"
+              />
+              <div className="flex flex-col min-w-0">
+                <span className="text-xs font-mono truncate">TUG 8 (Pengeluaran)</span>
+                <span className="text-[10px] text-slate-400 font-normal truncate">Pengiriman ke Kapal</span>
+              </div>
+            </label>
+
+            {/* TUG 10 Checkbox */}
+            <label className={`flex items-center gap-2.5 p-2 rounded-lg border cursor-pointer select-none transition-all ${
+              docTypesFilter.tug10 ? "bg-amber-50 border-amber-300 text-amber-950 font-bold shadow-xs" : "bg-white border-slate-200 text-slate-500 hover:bg-slate-100"
+            }`}>
+              <input
+                type="checkbox"
+                checked={docTypesFilter.tug10}
+                onChange={(e) => setDocTypesFilter(prev => ({ ...prev, tug10: e.target.checked }))}
+                className="w-4 h-4 rounded text-amber-600 focus:ring-amber-500 accent-amber-600 cursor-pointer"
+              />
+              <div className="flex flex-col min-w-0">
+                <span className="text-xs font-mono truncate">TUG 10 (Pengembalian)</span>
+                <span className="text-[10px] text-slate-400 font-normal truncate">Return Barang Sisa</span>
+              </div>
+            </label>
+          </div>
+        </div>
+
         {/* Global Text Search in panel */}
         <div className="relative pt-1">
           <span className="absolute inset-y-0 left-0 pl-3.5 flex items-center pointer-events-none text-slate-400">
@@ -801,7 +1067,7 @@ export default function ReportsView({
             <span className="text-xs text-slate-500 font-medium">SET/PCS</span>
           </div>
           <p className="text-[10px] text-slate-400">
-            Dari <strong className="text-slate-700">{stats.totalInTransactions} transaksi</strong> verifikasi QC Inbound gudang.
+            Dari <strong className="text-slate-700">{stats.totalInDocs} dokumen penerimaan</strong> ({stats.totalInTransactions} baris item) verifikasi QC Inbound gudang.
           </p>
         </div>
 
@@ -824,7 +1090,7 @@ export default function ReportsView({
             <span className="text-xs text-slate-500 font-medium">SET/PCS</span>
           </div>
           <p className="text-[10px] text-slate-400">
-            Dari <strong className="text-slate-700">{stats.totalOutTransactions} transaksi</strong> pengeluaran bon logistik kapal.
+            Dari <strong className="text-slate-700">{stats.totalOutDocs} dokumen pengeluaran</strong> ({stats.totalOutTransactions} baris item) logistik kapal.
           </p>
         </div>
 
@@ -1088,7 +1354,7 @@ export default function ReportsView({
                   <div className="flex items-center gap-2 shrink-0">
                     <button
                       type="button"
-                      onClick={() => onPrintSPKReport && onPrintSPKReport(spk)}
+                      onClick={() => onPrintSPKReport && onPrintSPKReport(spk, docTypesFilter)}
                       className="flex items-center gap-1.5 bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-bold uppercase px-4 py-2 rounded-lg shadow-sm transition-all cursor-pointer"
                     >
                       <Printer className="w-4 h-4 text-white" />
@@ -1098,31 +1364,66 @@ export default function ReportsView({
                 </div>
 
                 {/* TUG References Flow Bar */}
-                <div className="bg-slate-50 border-b border-slate-200 px-5 py-3 grid grid-cols-1 md:grid-cols-3 gap-3 text-xs font-mono">
-                  <div className="flex items-center gap-2 bg-indigo-50/70 border border-indigo-200 p-2.5 rounded-lg text-indigo-900">
-                    <Package className="w-4 h-4 text-indigo-600 shrink-0" />
-                    <div>
-                      <span className="text-[9px] text-indigo-600 font-bold block">1. DOKUMEN TUG 5 (PERMINTAAN)</span>
-                      <strong className="text-xs font-extrabold">{spk.tug5_number}</strong>
+                <div className="bg-slate-50 border-b border-slate-200 px-5 py-3 grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3 text-xs font-mono">
+                  {docTypesFilter.inbound && (
+                    <div className="flex items-center justify-between gap-2 bg-emerald-50/80 border border-emerald-200 p-2.5 rounded-lg text-emerald-900">
+                      <div className="flex items-center gap-2 min-w-0">
+                        <ArrowDownLeft className="w-4 h-4 text-emerald-600 shrink-0" />
+                        <div className="min-w-0">
+                          <span className="text-[9px] text-emerald-600 font-bold block uppercase">1. Inbound (PO Masuk)</span>
+                          <strong className="text-xs font-extrabold truncate block">{spk.inbound_number || "-"}</strong>
+                          {spk.inbound_vendor && spk.inbound_vendor !== "-" && (
+                            <span className="text-[9px] text-slate-500 block font-normal truncate">Vendor: {spk.inbound_vendor}</span>
+                          )}
+                        </div>
+                      </div>
+                      {spk.photo_evidence_url && (
+                        <button
+                          type="button"
+                          onClick={() => setPreviewPhotoModal({
+                            isOpen: true,
+                            title: `Foto Inbound Fisik - ${spk.inbound_number || spk.spk_number}`,
+                            imageUrl: spk.photo_evidence_url!
+                          })}
+                          className="shrink-0 group relative overflow-hidden rounded border border-emerald-300 hover:border-emerald-500 cursor-pointer shadow-2xs"
+                          title="Klik untuk melihat foto fisik"
+                        >
+                          <img src={spk.photo_evidence_url} alt="Inbound" className="w-9 h-9 object-cover rounded" />
+                        </button>
+                      )}
                     </div>
-                  </div>
+                  )}
 
-                  <div className="flex items-center gap-2 bg-emerald-50/70 border border-emerald-200 p-2.5 rounded-lg text-emerald-900">
-                    <Send className="w-4 h-4 text-emerald-600 shrink-0" />
-                    <div>
-                      <span className="text-[9px] text-emerald-600 font-bold block">2. DOKUMEN TUG 8 (OUTBOUND PENGIRIMAN)</span>
-                      <strong className="text-xs font-extrabold">{spk.tug8_number}</strong>
-                      {spk.transporter_name && <span className="text-[9px] text-slate-500 block font-normal">Transporter: {spk.transporter_name}</span>}
+                  {docTypesFilter.tug5 && (
+                    <div className="flex items-center gap-2 bg-indigo-50/70 border border-indigo-200 p-2.5 rounded-lg text-indigo-900">
+                      <Package className="w-4 h-4 text-indigo-600 shrink-0" />
+                      <div className="min-w-0">
+                        <span className="text-[9px] text-indigo-600 font-bold block uppercase">2. Dokumen TUG 5 (Permintaan)</span>
+                        <strong className="text-xs font-extrabold truncate block">{spk.tug5_number}</strong>
+                      </div>
                     </div>
-                  </div>
+                  )}
 
-                  <div className="flex items-center gap-2 bg-amber-50/70 border border-amber-200 p-2.5 rounded-lg text-amber-900">
-                    <RotateCcw className="w-4 h-4 text-amber-600 shrink-0" />
-                    <div>
-                      <span className="text-[9px] text-amber-600 font-bold block">3. DOKUMEN TUG 10 (RETURN PENGEMBALIAN)</span>
-                      <strong className="text-xs font-extrabold">{spk.tug10_number}</strong>
+                  {docTypesFilter.tug8 && (
+                    <div className="flex items-center gap-2 bg-blue-50/70 border border-blue-200 p-2.5 rounded-lg text-blue-900">
+                      <Send className="w-4 h-4 text-blue-600 shrink-0" />
+                      <div className="min-w-0">
+                        <span className="text-[9px] text-blue-600 font-bold block uppercase">3. Dokumen TUG 8 (Outbound)</span>
+                        <strong className="text-xs font-extrabold truncate block">{spk.tug8_number}</strong>
+                        {spk.transporter_name && <span className="text-[9px] text-slate-500 block font-normal truncate">Transporter: {spk.transporter_name}</span>}
+                      </div>
                     </div>
-                  </div>
+                  )}
+
+                  {docTypesFilter.tug10 && (
+                    <div className="flex items-center gap-2 bg-amber-50/70 border border-amber-200 p-2.5 rounded-lg text-amber-900">
+                      <RotateCcw className="w-4 h-4 text-amber-600 shrink-0" />
+                      <div className="min-w-0">
+                        <span className="text-[9px] text-amber-600 font-bold block uppercase">4. Dokumen TUG 10 (Return)</span>
+                        <strong className="text-xs font-extrabold truncate block">{spk.tug10_number}</strong>
+                      </div>
+                    </div>
+                  )}
                 </div>
 
                 {/* Table of Contained Items */}
@@ -1130,31 +1431,77 @@ export default function ReportsView({
                   <table className="w-full text-xs text-left border-collapse">
                     <thead className="bg-slate-100 border-b border-slate-200 text-[10px] font-bold text-slate-600 uppercase tracking-wider font-mono">
                       <tr>
-                        <th className="px-4 py-2.5 text-center w-10">#</th>
+                        <th className="px-3 py-2.5 text-center w-10">#</th>
                         <th className="px-4 py-2.5">NAMA SUKU CADANG / SPARE PART</th>
-                        <th className="px-4 py-2.5 font-mono">PART NUMBER</th>
-                        <th className="px-4 py-2.5 text-center font-mono">SATUAN</th>
-                        <th className="px-4 py-2.5 text-center font-mono">QTY SPK</th>
-                        <th className="px-4 py-2.5 text-center font-mono text-emerald-800">QTY DIKIRIM (TUG 8)</th>
-                        <th className="px-4 py-2.5 text-center font-mono text-amber-800">QTY KEMBALI (TUG 10)</th>
-                        <th className="px-4 py-2.5 text-center font-mono text-blue-900 font-bold">QTY TERPAKAI (NET)</th>
+                        <th className="px-3 py-2.5 font-mono">PART NUMBER</th>
+                        <th className="px-3 py-2.5 text-center font-mono">SATUAN</th>
+                        {docTypesFilter.inbound && (
+                          <th className="px-3 py-2.5 text-center font-mono text-emerald-800 bg-emerald-50/40">QTY MASUK (INBOUND)</th>
+                        )}
+                        <th className="px-3 py-2.5 text-center font-mono">QTY SPK</th>
+                        {docTypesFilter.tug8 && (
+                          <th className="px-3 py-2.5 text-center font-mono text-blue-800 bg-blue-50/40">QTY DIKIRIM (TUG 8)</th>
+                        )}
+                        {docTypesFilter.tug10 && (
+                          <th className="px-3 py-2.5 text-center font-mono text-amber-800 bg-amber-50/40">QTY KEMBALI (TUG 10)</th>
+                        )}
+                        <th className="px-3 py-2.5 text-center font-mono text-slate-900 font-bold bg-slate-100/60">QTY TERPAKAI (NET)</th>
+                        <th className="px-3 py-2.5 text-center font-mono">FOTO FISIK</th>
                         <th className="px-4 py-2.5">ALOKASI & CATATAN</th>
                       </tr>
                     </thead>
                     <tbody className="divide-y divide-slate-150 font-medium text-slate-800">
-                      {spk.items.map((it: any, idx: number) => (
-                        <tr key={idx} className="hover:bg-slate-50">
-                          <td className="px-4 py-3 text-center font-mono text-slate-400 text-[11px]">{idx + 1}</td>
-                          <td className="px-4 py-3 font-bold text-slate-900">{it.spare_part_name}</td>
-                          <td className="px-4 py-3 font-mono text-slate-600 text-[11px]">{it.part_number}</td>
-                          <td className="px-4 py-3 text-center uppercase font-mono text-[11px]">{it.unit || "PCS"}</td>
-                          <td className="px-4 py-3 text-center font-mono font-bold text-slate-700">{it.qty_spk}</td>
-                          <td className="px-4 py-3 text-center font-mono font-black text-emerald-700 bg-emerald-50/40">+{it.qty_tug8}</td>
-                          <td className="px-4 py-3 text-center font-mono font-black text-amber-700 bg-amber-50/40">{it.qty_tug10 > 0 ? `-${it.qty_tug10}` : "0"}</td>
-                          <td className="px-4 py-3 text-center font-mono font-black text-blue-900 bg-blue-50/50">{it.qty_net}</td>
-                          <td className="px-4 py-3 text-slate-500 text-[11px] italic">{it.remarks || "-"}</td>
-                        </tr>
-                      ))}
+                      {spk.items.map((it: any, idx: number) => {
+                        const itemPhoto = it.photo_url || (spk as any).photo_evidence_url;
+                        return (
+                          <tr key={idx} className="hover:bg-slate-50 transition-colors">
+                            <td className="px-3 py-3 text-center font-mono text-slate-400 text-[11px]">{idx + 1}</td>
+                            <td className="px-4 py-3 font-bold text-slate-900">{it.spare_part_name}</td>
+                            <td className="px-3 py-3 font-mono text-slate-600 text-[11px]">{it.part_number}</td>
+                            <td className="px-3 py-3 text-center uppercase font-mono text-[11px]">{it.unit || "PCS"}</td>
+                            {docTypesFilter.inbound && (
+                              <td className="px-3 py-3 text-center font-mono font-black text-emerald-700 bg-emerald-50/40">
+                                {it.qty_inbound > 0 ? `+${it.qty_inbound}` : "-"}
+                              </td>
+                            )}
+                            <td className="px-3 py-3 text-center font-mono font-bold text-slate-700">{it.qty_spk || "-"}</td>
+                            {docTypesFilter.tug8 && (
+                              <td className="px-3 py-3 text-center font-mono font-black text-blue-700 bg-blue-50/40">
+                                {it.qty_tug8 > 0 ? `+${it.qty_tug8}` : "-"}
+                              </td>
+                            )}
+                            {docTypesFilter.tug10 && (
+                              <td className="px-3 py-3 text-center font-mono font-black text-amber-700 bg-amber-50/40">
+                                {it.qty_tug10 > 0 ? `-${it.qty_tug10}` : "0"}
+                              </td>
+                            )}
+                            <td className="px-3 py-3 text-center font-mono font-black text-slate-900 bg-slate-100/50">
+                              {it.qty_net}
+                            </td>
+                            <td className="px-3 py-3 text-center">
+                              {itemPhoto ? (
+                                <button
+                                  type="button"
+                                  onClick={() => setPreviewPhotoModal({
+                                    isOpen: true,
+                                    title: `${it.spare_part_name} (${it.part_number})`,
+                                    imageUrl: itemPhoto,
+                                    details: `Dokumen: ${spk.inbound_number || spk.spk_number}`
+                                  })}
+                                  className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded border border-blue-200 bg-blue-50 text-blue-700 hover:bg-blue-100 text-[10px] font-mono cursor-pointer transition-colors shadow-2xs"
+                                  title="Lihat foto bukti fisik"
+                                >
+                                  <ImageIcon className="w-3.5 h-3.5 text-blue-600" />
+                                  <span>Lihat</span>
+                                </button>
+                              ) : (
+                                <span className="text-slate-300 font-mono text-[10px]">-</span>
+                              )}
+                            </td>
+                            <td className="px-4 py-3 text-slate-500 text-[11px] italic">{it.remarks || "-"}</td>
+                          </tr>
+                        );
+                      })}
                     </tbody>
                   </table>
                 </div>
@@ -1401,6 +1748,54 @@ export default function ReportsView({
         </div>
 
       </div>
+      )}
+
+      {/* PHOTO PREVIEW LIGHTBOX MODAL */}
+      {previewPhotoModal && previewPhotoModal.isOpen && (
+        <div 
+          className="fixed inset-0 z-50 bg-black/75 backdrop-blur-xs flex items-center justify-center p-4 no-print"
+          onClick={() => setPreviewPhotoModal(null)}
+        >
+          <div 
+            className="bg-white rounded-xl shadow-2xl max-w-2xl w-full overflow-hidden flex flex-col max-h-[90vh] animate-in fade-in zoom-in-95 duration-150"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="bg-slate-900 text-white px-5 py-3.5 flex items-center justify-between">
+              <div>
+                <h3 className="font-bold text-sm">{previewPhotoModal.title}</h3>
+                {previewPhotoModal.details && (
+                  <p className="text-[11px] text-slate-400 font-mono">{previewPhotoModal.details}</p>
+                )}
+              </div>
+              <button
+                type="button"
+                onClick={() => setPreviewPhotoModal(null)}
+                className="w-8 h-8 rounded-lg bg-slate-800 hover:bg-slate-700 flex items-center justify-center text-slate-300 hover:text-white transition-colors cursor-pointer"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            <div className="p-4 bg-slate-100 flex items-center justify-center overflow-auto max-h-[70vh]">
+              <img 
+                src={previewPhotoModal.imageUrl} 
+                alt={previewPhotoModal.title} 
+                className="max-h-[65vh] w-auto object-contain rounded-lg border border-slate-300 shadow-sm"
+              />
+            </div>
+
+            <div className="px-5 py-3 bg-white border-t border-slate-200 flex items-center justify-between text-xs">
+              <span className="text-slate-500 font-mono text-[11px]">Bukti Fisik Barang Gudang</span>
+              <a
+                href={previewPhotoModal.imageUrl}
+                download="bukti-foto-fisik.jpg"
+                className="px-3 py-1.5 bg-blue-600 hover:bg-blue-700 text-white font-bold rounded-lg transition-colors cursor-pointer text-xs"
+              >
+                Unduh Foto
+              </a>
+            </div>
+          </div>
+        </div>
       )}
 
     </div>

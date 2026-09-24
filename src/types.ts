@@ -5,6 +5,7 @@
 
 export enum UserRole {
   SUPER_ADMIN = "Super Admin",
+  KEPALA_GUDANG = "Kepala Gudang",
   WAREHOUSE_STAFF = "Petugas Gudang",
   WAREHOUSE_ADMIN = "Warehouse Admin",
   VERIFIER_RENDALHAR = "Verifikator Rendalhar",
@@ -146,6 +147,7 @@ export interface InboundReceiving {
     item_matched?: "Sesuai" | "Tidak Sesuai" | boolean;
     qty_matched_status?: string;
     keeper_notes?: string;
+    photo_url?: string;
   }>;
   status: ReceivingStatus;
   keeper_notes?: string;
@@ -241,6 +243,9 @@ export interface OutboundDispatch {
     phase?: number;
     dispatched_items_summary?: string;
   }>;
+  aldi_signed?: boolean;
+  aldi_signed_at?: string;
+  aldi_signature_url?: string;
   alfin_signed?: boolean;
   alfin_signed_at?: string;
   alfin_signature_url?: string;
@@ -402,6 +407,9 @@ export interface MaterialRequest {
   receiving_ref_id?: string;
   completion_date?: string;
   incomplete_items_summary?: string;
+  aldi_signed?: boolean;
+  aldi_signed_at?: string;
+  aldi_signature_url?: string;
   alfin_signed?: boolean;
   alfin_signed_at?: string;
   alfin_signature_url?: string;
@@ -465,6 +473,9 @@ export interface MaterialReturn {
   reject_reason?: string;
   account_code?: string;
   function_code?: string;
+  aldi_signed?: boolean;
+  aldi_signed_at?: string;
+  aldi_signature_url?: string;
   alfin_signed?: boolean;
   alfin_signed_at?: string;
   alfin_signature_url?: string;
