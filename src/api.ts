@@ -493,6 +493,74 @@ function getLocalFallbackData<T>(url: string, options: RequestInit = {}): T {
   return [] as any;
 }
 
+// Column Whitelists to prevent PostgREST schema cache mismatch errors (PGRST204)
+const VALID_MR_COLUMNS = new Set([
+  "id", "request_number", "tug5_number", "tug6_number",
+  "vessel_name", "warehouse_name", "request_date", "requester_name",
+  "work_order_ref", "account_code", "function_code", "delivery_address",
+  "status", "items", "remarks",
+  "aldi_signed", "aldi_signed_at", "aldi_signature_url",
+  "alfin_signed", "alfin_signed_at", "alfin_signature_url",
+  "emir_signed", "emir_signed_at", "emir_signature_url",
+  "sumbono_signed", "sumbono_signed_at", "sumbono_signature_url",
+  "created_at", "updated_at"
+]);
+
+const VALID_DSP_COLUMNS = new Set([
+  "id", "request_reference", "vessel_name", "consignee",
+  "bon_pengeluaran_number", "surat_jalan_number", "manifest_number",
+  "tug8_number", "warehouse_name", "delivery_destination",
+  "courier_name", "tracking_number", "driver_pic", "status",
+  "items", "notes", "created_by", "work_order_ref",
+  "account_code", "function_code", "dispatch_date",
+  "aldi_signed", "aldi_signed_at", "aldi_signature_url",
+  "alfin_signed", "alfin_signed_at", "alfin_signature_url",
+  "emir_signed", "emir_signed_at", "emir_signature_url",
+  "sumbono_signed", "sumbono_signed_at", "sumbono_signature_url",
+  "created_at", "updated_at"
+]);
+
+const VALID_RET_COLUMNS = new Set([
+  "id", "return_number", "vessel_name", "warehouse_name",
+  "return_date", "return_reason", "spk_number", "dispatch_reference",
+  "created_by", "status", "items", "notes",
+  "aldi_signed", "aldi_signed_at", "aldi_signature_url",
+  "alfin_signed", "alfin_signed_at", "alfin_signature_url",
+  "emir_signed", "emir_signed_at", "emir_signature_url",
+  "sumbono_signed", "sumbono_signed_at", "sumbono_signature_url",
+  "created_at", "updated_at"
+]);
+
+const VALID_REC_COLUMNS = new Set([
+  "id", "purchase_order_num", "delivery_note_num", "spk_number",
+  "spk_id", "vendor_id", "vendor_name", "received_date",
+  "received_by", "status", "qc_notes", "keeper_notes",
+  "items", "created_at", "updated_at"
+]);
+
+const VALID_PART_COLUMNS = new Set([
+  "id", "sku", "part_number", "alternative_part_number",
+  "part_name", "maker", "unit", "category",
+  "current_stock", "reorder_point", "location_id",
+  "remarks", "created_at", "updated_at"
+]);
+
+const VALID_SIG_COLUMNS = new Set([
+  "id", "role_title", "user_name", "signature_url",
+  "notes", "created_at", "updated_at"
+]);
+
+function sanitizeRecord(data: any, validCols: Set<string>): any {
+  if (!data || typeof data !== "object") return data;
+  const clean: any = {};
+  for (const k of Object.keys(data)) {
+    if (validCols.has(k)) {
+      clean[k] = data[k];
+    }
+  }
+  return clean;
+}
+
 async function fetcher<T>(url: string, options: RequestInit = {}): Promise<T> {
   const method = (options.method || "GET").toUpperCase();
   const body = options.body ? JSON.parse(options.body as string) : {};
@@ -502,89 +570,428 @@ async function fetcher<T>(url: string, options: RequestInit = {}): Promise<T> {
     try {
       const urlObj = new URL(url, "http://localhost");
       const path = urlObj.pathname;
+      const now = new Date().toISOString();
 
+      // --- 1. MATERIAL REQUESTS (TUG 5) ---
       if (path === "/api/material-requests" && method === "GET") {
         const { data, error } = await supabase.from("material_requests").select("*").order("created_at", { ascending: false });
-        if (!error && data) return data as any;
+        if (!error && data && data.length > 0) return data as any;
+        return localMaterialRequests as any;
       }
-      if (path === "/api/material-requests-tug6" && method === "GET") {
-        const { data, error } = await supabase.from("material_requests").select("*").order("created_at", { ascending: false });
-        if (!error && data) return data as any;
+      if (path === "/api/material-requests" && method === "POST") {
+        const newId = body.id || `mr-${Date.now()}`;
+        const reqNum = body.request_number || `MR-2026-${String(Math.floor(100000 + Math.random() * 900000))}`;
+        const tug5Num = body.tug5_number || `TUG5-2026-${String(Math.floor(100 + Math.random() * 900))}`;
+        const rec = {
+          ...body,
+          id: newId,
+          request_number: reqNum,
+          tug5_number: tug5Num,
+          request_date: body.request_date || now.split("T")[0],
+          requester_name: body.requester_name || "Chief Engineer",
+          vessel_name: body.vessel_name || "MV. KARTINI BARUNA",
+          warehouse_name: body.warehouse_name || "Gudang Merak",
+          status: body.status || "Submitted",
+          items: body.items || [],
+          created_at: now,
+          updated_at: now
+        };
+        const cleanRec = sanitizeRecord(rec, VALID_MR_COLUMNS);
+        const { data, error } = await supabase.from("material_requests").insert([cleanRec]).select().single();
+        if (error) {
+          console.error("Supabase MR insert error:", error);
+          throw new Error(error.message);
+        }
+        return data as any;
+      }
+      if (path === "/api/material-requests/batch" && method === "POST") {
+        const rows = (Array.isArray(body) ? body : [body]).map((b: any, idx: number) => {
+          const rec = {
+            ...b,
+            id: b.id || `mr-${Date.now()}-${idx}`,
+            request_number: b.request_number || `MR-2026-${String(Math.floor(100000 + Math.random() * 900000))}`,
+            tug5_number: b.tug5_number || `TUG5-2026-${String(Math.floor(100 + Math.random() * 900))}`,
+            request_date: b.request_date || now.split("T")[0],
+            requester_name: b.requester_name || "Chief Engineer",
+            vessel_name: b.vessel_name || "MV. KARTINI BARUNA",
+            warehouse_name: b.warehouse_name || "Gudang Merak",
+            status: b.status || "Submitted",
+            items: b.items || [],
+            created_at: now,
+            updated_at: now
+          };
+          return sanitizeRecord(rec, VALID_MR_COLUMNS);
+        });
+        const { data, error } = await supabase.from("material_requests").upsert(rows).select();
+        if (error) {
+          console.error("Supabase MR batch insert error:", error);
+          throw new Error(error.message);
+        }
+        return data as any;
       }
       if (path.startsWith("/api/material-requests/") && method === "PUT") {
         const id = path.split("/").pop();
-        const { data, error } = await supabase.from("material_requests").update({ ...body, updated_at: new Date().toISOString() }).eq("id", id).select().single();
-        if (!error && data) return data as any;
+        const cleanUpdate = sanitizeRecord({ ...body, updated_at: now }, VALID_MR_COLUMNS);
+        const { data, error } = await supabase.from("material_requests").update(cleanUpdate).eq("id", id).select().single();
+        if (error) {
+          console.error("Supabase MR update error:", error);
+          throw new Error(error.message);
+        }
+        return data as any;
       }
       if (path.startsWith("/api/material-requests/") && method === "DELETE") {
         const id = path.split("/").pop();
         const { error } = await supabase.from("material_requests").delete().eq("id", id);
-        if (!error) return { success: true, id } as any;
-      }
-      if (path === "/api/material-requests" && method === "POST") {
-        const { data, error } = await supabase.from("material_requests").insert([body]).select().single();
-        if (!error && data) return data as any;
-      }
-
-      if (path === "/api/dispatch" && method === "GET") {
-        const { data, error } = await supabase.from("outbound_dispatches").select("*").order("created_at", { ascending: false });
-        if (!error && data) return data as any;
-      }
-      if (path.startsWith("/api/dispatch/") && method === "PUT") {
-        const id = path.split("/").pop();
-        const { data, error } = await supabase.from("outbound_dispatches").update({ ...body, updated_at: new Date().toISOString() }).eq("id", id).select().single();
-        if (!error && data) return data as any;
-      }
-      if (path.startsWith("/api/dispatch/") && method === "DELETE") {
-        const id = path.split("/").pop();
-        const { error } = await supabase.from("outbound_dispatches").delete().eq("id", id);
-        if (!error) return { success: true, id } as any;
-      }
-      if (path === "/api/dispatch" && method === "POST") {
-        const { data, error } = await supabase.from("outbound_dispatches").insert([body]).select().single();
-        if (!error && data) return data as any;
+        if (error) {
+          console.error("Supabase MR delete error:", error);
+          throw new Error(error.message);
+        }
+        return { success: true, id } as any;
       }
 
+      // --- 2. MATERIAL REQUESTS (TUG 6) ---
+      if (path === "/api/material-requests-tug6" && method === "GET") {
+        const { data, error } = await supabase.from("material_requests").select("*").order("created_at", { ascending: false });
+        if (!error && data && data.length > 0) {
+          const tug6Only = data.filter((d: any) => d.tug6_number);
+          return (tug6Only.length > 0 ? tug6Only : data) as any;
+        }
+        return localMaterialRequestsTUG6 as any;
+      }
+      if (path === "/api/material-requests-tug6" && method === "POST") {
+        const newId = body.id || `mr6-${Date.now()}`;
+        const reqNum = body.request_number || `MR-2026-${String(Math.floor(100000 + Math.random() * 900000))}`;
+        const tug6Num = body.tug6_number || `TUG6-2026-${String(Math.floor(100 + Math.random() * 900))}`;
+        const rec = {
+          ...body,
+          id: newId,
+          request_number: reqNum,
+          tug6_number: tug6Num,
+          request_date: body.request_date || now.split("T")[0],
+          requester_name: body.requester_name || "Chief Engineer",
+          vessel_name: body.vessel_name || "MV. KARTINI BARUNA",
+          warehouse_name: body.warehouse_name || "Gudang Merak",
+          status: body.status || "Submitted",
+          items: body.items || [],
+          created_at: now,
+          updated_at: now
+        };
+        const cleanRec = sanitizeRecord(rec, VALID_MR_COLUMNS);
+        const { data, error } = await supabase.from("material_requests").insert([cleanRec]).select().single();
+        if (error) {
+          console.error("Supabase TUG6 insert error:", error);
+          throw new Error(error.message);
+        }
+        return data as any;
+      }
+      if (path === "/api/material-requests-tug6/batch" && method === "POST") {
+        const rows = (Array.isArray(body) ? body : [body]).map((b: any, idx: number) => {
+          const rec = {
+            ...b,
+            id: b.id || `mr6-${Date.now()}-${idx}`,
+            request_number: b.request_number || `MR-2026-${String(Math.floor(100000 + Math.random() * 900000))}`,
+            tug6_number: b.tug6_number || `TUG6-2026-${String(Math.floor(100 + Math.random() * 900))}`,
+            request_date: b.request_date || now.split("T")[0],
+            requester_name: b.requester_name || "Chief Engineer",
+            vessel_name: b.vessel_name || "MV. KARTINI BARUNA",
+            warehouse_name: b.warehouse_name || "Gudang Merak",
+            status: b.status || "Submitted",
+            items: b.items || [],
+            created_at: now,
+            updated_at: now
+          };
+          return sanitizeRecord(rec, VALID_MR_COLUMNS);
+        });
+        const { data, error } = await supabase.from("material_requests").upsert(rows).select();
+        if (error) {
+          console.error("Supabase TUG6 batch insert error:", error);
+          throw new Error(error.message);
+        }
+        return data as any;
+      }
+      if (path.startsWith("/api/material-requests-tug6/") && method === "PUT") {
+        const id = path.split("/").pop();
+        const cleanUpdate = sanitizeRecord({ ...body, updated_at: now }, VALID_MR_COLUMNS);
+        const { data, error } = await supabase.from("material_requests").update(cleanUpdate).eq("id", id).select().single();
+        if (error) {
+          console.error("Supabase TUG6 update error:", error);
+          throw new Error(error.message);
+        }
+        return data as any;
+      }
+      if (path.startsWith("/api/material-requests-tug6/") && method === "DELETE") {
+        const id = path.split("/").pop();
+        const { error } = await supabase.from("material_requests").delete().eq("id", id);
+        if (error) {
+          console.error("Supabase TUG6 delete error:", error);
+          throw new Error(error.message);
+        }
+        return { success: true, id } as any;
+      }
+
+      // --- 3. MATERIAL RETURNS (TUG 10) ---
       if (path === "/api/material-returns" && method === "GET") {
         const { data, error } = await supabase.from("material_returns").select("*").order("created_at", { ascending: false });
-        if (!error && data) return data as any;
+        if (!error && data && data.length > 0) return data as any;
+        return localMaterialReturns as any;
+      }
+      if (path === "/api/material-returns" && method === "POST") {
+        const newId = body.id || `ret-${Date.now()}`;
+        const retNum = body.return_number || `TUG10-2026-${String(Math.floor(100000 + Math.random() * 900000))}`;
+        const rec = {
+          ...body,
+          id: newId,
+          return_number: retNum,
+          return_date: body.return_date || now.split("T")[0],
+          vessel_name: body.vessel_name || "MV. KARTINI BARUNA",
+          warehouse_name: body.warehouse_name || "Gudang Merak",
+          created_by: body.created_by || "Chief Engineer",
+          status: body.status || "Draft",
+          items: body.items || [],
+          created_at: now,
+          updated_at: now
+        };
+        const cleanRec = sanitizeRecord(rec, VALID_RET_COLUMNS);
+        const { data, error } = await supabase.from("material_returns").insert([cleanRec]).select().single();
+        if (error) {
+          console.error("Supabase return insert error:", error);
+          throw new Error(error.message);
+        }
+        return data as any;
       }
       if (path.startsWith("/api/material-returns/") && method === "PUT") {
         const id = path.split("/").pop();
-        const { data, error } = await supabase.from("material_returns").update({ ...body, updated_at: new Date().toISOString() }).eq("id", id).select().single();
-        if (!error && data) return data as any;
+        const cleanUpdate = sanitizeRecord({ ...body, updated_at: now }, VALID_RET_COLUMNS);
+        const { data, error } = await supabase.from("material_returns").update(cleanUpdate).eq("id", id).select().single();
+        if (error) {
+          console.error("Supabase return update error:", error);
+          throw new Error(error.message);
+        }
+        return data as any;
       }
       if (path.startsWith("/api/material-returns/") && method === "DELETE") {
         const id = path.split("/").pop();
         const { error } = await supabase.from("material_returns").delete().eq("id", id);
-        if (!error) return { success: true, id } as any;
-      }
-      if (path === "/api/material-returns" && method === "POST") {
-        const { data, error } = await supabase.from("material_returns").insert([body]).select().single();
-        if (!error && data) return data as any;
+        if (error) {
+          console.error("Supabase return delete error:", error);
+          throw new Error(error.message);
+        }
+        return { success: true, id } as any;
       }
 
-      if (path === "/api/spare-parts" && method === "GET") {
+      // --- 4. OUTBOUND DISPATCH (TUG 8) ---
+      if (path === "/api/dispatch" && method === "GET") {
+        const { data, error } = await supabase.from("outbound_dispatches").select("*").order("created_at", { ascending: false });
+        if (!error && data && data.length > 0) {
+          // Normalize dispatch_number for frontend compatibility
+          return data.map((d: any) => ({
+            ...d,
+            dispatch_number: d.tug8_number || d.bon_pengeluaran_number || d.id
+          })) as any;
+        }
+        return localDispatches as any;
+      }
+      if (path === "/api/dispatch" && method === "POST") {
+        const dspNum = body.dispatch_number || `DSP-2026-${Math.floor(10000 + Math.random() * 90000)}`;
+        const bpbNum = body.bon_pengeluaran_number || body.tug8_number || dspNum;
+        const rec = {
+          ...body,
+          id: body.id || `dsp-${Date.now()}`,
+          bon_pengeluaran_number: bpbNum,
+          tug8_number: bpbNum,
+          surat_jalan_number: body.surat_jalan_number || `SJL-2026-${Math.floor(1000 + Math.random() * 9000)}`,
+          manifest_number: body.manifest_number || `MNF-2026-${Math.floor(10000 + Math.random() * 90000)}`,
+          vessel_name: body.vessel_name || "MV. KARTINI BARUNA",
+          consignee: body.consignee || "Port Agent",
+          status: body.status || "Draft",
+          items: body.items || [],
+          created_by: currentUsername || "Petugas Gudang",
+          created_at: now,
+          updated_at: now
+        };
+        const cleanRec = sanitizeRecord(rec, VALID_DSP_COLUMNS);
+        const { data, error } = await supabase.from("outbound_dispatches").insert([cleanRec]).select().single();
+        if (error) {
+          console.error("Supabase dispatch insert error:", error);
+          throw new Error(error.message);
+        }
+        return { ...data, dispatch_number: dspNum } as any;
+      }
+      if (path.startsWith("/api/dispatch/") && method === "PUT") {
+        const id = path.split("/").pop();
+        const cleanUpdate = sanitizeRecord({ ...body, updated_at: now }, VALID_DSP_COLUMNS);
+        const { data, error } = await supabase.from("outbound_dispatches").update(cleanUpdate).eq("id", id).select().single();
+        if (error) {
+          console.error("Supabase dispatch update error:", error);
+          throw new Error(error.message);
+        }
+        return data as any;
+      }
+      if (path.startsWith("/api/dispatch/") && method === "DELETE") {
+        const id = path.split("/").pop();
+        const { error } = await supabase.from("outbound_dispatches").delete().eq("id", id);
+        if (error) {
+          console.error("Supabase dispatch delete error:", error);
+          throw new Error(error.message);
+        }
+        return { success: true, id } as any;
+      }
+
+      // --- 5. INBOUND RECEIVING ---
+      if (path === "/api/receiving" && method === "GET") {
+        const { data, error } = await supabase.from("inbound_receivings").select("*").order("created_at", { ascending: false });
+        if (!error && data && data.length > 0) {
+          return data.map((r: any) => ({
+            ...r,
+            created_by: r.received_by || "Petugas Gudang"
+          })) as any;
+        }
+        return localReceiving as any;
+      }
+      if (path === "/api/receiving" && method === "POST") {
+        const rec = {
+          ...body,
+          id: body.id || `rec-${Date.now()}`,
+          purchase_order_num: body.purchase_order_num || `PO-2026-${Math.floor(10000 + Math.random() * 90000)}`,
+          delivery_note_num: body.delivery_note_num || `DN-${Date.now().toString().slice(-5)}`,
+          vendor_name: body.vendor_name || "Vendor Logistik BAG",
+          received_by: body.received_by || body.created_by || currentUsername || "Petugas Gudang",
+          status: body.status || "ACCEPTED",
+          items: body.items || [],
+          received_date: body.received_date || now.split("T")[0],
+          created_at: now,
+          updated_at: now
+        };
+        const cleanRec = sanitizeRecord(rec, VALID_REC_COLUMNS);
+        const { data, error } = await supabase.from("inbound_receivings").insert([cleanRec]).select().single();
+        if (error) {
+          console.error("Supabase receiving insert error:", error);
+          throw new Error(error.message);
+        }
+        return { ...data, created_by: data.received_by } as any;
+      }
+      if (path.startsWith("/api/receiving/") && method === "PUT") {
+        const id = path.split("/").pop();
+        const cleanUpdate = sanitizeRecord({ ...body, updated_at: now }, VALID_REC_COLUMNS);
+        const { data, error } = await supabase.from("inbound_receivings").update(cleanUpdate).eq("id", id).select().single();
+        if (error) {
+          console.error("Supabase receiving update error:", error);
+          throw new Error(error.message);
+        }
+        return data as any;
+      }
+      if (path.startsWith("/api/receiving/") && method === "DELETE") {
+        const id = path.split("/").pop();
+        const { error } = await supabase.from("inbound_receivings").delete().eq("id", id);
+        if (error) {
+          console.error("Supabase receiving delete error:", error);
+          throw new Error(error.message);
+        }
+        return { success: true, id } as any;
+      }
+
+      // --- 6. INVENTORY / SPARE PARTS ---
+      if (path.startsWith("/api/inventory") && method === "GET") {
         const { data, error } = await supabase.from("spare_parts").select("*");
-        if (!error && data) return data as any;
+        if (!error && data && data.length > 0) return data as any;
+        return localSpareParts as any;
+      }
+      if (path.startsWith("/api/inventory") && method === "POST") {
+        const newPart = {
+          ...body,
+          id: body.id || `part-${Date.now()}`,
+          sku: body.sku || `SKU-${Date.now().toString().slice(-6)}`,
+          part_name: body.part_name || "New Spare Part",
+          current_stock: Number(body.current_stock || 0),
+          reorder_point: Number(body.reorder_point || 0)
+        };
+        const cleanPart = sanitizeRecord(newPart, VALID_PART_COLUMNS);
+        const { data, error } = await supabase.from("spare_parts").insert([cleanPart]).select().single();
+        if (error) throw new Error(error.message);
+        return data as any;
+      }
+      if (path.startsWith("/api/inventory/") && method === "PUT") {
+        const id = path.split("/").pop();
+        const cleanUpdate = sanitizeRecord(body, VALID_PART_COLUMNS);
+        const { data, error } = await supabase.from("spare_parts").update(cleanUpdate).eq("id", id).select().single();
+        if (error) throw new Error(error.message);
+        return data as any;
+      }
+      if (path.startsWith("/api/inventory/") && method === "DELETE") {
+        const id = path.split("/").pop();
+        const { error } = await supabase.from("spare_parts").delete().eq("id", id);
+        if (error) throw new Error(error.message);
+        return { success: true, message: "Deleted" } as any;
       }
 
-      if (path === "/api/spk" && method === "GET") {
-        const { data, error } = await supabase.from("spk_work_orders").select("*");
-        if (!error && data) return data as any;
-      }
-
-      if (path === "/api/users" && method === "GET") {
-        const { data, error } = await supabase.from("users").select("*");
-        if (!error && data) return data as any;
-      }
-
-      if (path === "/api/digital-signatures" && method === "GET") {
+      // --- 7. DIGITAL SIGNATURES ---
+      if (path.startsWith("/api/signatures") && method === "GET") {
         const { data, error } = await supabase.from("digital_signatures").select("*");
-        if (!error && data) return data as any;
+        if (!error && data && data.length > 0) return data as any;
+        return loadLocalSignatures() as any;
       }
-    } catch (supabaseErr) {
-      console.warn("Supabase call failed, falling back to local:", supabaseErr);
+      if (path === "/api/signatures" && method === "POST") {
+        const newSig = {
+          ...body,
+          id: body.id || `sig-${Date.now()}`,
+          created_at: now,
+          updated_at: now
+        };
+        const cleanSig = sanitizeRecord(newSig, VALID_SIG_COLUMNS);
+        const { data, error } = await supabase.from("digital_signatures").insert([cleanSig]).select().single();
+        if (error) throw new Error(error.message);
+        return data as any;
+      }
+      if (path.startsWith("/api/signatures/") && method === "PUT") {
+        const id = path.split("/").pop();
+        const cleanUpdate = sanitizeRecord({ ...body, updated_at: now }, VALID_SIG_COLUMNS);
+        const { data, error } = await supabase.from("digital_signatures").update(cleanUpdate).eq("id", id).select().single();
+        if (error) throw new Error(error.message);
+        return data as any;
+      }
+      if (path.startsWith("/api/signatures/") && method === "DELETE") {
+        const id = path.split("/").pop();
+        const { error } = await supabase.from("digital_signatures").delete().eq("id", id);
+        if (error) throw new Error(error.message);
+        return { success: true, id } as any;
+      }
+
+
+      // --- 8. SPK WORK ORDERS ---
+      if (path.startsWith("/api/spk") && method === "GET") {
+        const { data, error } = await supabase.from("spk_work_orders").select("*");
+        if (!error && data && data.length > 0) return data as any;
+        return localSPKs as any;
+      }
+
+      // --- 9. WAREHOUSE LOCATIONS & VENDORS ---
+      if (path.startsWith("/api/warehouse/locations") && method === "GET") {
+        const { data, error } = await supabase.from("warehouse_locations").select("*");
+        if (!error && data && data.length > 0) return data as any;
+        return localLocations as any;
+      }
+      if (path.startsWith("/api/vendors") && method === "GET") {
+        const { data, error } = await supabase.from("vendors").select("*");
+        if (!error && data && data.length > 0) return data as any;
+        return localVendors as any;
+      }
+
+      // --- 10. USERS ---
+      if (path.startsWith("/api/users") && method === "GET") {
+        const { data, error } = await supabase.from("users").select("*");
+        if (!error && data && data.length > 0) return data as any;
+        return localUsers as any;
+      }
+
+      // --- 11. LEDGER ---
+      if (path.startsWith("/api/ledger") && method === "GET") {
+        const { data, error } = await supabase.from("movement_ledger_entries").select("*");
+        if (!error && data && data.length > 0) return data as any;
+        return localLedger as any;
+      }
+    } catch (supabaseErr: any) {
+      console.error("Supabase API call error:", supabaseErr);
+      throw supabaseErr;
     }
   }
 

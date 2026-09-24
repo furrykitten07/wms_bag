@@ -5,10 +5,13 @@
 
 import { createClient, SupabaseClient } from "@supabase/supabase-js";
 
-// Read from Vite environment variables or process.env safely
+// Read from Vite environment variables or process.env safely, with fallback to active project
 const metaEnv = (import.meta as any).env || {};
-const supabaseUrl = metaEnv.VITE_SUPABASE_URL || (typeof process !== "undefined" && process.env?.VITE_SUPABASE_URL) || "";
-const supabaseAnonKey = metaEnv.VITE_SUPABASE_ANON_KEY || (typeof process !== "undefined" && process.env?.VITE_SUPABASE_ANON_KEY) || "";
+const DEFAULT_SUPABASE_URL = "https://dribyqyzaacwwwlmyzpu.supabase.co";
+const DEFAULT_SUPABASE_ANON_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImRyaWJ5cXl6YWFjd3d3bG15enB1Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3OTAyMzMwNzUsImV4cCI6MjEwNTgwOTA3NX0.V2j_cWhUM9Aq-CEDY1xb8EBsikByY-TmN-k-eHioVgo";
+
+const supabaseUrl = metaEnv.VITE_SUPABASE_URL || (typeof process !== "undefined" && process.env?.VITE_SUPABASE_URL) || DEFAULT_SUPABASE_URL;
+const supabaseAnonKey = metaEnv.VITE_SUPABASE_ANON_KEY || (typeof process !== "undefined" && process.env?.VITE_SUPABASE_ANON_KEY) || DEFAULT_SUPABASE_ANON_KEY;
 
 export const isSupabaseConfigured = Boolean(
   supabaseUrl && 
@@ -17,10 +20,9 @@ export const isSupabaseConfigured = Boolean(
   !supabaseAnonKey.includes("your-anon-key")
 );
 
-// Fallback dummy client if credentials are not configured yet
-export const supabase: SupabaseClient = isSupabaseConfigured
-  ? createClient(supabaseUrl, supabaseAnonKey)
-  : (createClient("https://placeholder-project.supabase.co", "placeholder-anon-key") as SupabaseClient);
+// Connected Supabase client
+export const supabase: SupabaseClient = createClient(supabaseUrl, supabaseAnonKey);
+
 
 /**
  * Helper to upload signature to Supabase Storage
