@@ -960,8 +960,68 @@ async function fetcher<T>(url: string, options: RequestInit = {}): Promise<T> {
       // --- 8. SPK WORK ORDERS ---
       if (path.startsWith("/api/spk") && method === "GET") {
         const { data, error } = await supabase.from("spk_work_orders").select("*");
-        if (!error && data && data.length > 0) return data as any;
+        if (!error && data && data.length > 0) {
+          return data.map((row: any) => ({
+            ...row,
+            vessels: row.vessels && Array.isArray(row.vessels) ? row.vessels : [
+              {
+                vessel_name: row.vessel_name || "MV. KARTINI BARUNA",
+                items: Array.isArray(row.items) ? row.items.map((i: any) => ({
+                  spare_part_id: i.spare_part_id || i.id || "",
+                  spare_part_name: i.spare_part_name || i.part_name || "Suku Cadang",
+                  part_number: i.part_number || "-",
+                  qty_to_pick: i.qty_to_pick || i.qty_requested || i.quantity || 1,
+                  unit: i.unit || "PCS"
+                })) : []
+              }
+            ]
+          })) as any;
+        }
         return localSPKs as any;
+      }
+      if (path === "/api/spk" && method === "POST") {
+        const newId = body.id || `spk-${Date.now()}`;
+        const newSPK = {
+          id: newId,
+          spk_number: body.spk_number || `SPK-2026-${Math.floor(10000 + Math.random() * 90000)}`,
+          vessel_name: body.vessel_name || (body.vessels?.[0]?.vessel_name) || "MV. KARTINI BARUNA",
+          description: body.description || "SPK Work Order Picking",
+          assigned_to: body.assigned_to || currentUsername || "Tim Teknis",
+          target_port: body.target_port || "Merak",
+          date_created: body.date_created || now.split("T")[0],
+          status: body.status || "Open",
+          items: body.items || (body.vessels?.[0]?.items) || []
+        };
+        const { data, error } = await supabase.from("spk_work_orders").insert([newSPK]).select().single();
+        if (error) throw new Error(error.message);
+        return {
+          ...data,
+          vessels: body.vessels || [
+            {
+              vessel_name: data.vessel_name,
+              items: data.items || []
+            }
+          ]
+        } as any;
+      }
+      if (path.startsWith("/api/spk/") && method === "PUT") {
+        const id = path.split("/").pop();
+        const updatePayload: any = {};
+        if (body.status) updatePayload.status = body.status;
+        if (body.target_port) updatePayload.target_port = body.target_port;
+        if (body.description) updatePayload.description = body.description;
+        if (body.assigned_to) updatePayload.assigned_to = body.assigned_to;
+        if (body.items) updatePayload.items = body.items;
+        if (body.vessel_name) updatePayload.vessel_name = body.vessel_name;
+        const { data, error } = await supabase.from("spk_work_orders").update(updatePayload).eq("id", id).select().single();
+        if (error) throw new Error(error.message);
+        return data as any;
+      }
+      if (path.startsWith("/api/spk/") && method === "DELETE") {
+        const id = path.split("/").pop();
+        const { error } = await supabase.from("spk_work_orders").delete().eq("id", id);
+        if (error) throw new Error(error.message);
+        return { success: true } as any;
       }
 
       // --- 9. WAREHOUSE LOCATIONS & VENDORS ---

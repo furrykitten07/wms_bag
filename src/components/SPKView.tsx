@@ -203,6 +203,25 @@ export default function SPKView({
     window.print();
   };
 
+  // Helper to safely get vessels list with fallback for standard SPK objects
+  const getSPKVessels = (spk: SPKWorkOrder): SPKVesselItem[] => {
+    if (spk.vessels && Array.isArray(spk.vessels) && spk.vessels.length > 0) {
+      return spk.vessels;
+    }
+    return [
+      {
+        vessel_name: spk.vessel_name || "MV. KARTINI BARUNA",
+        items: Array.isArray(spk.items) ? spk.items.map((i: any) => ({
+          spare_part_id: i.spare_part_id || i.id || "",
+          spare_part_name: i.spare_part_name || i.part_name || "Suku Cadang",
+          part_number: i.part_number || "-",
+          qty_to_pick: i.qty_to_pick || i.qty_requested || i.quantity || 1,
+          unit: i.unit || "PCS"
+        })) : []
+      }
+    ];
+  };
+
   // Filter SPK list based on search query
   const filteredSPKList = spkList.filter((spk) => {
     if (!spk) return false;
@@ -213,7 +232,8 @@ export default function SPKView({
       const matchNum = (spk.spk_number || "").toLowerCase().includes(q);
       const matchPort = (spk.target_port || "").toLowerCase().includes(q);
       const matchOfficer = (spk.created_by || "").toLowerCase().includes(q);
-      const matchVessels = (spk.vessels || []).some(v => (v?.vessel_name || "").toLowerCase().includes(q));
+      const spkVessels = getSPKVessels(spk);
+      const matchVessels = spkVessels.some(v => (v?.vessel_name || "").toLowerCase().includes(q));
       
       return matchNum || matchPort || matchOfficer || matchVessels;
     }
@@ -347,21 +367,23 @@ export default function SPKView({
                 </tr>
               ) : (
                 paginatedSPKList.map((spk) => {
-                  const totalItemsType = spk.vessels.reduce((acc, v) => acc + v.items.length, 0);
-                  const vesselNames = spk.vessels.map(v => v.vessel_name).join(", ");
+                  const spkVessels = getSPKVessels(spk);
+                  const totalItemsType = spkVessels.reduce((acc, v) => acc + (v.items?.length || 0), 0);
+                  const vesselNames = spkVessels.map(v => v.vessel_name).join(", ");
                   
                   const isActionOpen = activeActionId === spk.id;
+                  const dateToDisplay = spk.created_at || spk.date_created || new Date().toISOString();
                   return (
                     <tr key={spk.id} className={`hover:bg-slate-50/70 transition-colors ${isActionOpen ? "relative z-30 bg-slate-50/80 shadow-xs" : ""}`}>
                       <td className="p-4 pl-6 font-mono font-bold text-[12px] text-blue-700">
                         {spk.spk_number}
                       </td>
                       <td className="p-4 text-slate-500 font-mono">
-                        {new Date(spk.created_at).toLocaleDateString("id-ID", {
+                        {new Date(dateToDisplay).toLocaleDateString("id-ID", {
                           day: "2-digit",
                           month: "short",
                           year: "numeric"
-                        })} <span className="text-[10px] text-slate-400 block mt-0.5">{new Date(spk.created_at).toLocaleTimeString("id-ID", { hour: "2-digit", minute: "2-digit" })}</span>
+                        })} <span className="text-[10px] text-slate-400 block mt-0.5">{new Date(dateToDisplay).toLocaleTimeString("id-ID", { hour: "2-digit", minute: "2-digit" })}</span>
                       </td>
                       <td className="p-4 font-semibold text-slate-800 max-w-[180px] truncate" title={spk.target_port}>
                         {spk.target_port}
@@ -369,7 +391,7 @@ export default function SPKView({
                       <td className="p-4 text-slate-700 font-medium font-sans">
                         <div className="flex flex-col gap-0.5 max-w-[200px]" title={vesselNames}>
                           <span className="truncate text-[11.5px] font-bold text-slate-800">{vesselNames}</span>
-                          <span className="text-[9.5px] text-slate-400 font-mono">{spk.vessels.length} Kapal Pelayaran</span>
+                          <span className="text-[9.5px] text-slate-400 font-mono">{spkVessels.length} Kapal Pelayaran</span>
                         </div>
                       </td>
 
@@ -728,7 +750,8 @@ export default function SPKView({
       {/* ========================================== */}
       {isDetailModalOpen && selectedSPKDetail && (() => {
         const spk = selectedSPKDetail;
-        const totalItemsCount = spk.vessels.reduce((acc, v) => acc + v.items.length, 0);
+        const spkVessels = getSPKVessels(spk);
+        const totalItemsCount = spkVessels.reduce((acc, v) => acc + (v.items?.length || 0), 0);
         
         return (
           <div className="fixed inset-0 bg-slate-950/70 backdrop-blur-xs flex items-center justify-center z-50 p-4 overflow-y-auto">
@@ -796,7 +819,7 @@ export default function SPKView({
                     <span className="text-[9px] uppercase font-bold text-slate-400 tracking-wider font-mono">Tanggal Penerbitan:</span>
                     <p className="text-xs font-bold text-slate-800 mt-1 flex items-center gap-1 font-mono">
                       <Clock className="w-3.5 h-3.5 text-blue-500 shrink-0" />
-                      {new Date(spk.created_at).toLocaleString("id-ID")}
+                      {new Date(spk.created_at || spk.date_created || Date.now()).toLocaleString("id-ID")}
                     </p>
                   </div>
                 </div>
@@ -816,11 +839,11 @@ export default function SPKView({
                   <h4 className="font-display font-black text-xs uppercase tracking-wider text-slate-900 border-b-2 border-slate-800 pb-1 flex justify-between items-center">
                     <span>Instruksi Alokasi Sektor Suku Cadang Per Kapal</span>
                     <span className="text-[10px] text-slate-500 font-mono font-bold lowercase">
-                      {spk.vessels.length} Kapal &bull; {totalItemsCount} Macam barang
+                      {spkVessels.length} Kapal &bull; {totalItemsCount} Macam barang
                     </span>
                   </h4>
 
-                  {spk.vessels.map((vessel, vIdx) => (
+                  {spkVessels.map((vessel, vIdx) => (
                     <div key={vIdx} className="border border-slate-200 rounded-md p-4 bg-white shadow-xs">
                       
                       {/* Vessel title */}
@@ -962,10 +985,10 @@ export default function SPKView({
 
       {/* ========================================== */}
       {/* 2. PRINT-READY SHEET & PDF TEMPLATE OVERLAY */}
-      {/* ========================================== */}
-      {isPrintOverlayOpen && printTargetSPK && (() => {
+      {/* ========================================== */}      {isPrintOverlayOpen && printTargetSPK && (() => {
         const spk = printTargetSPK;
-        const totalItemsCount = spk.vessels.reduce((acc, v) => acc + v.items.length, 0);
+        const spkVessels = getSPKVessels(spk);
+        const totalItemsCount = spkVessels.reduce((acc, v) => acc + (v.items?.length || 0), 0);
         
         return (
           <div className="fixed inset-0 bg-slate-900/80 backdrop-blur-xs flex items-center justify-center z-50 p-4 overflow-y-auto no-print-overlay">
@@ -991,7 +1014,7 @@ export default function SPKView({
                     onClick={() => {
                       setPrintTargetSPK(null);
                       setIsPrintOverlayOpen(false);
-                    }}
+                    }} 
                     className="bg-slate-800 hover:bg-slate-700 p-2 rounded transition-colors text-slate-400 cursor-pointer"
                   >
                     <X className="w-4 h-4 text-white" />
@@ -1059,15 +1082,16 @@ export default function SPKView({
                     </div>
                     <div className="grid grid-cols-3">
                       <span className="text-slate-500">Jumlah Kapal:</span>
-                      <span className="col-span-2 text-slate-950 font-bold">{spk.vessels.length} Kapal Pelayaran ({totalItemsCount} Types Parts)</span>
+                      <span className="col-span-2 text-slate-950 font-bold">{spkVessels.length} Kapal Pelayaran ({totalItemsCount} Types Parts)</span>
                     </div>
                   </div>
                 </div>
 
                 {/* Detailed Vessel-by-Vessel picking checklist */}
                 <div className="space-y-8 mt-4">
-                  {spk.vessels.map((vessel, vIdx) => (
+                  {spkVessels.map((vessel, vIdx) => (
                     <div key={vIdx} className="border border-slate-300 rounded p-4">
+
                       
                       {/* Vessel Identifier bar */}
                       <div className="flex justify-between items-center bg-slate-900 text-white p-2 px-3 rounded-sm -mx-4 -mt-4 mb-3">
