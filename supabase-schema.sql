@@ -281,6 +281,15 @@ INSERT INTO users (id, username, name, email, role, password) VALUES
 ('usr-5', 'sumbono', 'Sumbono', 'sumbono@maritime-logistics.com', 'VP_RENDALHAR', 'admin123')
 ON CONFLICT (username) DO NOTHING;
 
+-- Insert Default Vendors
+INSERT INTO vendors (id, name, code, email, phone, address, contact_person) VALUES
+('vnd-1', 'Wärtsilä Marine Power Systems', 'VND-WRT-01', 'parts.marine@wartsila.com', '+358 10 709 0000', 'Helsinki, Finland', 'Mikael Lindqvist'),
+('vnd-2', 'MAN Energy Solutions SE', 'VND-MAN-02', 'prime-serv@man-es.com', '+49 821 3220', 'Augsburg, Germany', 'Hans Müller'),
+('vnd-3', 'Nagasaki Ship Propeller Co.', 'VND-NSP-03', 'sales@nagasaki-prop.jp', '+81 95 824 1111', 'Nagasaki, Japan', 'Hiroshi Sato'),
+('vnd-4', 'Jakarta Maritime Sparepart Ind.', 'VND-JMS-04', 'sales@jakartamaritime.co.id', '+62 21 4390 1234', 'Tanjung Priok, Jakarta, Indonesia', 'Yudi Pratama'),
+('vnd-manual', 'Vendor Non-SPK / Manual', 'VND-MANUAL', 'manual@logistics.id', '-', 'Manual Entry', 'Penjaga Gudang')
+ON CONFLICT (id) DO NOTHING;
+
 -- Insert Locations
 INSERT INTO warehouse_locations (id, code, warehouse, zone, rack, shelf, bin) VALUES
 ('loc-1', 'A1', 'Gudang Merak', 'Zone A', 'Rack A', 'Level 1', 'A1-G'),

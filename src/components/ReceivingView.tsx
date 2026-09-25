@@ -668,7 +668,7 @@ export default function ReceivingView({
         items: itemsToSave,
         status: calculatedStatus,
         keeper_notes: (keeperOverallNotes || "").trim() || defaultOverallNotes,
-        received_date: new Date().toISOString(),
+        received_date: new Date().toISOString().split("T")[0],
         completion_date: calculatedStatus === ReceivingStatus.ACCEPTED ? new Date().toISOString() : undefined,
         audit_logs: initialLogs
       });
@@ -818,7 +818,7 @@ export default function ReceivingView({
         status: ReceivingStatus.ACCEPTED,
         photo_evidence_url: overallPhotoEvidence,
         keeper_notes: manualOverallNotes || "Penerimaan barang fisik manual gudang terverifikasi langsung.",
-        received_date: new Date().toISOString(),
+        received_date: new Date().toISOString().split("T")[0],
         completion_date: new Date().toISOString(),
         audit_logs: initialLogs
       });

@@ -575,7 +575,10 @@ async function fetcher<T>(url: string, options: RequestInit = {}): Promise<T> {
       // --- 1. MATERIAL REQUESTS (TUG 5) ---
       if (path === "/api/material-requests" && method === "GET") {
         const { data, error } = await supabase.from("material_requests").select("*").order("created_at", { ascending: false });
-        if (!error && data && data.length > 0) return data as any;
+        if (!error && data) {
+          localMaterialRequests = data as any;
+          return data as any;
+        }
         return localMaterialRequests as any;
       }
       if (path === "/api/material-requests" && method === "POST") {
@@ -587,7 +590,7 @@ async function fetcher<T>(url: string, options: RequestInit = {}): Promise<T> {
           id: newId,
           request_number: reqNum,
           tug5_number: tug5Num,
-          request_date: body.request_date || now.split("T")[0],
+          request_date: body.request_date ? String(body.request_date).split("T")[0] : now.split("T")[0],
           requester_name: body.requester_name || "Chief Engineer",
           vessel_name: body.vessel_name || "MV. KARTINI BARUNA",
           warehouse_name: body.warehouse_name || "Gudang Merak",
@@ -602,6 +605,7 @@ async function fetcher<T>(url: string, options: RequestInit = {}): Promise<T> {
           console.error("Supabase MR insert error:", error);
           throw new Error(error.message);
         }
+        localMaterialRequests = [data, ...localMaterialRequests.filter(r => r.id !== data.id)];
         return data as any;
       }
       if (path === "/api/material-requests/batch" && method === "POST") {
@@ -611,7 +615,7 @@ async function fetcher<T>(url: string, options: RequestInit = {}): Promise<T> {
             id: b.id || `mr-${Date.now()}-${idx}`,
             request_number: b.request_number || `MR-2026-${String(Math.floor(100000 + Math.random() * 900000))}`,
             tug5_number: b.tug5_number || `TUG5-2026-${String(Math.floor(100 + Math.random() * 900))}`,
-            request_date: b.request_date || now.split("T")[0],
+            request_date: b.request_date ? String(b.request_date).split("T")[0] : now.split("T")[0],
             requester_name: b.requester_name || "Chief Engineer",
             vessel_name: b.vessel_name || "MV. KARTINI BARUNA",
             warehouse_name: b.warehouse_name || "Gudang Merak",
@@ -627,16 +631,24 @@ async function fetcher<T>(url: string, options: RequestInit = {}): Promise<T> {
           console.error("Supabase MR batch insert error:", error);
           throw new Error(error.message);
         }
+        if (data) {
+          localMaterialRequests = [...data, ...localMaterialRequests.filter(r => !data.some(d => d.id === r.id))];
+        }
         return data as any;
       }
       if (path.startsWith("/api/material-requests/") && method === "PUT") {
         const id = path.split("/").pop();
-        const cleanUpdate = sanitizeRecord({ ...body, updated_at: now }, VALID_MR_COLUMNS);
+        const payload = { ...body, updated_at: now };
+        if (payload.request_date) {
+          payload.request_date = String(payload.request_date).split("T")[0];
+        }
+        const cleanUpdate = sanitizeRecord(payload, VALID_MR_COLUMNS);
         const { data, error } = await supabase.from("material_requests").update(cleanUpdate).eq("id", id).select().single();
         if (error) {
           console.error("Supabase MR update error:", error);
           throw new Error(error.message);
         }
+        localMaterialRequests = localMaterialRequests.map(r => r.id === id ? data : r);
         return data as any;
       }
       if (path.startsWith("/api/material-requests/") && method === "DELETE") {
@@ -646,15 +658,17 @@ async function fetcher<T>(url: string, options: RequestInit = {}): Promise<T> {
           console.error("Supabase MR delete error:", error);
           throw new Error(error.message);
         }
+        localMaterialRequests = localMaterialRequests.filter(r => r.id !== id);
         return { success: true, id } as any;
       }
 
       // --- 2. MATERIAL REQUESTS (TUG 6) ---
       if (path === "/api/material-requests-tug6" && method === "GET") {
         const { data, error } = await supabase.from("material_requests").select("*").order("created_at", { ascending: false });
-        if (!error && data && data.length > 0) {
+        if (!error && data) {
           const tug6Only = data.filter((d: any) => d.tug6_number);
-          return (tug6Only.length > 0 ? tug6Only : data) as any;
+          localMaterialRequestsTUG6 = (tug6Only.length > 0 ? tug6Only : data) as any;
+          return localMaterialRequestsTUG6 as any;
         }
         return localMaterialRequestsTUG6 as any;
       }
@@ -667,7 +681,7 @@ async function fetcher<T>(url: string, options: RequestInit = {}): Promise<T> {
           id: newId,
           request_number: reqNum,
           tug6_number: tug6Num,
-          request_date: body.request_date || now.split("T")[0],
+          request_date: body.request_date ? String(body.request_date).split("T")[0] : now.split("T")[0],
           requester_name: body.requester_name || "Chief Engineer",
           vessel_name: body.vessel_name || "MV. KARTINI BARUNA",
           warehouse_name: body.warehouse_name || "Gudang Merak",
@@ -682,6 +696,7 @@ async function fetcher<T>(url: string, options: RequestInit = {}): Promise<T> {
           console.error("Supabase TUG6 insert error:", error);
           throw new Error(error.message);
         }
+        localMaterialRequestsTUG6 = [data, ...localMaterialRequestsTUG6.filter(r => r.id !== data.id)];
         return data as any;
       }
       if (path === "/api/material-requests-tug6/batch" && method === "POST") {
@@ -691,7 +706,7 @@ async function fetcher<T>(url: string, options: RequestInit = {}): Promise<T> {
             id: b.id || `mr6-${Date.now()}-${idx}`,
             request_number: b.request_number || `MR-2026-${String(Math.floor(100000 + Math.random() * 900000))}`,
             tug6_number: b.tug6_number || `TUG6-2026-${String(Math.floor(100 + Math.random() * 900))}`,
-            request_date: b.request_date || now.split("T")[0],
+            request_date: b.request_date ? String(b.request_date).split("T")[0] : now.split("T")[0],
             requester_name: b.requester_name || "Chief Engineer",
             vessel_name: b.vessel_name || "MV. KARTINI BARUNA",
             warehouse_name: b.warehouse_name || "Gudang Merak",
@@ -707,16 +722,24 @@ async function fetcher<T>(url: string, options: RequestInit = {}): Promise<T> {
           console.error("Supabase TUG6 batch insert error:", error);
           throw new Error(error.message);
         }
+        if (data) {
+          localMaterialRequestsTUG6 = [...data, ...localMaterialRequestsTUG6.filter(r => !data.some(d => d.id === r.id))];
+        }
         return data as any;
       }
       if (path.startsWith("/api/material-requests-tug6/") && method === "PUT") {
         const id = path.split("/").pop();
-        const cleanUpdate = sanitizeRecord({ ...body, updated_at: now }, VALID_MR_COLUMNS);
+        const payload = { ...body, updated_at: now };
+        if (payload.request_date) {
+          payload.request_date = String(payload.request_date).split("T")[0];
+        }
+        const cleanUpdate = sanitizeRecord(payload, VALID_MR_COLUMNS);
         const { data, error } = await supabase.from("material_requests").update(cleanUpdate).eq("id", id).select().single();
         if (error) {
           console.error("Supabase TUG6 update error:", error);
           throw new Error(error.message);
         }
+        localMaterialRequestsTUG6 = localMaterialRequestsTUG6.map(r => r.id === id ? data : r);
         return data as any;
       }
       if (path.startsWith("/api/material-requests-tug6/") && method === "DELETE") {
@@ -726,13 +749,17 @@ async function fetcher<T>(url: string, options: RequestInit = {}): Promise<T> {
           console.error("Supabase TUG6 delete error:", error);
           throw new Error(error.message);
         }
+        localMaterialRequestsTUG6 = localMaterialRequestsTUG6.filter(r => r.id !== id);
         return { success: true, id } as any;
       }
 
       // --- 3. MATERIAL RETURNS (TUG 10) ---
       if (path === "/api/material-returns" && method === "GET") {
         const { data, error } = await supabase.from("material_returns").select("*").order("created_at", { ascending: false });
-        if (!error && data && data.length > 0) return data as any;
+        if (!error && data) {
+          localMaterialReturns = data as any;
+          return data as any;
+        }
         return localMaterialReturns as any;
       }
       if (path === "/api/material-returns" && method === "POST") {
@@ -742,7 +769,7 @@ async function fetcher<T>(url: string, options: RequestInit = {}): Promise<T> {
           ...body,
           id: newId,
           return_number: retNum,
-          return_date: body.return_date || now.split("T")[0],
+          return_date: body.return_date ? String(body.return_date).split("T")[0] : now.split("T")[0],
           vessel_name: body.vessel_name || "MV. KARTINI BARUNA",
           warehouse_name: body.warehouse_name || "Gudang Merak",
           created_by: body.created_by || "Chief Engineer",
@@ -757,16 +784,22 @@ async function fetcher<T>(url: string, options: RequestInit = {}): Promise<T> {
           console.error("Supabase return insert error:", error);
           throw new Error(error.message);
         }
+        localMaterialReturns = [data, ...localMaterialReturns.filter(r => r.id !== data.id)];
         return data as any;
       }
       if (path.startsWith("/api/material-returns/") && method === "PUT") {
         const id = path.split("/").pop();
-        const cleanUpdate = sanitizeRecord({ ...body, updated_at: now }, VALID_RET_COLUMNS);
+        const payload = { ...body, updated_at: now };
+        if (payload.return_date) {
+          payload.return_date = String(payload.return_date).split("T")[0];
+        }
+        const cleanUpdate = sanitizeRecord(payload, VALID_RET_COLUMNS);
         const { data, error } = await supabase.from("material_returns").update(cleanUpdate).eq("id", id).select().single();
         if (error) {
           console.error("Supabase return update error:", error);
           throw new Error(error.message);
         }
+        localMaterialReturns = localMaterialReturns.map(r => r.id === id ? data : r);
         return data as any;
       }
       if (path.startsWith("/api/material-returns/") && method === "DELETE") {
@@ -776,18 +809,21 @@ async function fetcher<T>(url: string, options: RequestInit = {}): Promise<T> {
           console.error("Supabase return delete error:", error);
           throw new Error(error.message);
         }
+        localMaterialReturns = localMaterialReturns.filter(r => r.id !== id);
         return { success: true, id } as any;
       }
 
       // --- 4. OUTBOUND DISPATCH (TUG 8) ---
       if (path === "/api/dispatch" && method === "GET") {
         const { data, error } = await supabase.from("outbound_dispatches").select("*").order("created_at", { ascending: false });
-        if (!error && data && data.length > 0) {
-          // Normalize dispatch_number for frontend compatibility
-          return data.map((d: any) => ({
+        if (!error && data) {
+          const mapped = data.map((d: any) => ({
             ...d,
             dispatch_number: d.tug8_number || d.bon_pengeluaran_number || d.id
-          })) as any;
+          }));
+          localDispatches = mapped as any;
+          saveLocalDispatches(mapped);
+          return mapped as any;
         }
         return localDispatches as any;
       }
@@ -803,6 +839,7 @@ async function fetcher<T>(url: string, options: RequestInit = {}): Promise<T> {
           manifest_number: body.manifest_number || `MNF-2026-${Math.floor(10000 + Math.random() * 90000)}`,
           vessel_name: body.vessel_name || "MV. KARTINI BARUNA",
           consignee: body.consignee || "Port Agent",
+          dispatch_date: body.dispatch_date ? String(body.dispatch_date).split("T")[0] : now.split("T")[0],
           status: body.status || "Draft",
           items: body.items || [],
           created_by: currentUsername || "Petugas Gudang",
@@ -815,17 +852,27 @@ async function fetcher<T>(url: string, options: RequestInit = {}): Promise<T> {
           console.error("Supabase dispatch insert error:", error);
           throw new Error(error.message);
         }
-        return { ...data, dispatch_number: dspNum } as any;
+        const createdRecord = { ...data, dispatch_number: dspNum };
+        localDispatches = [createdRecord, ...localDispatches.filter(d => d.id !== createdRecord.id)];
+        saveLocalDispatches(localDispatches);
+        return createdRecord as any;
       }
       if (path.startsWith("/api/dispatch/") && method === "PUT") {
         const id = path.split("/").pop();
-        const cleanUpdate = sanitizeRecord({ ...body, updated_at: now }, VALID_DSP_COLUMNS);
+        const payload = { ...body, updated_at: now };
+        if (payload.dispatch_date) {
+          payload.dispatch_date = String(payload.dispatch_date).split("T")[0];
+        }
+        const cleanUpdate = sanitizeRecord(payload, VALID_DSP_COLUMNS);
         const { data, error } = await supabase.from("outbound_dispatches").update(cleanUpdate).eq("id", id).select().single();
         if (error) {
           console.error("Supabase dispatch update error:", error);
           throw new Error(error.message);
         }
-        return data as any;
+        const updatedRecord = { ...data, dispatch_number: data.tug8_number || data.bon_pengeluaran_number || data.id };
+        localDispatches = localDispatches.map(d => d.id === id ? updatedRecord : d);
+        saveLocalDispatches(localDispatches);
+        return updatedRecord as any;
       }
       if (path.startsWith("/api/dispatch/") && method === "DELETE") {
         const id = path.split("/").pop();
@@ -834,31 +881,43 @@ async function fetcher<T>(url: string, options: RequestInit = {}): Promise<T> {
           console.error("Supabase dispatch delete error:", error);
           throw new Error(error.message);
         }
+        localDispatches = localDispatches.filter(d => d.id !== id);
+        saveLocalDispatches(localDispatches);
         return { success: true, id } as any;
       }
 
       // --- 5. INBOUND RECEIVING ---
       if (path === "/api/receiving" && method === "GET") {
         const { data, error } = await supabase.from("inbound_receivings").select("*").order("created_at", { ascending: false });
-        if (!error && data && data.length > 0) {
-          return data.map((r: any) => ({
+        if (!error && data) {
+          const mapped = data.map((r: any) => ({
             ...r,
             created_by: r.received_by || "Petugas Gudang"
-          })) as any;
+          }));
+          localReceiving = mapped as any;
+          saveLocalReceiving(mapped);
+          return mapped as any;
         }
         return localReceiving as any;
       }
       if (path === "/api/receiving" && method === "POST") {
+        // Sanitize vendor_id to ensure foreign key constraint integrity
+        let validVendorId = body.vendor_id || null;
+        if (validVendorId && !["vnd-1", "vnd-2", "vnd-3", "vnd-4", "vnd-manual"].includes(validVendorId)) {
+          validVendorId = null;
+        }
+
         const rec = {
           ...body,
           id: body.id || `rec-${Date.now()}`,
           purchase_order_num: body.purchase_order_num || `PO-2026-${Math.floor(10000 + Math.random() * 90000)}`,
           delivery_note_num: body.delivery_note_num || `DN-${Date.now().toString().slice(-5)}`,
+          vendor_id: validVendorId,
           vendor_name: body.vendor_name || "Vendor Logistik BAG",
           received_by: body.received_by || body.created_by || currentUsername || "Petugas Gudang",
           status: body.status || "ACCEPTED",
           items: body.items || [],
-          received_date: body.received_date || now.split("T")[0],
+          received_date: body.received_date ? String(body.received_date).split("T")[0] : now.split("T")[0],
           created_at: now,
           updated_at: now
         };
@@ -868,17 +927,30 @@ async function fetcher<T>(url: string, options: RequestInit = {}): Promise<T> {
           console.error("Supabase receiving insert error:", error);
           throw new Error(error.message);
         }
-        return { ...data, created_by: data.received_by } as any;
+        const createdRecord = { ...data, created_by: data.received_by };
+        localReceiving = [createdRecord, ...localReceiving.filter(r => r.id !== createdRecord.id)];
+        saveLocalReceiving(localReceiving);
+        return createdRecord as any;
       }
       if (path.startsWith("/api/receiving/") && method === "PUT") {
         const id = path.split("/").pop();
-        const cleanUpdate = sanitizeRecord({ ...body, updated_at: now }, VALID_REC_COLUMNS);
+        const payload = { ...body, updated_at: now };
+        if (payload.received_date) {
+          payload.received_date = String(payload.received_date).split("T")[0];
+        }
+        if (payload.vendor_id && !["vnd-1", "vnd-2", "vnd-3", "vnd-4", "vnd-manual"].includes(payload.vendor_id)) {
+          payload.vendor_id = null;
+        }
+        const cleanUpdate = sanitizeRecord(payload, VALID_REC_COLUMNS);
         const { data, error } = await supabase.from("inbound_receivings").update(cleanUpdate).eq("id", id).select().single();
         if (error) {
           console.error("Supabase receiving update error:", error);
           throw new Error(error.message);
         }
-        return data as any;
+        const updatedRecord = { ...data, created_by: data.received_by };
+        localReceiving = localReceiving.map(r => r.id === id ? updatedRecord : r);
+        saveLocalReceiving(localReceiving);
+        return updatedRecord as any;
       }
       if (path.startsWith("/api/receiving/") && method === "DELETE") {
         const id = path.split("/").pop();
@@ -887,47 +959,81 @@ async function fetcher<T>(url: string, options: RequestInit = {}): Promise<T> {
           console.error("Supabase receiving delete error:", error);
           throw new Error(error.message);
         }
+        localReceiving = localReceiving.filter(r => r.id !== id);
+        saveLocalReceiving(localReceiving);
         return { success: true, id } as any;
       }
 
       // --- 6. INVENTORY / SPARE PARTS ---
       if (path.startsWith("/api/inventory") && method === "GET") {
         const { data, error } = await supabase.from("spare_parts").select("*");
-        if (!error && data && data.length > 0) return data as any;
+        if (!error && data) {
+          localSpareParts = data as any;
+          return data as any;
+        }
         return localSpareParts as any;
       }
       if (path.startsWith("/api/inventory") && method === "POST") {
+        const validLocId = body.location_id && ["loc-1", "loc-2", "loc-3", "loc-4", "loc-5"].includes(body.location_id)
+          ? body.location_id
+          : "loc-1";
         const newPart = {
           ...body,
           id: body.id || `part-${Date.now()}`,
           sku: body.sku || `SKU-${Date.now().toString().slice(-6)}`,
+          part_number: body.part_number || `PN-${Date.now().toString().slice(-6)}`,
           part_name: body.part_name || "New Spare Part",
+          maker: body.maker || body.brand || "OEM / Supplier",
+          unit: body.unit || "PCS",
+          category: body.category || "General Spares",
+          location_id: validLocId,
           current_stock: Number(body.current_stock || 0),
-          reorder_point: Number(body.reorder_point || 0)
+          reorder_point: Number(body.reorder_point || 0),
+          created_at: now,
+          updated_at: now
         };
         const cleanPart = sanitizeRecord(newPart, VALID_PART_COLUMNS);
         const { data, error } = await supabase.from("spare_parts").insert([cleanPart]).select().single();
-        if (error) throw new Error(error.message);
+        if (error) {
+          console.error("Supabase spare_parts insert error:", error);
+          throw new Error(error.message);
+        }
+        localSpareParts = [data, ...localSpareParts.filter(p => p.id !== data.id)];
         return data as any;
       }
       if (path.startsWith("/api/inventory/") && method === "PUT") {
         const id = path.split("/").pop();
-        const cleanUpdate = sanitizeRecord(body, VALID_PART_COLUMNS);
+        const payload = { ...body, updated_at: now };
+        if (payload.location_id && !["loc-1", "loc-2", "loc-3", "loc-4", "loc-5"].includes(payload.location_id)) {
+          payload.location_id = "loc-1";
+        }
+        const cleanUpdate = sanitizeRecord(payload, VALID_PART_COLUMNS);
         const { data, error } = await supabase.from("spare_parts").update(cleanUpdate).eq("id", id).select().single();
-        if (error) throw new Error(error.message);
+        if (error) {
+          console.error("Supabase spare_parts update error:", error);
+          throw new Error(error.message);
+        }
+        localSpareParts = localSpareParts.map(p => p.id === id ? data : p);
         return data as any;
       }
       if (path.startsWith("/api/inventory/") && method === "DELETE") {
         const id = path.split("/").pop();
         const { error } = await supabase.from("spare_parts").delete().eq("id", id);
-        if (error) throw new Error(error.message);
+        if (error) {
+          console.error("Supabase spare_parts delete error:", error);
+          throw new Error(error.message);
+        }
+        localSpareParts = localSpareParts.filter(p => p.id !== id);
         return { success: true, message: "Deleted" } as any;
       }
 
       // --- 7. DIGITAL SIGNATURES ---
       if (path.startsWith("/api/signatures") && method === "GET") {
         const { data, error } = await supabase.from("digital_signatures").select("*");
-        if (!error && data && data.length > 0) return data as any;
+        if (!error && data && data.length > 0) {
+          saveLocalSignatures(data as any);
+          return data as any;
+        }
         return loadLocalSignatures() as any;
       }
       if (path === "/api/signatures" && method === "POST") {
@@ -939,29 +1045,37 @@ async function fetcher<T>(url: string, options: RequestInit = {}): Promise<T> {
         };
         const cleanSig = sanitizeRecord(newSig, VALID_SIG_COLUMNS);
         const { data, error } = await supabase.from("digital_signatures").insert([cleanSig]).select().single();
-        if (error) throw new Error(error.message);
+        if (error) {
+          console.error("Supabase signature insert error:", error);
+          throw new Error(error.message);
+        }
         return data as any;
       }
       if (path.startsWith("/api/signatures/") && method === "PUT") {
         const id = path.split("/").pop();
         const cleanUpdate = sanitizeRecord({ ...body, updated_at: now }, VALID_SIG_COLUMNS);
         const { data, error } = await supabase.from("digital_signatures").update(cleanUpdate).eq("id", id).select().single();
-        if (error) throw new Error(error.message);
+        if (error) {
+          console.error("Supabase signature update error:", error);
+          throw new Error(error.message);
+        }
         return data as any;
       }
       if (path.startsWith("/api/signatures/") && method === "DELETE") {
         const id = path.split("/").pop();
         const { error } = await supabase.from("digital_signatures").delete().eq("id", id);
-        if (error) throw new Error(error.message);
+        if (error) {
+          console.error("Supabase signature delete error:", error);
+          throw new Error(error.message);
+        }
         return { success: true, id } as any;
       }
-
 
       // --- 8. SPK WORK ORDERS ---
       if (path.startsWith("/api/spk") && method === "GET") {
         const { data, error } = await supabase.from("spk_work_orders").select("*");
-        if (!error && data && data.length > 0) {
-          return data.map((row: any) => ({
+        if (!error && data) {
+          const mapped = data.map((row: any) => ({
             ...row,
             vessels: row.vessels && Array.isArray(row.vessels) ? row.vessels : [
               {
@@ -975,7 +1089,9 @@ async function fetcher<T>(url: string, options: RequestInit = {}): Promise<T> {
                 })) : []
               }
             ]
-          })) as any;
+          }));
+          localSPKs = mapped as any;
+          return mapped as any;
         }
         return localSPKs as any;
       }
@@ -988,13 +1104,16 @@ async function fetcher<T>(url: string, options: RequestInit = {}): Promise<T> {
           description: body.description || "SPK Work Order Picking",
           assigned_to: body.assigned_to || currentUsername || "Tim Teknis",
           target_port: body.target_port || "Merak",
-          date_created: body.date_created || now.split("T")[0],
+          date_created: body.date_created ? String(body.date_created).split("T")[0] : now.split("T")[0],
           status: body.status || "Open",
           items: body.items || (body.vessels?.[0]?.items) || []
         };
         const { data, error } = await supabase.from("spk_work_orders").insert([newSPK]).select().single();
-        if (error) throw new Error(error.message);
-        return {
+        if (error) {
+          console.error("Supabase SPK insert error:", error);
+          throw new Error(error.message);
+        }
+        const createdRecord = {
           ...data,
           vessels: body.vessels || [
             {
@@ -1002,7 +1121,9 @@ async function fetcher<T>(url: string, options: RequestInit = {}): Promise<T> {
               items: data.items || []
             }
           ]
-        } as any;
+        };
+        localSPKs = [createdRecord, ...localSPKs.filter(s => s.id !== createdRecord.id)];
+        return createdRecord as any;
       }
       if (path.startsWith("/api/spk/") && method === "PUT") {
         const id = path.split("/").pop();
@@ -1014,39 +1135,59 @@ async function fetcher<T>(url: string, options: RequestInit = {}): Promise<T> {
         if (body.items) updatePayload.items = body.items;
         if (body.vessel_name) updatePayload.vessel_name = body.vessel_name;
         const { data, error } = await supabase.from("spk_work_orders").update(updatePayload).eq("id", id).select().single();
-        if (error) throw new Error(error.message);
+        if (error) {
+          console.error("Supabase SPK update error:", error);
+          throw new Error(error.message);
+        }
+        localSPKs = localSPKs.map(s => s.id === id ? { ...s, ...data } : s);
         return data as any;
       }
       if (path.startsWith("/api/spk/") && method === "DELETE") {
         const id = path.split("/").pop();
         const { error } = await supabase.from("spk_work_orders").delete().eq("id", id);
-        if (error) throw new Error(error.message);
+        if (error) {
+          console.error("Supabase SPK delete error:", error);
+          throw new Error(error.message);
+        }
+        localSPKs = localSPKs.filter(s => s.id !== id);
         return { success: true } as any;
       }
 
       // --- 9. WAREHOUSE LOCATIONS & VENDORS ---
       if (path.startsWith("/api/warehouse/locations") && method === "GET") {
         const { data, error } = await supabase.from("warehouse_locations").select("*");
-        if (!error && data && data.length > 0) return data as any;
+        if (!error && data) {
+          localLocations = data as any;
+          return data as any;
+        }
         return localLocations as any;
       }
       if (path.startsWith("/api/vendors") && method === "GET") {
         const { data, error } = await supabase.from("vendors").select("*");
-        if (!error && data && data.length > 0) return data as any;
+        if (!error && data) {
+          localVendors = data as any;
+          return data as any;
+        }
         return localVendors as any;
       }
 
       // --- 10. USERS ---
       if (path.startsWith("/api/users") && method === "GET") {
         const { data, error } = await supabase.from("users").select("*");
-        if (!error && data && data.length > 0) return data as any;
+        if (!error && data) {
+          localUsers = data as any;
+          return data as any;
+        }
         return localUsers as any;
       }
 
       // --- 11. LEDGER ---
       if (path.startsWith("/api/ledger") && method === "GET") {
         const { data, error } = await supabase.from("movement_ledger_entries").select("*");
-        if (!error && data && data.length > 0) return data as any;
+        if (!error && data) {
+          localLedger = data as any;
+          return data as any;
+        }
         return localLedger as any;
       }
     } catch (supabaseErr: any) {
