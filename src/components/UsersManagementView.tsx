@@ -22,7 +22,7 @@ import {
   ChevronDown,
   Lock
 } from "lucide-react";
-import { User as UserType, UserRole } from "../types.js";
+import { User as UserType, UserRole, normalizeUserRole } from "../types.js";
 
 interface UsersManagementViewProps {
   users: UserType[];
@@ -105,7 +105,7 @@ export default function UsersManagementView({
     setFormUsername(user.username);
     setFormName(user.name);
     setFormEmail(user.email);
-    setFormRole(user.role);
+    setFormRole(normalizeUserRole(user.role));
     setFormPassword(user.password || "");
     setSubmitError("");
     setShowFormPassword(false);
@@ -134,14 +134,17 @@ export default function UsersManagementView({
     try {
       if (editingUser) {
         await onUpdateUser(editingUser.id, payload);
+        alert(`Data akun "${payload.name}" (@${payload.username}) berhasil diperbarui dan disimpan ke Supabase!`);
       } else {
         await onCreateUser(payload);
+        alert(`Akun user baru "${payload.name}" (@${payload.username}) berhasil didaftarkan di Supabase!`);
       }
       setIsModalOpen(false);
       await onRefresh();
     } catch (err: any) {
       console.error(err);
-      setSubmitError(err.message || "Gagal menyimpan data user.");
+      setSubmitError(err.message || "Gagal menyimpan data user ke database.");
+      alert(`Gagal menyimpan data user: ${err.message || "Terjadi kesalahan koneksi"}`);
     } finally {
       setLoadingSubmit(false);
     }
@@ -176,7 +179,8 @@ export default function UsersManagementView({
 
   // UI Helpers
   const getRoleBadge = (role: UserRole) => {
-    switch (role) {
+    const normRole = normalizeUserRole(role);
+    switch (normRole) {
       case UserRole.SUPER_ADMIN:
         return (
           <span className="inline-flex items-center gap-1 bg-red-50 text-red-700 px-2.5 py-0.5 rounded-full text-[10px] font-bold border border-red-200 uppercase tracking-wider">

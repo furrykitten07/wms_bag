@@ -15,6 +15,28 @@ export enum UserRole {
   VESSEL_CREW = "Vessel Crew",
 }
 
+export function normalizeUserRole(rawRole: any): UserRole {
+  if (!rawRole) return UserRole.WAREHOUSE_ADMIN;
+  const roleStr = String(rawRole).trim();
+  const normalized = roleStr.toUpperCase().replace(/[\s_-]+/g, "_");
+
+  if (normalized.includes("SUPER_ADMIN") || normalized === "SUPERADMIN") return UserRole.SUPER_ADMIN;
+  if (normalized.includes("KEPALA_GUDANG") || normalized.includes("KEPALA")) return UserRole.KEPALA_GUDANG;
+  if (normalized.includes("PETUGAS") || normalized.includes("STAFF_GUDANG") || normalized === "WAREHOUSE_STAFF") return UserRole.WAREHOUSE_STAFF;
+  if (normalized.includes("VERIFIER") || (normalized.includes("RENDALHAR") && (normalized.includes("L1") || normalized.includes("VERIFIKATOR")))) return UserRole.VERIFIER_RENDALHAR;
+  if (normalized.includes("LOGISTICS") || normalized.includes("MANAGER") || normalized.includes("EMIR")) return UserRole.LOGISTICS_MANAGER;
+  if (normalized.includes("VP") || normalized.includes("RENDALHAR")) return UserRole.VP_RENDALHAR;
+  if (normalized.includes("SUPERINTENDENT")) return UserRole.SUPERINTENDENT;
+  if (normalized.includes("VESSEL") || normalized.includes("CREW") || normalized.includes("KAPAL")) return UserRole.VESSEL_CREW;
+  if (normalized.includes("ADMIN")) return UserRole.WAREHOUSE_ADMIN;
+
+  const enumValues = Object.values(UserRole);
+  const found = enumValues.find(v => v.toLowerCase() === roleStr.toLowerCase());
+  if (found) return found;
+
+  return UserRole.WAREHOUSE_ADMIN;
+}
+
 export interface User {
   id: string;
   username: string;

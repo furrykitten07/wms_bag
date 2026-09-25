@@ -324,7 +324,14 @@ export default function App() {
   };
 
   const handleUpdateUser = async (id: string, uData: Partial<User>) => {
-    await api.updateUser(id, uData);
+    const updated = await api.updateUser(id, uData);
+    if (currentUser && currentUser.id === id) {
+      setCurrentUser(prev => ({ ...prev, ...updated }));
+      if (updated.username) {
+        localStorage.setItem("wms_username", updated.username);
+        setCurrentUserHeader(updated.username);
+      }
+    }
     await syncAllTables();
   };
 

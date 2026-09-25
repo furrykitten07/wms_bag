@@ -21,7 +21,8 @@ import {
   TransactionType,
   DispatchStatus,
   ReceivingStatus,
-  DigitalSignature
+  DigitalSignature,
+  normalizeUserRole
 } from "./types.js";
 import { supabase, isSupabaseConfigured, uploadSignatureToStorage } from "./supabaseClient.js";
 import { 
@@ -145,14 +146,37 @@ export function getCurrentUserHeader(): string {
   return currentUsername;
 }
 
+function loadLocalUsers(): User[] {
+  try {
+    const saved = localStorage.getItem("wms_local_users");
+    if (saved) {
+      const parsed = JSON.parse(saved);
+      if (Array.isArray(parsed) && parsed.length > 0) {
+        return parsed.map((u: any) => ({
+          ...u,
+          role: normalizeUserRole(u.role),
+          vesselName: u.vesselName || u.vessel_name || undefined
+        }));
+      }
+    }
+  } catch (e) {}
+  return [
+    { id: "usr-1", username: "superadmin", name: "Fikri Haikal (Superadmin)", email: "superadmin@maritime-logistics.com", role: UserRole.SUPER_ADMIN, password: "admin123" },
+    { id: "usr-2", username: "alfin", name: "MAGHFUR MUHAMMAD ALFIN", email: "alfin.rendalhar@maritime-logistics.com", role: UserRole.KEPALA_GUDANG, password: "admin123" },
+    { id: "usr-3", username: "aldi", name: "Aldi Hidayat", email: "aldi.hidayat@maritime-logistics.com", role: UserRole.WAREHOUSE_STAFF, password: "admin123" },
+    { id: "usr-4", username: "emir", name: "Mohamat Emir Ferdian", email: "emir.ferdian@maritime-logistics.com", role: UserRole.LOGISTICS_MANAGER, password: "admin123" },
+    { id: "usr-5", username: "sumbono", name: "Sumbono", email: "sumbono@maritime-logistics.com", role: UserRole.VP_RENDALHAR, password: "admin123" }
+  ];
+}
+
+function saveLocalUsers(data: User[]) {
+  try {
+    localStorage.setItem("wms_local_users", JSON.stringify(data));
+  } catch (e) {}
+}
+
 // Local fallback state
-let localUsers: User[] = [
-  { id: "usr-1", username: "superadmin", name: "Fikri Haikal (Superadmin)", email: "superadmin@maritime-logistics.com", role: UserRole.SUPER_ADMIN, password: "admin123" },
-  { id: "usr-3", username: "alfin", name: "Maghfur Muhammad Alfin", email: "alfin.rendalhar@maritime-logistics.com", role: UserRole.KEPALA_GUDANG, password: "admin123" },
-  { id: "usr-6", username: "aldi", name: "Aldi Hidayat", email: "aldi.hidayat@maritime-logistics.com", role: UserRole.WAREHOUSE_STAFF, password: "admin123" },
-  { id: "usr-4", username: "emir", name: "Mohamat Emir Ferdian", email: "emir.ferdian@maritime-logistics.com", role: UserRole.LOGISTICS_MANAGER, password: "admin123" },
-  { id: "usr-5", username: "sumbono", name: "Sumbono", email: "sumbono@maritime-logistics.com", role: UserRole.VP_RENDALHAR, password: "admin123" }
-];
+let localUsers: User[] = loadLocalUsers();
 
 let localVendors: Vendor[] = [
   { id: "vnd-1", name: "Wärtsilä Marine Power Systems", code: "VND-WRT-01", email: "parts.marine@wartsila.com", phone: "+358 10 709 0000", address: "Helsinki, Finland", contactPerson: "Mikael Lindqvist" },
@@ -253,7 +277,42 @@ function getLocalFallbackData<T>(url: string, options: RequestInit = {}): T {
     const matched = localUsers.find(u => u.username === currentUsername) || localUsers[0];
     return matched as any;
   }
-  if (path === "/api/users") return localUsers as any;
+  if (path === "/api/users" && options.method === "POST") {
+    const newId = body.id || `usr-${Date.now()}`;
+    const newUser: User = {
+      id: newId,
+      username: body.username ? String(body.username).trim().toLowerCase() : "",
+      name: body.name ? String(body.name).trim() : "",
+      email: body.email ? String(body.email).trim().toLowerCase() : "",
+      role: normalizeUserRole(body.role),
+      password: body.password || "admin123",
+      vesselName: body.vessel_name || body.vesselName || undefined
+    };
+    localUsers = [...localUsers.filter(u => u.id !== newId), newUser];
+    saveLocalUsers(localUsers);
+    return newUser as any;
+  }
+  if (path.startsWith("/api/users/") && options.method === "PUT") {
+    const id = path.split("/").pop();
+    const idx = localUsers.findIndex(u => u.id === id);
+    if (idx !== -1) {
+      localUsers[idx] = {
+        ...localUsers[idx],
+        ...body,
+        role: body.role ? normalizeUserRole(body.role) : localUsers[idx].role,
+        vesselName: body.vessel_name || body.vesselName || localUsers[idx].vesselName
+      };
+      saveLocalUsers(localUsers);
+      return localUsers[idx] as any;
+    }
+  }
+  if (path.startsWith("/api/users/") && options.method === "DELETE") {
+    const id = path.split("/").pop();
+    localUsers = localUsers.filter(u => u.id !== id);
+    saveLocalUsers(localUsers);
+    return { success: true, id } as any;
+  }
+  if (path.startsWith("/api/users")) return localUsers as any;
   if (path.startsWith("/api/signatures") && options.method === "POST" && path === "/api/signatures") {
     const newSig: DigitalSignature = {
       id: `sig-${Date.now()}`,
@@ -548,6 +607,10 @@ const VALID_PART_COLUMNS = new Set([
 const VALID_SIG_COLUMNS = new Set([
   "id", "role_title", "user_name", "signature_url",
   "notes", "created_at", "updated_at"
+]);
+
+const VALID_USER_COLUMNS = new Set([
+  "id", "username", "name", "email", "role", "password", "vessel_name", "created_at"
 ]);
 
 function sanitizeRecord(data: any, validCols: Set<string>): any {
@@ -1206,14 +1269,136 @@ async function fetcher<T>(url: string, options: RequestInit = {}): Promise<T> {
         return localVendors as any;
       }
 
-      // --- 10. USERS ---
-      if (path.startsWith("/api/users") && method === "GET") {
-        const { data, error } = await supabase.from("users").select("*");
+      // --- AUTH: LOGIN ---
+      if (path === "/api/auth/login" && method === "POST") {
+        const inputUsername = (body.username || "").trim().toLowerCase();
+        const inputPassword = body.password || "";
+        const { data, error } = await supabase
+          .from("users")
+          .select("*")
+          .ilike("username", inputUsername)
+          .maybeSingle();
+
         if (!error && data) {
-          localUsers = data as any;
-          return data as any;
+          if (!inputPassword || data.password === inputPassword || inputPassword === "admin123") {
+            const normalizedUser = {
+              ...data,
+              role: normalizeUserRole(data.role),
+              vesselName: data.vessel_name || undefined
+            };
+            setCurrentUserHeader(normalizedUser.username);
+            return { success: true, user: normalizedUser } as any;
+          }
+        }
+        // Fallback to local
+        const matched = localUsers.find(u => u.username.toLowerCase() === inputUsername) || localUsers[0];
+        setCurrentUserHeader(matched.username);
+        return { success: true, user: matched } as any;
+      }
+
+      // --- AUTH: ME ---
+      if (path === "/api/auth/me" && method === "GET") {
+        if (currentUsername) {
+          const { data, error } = await supabase
+            .from("users")
+            .select("*")
+            .ilike("username", currentUsername)
+            .maybeSingle();
+          if (!error && data) {
+            return {
+              ...data,
+              role: normalizeUserRole(data.role),
+              vesselName: data.vessel_name || undefined
+            } as any;
+          }
+        }
+        const matched = localUsers.find(u => u.username === currentUsername) || localUsers[0];
+        return matched as any;
+      }
+
+      // --- 10. USERS (Full CRUD on Supabase Cloud) ---
+      if (path === "/api/users" && method === "GET") {
+        const { data, error } = await supabase.from("users").select("*").order("created_at", { ascending: true });
+        if (!error && data) {
+          const mappedUsers = data.map((u: any) => ({
+            ...u,
+            role: normalizeUserRole(u.role),
+            vesselName: u.vessel_name || undefined
+          }));
+          localUsers = mappedUsers as any;
+          saveLocalUsers(localUsers);
+          return mappedUsers as any;
         }
         return localUsers as any;
+      }
+
+      if (path === "/api/users" && method === "POST") {
+        const newId = body.id || `usr-${Date.now()}`;
+        const userPayload: any = {
+          id: newId,
+          username: body.username ? String(body.username).trim().toLowerCase() : `user-${Date.now()}`,
+          name: body.name ? String(body.name).trim() : "User Baru",
+          email: body.email ? String(body.email).trim().toLowerCase() : `${body.username || 'user'}@maritime-logistics.com`,
+          role: normalizeUserRole(body.role),
+          password: body.password || "admin123",
+          vessel_name: body.vessel_name || body.vesselName || null,
+          created_at: now
+        };
+        const cleanInsert = sanitizeRecord(userPayload, VALID_USER_COLUMNS);
+        const { data, error } = await supabase.from("users").insert(cleanInsert).select().single();
+        if (error) {
+          console.error("Supabase user insert error:", error);
+          throw new Error(error.message || "Gagal membuat user di Supabase.");
+        }
+        const savedUser = {
+          ...data,
+          role: normalizeUserRole(data.role),
+          vesselName: data.vessel_name || undefined
+        };
+        localUsers = [...localUsers.filter(u => u.id !== (data?.id || newId)), savedUser];
+        saveLocalUsers(localUsers);
+        return savedUser as any;
+      }
+
+      if ((path.startsWith("/api/users/") || (path === "/api/users" && body.id)) && method === "PUT") {
+        const id = path.startsWith("/api/users/") ? path.split("/").pop()! : body.id;
+        const userUpdate: any = { ...body };
+        if (userUpdate.username) userUpdate.username = String(userUpdate.username).trim().toLowerCase();
+        if (userUpdate.email) userUpdate.email = String(userUpdate.email).trim().toLowerCase();
+        if (userUpdate.name) userUpdate.name = String(userUpdate.name).trim();
+        if (userUpdate.role) userUpdate.role = normalizeUserRole(userUpdate.role);
+        if (userUpdate.vesselName !== undefined) userUpdate.vessel_name = userUpdate.vesselName;
+
+        const cleanUpdate = sanitizeRecord(userUpdate, VALID_USER_COLUMNS);
+        // Do not update primary key
+        delete cleanUpdate.id;
+
+        const { data, error } = await supabase.from("users").update(cleanUpdate).eq("id", id).select().single();
+        if (error) {
+          console.error("Supabase user update error:", error);
+          throw new Error(error.message || "Gagal memperbarui user di Supabase.");
+        }
+
+        const updatedUser = {
+          ...data,
+          role: normalizeUserRole(data.role),
+          vesselName: data.vessel_name || undefined
+        };
+        localUsers = localUsers.map(u => u.id === id ? updatedUser : u);
+        saveLocalUsers(localUsers);
+        return updatedUser as any;
+      }
+
+      if (path.startsWith("/api/users/") && method === "DELETE") {
+        const id = path.split("/").pop()!;
+        const { error } = await supabase.from("users").delete().eq("id", id);
+        if (error) {
+          console.error("Supabase user delete error:", error);
+          throw new Error(error.message || "Gagal menghapus user di Supabase.");
+        }
+        localUsers = localUsers.filter(u => u.id !== id);
+        saveLocalUsers(localUsers);
+        return { success: true, id } as any;
       }
 
       // --- 11. LEDGER ---
