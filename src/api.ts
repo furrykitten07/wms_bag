@@ -1388,7 +1388,7 @@ export const api = {
     });
   },
 
-  async updateReceiving(id: string, data: { status: string; items: any[]; reject_reason?: string; return_note_num?: string; signature_data_url?: string }): Promise<InboundReceiving> {
+  async updateReceiving(id: string, data: any): Promise<InboundReceiving> {
     return fetcher<InboundReceiving>(`/api/receiving/${id}`, {
       method: "PUT",
       body: JSON.stringify(data),

@@ -40,7 +40,10 @@ import {
   Maximize2,
   Building2,
   Tag,
-  Download
+  Download,
+  Edit3,
+  Pencil,
+  Save
 } from "lucide-react";
 import { InboundReceiving, ReceivingStatus, SparePart, UserRole, SPKWorkOrder, WarehouseLocation } from "../types.js";
 import { demoSPKs } from "../demoSeedData.js";
@@ -341,47 +344,6 @@ export default function ReceivingView({
   const [isSavingManual, setIsSavingManual] = useState(false);
   const [previewPhotoModal, setPreviewPhotoModal] = useState<string | null>(null);
 
-  interface ManualItemRow {
-    tempId: string;
-    spare_part_id: string;
-    spare_part_name: string;
-    part_number: string;
-    unit: string;
-    category: string;
-    qty: number;
-    location_id: string;
-    keeper_notes: string;
-    photo_url?: string;
-    isNewPart: boolean;
-  }
-
-  const createInitialManualItem = (): ManualItemRow => ({
-    tempId: `item-${Date.now()}-${Math.random().toString(36).substring(7)}`,
-    spare_part_id: "",
-    spare_part_name: "",
-    part_number: "",
-    unit: "PCS",
-    category: "General Spares",
-    qty: 1,
-    location_id: locations[0]?.id || "loc-1",
-    keeper_notes: "",
-    photo_url: "",
-    isNewPart: false
-  });
-
-  const [manualItems, setManualItems] = useState<ManualItemRow[]>([createInitialManualItem()]);
-  const [activeItemSearchIdx, setActiveItemSearchIdx] = useState<number | null>(null);
-
-  const handleAddManualItemRow = () => {
-    setManualItems(prev => [...prev, createInitialManualItem()]);
-  };
-
-  const handleRemoveManualItemRow = (index: number) => {
-    if (manualItems.length <= 1) return;
-    setManualItems(prev => prev.filter((_, i) => i !== index));
-    if (activeItemSearchIdx === index) setActiveItemSearchIdx(null);
-  };
-
   const uploadPhotoFile = async (file: File): Promise<string> => {
     const base64 = await new Promise<string>((resolve, reject) => {
       const reader = new FileReader();
@@ -437,6 +399,147 @@ export default function ReceivingView({
       console.warn("Storage upload fallback to base64:", sErr);
     }
     return base64;
+  };
+
+  // Edit Receiving Record State
+  const [editingReceiving, setEditingReceiving] = useState<InboundReceiving | null>(null);
+  const [isEditModalOpen, setIsEditModalOpen] = useState(false);
+  const [isSavingEdit, setIsSavingEdit] = useState(false);
+  const [editPoNum, setEditPoNum] = useState("");
+  const [editDnNum, setEditDnNum] = useState("");
+  const [editVendorName, setEditVendorName] = useState("");
+  const [editReceivedDate, setEditReceivedDate] = useState("");
+  const [editStatus, setEditStatus] = useState<ReceivingStatus>(ReceivingStatus.ACCEPTED);
+  const [editKeeperNotes, setEditKeeperNotes] = useState("");
+  const [editPhotoUrl, setEditPhotoUrl] = useState("");
+  const [editItems, setEditItems] = useState<any[]>([]);
+  const [isUploadingEditPhoto, setIsUploadingEditPhoto] = useState(false);
+
+  const handleOpenEditModal = (rec: InboundReceiving) => {
+    setEditingReceiving(rec);
+    setEditPoNum(rec.purchase_order_num || "");
+    setEditDnNum(rec.delivery_note_num || "");
+    setEditVendorName(rec.vendor_name || "");
+    const dateFormatted = rec.received_date ? String(rec.received_date).split("T")[0] : new Date().toISOString().split("T")[0];
+    setEditReceivedDate(dateFormatted);
+    setEditStatus(rec.status || ReceivingStatus.ACCEPTED);
+    setEditKeeperNotes(rec.keeper_notes || "");
+    const existingPhoto = rec.photo_evidence_url || rec.items?.find((i: any) => i && i.photo_url)?.photo_url || "";
+    setEditPhotoUrl(existingPhoto);
+    setEditItems(
+      (rec.items || []).map(itm => ({
+        ...itm,
+        qty_ordered: itm.qty_ordered || itm.quantity || 1,
+        qty_received: itm.qty_received || itm.qty_ordered || itm.quantity || 1,
+        unit: itm.unit || "PCS",
+        photo_url: itm.photo_url || existingPhoto || ""
+      }))
+    );
+    setIsEditModalOpen(true);
+  };
+
+  const handleEditPhotoUpload = async (e: React.ChangeEvent<HTMLInputElement>, itemIdx?: number) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    setIsUploadingEditPhoto(true);
+    try {
+      const finalUrl = await uploadPhotoFile(file);
+      if (itemIdx !== undefined) {
+        setEditItems(prev => {
+          const up = [...prev];
+          up[itemIdx].photo_url = finalUrl;
+          return up;
+        });
+      } else {
+        setEditPhotoUrl(finalUrl);
+        setEditItems(prev => prev.map(i => ({ ...i, photo_url: i.photo_url || finalUrl })));
+      }
+    } catch (err) {
+      console.error("Gagal membaca gambar:", err);
+      alert("Gagal membaca gambar.");
+    } finally {
+      setIsUploadingEditPhoto(false);
+    }
+  };
+
+  const handleSaveEdit = async () => {
+    if (!editingReceiving) return;
+    if (!editPoNum.trim()) {
+      alert("Nomor PO / Referensi Dokumen wajib diisi!");
+      return;
+    }
+
+    setIsSavingEdit(true);
+    try {
+      const updatedItems = editItems.map((itm, idx) => ({
+        ...itm,
+        photo_url: itm.photo_url || (idx === 0 ? editPhotoUrl : itm.photo_url) || ""
+      }));
+
+      const payload = {
+        purchase_order_num: editPoNum.trim(),
+        delivery_note_num: editDnNum.trim() || "-",
+        vendor_name: editVendorName.trim() || "Vendor Logistik",
+        received_date: editReceivedDate || new Date().toISOString().split("T")[0],
+        status: editStatus,
+        keeper_notes: editKeeperNotes,
+        photo_evidence_url: editPhotoUrl,
+        items: updatedItems
+      };
+
+      await onVerifyReceiving(editingReceiving.id, payload as any);
+
+      setIsEditModalOpen(false);
+      setEditingReceiving(null);
+      alert("Data penerimaan dan foto berhasil diperbarui di Supabase!");
+    } catch (err: any) {
+      console.error("Gagal menyimpan perubahan:", err);
+      alert(err.message || "Gagal menyimpan perubahan.");
+    } finally {
+      setIsSavingEdit(false);
+    }
+  };
+
+  interface ManualItemRow {
+    tempId: string;
+    spare_part_id: string;
+    spare_part_name: string;
+    part_number: string;
+    unit: string;
+    category: string;
+    qty: number;
+    location_id: string;
+    keeper_notes: string;
+    photo_url?: string;
+    isNewPart: boolean;
+  }
+
+  const createInitialManualItem = (): ManualItemRow => ({
+    tempId: `item-${Date.now()}-${Math.random().toString(36).substring(7)}`,
+    spare_part_id: "",
+    spare_part_name: "",
+    part_number: "",
+    unit: "PCS",
+    category: "General Spares",
+    qty: 1,
+    location_id: locations[0]?.id || "loc-1",
+    keeper_notes: "",
+    photo_url: "",
+    isNewPart: false
+  });
+
+  const [manualItems, setManualItems] = useState<ManualItemRow[]>([createInitialManualItem()]);
+  const [activeItemSearchIdx, setActiveItemSearchIdx] = useState<number | null>(null);
+
+  const handleAddManualItemRow = () => {
+    setManualItems(prev => [...prev, createInitialManualItem()]);
+  };
+
+  const handleRemoveManualItemRow = (index: number) => {
+    if (manualItems.length <= 1) return;
+    setManualItems(prev => prev.filter((_, i) => i !== index));
+    if (activeItemSearchIdx === index) setActiveItemSearchIdx(null);
   };
 
   const [uploadingRowId, setUploadingRowId] = useState<string | null>(null);
@@ -1262,10 +1365,20 @@ export default function ReceivingView({
                           <button
                             type="button"
                             onClick={() => handleOpenVerifyModal(item)}
-                            className="px-3 py-1.5 bg-blue-50 hover:bg-blue-100 text-blue-700 border border-blue-200 rounded-lg text-[11px] font-bold flex items-center gap-1 transition-all cursor-pointer"
+                            className="px-3 py-1.5 bg-blue-50 hover:bg-blue-100 text-blue-700 border border-blue-200 rounded-lg text-[11px] font-bold flex items-center gap-1 transition-all cursor-pointer shadow-2xs hover:shadow-xs"
                           >
                             <Eye className="w-3.5 h-3.5 text-blue-600" />
                             <span>Lihat Detail Audit</span>
+                          </button>
+
+                          <button
+                            type="button"
+                            onClick={() => handleOpenEditModal(item)}
+                            className="px-3 py-1.5 bg-amber-50 hover:bg-amber-100 text-amber-800 border border-amber-300 rounded-lg text-[11px] font-bold flex items-center gap-1.5 transition-all cursor-pointer shadow-2xs hover:shadow-xs active:scale-95"
+                            title="Edit Data & Ganti Foto Penerimaan"
+                          >
+                            <Edit3 className="w-3.5 h-3.5 text-amber-600" />
+                            <span>Edit</span>
                           </button>
 
                           {onDeleteReceiving && (
@@ -2854,6 +2967,365 @@ export default function ReceivingView({
               )}
             </div>
 
+          </div>
+        </div>
+      )}
+
+      {/* EDIT RECEIVING & PHOTO EVIDENCE MODAL */}
+      {isEditModalOpen && editingReceiving && (
+        <div className="fixed inset-0 bg-slate-950/70 backdrop-blur-xs flex items-center justify-center z-50 p-4">
+          <div className="bg-white rounded-2xl max-w-4xl w-full max-h-[92vh] flex flex-col shadow-2xl border border-slate-200 overflow-hidden animate-in fade-in zoom-in-95 duration-150">
+            {/* Modal Header */}
+            <div className="bg-gradient-to-r from-slate-900 via-slate-850 to-slate-900 text-white px-6 py-4 flex items-center justify-between border-b border-slate-750">
+              <div className="flex items-center gap-3">
+                <div className="w-10 h-10 rounded-xl bg-amber-500/20 border border-amber-500/40 flex items-center justify-center text-amber-400 shadow-inner">
+                  <Edit3 className="w-5 h-5" />
+                </div>
+                <div>
+                  <h3 className="text-base font-extrabold tracking-wide font-display text-white flex items-center gap-2">
+                    EDIT PENERIMAAN BARANG & BUKTI FOTO
+                    <span className="text-[10px] font-mono px-2 py-0.5 rounded bg-amber-400/20 text-amber-300 border border-amber-400/30 uppercase">
+                      Mode Edit
+                    </span>
+                  </h3>
+                  <p className="text-xs text-slate-400 mt-0.5 font-mono">
+                    ID: {editingReceiving.id} • SPK: {editingReceiving.spk_number || "-"} • Diterima Oleh: {editingReceiving.received_by || "Petugas Gudang"}
+                  </p>
+                </div>
+              </div>
+              <button
+                type="button"
+                onClick={() => {
+                  setIsEditModalOpen(false);
+                  setEditingReceiving(null);
+                }}
+                className="text-slate-400 hover:text-white p-1.5 rounded-lg hover:bg-slate-800 transition-colors cursor-pointer"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            {/* Modal Scrollable Body */}
+            <div className="p-6 space-y-6 overflow-y-auto flex-1 text-slate-800 font-sans">
+
+              {/* 1. SEKSI FOTO BUKTI FISIK (PRIORITAS UTAMA) */}
+              <div className="bg-gradient-to-br from-amber-50/60 via-slate-50 to-blue-50/50 p-5 rounded-2xl border-2 border-amber-200/80 shadow-xs space-y-3">
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center gap-2">
+                    <Camera className="w-5 h-5 text-amber-600" />
+                    <span className="text-xs font-black uppercase tracking-wider text-slate-900">
+                      Foto Bukti Fisik Barang Masuk
+                    </span>
+                    <span className="text-[10px] font-mono font-bold text-amber-700 bg-amber-100 px-2 py-0.5 rounded-full border border-amber-300">
+                      Supabase Cloud Storage
+                    </span>
+                  </div>
+                  {isUploadingEditPhoto && (
+                    <div className="flex items-center gap-1.5 text-xs font-bold text-blue-600 animate-pulse font-mono">
+                      <RefreshCw className="w-4 h-4 animate-spin" />
+                      <span>Mengunggah foto...</span>
+                    </div>
+                  )}
+                </div>
+
+                {editPhotoUrl ? (
+                  <div className="flex flex-col sm:flex-row items-center gap-4 bg-white p-4 rounded-xl border border-slate-200">
+                    <div 
+                      className="relative w-36 h-36 rounded-xl overflow-hidden border-2 border-amber-400 shadow-sm bg-slate-950 flex items-center justify-center shrink-0 cursor-pointer group"
+                      onClick={() => setPreviewPhotoModal(editPhotoUrl)}
+                      title="Klik untuk melihat foto ukuran penuh"
+                    >
+                      <img 
+                        src={editPhotoUrl} 
+                        alt="Foto Bukti Fisik" 
+                        className="w-full h-full object-cover group-hover:scale-105 transition-transform" 
+                      />
+                      <div className="absolute inset-0 bg-slate-900/40 opacity-0 group-hover:opacity-100 flex items-center justify-center transition-opacity">
+                        <Maximize2 className="w-5 h-5 text-white" />
+                      </div>
+                    </div>
+                    <div className="flex-1 space-y-2.5 text-center sm:text-left">
+                      <div>
+                        <p className="text-xs font-bold text-slate-900">Foto Bukti Fisik Terlampir</p>
+                        <p className="text-[11px] text-slate-500 font-mono break-all line-clamp-2 mt-0.5">
+                          {editPhotoUrl.startsWith("http") ? editPhotoUrl : "Foto tersimpan di cloud / lokal"}
+                        </p>
+                      </div>
+                      <div className="flex flex-wrap items-center justify-center sm:justify-start gap-2 pt-1">
+                        <button
+                          type="button"
+                          onClick={() => setPreviewPhotoModal(editPhotoUrl)}
+                          className="px-3 py-1.5 bg-slate-100 hover:bg-slate-200 text-slate-700 text-xs font-bold rounded-lg border border-slate-300 flex items-center gap-1.5 cursor-pointer transition-colors"
+                        >
+                          <Eye className="w-3.5 h-3.5 text-slate-600" />
+                          <span>Perbesar Foto</span>
+                        </button>
+
+                        <label className="px-3.5 py-1.5 bg-blue-600 hover:bg-blue-700 text-white text-xs font-bold rounded-lg flex items-center gap-1.5 cursor-pointer shadow-xs transition-colors">
+                          <UploadCloud className="w-3.5 h-3.5" />
+                          <span>{isUploadingEditPhoto ? "Mengunggah..." : "Ganti Foto Baru"}</span>
+                          <input 
+                            type="file" 
+                            accept="image/*" 
+                            className="hidden" 
+                            disabled={isUploadingEditPhoto}
+                            onChange={(e) => handleEditPhotoUpload(e)} 
+                          />
+                        </label>
+
+                        <button
+                          type="button"
+                          onClick={() => {
+                            if (confirm("Apakah Anda yakin ingin menghapus foto bukti fisik ini?")) {
+                              setEditPhotoUrl("");
+                              setEditItems(prev => prev.map(i => ({ ...i, photo_url: "" })));
+                            }
+                          }}
+                          className="px-3 py-1.5 bg-rose-50 hover:bg-rose-100 text-rose-700 border border-rose-200 text-xs font-bold rounded-lg flex items-center gap-1 cursor-pointer transition-colors"
+                        >
+                          <Trash2 className="w-3.5 h-3.5 text-rose-600" />
+                          <span>Hapus Foto</span>
+                        </button>
+                      </div>
+                    </div>
+                  </div>
+                ) : (
+                  <label className="border-2 border-dashed border-amber-300 hover:border-blue-500 bg-white hover:bg-blue-50/30 rounded-xl p-6 flex flex-col items-center justify-center gap-2 cursor-pointer transition-all group">
+                    <div className="w-12 h-12 rounded-full bg-amber-100 group-hover:bg-blue-100 flex items-center justify-center text-amber-600 group-hover:text-blue-600 transition-colors shadow-2xs">
+                      <Camera className="w-6 h-6" />
+                    </div>
+                    <div className="text-center">
+                      <p className="text-xs font-bold text-slate-800">
+                        {isUploadingEditPhoto ? "Sedang Mengunggah Foto..." : "Klik untuk Pilih & Upload Foto Bukti Fisik"}
+                      </p>
+                      <p className="text-[11px] text-slate-500 mt-0.5">
+                        Mendukung kamera langsung / galeri (JPG, PNG, WEBP). Foto langsung tersimpan ke Supabase Storage.
+                      </p>
+                    </div>
+                    <span className="mt-1 px-4 py-1.5 bg-blue-600 text-white text-xs font-bold rounded-lg group-hover:bg-blue-700 transition-colors shadow-xs flex items-center gap-1.5">
+                      <UploadCloud className="w-4 h-4" />
+                      <span>{isUploadingEditPhoto ? "Mengunggah..." : "Pilih File Foto"}</span>
+                    </span>
+                    <input 
+                      type="file" 
+                      accept="image/*" 
+                      className="hidden" 
+                      disabled={isUploadingEditPhoto}
+                      onChange={(e) => handleEditPhotoUpload(e)} 
+                    />
+                  </label>
+                )}
+              </div>
+
+              {/* 2. INFORMASI DOKUMEN & PENGIRIMAN */}
+              <div className="space-y-3">
+                <div className="flex items-center gap-2 border-b border-slate-200 pb-2">
+                  <FileText className="w-4 h-4 text-blue-600" />
+                  <span className="text-xs font-black uppercase tracking-wider text-slate-900">
+                    Informasi Dokumen & Vendor
+                  </span>
+                </div>
+                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+                  <div>
+                    <label className="block text-[11px] font-bold text-slate-600 uppercase mb-1">
+                      Nomor PO / Referensi SPK <span className="text-rose-500">*</span>
+                    </label>
+                    <input
+                      type="text"
+                      value={editPoNum}
+                      onChange={(e) => setEditPoNum(e.target.value)}
+                      placeholder="Contoh: PO-2026-001 / P36928"
+                      className="w-full px-3 py-2 bg-slate-50 border border-slate-300 rounded-lg text-xs font-mono font-bold focus:bg-white focus:border-blue-500 focus:outline-none"
+                    />
+                  </div>
+
+                  <div>
+                    <label className="block text-[11px] font-bold text-slate-600 uppercase mb-1">
+                      Nomor Surat Jalan (DN)
+                    </label>
+                    <input
+                      type="text"
+                      value={editDnNum}
+                      onChange={(e) => setEditDnNum(e.target.value)}
+                      placeholder="Contoh: DN-2026-9901"
+                      className="w-full px-3 py-2 bg-slate-50 border border-slate-300 rounded-lg text-xs font-mono font-bold focus:bg-white focus:border-blue-500 focus:outline-none"
+                    />
+                  </div>
+
+                  <div>
+                    <label className="block text-[11px] font-bold text-slate-600 uppercase mb-1">
+                      Nama Vendor / Supplier
+                    </label>
+                    <input
+                      type="text"
+                      value={editVendorName}
+                      onChange={(e) => setEditVendorName(e.target.value)}
+                      placeholder="Nama Vendor"
+                      className="w-full px-3 py-2 bg-slate-50 border border-slate-300 rounded-lg text-xs font-bold focus:bg-white focus:border-blue-500 focus:outline-none"
+                    />
+                  </div>
+
+                  <div>
+                    <label className="block text-[11px] font-bold text-slate-600 uppercase mb-1">
+                      Tanggal Penerimaan Fisik
+                    </label>
+                    <input
+                      type="date"
+                      value={editReceivedDate}
+                      onChange={(e) => setEditReceivedDate(e.target.value)}
+                      className="w-full px-3 py-2 bg-slate-50 border border-slate-300 rounded-lg text-xs font-mono font-bold focus:bg-white focus:border-blue-500 focus:outline-none"
+                    />
+                  </div>
+
+                  <div>
+                    <label className="block text-[11px] font-bold text-slate-600 uppercase mb-1">
+                      Status Penerimaan
+                    </label>
+                    <select
+                      value={editStatus}
+                      onChange={(e) => setEditStatus(e.target.value as ReceivingStatus)}
+                      className="w-full px-3 py-2 bg-slate-50 border border-slate-300 rounded-lg text-xs font-bold focus:bg-white focus:border-blue-500 focus:outline-none"
+                    >
+                      <option value={ReceivingStatus.ACCEPTED}>Diterima Penuh (ACCEPTED)</option>
+                      <option value={ReceivingStatus.PARTIAL_REJECT}>Ditolak Sebagian (PARTIAL REJECT)</option>
+                      <option value={ReceivingStatus.FULL_REJECT}>Ditolak Penuh (FULL REJECT)</option>
+                      <option value={ReceivingStatus.PENDING}>Menunggu Verifikasi (PENDING)</option>
+                    </select>
+                  </div>
+                </div>
+              </div>
+
+              {/* 3. DAFTAR ITEM & KUANTITAS FISIK */}
+              <div className="space-y-3">
+                <div className="flex items-center justify-between border-b border-slate-200 pb-2">
+                  <div className="flex items-center gap-2">
+                    <Boxes className="w-4 h-4 text-blue-600" />
+                    <span className="text-xs font-black uppercase tracking-wider text-slate-900">
+                      Rincian Barang & Kuantitas Fisik ({editItems.length} Item)
+                    </span>
+                  </div>
+                  <span className="text-[10px] text-slate-500">Sesuaikan jumlah unit diterima fisik</span>
+                </div>
+
+                <div className="border border-slate-200 rounded-xl overflow-hidden shadow-2xs">
+                  <table className="w-full text-left text-xs border-collapse">
+                    <thead className="bg-slate-100 border-b border-slate-200 text-slate-700 font-mono text-[10px] uppercase">
+                      <tr>
+                        <th className="p-2.5">No</th>
+                        <th className="p-2.5">Nama Sparepart & Part Number</th>
+                        <th className="p-2.5 text-center">Qty Dipesan</th>
+                        <th className="p-2.5 text-center">Qty Diterima Fisik</th>
+                        <th className="p-2.5">Satuan</th>
+                        <th className="p-2.5">Status Fisik</th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-slate-150">
+                      {editItems.map((itm, idx) => (
+                        <tr key={idx} className="hover:bg-slate-50">
+                          <td className="p-2.5 font-mono text-slate-500 text-center w-10">{idx + 1}</td>
+                          <td className="p-2.5 font-medium">
+                            <span className="font-bold text-slate-900 block">{itm.spare_part_name || itm.part_name || "Sparepart"}</span>
+                            <span className="text-[10px] font-mono text-slate-500">{itm.part_number || "-"}</span>
+                          </td>
+                          <td className="p-2.5 text-center font-mono font-bold text-slate-600">
+                            {itm.qty_ordered || itm.qty_spk || itm.quantity || 1}
+                          </td>
+                          <td className="p-2.5 text-center w-28">
+                            <input
+                              type="number"
+                              min="0"
+                              value={itm.qty_received !== undefined ? itm.qty_received : (itm.qty_ordered || 1)}
+                              onChange={(e) => {
+                                const val = Number(e.target.value);
+                                setEditItems(prev => {
+                                  const updated = [...prev];
+                                  updated[idx] = { ...updated[idx], qty_received: val };
+                                  return updated;
+                                });
+                              }}
+                              className="w-20 px-2 py-1 bg-white border border-slate-300 rounded font-mono font-bold text-center text-xs focus:border-blue-500 focus:outline-none"
+                            />
+                          </td>
+                          <td className="p-2.5 font-mono text-slate-600">
+                            {itm.unit || "PCS"}
+                          </td>
+                          <td className="p-2.5">
+                            <select
+                              value={itm.item_matched || "Sesuai"}
+                              onChange={(e) => {
+                                const val = e.target.value;
+                                setEditItems(prev => {
+                                  const updated = [...prev];
+                                  updated[idx] = { ...updated[idx], item_matched: val };
+                                  return updated;
+                                });
+                              }}
+                              className="px-2 py-1 bg-white border border-slate-300 rounded text-[11px] font-bold focus:border-blue-500 focus:outline-none"
+                            >
+                              <option value="Sesuai">Sesuai Fisik</option>
+                              <option value="Tidak Sesuai">Tidak Sesuai / Rusak</option>
+                            </select>
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+
+              {/* 4. CATATAN PENJAGA GUDANG */}
+              <div className="space-y-2">
+                <label className="block text-xs font-bold text-slate-700 uppercase">
+                  Catatan Tambahan Penjaga Gudang / Kondisi Fisik
+                </label>
+                <textarea
+                  rows={3}
+                  value={editKeeperNotes}
+                  onChange={(e) => setEditKeeperNotes(e.target.value)}
+                  placeholder="Contoh: Barang tiba dalam kondisi baik, kardus bersegel utuh, foto fisik terlampir..."
+                  className="w-full px-3 py-2 bg-slate-50 border border-slate-300 rounded-lg text-xs font-sans focus:bg-white focus:border-blue-500 focus:outline-none"
+                />
+              </div>
+
+            </div>
+
+            {/* Modal Footer */}
+            <div className="bg-slate-50 border-t border-slate-200 px-6 py-4 flex flex-col sm:flex-row items-center justify-between gap-3 shrink-0">
+              <div className="text-[11px] text-slate-500 font-mono flex items-center gap-1.5">
+                <CheckCircle2 className="w-3.5 h-3.5 text-emerald-600 shrink-0" />
+                <span>Data dan foto fisik akan langsung disinkronkan ke Supabase Cloud</span>
+              </div>
+              <div className="flex items-center gap-2 w-full sm:w-auto justify-end">
+                <button
+                  type="button"
+                  onClick={() => {
+                    setIsEditModalOpen(false);
+                    setEditingReceiving(null);
+                  }}
+                  className="px-4 py-2 border border-slate-300 text-slate-600 hover:bg-slate-100 rounded-lg text-xs font-bold transition-colors cursor-pointer"
+                >
+                  Batal
+                </button>
+                <button
+                  type="button"
+                  onClick={handleSaveEdit}
+                  disabled={isSavingEdit || isUploadingEditPhoto}
+                  className="px-5 py-2 bg-amber-600 hover:bg-amber-500 disabled:opacity-50 text-white rounded-lg text-xs font-bold uppercase transition-all cursor-pointer flex items-center gap-2 shadow-xs active:scale-95"
+                >
+                  {isSavingEdit ? (
+                    <>
+                      <RefreshCw className="w-4 h-4 animate-spin" />
+                      <span>Menyimpan ke Supabase...</span>
+                    </>
+                  ) : (
+                    <>
+                      <Save className="w-4 h-4" />
+                      <span>Simpan Perubahan & Sinkronkan</span>
+                    </>
+                  )}
+                </button>
+              </div>
+            </div>
           </div>
         </div>
       )}
