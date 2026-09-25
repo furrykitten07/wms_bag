@@ -890,10 +890,14 @@ async function fetcher<T>(url: string, options: RequestInit = {}): Promise<T> {
       if (path === "/api/receiving" && method === "GET") {
         const { data, error } = await supabase.from("inbound_receivings").select("*").order("created_at", { ascending: false });
         if (!error && data) {
-          const mapped = data.map((r: any) => ({
-            ...r,
-            created_by: r.received_by || "Petugas Gudang"
-          }));
+          const mapped = data.map((r: any) => {
+            const extractedPhoto = r.photo_evidence_url || (Array.isArray(r.items) ? r.items.find((i: any) => i && i.photo_url)?.photo_url : "") || "";
+            return {
+              ...r,
+              photo_evidence_url: extractedPhoto,
+              created_by: r.received_by || "Petugas Gudang"
+            };
+          });
           localReceiving = mapped as any;
           saveLocalReceiving(mapped);
           return mapped as any;
@@ -907,6 +911,15 @@ async function fetcher<T>(url: string, options: RequestInit = {}): Promise<T> {
           validVendorId = null;
         }
 
+        const photoUrl = body.photo_evidence_url || "";
+        const rawItems = Array.isArray(body.items) ? body.items : [];
+        const itemsWithPhoto = rawItems.map((itm: any, idx: number) => {
+          if (!itm.photo_url && photoUrl) {
+            return { ...itm, photo_url: photoUrl };
+          }
+          return itm;
+        });
+
         const rec = {
           ...body,
           id: body.id || `rec-${Date.now()}`,
@@ -916,7 +929,7 @@ async function fetcher<T>(url: string, options: RequestInit = {}): Promise<T> {
           vendor_name: body.vendor_name || "Vendor Logistik BAG",
           received_by: body.received_by || body.created_by || currentUsername || "Petugas Gudang",
           status: body.status || "ACCEPTED",
-          items: body.items || [],
+          items: itemsWithPhoto,
           received_date: body.received_date ? String(body.received_date).split("T")[0] : now.split("T")[0],
           created_at: now,
           updated_at: now
@@ -927,7 +940,8 @@ async function fetcher<T>(url: string, options: RequestInit = {}): Promise<T> {
           console.error("Supabase receiving insert error:", error);
           throw new Error(error.message);
         }
-        const createdRecord = { ...data, created_by: data.received_by };
+        const extractedPhoto = photoUrl || (Array.isArray(data.items) ? data.items.find((i: any) => i && i.photo_url)?.photo_url : "") || "";
+        const createdRecord = { ...data, created_by: data.received_by, photo_evidence_url: extractedPhoto };
         localReceiving = [createdRecord, ...localReceiving.filter(r => r.id !== createdRecord.id)];
         saveLocalReceiving(localReceiving);
         return createdRecord as any;
@@ -941,13 +955,25 @@ async function fetcher<T>(url: string, options: RequestInit = {}): Promise<T> {
         if (payload.vendor_id && !["vnd-1", "vnd-2", "vnd-3", "vnd-4", "vnd-manual"].includes(payload.vendor_id)) {
           payload.vendor_id = null;
         }
+
+        const photoUrl = payload.photo_evidence_url || "";
+        if (photoUrl && Array.isArray(payload.items)) {
+          payload.items = payload.items.map((itm: any) => {
+            if (!itm.photo_url) {
+              return { ...itm, photo_url: photoUrl };
+            }
+            return itm;
+          });
+        }
+
         const cleanUpdate = sanitizeRecord(payload, VALID_REC_COLUMNS);
         const { data, error } = await supabase.from("inbound_receivings").update(cleanUpdate).eq("id", id).select().single();
         if (error) {
           console.error("Supabase receiving update error:", error);
           throw new Error(error.message);
         }
-        const updatedRecord = { ...data, created_by: data.received_by };
+        const extractedPhoto = photoUrl || (Array.isArray(data.items) ? data.items.find((i: any) => i && i.photo_url)?.photo_url : "") || "";
+        const updatedRecord = { ...data, created_by: data.received_by, photo_evidence_url: extractedPhoto };
         localReceiving = localReceiving.map(r => r.id === id ? updatedRecord : r);
         saveLocalReceiving(localReceiving);
         return updatedRecord as any;

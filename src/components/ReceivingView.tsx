@@ -45,6 +45,7 @@ import {
 import { InboundReceiving, ReceivingStatus, SparePart, UserRole, SPKWorkOrder, WarehouseLocation } from "../types.js";
 import { demoSPKs } from "../demoSeedData.js";
 import { api } from "../api.js";
+import { supabase } from "../supabaseClient.js";
 
 interface ReceivingViewProps {
   receivingList: InboundReceiving[];
@@ -381,54 +382,118 @@ export default function ReceivingView({
     if (activeItemSearchIdx === index) setActiveItemSearchIdx(null);
   };
 
+  const uploadPhotoFile = async (file: File): Promise<string> => {
+    const base64 = await new Promise<string>((resolve, reject) => {
+      const reader = new FileReader();
+      reader.onload = (event) => {
+        const img = new Image();
+        img.onload = () => {
+          const canvas = document.createElement("canvas");
+          let width = img.width;
+          let height = img.height;
+          const maxDim = 1200;
+          if (width > maxDim || height > maxDim) {
+            if (width > height) {
+              height = Math.round((height * maxDim) / width);
+              width = maxDim;
+            } else {
+              width = Math.round((width * maxDim) / height);
+              height = maxDim;
+            }
+          }
+          canvas.width = width;
+          canvas.height = height;
+          const ctx = canvas.getContext("2d");
+          if (ctx) {
+            ctx.drawImage(img, 0, 0, width, height);
+            resolve(canvas.toDataURL("image/jpeg", 0.8));
+          } else {
+            resolve(event.target?.result as string);
+          }
+        };
+        img.onerror = () => resolve(event.target?.result as string);
+        img.src = event.target?.result as string;
+      };
+      reader.onerror = reject;
+      reader.readAsDataURL(file);
+    });
+
+    try {
+      if (supabase) {
+        const filename = `inbound-${Date.now()}-${Math.floor(1000 + Math.random() * 9000)}.jpg`;
+        const res = await fetch(base64);
+        const blob = await res.blob();
+        const { data, error } = await supabase.storage
+          .from("documents")
+          .upload(filename, blob, { contentType: "image/jpeg", upsert: true });
+        if (!error && data) {
+          const { data: pubData } = supabase.storage.from("documents").getPublicUrl(filename);
+          if (pubData?.publicUrl) {
+            return pubData.publicUrl;
+          }
+        }
+      }
+    } catch (sErr) {
+      console.warn("Storage upload fallback to base64:", sErr);
+    }
+    return base64;
+  };
+
+  const [uploadingRowId, setUploadingRowId] = useState<string | null>(null);
+
+  const handleUploadRowPhoto = async (e: React.ChangeEvent<HTMLInputElement>, rec: InboundReceiving) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    setUploadingRowId(rec.id);
+    try {
+      const finalUrl = await uploadPhotoFile(file);
+      const updatedItems = (rec.items || []).map((itm, idx) => {
+        if (idx === 0 || !itm.photo_url) {
+          return { ...itm, photo_url: finalUrl };
+        }
+        return itm;
+      });
+
+      await onVerifyReceiving(rec.id, {
+        status: rec.status,
+        items: updatedItems,
+        photo_evidence_url: finalUrl,
+        keeper_notes: rec.keeper_notes
+      } as any);
+
+      alert("Foto bukti fisik berhasil diunggah dan disimpan ke Supabase!");
+    } catch (err: any) {
+      console.error("Gagal mengunggah foto:", err);
+      alert(err.message || "Gagal mengunggah foto.");
+    } finally {
+      setUploadingRowId(null);
+    }
+  };
+
   const handlePhotoUpload = async (e: React.ChangeEvent<HTMLInputElement>, targetItemIdx?: number) => {
     const file = e.target.files?.[0];
     if (!file) return;
 
     try {
-      const base64 = await new Promise<string>((resolve, reject) => {
-        const reader = new FileReader();
-        reader.onload = (event) => {
-          const img = new Image();
-          img.onload = () => {
-            const canvas = document.createElement("canvas");
-            let width = img.width;
-            let height = img.height;
-            const maxDim = 1200;
-            if (width > maxDim || height > maxDim) {
-              if (width > height) {
-                height = Math.round((height * maxDim) / width);
-                width = maxDim;
-              } else {
-                width = Math.round((width * maxDim) / height);
-                height = maxDim;
-              }
-            }
-            canvas.width = width;
-            canvas.height = height;
-            const ctx = canvas.getContext("2d");
-            if (ctx) {
-              ctx.drawImage(img, 0, 0, width, height);
-              resolve(canvas.toDataURL("image/jpeg", 0.78));
-            } else {
-              resolve(event.target?.result as string);
-            }
-          };
-          img.onerror = () => resolve(event.target?.result as string);
-          img.src = event.target?.result as string;
-        };
-        reader.onerror = reject;
-        reader.readAsDataURL(file);
-      });
+      const finalUrl = await uploadPhotoFile(file);
 
       if (targetItemIdx !== undefined) {
         setManualItems(prev => {
           const up = [...prev];
-          up[targetItemIdx].photo_url = base64;
+          up[targetItemIdx].photo_url = finalUrl;
           return up;
         });
       } else {
-        setManualPhotoUrl(base64);
+        setManualPhotoUrl(finalUrl);
+        // Also attach to first manual item if empty
+        setManualItems(prev => {
+          const up = [...prev];
+          if (up[0] && !up[0].photo_url) {
+            up[0].photo_url = finalUrl;
+          }
+          return up;
+        });
       }
     } catch (err) {
       console.error("Gagal membaca file gambar:", err);
@@ -793,7 +858,7 @@ export default function ReceivingView({
           item_matched: "Sesuai" as const,
           qty_matched_status: "QTY Sesuai",
           keeper_notes: itm.keeper_notes ? `[Input Manual] ${itm.keeper_notes}` : "Input manual penyerahan penerimaan gudang",
-          photo_url: itm.photo_url || ""
+          photo_url: itm.photo_url || manualPhotoUrl || ""
         });
       }
 
@@ -1059,15 +1124,15 @@ export default function ReceivingView({
                       {/* DEDICATED PHOTO EVIDENCE COLUMN */}
                       <td className="p-3.5 text-center" onClick={(e) => e.stopPropagation()}>
                         {(() => {
-                          const itemPhoto = item.photo_evidence_url || item.items?.find((i: any) => i.photo_url)?.photo_url;
+                          const itemPhoto = item.photo_evidence_url || item.items?.find((i: any) => i && i.photo_url)?.photo_url;
                           if (itemPhoto) {
                             return (
-                              <div 
-                                className="inline-flex flex-col items-center gap-1 group cursor-pointer"
-                                onClick={() => setPreviewPhotoModal(itemPhoto)}
-                                title="Klik untuk memperbesar / melihat foto bukti fisik"
-                              >
-                                <div className="relative w-12 h-12 rounded-lg overflow-hidden border-2 border-blue-400 group-hover:border-blue-600 shadow-xs transition-all bg-slate-100 flex items-center justify-center">
+                              <div className="inline-flex flex-col items-center gap-1 group">
+                                <div 
+                                  className="relative w-12 h-12 rounded-lg overflow-hidden border-2 border-blue-400 group-hover:border-blue-600 shadow-xs transition-all bg-slate-100 flex items-center justify-center cursor-pointer"
+                                  onClick={() => setPreviewPhotoModal(itemPhoto)}
+                                  title="Klik untuk memperbesar / melihat foto bukti fisik"
+                                >
                                   <img 
                                     src={itemPhoto} 
                                     alt="Bukti Fisik" 
@@ -1077,19 +1142,47 @@ export default function ReceivingView({
                                     <Maximize2 className="w-3.5 h-3.5 text-white" />
                                   </div>
                                 </div>
-                                <span className="text-[9.5px] font-mono font-bold text-blue-700 hover:text-blue-900 flex items-center gap-0.5">
-                                  <Camera className="w-3 h-3 text-blue-600" /> Lihat Foto
-                                </span>
+                                <div className="flex items-center gap-1">
+                                  <button
+                                    type="button"
+                                    onClick={() => setPreviewPhotoModal(itemPhoto)}
+                                    className="text-[9.5px] font-mono font-bold text-blue-700 hover:text-blue-900 cursor-pointer"
+                                  >
+                                    Lihat
+                                  </button>
+                                  <span className="text-[9px] text-slate-300">•</span>
+                                  <label className="text-[9.5px] font-mono font-bold text-slate-500 hover:text-blue-600 cursor-pointer">
+                                    Ganti
+                                    <input 
+                                      type="file" 
+                                      accept="image/*" 
+                                      className="hidden" 
+                                      onChange={(e) => handleUploadRowPhoto(e, item)} 
+                                    />
+                                  </label>
+                                </div>
                               </div>
                             );
                           }
                           return (
-                            <div className="inline-flex flex-col items-center gap-1 text-slate-400">
-                              <div className="w-9 h-9 rounded-lg border border-dashed border-slate-250 bg-slate-50 flex items-center justify-center">
-                                <ImageIcon className="w-4 h-4 text-slate-300" />
+                            <label className="inline-flex flex-col items-center gap-1 text-slate-500 hover:text-blue-600 cursor-pointer group p-1.5 rounded-lg hover:bg-blue-50/70 transition-all border border-dashed border-slate-300 hover:border-blue-400">
+                              <div className="w-8 h-8 rounded-lg bg-slate-100 group-hover:bg-blue-100 flex items-center justify-center transition-all">
+                                {uploadingRowId === item.id ? (
+                                  <RefreshCw className="w-4 h-4 text-blue-600 animate-spin" />
+                                ) : (
+                                  <Camera className="w-4 h-4 text-slate-500 group-hover:text-blue-600" />
+                                )}
                               </div>
-                              <span className="text-[9px] font-mono text-slate-400">Tanpa Foto</span>
-                            </div>
+                              <span className="text-[9px] font-mono font-bold text-blue-700 group-hover:text-blue-900">
+                                {uploadingRowId === item.id ? "Mengunggah..." : "+ Upload Foto"}
+                              </span>
+                              <input 
+                                type="file" 
+                                accept="image/*" 
+                                className="hidden" 
+                                onChange={(e) => handleUploadRowPhoto(e, item)} 
+                              />
+                            </label>
                           );
                         })()}
                       </td>
