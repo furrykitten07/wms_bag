@@ -956,14 +956,23 @@ async function fetcher<T>(url: string, options: RequestInit = {}): Promise<T> {
           payload.vendor_id = null;
         }
 
-        const photoUrl = payload.photo_evidence_url || "";
-        if (photoUrl && Array.isArray(payload.items)) {
-          payload.items = payload.items.map((itm: any) => {
-            if (!itm.photo_url) {
-              return { ...itm, photo_url: photoUrl };
+        // Handle photo evidence synchronization into items JSONB
+        const photoUrl = payload.photo_evidence_url;
+        if (photoUrl !== undefined) {
+          if (Array.isArray(payload.items) && payload.items.length > 0) {
+            payload.items = payload.items.map((itm: any, idx: number) => ({
+              ...itm,
+              photo_url: idx === 0 ? photoUrl : (itm.photo_url || photoUrl)
+            }));
+          } else {
+            const { data: currRec } = await supabase.from("inbound_receivings").select("items").eq("id", id).single();
+            if (currRec && Array.isArray(currRec.items) && currRec.items.length > 0) {
+              payload.items = currRec.items.map((itm: any, idx: number) => ({
+                ...itm,
+                photo_url: idx === 0 ? photoUrl : (itm.photo_url || photoUrl)
+              }));
             }
-            return itm;
-          });
+          }
         }
 
         const cleanUpdate = sanitizeRecord(payload, VALID_REC_COLUMNS);
@@ -972,7 +981,7 @@ async function fetcher<T>(url: string, options: RequestInit = {}): Promise<T> {
           console.error("Supabase receiving update error:", error);
           throw new Error(error.message);
         }
-        const extractedPhoto = photoUrl || (Array.isArray(data.items) ? data.items.find((i: any) => i && i.photo_url)?.photo_url : "") || "";
+        const extractedPhoto = (photoUrl !== undefined ? photoUrl : "") || (Array.isArray(data.items) ? data.items.find((i: any) => i && i.photo_url)?.photo_url : "") || "";
         const updatedRecord = { ...data, created_by: data.received_by, photo_evidence_url: extractedPhoto };
         localReceiving = localReceiving.map(r => r.id === id ? updatedRecord : r);
         saveLocalReceiving(localReceiving);
@@ -1388,7 +1397,7 @@ export const api = {
     });
   },
 
-  async updateReceiving(id: string, data: any): Promise<InboundReceiving> {
+  async updateReceiving(id: string, data: Partial<InboundReceiving>): Promise<InboundReceiving> {
     return fetcher<InboundReceiving>(`/api/receiving/${id}`, {
       method: "PUT",
       body: JSON.stringify(data),

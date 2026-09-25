@@ -41,8 +41,8 @@ import {
   Building2,
   Tag,
   Download,
-  Edit3,
   Pencil,
+  Edit3,
   Save
 } from "lucide-react";
 import { InboundReceiving, ReceivingStatus, SparePart, UserRole, SPKWorkOrder, WarehouseLocation } from "../types.js";
@@ -58,7 +58,7 @@ interface ReceivingViewProps {
   role: UserRole;
   onAddReceiving: (rec: Partial<InboundReceiving>) => Promise<any>;
   onAddPart?: (partData: Partial<SparePart>) => Promise<any>;
-  onVerifyReceiving: (id: string, update: { status: ReceivingStatus; items: any[]; reject_reason?: string; return_note_num?: string; signature_data_url?: string; keeper_notes?: string }) => Promise<any>;
+  onVerifyReceiving: (id: string, update: Partial<InboundReceiving> | any) => Promise<any>;
   onPreviewDocument: (rec: InboundReceiving) => void;
   onDeleteReceiving?: (id: string) => Promise<any>;
 }
@@ -344,6 +344,47 @@ export default function ReceivingView({
   const [isSavingManual, setIsSavingManual] = useState(false);
   const [previewPhotoModal, setPreviewPhotoModal] = useState<string | null>(null);
 
+  interface ManualItemRow {
+    tempId: string;
+    spare_part_id: string;
+    spare_part_name: string;
+    part_number: string;
+    unit: string;
+    category: string;
+    qty: number;
+    location_id: string;
+    keeper_notes: string;
+    photo_url?: string;
+    isNewPart: boolean;
+  }
+
+  const createInitialManualItem = (): ManualItemRow => ({
+    tempId: `item-${Date.now()}-${Math.random().toString(36).substring(7)}`,
+    spare_part_id: "",
+    spare_part_name: "",
+    part_number: "",
+    unit: "PCS",
+    category: "General Spares",
+    qty: 1,
+    location_id: locations[0]?.id || "loc-1",
+    keeper_notes: "",
+    photo_url: "",
+    isNewPart: false
+  });
+
+  const [manualItems, setManualItems] = useState<ManualItemRow[]>([createInitialManualItem()]);
+  const [activeItemSearchIdx, setActiveItemSearchIdx] = useState<number | null>(null);
+
+  const handleAddManualItemRow = () => {
+    setManualItems(prev => [...prev, createInitialManualItem()]);
+  };
+
+  const handleRemoveManualItemRow = (index: number) => {
+    if (manualItems.length <= 1) return;
+    setManualItems(prev => prev.filter((_, i) => i !== index));
+    if (activeItemSearchIdx === index) setActiveItemSearchIdx(null);
+  };
+
   const uploadPhotoFile = async (file: File): Promise<string> => {
     const base64 = await new Promise<string>((resolve, reject) => {
       const reader = new FileReader();
@@ -430,8 +471,9 @@ export default function ReceivingView({
       (rec.items || []).map(itm => ({
         ...itm,
         qty_ordered: itm.qty_ordered || itm.quantity || 1,
-        qty_received: itm.qty_received || itm.qty_ordered || itm.quantity || 1,
+        qty_received: itm.qty_received !== undefined ? itm.qty_received : (itm.qty_ordered || itm.quantity || 1),
         unit: itm.unit || "PCS",
+        item_matched: itm.item_matched || "Sesuai",
         photo_url: itm.photo_url || existingPhoto || ""
       }))
     );
@@ -448,7 +490,7 @@ export default function ReceivingView({
       if (itemIdx !== undefined) {
         setEditItems(prev => {
           const up = [...prev];
-          up[itemIdx].photo_url = finalUrl;
+          up[itemIdx] = { ...up[itemIdx], photo_url: finalUrl };
           return up;
         });
       } else {
@@ -499,47 +541,6 @@ export default function ReceivingView({
     } finally {
       setIsSavingEdit(false);
     }
-  };
-
-  interface ManualItemRow {
-    tempId: string;
-    spare_part_id: string;
-    spare_part_name: string;
-    part_number: string;
-    unit: string;
-    category: string;
-    qty: number;
-    location_id: string;
-    keeper_notes: string;
-    photo_url?: string;
-    isNewPart: boolean;
-  }
-
-  const createInitialManualItem = (): ManualItemRow => ({
-    tempId: `item-${Date.now()}-${Math.random().toString(36).substring(7)}`,
-    spare_part_id: "",
-    spare_part_name: "",
-    part_number: "",
-    unit: "PCS",
-    category: "General Spares",
-    qty: 1,
-    location_id: locations[0]?.id || "loc-1",
-    keeper_notes: "",
-    photo_url: "",
-    isNewPart: false
-  });
-
-  const [manualItems, setManualItems] = useState<ManualItemRow[]>([createInitialManualItem()]);
-  const [activeItemSearchIdx, setActiveItemSearchIdx] = useState<number | null>(null);
-
-  const handleAddManualItemRow = () => {
-    setManualItems(prev => [...prev, createInitialManualItem()]);
-  };
-
-  const handleRemoveManualItemRow = (index: number) => {
-    if (manualItems.length <= 1) return;
-    setManualItems(prev => prev.filter((_, i) => i !== index));
-    if (activeItemSearchIdx === index) setActiveItemSearchIdx(null);
   };
 
   const [uploadingRowId, setUploadingRowId] = useState<string | null>(null);
@@ -1377,7 +1378,7 @@ export default function ReceivingView({
                             className="px-3 py-1.5 bg-amber-50 hover:bg-amber-100 text-amber-800 border border-amber-300 rounded-lg text-[11px] font-bold flex items-center gap-1.5 transition-all cursor-pointer shadow-2xs hover:shadow-xs active:scale-95"
                             title="Edit Data & Ganti Foto Penerimaan"
                           >
-                            <Edit3 className="w-3.5 h-3.5 text-amber-600" />
+                            <Pencil className="w-3.5 h-3.5 text-amber-600" />
                             <span>Edit</span>
                           </button>
 
@@ -2983,7 +2984,7 @@ export default function ReceivingView({
                 </div>
                 <div>
                   <h3 className="text-base font-extrabold tracking-wide font-display text-white flex items-center gap-2">
-                    EDIT PENERIMAAN BARANG & BUKTI FOTO
+                    EDIT PENERIMAAN BARANG &amp; BUKTI FOTO
                     <span className="text-[10px] font-mono px-2 py-0.5 rounded bg-amber-400/20 text-amber-300 border border-amber-400/30 uppercase">
                       Mode Edit
                     </span>
@@ -3096,7 +3097,7 @@ export default function ReceivingView({
                     </div>
                     <div className="text-center">
                       <p className="text-xs font-bold text-slate-800">
-                        {isUploadingEditPhoto ? "Sedang Mengunggah Foto..." : "Klik untuk Pilih & Upload Foto Bukti Fisik"}
+                        {isUploadingEditPhoto ? "Sedang Mengunggah Foto..." : "Klik untuk Pilih &amp; Upload Foto Bukti Fisik"}
                       </p>
                       <p className="text-[11px] text-slate-500 mt-0.5">
                         Mendukung kamera langsung / galeri (JPG, PNG, WEBP). Foto langsung tersimpan ke Supabase Storage.
@@ -3122,7 +3123,7 @@ export default function ReceivingView({
                 <div className="flex items-center gap-2 border-b border-slate-200 pb-2">
                   <FileText className="w-4 h-4 text-blue-600" />
                   <span className="text-xs font-black uppercase tracking-wider text-slate-900">
-                    Informasi Dokumen & Vendor
+                    Informasi Dokumen &amp; Vendor
                   </span>
                 </div>
                 <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
@@ -3184,7 +3185,7 @@ export default function ReceivingView({
                     <select
                       value={editStatus}
                       onChange={(e) => setEditStatus(e.target.value as ReceivingStatus)}
-                      className="w-full px-3 py-2 bg-slate-50 border border-slate-300 rounded-lg text-xs font-bold focus:bg-white focus:border-blue-500 focus:outline-none"
+                      className="w-full px-3 py-2 bg-slate-50 border border-slate-300 rounded-lg text-xs font-bold focus:bg-white focus:border-blue-500 focus:outline-none cursor-pointer"
                     >
                       <option value={ReceivingStatus.ACCEPTED}>Diterima Penuh (ACCEPTED)</option>
                       <option value={ReceivingStatus.PARTIAL_REJECT}>Ditolak Sebagian (PARTIAL REJECT)</option>
@@ -3201,7 +3202,7 @@ export default function ReceivingView({
                   <div className="flex items-center gap-2">
                     <Boxes className="w-4 h-4 text-blue-600" />
                     <span className="text-xs font-black uppercase tracking-wider text-slate-900">
-                      Rincian Barang & Kuantitas Fisik ({editItems.length} Item)
+                      Rincian Barang &amp; Kuantitas Fisik ({editItems.length} Item)
                     </span>
                   </div>
                   <span className="text-[10px] text-slate-500">Sesuaikan jumlah unit diterima fisik</span>
@@ -3212,7 +3213,7 @@ export default function ReceivingView({
                     <thead className="bg-slate-100 border-b border-slate-200 text-slate-700 font-mono text-[10px] uppercase">
                       <tr>
                         <th className="p-2.5">No</th>
-                        <th className="p-2.5">Nama Sparepart & Part Number</th>
+                        <th className="p-2.5">Nama Sparepart &amp; Part Number</th>
                         <th className="p-2.5 text-center">Qty Dipesan</th>
                         <th className="p-2.5 text-center">Qty Diterima Fisik</th>
                         <th className="p-2.5">Satuan</th>
@@ -3260,7 +3261,7 @@ export default function ReceivingView({
                                   return updated;
                                 });
                               }}
-                              className="px-2 py-1 bg-white border border-slate-300 rounded text-[11px] font-bold focus:border-blue-500 focus:outline-none"
+                              className="px-2 py-1 bg-white border border-slate-300 rounded text-[11px] font-bold focus:border-blue-500 focus:outline-none cursor-pointer"
                             >
                               <option value="Sesuai">Sesuai Fisik</option>
                               <option value="Tidak Sesuai">Tidak Sesuai / Rusak</option>
@@ -3320,7 +3321,7 @@ export default function ReceivingView({
                   ) : (
                     <>
                       <Save className="w-4 h-4" />
-                      <span>Simpan Perubahan & Sinkronkan</span>
+                      <span>Simpan Perubahan &amp; Sinkronkan</span>
                     </>
                   )}
                 </button>

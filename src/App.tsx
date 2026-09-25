@@ -404,7 +404,7 @@ export default function App() {
   // RECEIVING ACTION: QC VERIFY & COMMIT TO PHYSICAL STORAGE
   const handleVerifyReceiving = async (
     id: string, 
-    update: { status: ReceivingStatus; items: any[]; reject_reason?: string; return_note_num?: string }
+    update: Partial<InboundReceiving>
   ) => {
     await api.updateReceiving(id, update);
     await syncAllTables();
