@@ -413,7 +413,10 @@ export default function App() {
     id: string, 
     update: Partial<InboundReceiving>
   ) => {
-    await api.updateReceiving(id, update);
+    const updated = await api.updateReceiving(id, update);
+    if (updated && updated.id) {
+      setReceivingList(prev => prev.map(r => r && r.id === id ? { ...r, ...updated } : r));
+    }
     await syncAllTables();
   };
 
