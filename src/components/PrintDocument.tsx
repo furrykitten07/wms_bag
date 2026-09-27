@@ -121,6 +121,9 @@ export default function PrintDocument({
   const [pageSize, setPageSize] = useState<number>(15);
   const [isPrinting, setIsPrinting] = useState<boolean>(false);
 
+  // Cast data as any inside template properties safely to access union attributes
+  const docData = (data || {}) as any;
+
   // Automatically switch to full list rendering when native browser print (Ctrl+P / print dialog) triggers
   React.useEffect(() => {
     const handleBeforePrint = () => setIsPrinting(true);
@@ -182,6 +185,7 @@ export default function PrintDocument({
         transaction_type: string;
         created_by: string;
         remarks: string;
+        vessel_name?: string;
         total_in: number;
         total_out: number;
         items: any[];
@@ -190,6 +194,10 @@ export default function PrintDocument({
 
     list.forEach((item: any) => {
       const ref = item.reference_number || "(-)";
+      let itemVessel = item.vessel_name || (item.remarks?.match(/Kapal:\s*([^|]+)/i)?.[1]?.trim()) || "";
+      if (!itemVessel && docData?.vessel_name) {
+        itemVessel = docData.vessel_name;
+      }
       if (!groups[ref]) {
         groups[ref] = {
           reference_number: ref,
@@ -197,10 +205,13 @@ export default function PrintDocument({
           transaction_type: item.transaction_type || "(-)",
           created_by: item.created_by || "(-)",
           remarks: item.remarks || "(-)",
+          vessel_name: itemVessel,
           total_in: 0,
           total_out: 0,
           items: []
         };
+      } else if (!groups[ref].vessel_name && itemVessel) {
+        groups[ref].vessel_name = itemVessel;
       }
       groups[ref].items.push(item);
       groups[ref].total_in += (item.qty_in || 0);
@@ -208,7 +219,35 @@ export default function PrintDocument({
     });
 
     return Object.values(groups);
-  }, [rawActiveList, paginatedList, isPrinting, pageSize]);
+  }, [rawActiveList, paginatedList, isPrinting, pageSize, docData]);
+
+  // Extract targeted vessels for the mutation report header
+  const reportVesselDisplay = useMemo(() => {
+    if (docData?.vessel_name && docData.vessel_name.trim() && docData.vessel_name !== "-") {
+      return docData.vessel_name.trim().toUpperCase();
+    }
+    const vessels = new Set<string>();
+    const listToCheck = mutationList && mutationList.length > 0 ? mutationList : rawActiveList;
+    (listToCheck || []).forEach((m: any) => {
+      if (m.vessel_name && m.vessel_name.trim() && m.vessel_name !== "-" && !m.vessel_name.toLowerCase().includes("semua")) {
+        vessels.add(m.vessel_name.trim());
+      } else if (m.remarks) {
+        const match = m.remarks.match(/Kapal:\s*([^|]+)/i);
+        if (match && match[1] && match[1].trim() && match[1].trim() !== "-" && !match[1].toLowerCase().includes("semua")) {
+          vessels.add(match[1].trim());
+        }
+      }
+    });
+
+    const vArr = Array.from(vessels);
+    if (vArr.length === 1) {
+      return vArr[0].toUpperCase();
+    }
+    if (vArr.length > 1) {
+      return vArr.map(v => v.toUpperCase()).join(", ");
+    }
+    return "SEMUA ARMADA KAPAL & STOK GUDANG";
+  }, [docData, mutationList, rawActiveList]);
 
   const printDoc = () => {
     // Render full list for printing
@@ -356,9 +395,6 @@ export default function PrintDocument({
     if (isNaN(d.getTime())) return String(dateVal);
     return d.toLocaleDateString("id-ID");
   };
-
-  // Cast data as any inside template properties safely to access union attributes
-  const docData = (data || {}) as any;
 
   // Stable price calculation for IDR matching layout
   const getPartIDRPrice = (partNumber: string = "") => {
@@ -561,6 +597,12 @@ export default function PrintDocument({
                     <div className="grid grid-cols-3">
                       <span className="text-slate-500 text-[9px]">Status Audit:</span>
                       <span className="col-span-2 text-emerald-800 font-black">AUDITED & VERIFIED LIVE LEDGER</span>
+                    </div>
+                    <div className="grid grid-cols-3">
+                      <span className="text-slate-500 text-[9px]">Untuk Kapal:</span>
+                      <span className="col-span-2 text-blue-950 font-black tracking-tight">
+                        {reportVesselDisplay}
+                      </span>
                     </div>
                   </div>
                   <div>
@@ -901,6 +943,11 @@ export default function PrintDocument({
                               }`}>
                               {group.total_in > 0 ? "INBOUND MASUK" : "OUTBOUND KELUAR"}
                             </span>
+                            {(group.vessel_name || (reportVesselDisplay && reportVesselDisplay !== "SEMUA ARMADA KAPAL & STOK GUDANG")) && (
+                              <span className="px-2 py-0.5 rounded text-[9px] font-bold bg-blue-100 text-blue-900 border border-blue-300">
+                                KAPAL: {group.vessel_name || reportVesselDisplay}
+                              </span>
+                            )}
                           </div>
 
                           <div className="text-[10px] text-slate-700 font-bold space-x-3">

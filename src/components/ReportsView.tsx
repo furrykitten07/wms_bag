@@ -136,7 +136,27 @@ export default function ReportsView({
       const uniqueKey = `${m.transaction_type}_${m.reference_number}_${m.spare_part_id || m.part_number}`;
       if (!seenTxKeys.has(uniqueKey)) {
         seenTxKeys.add(uniqueKey);
-        sanitizedMovements.push(m);
+        let vessel = m.vessel_name;
+        if (!vessel && receivingList) {
+          const recMatch = receivingList.find(r => r.purchase_order_num === m.reference_number || r.delivery_note_num === m.reference_number);
+          if (recMatch) {
+            vessel = recMatch.vessel_name || (recMatch.items && (recMatch.items as any)[0]?.vessel_name);
+          }
+        }
+        if (!vessel && dispatchList) {
+          const dspMatch = dispatchList.find(d => d.tug8_number === m.reference_number || d.bon_pengeluaran_number === m.reference_number || d.dispatch_number === m.reference_number || d.request_reference === m.reference_number);
+          if (dspMatch) {
+            vessel = dspMatch.vessel_name;
+          }
+        }
+        if (!vessel && m.remarks) {
+          const match = m.remarks.match(/Kapal:\s*([^|]+)/i);
+          if (match && match[1]) vessel = match[1].trim();
+        }
+        sanitizedMovements.push({
+          ...m,
+          vessel_name: vessel || m.vessel_name || ""
+        });
       }
     });
 
@@ -146,6 +166,7 @@ export default function ReportsView({
     if (receivingList && receivingList.length > 0) {
       receivingList.forEach(rec => {
         if (!rec || !rec.items) return;
+        const recVessel = rec.vessel_name || (rec.items && (rec.items as any)[0]?.vessel_name) || "";
         (rec.items || []).forEach((item, idx) => {
           if (!item) return;
           const refCode = rec.purchase_order_num || rec.delivery_note_num || `PO-${rec.id}`;
@@ -153,6 +174,7 @@ export default function ReportsView({
           if (!seenTxKeys.has(uniqueKey)) {
             seenTxKeys.add(uniqueKey);
             const qty = item.qty_received || item.qty_ordered || 0;
+            const itemVessel = (item as any).vessel_name || recVessel || "";
             list.push({
               id: `rec-${rec.id}-${item.spare_part_id || idx}`,
               transaction_type: TransactionType.RECEIVING,
@@ -164,7 +186,8 @@ export default function ReportsView({
               before_stock: 0,
               after_stock: qty,
               reference_number: refCode,
-              remarks: `Inbound PO | Vendor: ${rec.vendor_name || '-'} | DN: ${rec.delivery_note_num || '-'} | Status: ${rec.status}`,
+              vessel_name: itemVessel,
+              remarks: `Inbound PO | Vendor: ${rec.vendor_name || '-'} | DN: ${rec.delivery_note_num || '-'}${itemVessel ? ` | Kapal: ${itemVessel}` : ''} | Status: ${rec.status}`,
               transaction_date: rec.received_date || new Date().toISOString(),
               created_by: rec.created_by || "Staff Gudang"
             });
@@ -177,6 +200,7 @@ export default function ReportsView({
     if (dispatchList && dispatchList.length > 0) {
       dispatchList.forEach(dsp => {
         if (!dsp || !dsp.items) return;
+        const dspVessel = dsp.vessel_name || "";
         (dsp.items || []).forEach((item, idx) => {
           if (!item) return;
           const refCode = dsp.tug8_number || dsp.dispatch_number || dsp.surat_jalan_number || dsp.bon_pengeluaran_number || `DSP-${dsp.id}`;
@@ -195,6 +219,7 @@ export default function ReportsView({
               before_stock: qty,
               after_stock: 0,
               reference_number: refCode,
+              vessel_name: dspVessel,
               remarks: `Outbound TUG 8 | Kapal: ${dsp.vessel_name || '-'} | Tujuan: ${dsp.destination_port || 'Pelabuhan'} | Transporter: ${dsp.transporter_name || '-'}`,
               transaction_date: dsp.dispatch_date || dsp.created_at || new Date().toISOString(),
               created_by: dsp.created_by || "Staff Gudang"
@@ -585,8 +610,9 @@ export default function ReportsView({
         const matchesRef = m.reference_number.toLowerCase().includes(cleanQuery);
         const matchesUser = m.created_by.toLowerCase().includes(cleanQuery);
         const matchesRemarks = m.remarks ? m.remarks.toLowerCase().includes(cleanQuery) : false;
+        const matchesVessel = m.vessel_name ? m.vessel_name.toLowerCase().includes(cleanQuery) : false;
 
-        if (!matchesName && !matchesNum && !matchesRef && !matchesUser && !matchesRemarks) {
+        if (!matchesName && !matchesNum && !matchesRef && !matchesUser && !matchesRemarks && !matchesVessel) {
           return false;
         }
       }
@@ -662,6 +688,7 @@ export default function ReportsView({
       transaction_type: string;
       created_by: string;
       remarks: string;
+      vessel_name?: string;
       total_in: number;
       total_out: number;
       items: MovementLedgerEntry[];
@@ -669,17 +696,21 @@ export default function ReportsView({
 
     filteredData.forEach(m => {
       const ref = m.reference_number || "REF-LOGISTIK";
+      const itemVessel = m.vessel_name || (m.remarks?.match(/Kapal:\s*([^|]+)/i)?.[1]?.trim()) || "";
       if (!map[ref]) {
         map[ref] = {
           reference_number: ref,
           transaction_date: m.transaction_date,
           transaction_type: m.transaction_type,
           created_by: m.created_by,
-          remarks: m.remarks,
+          remarks: m.remarks || "",
+          vessel_name: itemVessel,
           total_in: 0,
           total_out: 0,
           items: []
         };
+      } else if (!map[ref].vessel_name && itemVessel) {
+        map[ref].vessel_name = itemVessel;
       }
       map[ref].items.push(m);
       map[ref].total_in += (m.qty_in || 0);
@@ -770,8 +801,11 @@ export default function ReportsView({
     document.body.removeChild(link);
   };
 
+  const textTimeFilter = useMemo(() => {
+    return timeFilter === "week" ? "7 Hari Terakhir" : timeFilter === "month" ? "30 Hari Terakhir" : `${dateFrom} s/d ${dateTo}`;
+  }, [timeFilter, dateFrom, dateTo]);
+
   const handleTriggerPrint = () => {
-    const textTimeFilter = timeFilter === "week" ? "7 Hari Terakhir" : timeFilter === "month" ? "30 Hari Terakhir" : `${dateFrom} s/d ${dateTo}`;
     if (viewMode === "spk" && filteredSPKList.length > 0) {
       if (onPrintSPKReport) {
         onPrintSPKReport(filteredSPKList[0], docTypesFilter);
@@ -1532,6 +1566,12 @@ export default function ReportsView({
                     }`}>
                       {refGroup.total_in > 0 ? "INBOUND MASUK" : "OUTBOUND KELUAR"}
                     </span>
+                    {refGroup.vessel_name && (
+                      <span className="px-2.5 py-0.5 rounded text-[10px] uppercase font-bold bg-blue-500/20 text-blue-300 border border-blue-500/40 flex items-center gap-1">
+                        <Ship className="w-3 h-3 text-blue-400" />
+                        <span>KAPAL: {refGroup.vessel_name}</span>
+                      </span>
+                    )}
                   </div>
 
                   <div className="flex items-center gap-4 text-xs">
@@ -1539,7 +1579,7 @@ export default function ReportsView({
                     <span className="text-slate-400">Petugas: <strong className="text-slate-200">{refGroup.created_by}</strong></span>
                     <button
                       type="button"
-                      onClick={() => onPrintReport(refGroup.items, { totalIn: refGroup.total_in, totalOut: refGroup.total_out }, timeFilter)}
+                      onClick={() => onPrintReport(refGroup.items, { totalIn: refGroup.total_in, totalOut: refGroup.total_out }, textTimeFilter, docTypesFilter)}
                       className="px-3 py-1 bg-blue-600 hover:bg-blue-500 text-white rounded font-bold transition-all cursor-pointer flex items-center gap-1.5 text-xs shadow-xs"
                     >
                       <Printer className="w-3.5 h-3.5" />

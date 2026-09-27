@@ -132,6 +132,7 @@ export interface MovementLedgerEntry {
   before_stock: number;
   after_stock: number;
   reference_number: string; // PO number or Vessel Request number
+  vessel_name?: string;
   remarks?: string;
   transaction_date: string;
   created_by: string;
