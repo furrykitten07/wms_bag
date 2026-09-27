@@ -153,6 +153,7 @@ export interface InboundReceiving {
   spk_id?: string;
   vendor_id: string;
   vendor_name: string;
+  vessel_name?: string;
   items: Array<{
     spare_part_id: string;
     spare_part_name: string;

@@ -366,7 +366,11 @@ function getLocalFallbackData<T>(url: string, options: RequestInit = {}): T {
       spk_id: body.spk_id,
       vendor_id: body.vendor_id || "vnd-1",
       vendor_name: body.vendor_name || "Vendor Logistik BAG",
-      items: body.items || [],
+      vessel_name: body.vessel_name || "",
+      items: (body.items || []).map((itm: any) => ({
+        ...itm,
+        vessel_name: itm.vessel_name || body.vessel_name || ""
+      })),
       status: body.status || ReceivingStatus.ACCEPTED,
       keeper_notes: body.keeper_notes,
       reject_reason: body.reject_reason,
@@ -395,10 +399,15 @@ function getLocalFallbackData<T>(url: string, options: RequestInit = {}): T {
     if (idx !== -1) {
       const oldRec = localReceiving[idx];
       const newStatus = body.status || oldRec.status;
+      const updatedVessel = body.vessel_name !== undefined ? body.vessel_name : oldRec.vessel_name;
       localReceiving[idx] = {
         ...oldRec,
         ...body,
-        items: body.items || oldRec.items,
+        vessel_name: updatedVessel,
+        items: (body.items || oldRec.items || []).map((itm: any) => ({
+          ...itm,
+          vessel_name: itm.vessel_name || updatedVessel
+        })),
         status: newStatus,
         keeper_notes: body.keeper_notes !== undefined ? body.keeper_notes : oldRec.keeper_notes,
         completion_date: body.completion_date !== undefined ? body.completion_date : (newStatus === ReceivingStatus.ACCEPTED || newStatus === ReceivingStatus.VERIFIED ? (oldRec.completion_date || new Date().toISOString()) : oldRec.completion_date),
@@ -955,9 +964,11 @@ async function fetcher<T>(url: string, options: RequestInit = {}): Promise<T> {
         if (!error && data) {
           const mapped = data.map((r: any) => {
             const extractedPhoto = r.photo_evidence_url || (Array.isArray(r.items) ? r.items.find((i: any) => i && i.photo_url)?.photo_url : "") || "";
+            const extractedVessel = r.vessel_name || (Array.isArray(r.items) ? r.items.find((i: any) => i && i.vessel_name)?.vessel_name : "") || "";
             return {
               ...r,
               photo_evidence_url: extractedPhoto,
+              vessel_name: extractedVessel,
               created_by: r.received_by || "Petugas Gudang"
             };
           });
@@ -975,12 +986,14 @@ async function fetcher<T>(url: string, options: RequestInit = {}): Promise<T> {
         }
 
         const photoUrl = body.photo_evidence_url || "";
+        const vesselName = body.vessel_name || "";
         const rawItems = Array.isArray(body.items) ? body.items : [];
-        const itemsWithPhoto = rawItems.map((itm: any, idx: number) => {
-          if (!itm.photo_url && photoUrl) {
-            return { ...itm, photo_url: photoUrl };
-          }
-          return itm;
+        const itemsWithMeta = rawItems.map((itm: any, idx: number) => {
+          return {
+            ...itm,
+            vessel_name: itm.vessel_name || vesselName,
+            photo_url: itm.photo_url || (!itm.photo_url && photoUrl ? photoUrl : "")
+          };
         });
 
         const rec = {
@@ -992,7 +1005,7 @@ async function fetcher<T>(url: string, options: RequestInit = {}): Promise<T> {
           vendor_name: body.vendor_name || "Vendor Logistik BAG",
           received_by: body.received_by || body.created_by || currentUsername || "Petugas Gudang",
           status: body.status || "ACCEPTED",
-          items: itemsWithPhoto,
+          items: itemsWithMeta,
           received_date: body.received_date ? String(body.received_date).split("T")[0] : now.split("T")[0],
           created_at: now,
           updated_at: now
@@ -1004,7 +1017,13 @@ async function fetcher<T>(url: string, options: RequestInit = {}): Promise<T> {
           throw new Error(error.message);
         }
         const extractedPhoto = photoUrl || (Array.isArray(data.items) ? data.items.find((i: any) => i && i.photo_url)?.photo_url : "") || "";
-        const createdRecord = { ...data, created_by: data.received_by, photo_evidence_url: extractedPhoto };
+        const extractedVessel = vesselName || (Array.isArray(data.items) ? data.items.find((i: any) => i && i.vessel_name)?.vessel_name : "") || "";
+        const createdRecord = {
+          ...data,
+          created_by: data.received_by,
+          photo_evidence_url: extractedPhoto,
+          vessel_name: extractedVessel
+        };
         localReceiving = [createdRecord, ...localReceiving.filter(r => r.id !== createdRecord.id)];
         saveLocalReceiving(localReceiving);
         return createdRecord as any;
@@ -1017,6 +1036,25 @@ async function fetcher<T>(url: string, options: RequestInit = {}): Promise<T> {
         }
         if (payload.vendor_id && !["vnd-1", "vnd-2", "vnd-3", "vnd-4", "vnd-manual"].includes(payload.vendor_id)) {
           payload.vendor_id = null;
+        }
+
+        // Handle vessel_name synchronization into items JSONB
+        const vesselName = payload.vessel_name;
+        if (vesselName !== undefined) {
+          if (Array.isArray(payload.items) && payload.items.length > 0) {
+            payload.items = payload.items.map((itm: any) => ({
+              ...itm,
+              vessel_name: vesselName
+            }));
+          } else {
+            const { data: currRec } = await supabase.from("inbound_receivings").select("items").eq("id", id).single();
+            if (currRec && Array.isArray(currRec.items) && currRec.items.length > 0) {
+              payload.items = currRec.items.map((itm: any) => ({
+                ...itm,
+                vessel_name: vesselName
+              }));
+            }
+          }
         }
 
         // Handle photo evidence synchronization into items JSONB
@@ -1045,7 +1083,13 @@ async function fetcher<T>(url: string, options: RequestInit = {}): Promise<T> {
           throw new Error(error.message);
         }
         const extractedPhoto = (photoUrl !== undefined ? photoUrl : "") || (Array.isArray(data.items) ? data.items.find((i: any) => i && i.photo_url)?.photo_url : "") || "";
-        const updatedRecord = { ...data, created_by: data.received_by, photo_evidence_url: extractedPhoto };
+        const extractedVessel = (vesselName !== undefined ? vesselName : "") || (Array.isArray(data.items) ? data.items.find((i: any) => i && i.vessel_name)?.vessel_name : "") || "";
+        const updatedRecord = {
+          ...data,
+          created_by: data.received_by,
+          photo_evidence_url: extractedPhoto,
+          vessel_name: extractedVessel
+        };
         localReceiving = localReceiving.map(r => r.id === id ? updatedRecord : r);
         saveLocalReceiving(localReceiving);
         return updatedRecord as any;

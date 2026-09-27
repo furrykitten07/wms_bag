@@ -43,12 +43,31 @@ import {
   Download,
   Pencil,
   Edit3,
-  Save
+  Save,
+  Ship
 } from "lucide-react";
 import { InboundReceiving, ReceivingStatus, SparePart, UserRole, SPKWorkOrder, WarehouseLocation } from "../types.js";
 import { demoSPKs } from "../demoSeedData.js";
 import { api } from "../api.js";
 import { supabase } from "../supabaseClient.js";
+
+export const FLEET_VESSELS = [
+  "MV. KARTINI BARUNA",
+  "MV. MALAHAYATI BARUNA",
+  "MV. MEUTIA BARUNA",
+  "MV. SARTIKA BARUNA",
+  "MV. INTAN BARUNA",
+  "MV. KENCANA BARUNA",
+  "MV. LATIFAH BARUNA",
+  "MV. WALIDAH BARUNA",
+  "MV. MARTHA BARUNA",
+  "MV. JAYANTI BARUNA",
+  "MV. ZALECHA BARUNA",
+  "MV. SRIKANDI BARUNA 2202",
+  "MV. SRIKANDI BARUNA 2204",
+  "MV. SRIKANDI BARUNA 2205",
+  "Gudang Logistik / Stok Cadangan (Non-Kapal)"
+];
 
 interface ReceivingViewProps {
   receivingList: InboundReceiving[];
@@ -97,6 +116,10 @@ export default function ReceivingView({
 
   // SPK List fallback
   const availableSpks = (spkList && spkList.length > 0) ? spkList : demoSPKs;
+  const vesselOptions = React.useMemo(() => {
+    const spkVessels = (availableSpks || []).map(s => s?.vessels?.[0]?.vessel_name || (s as any)?.vessel_name).filter(Boolean);
+    return Array.from(new Set([...FLEET_VESSELS, ...spkVessels]));
+  }, [availableSpks]);
   const [selectedSpkNumber, setSelectedSpkNumber] = useState<string>("");
   const [deliveryNoteNum, setDeliveryNoteNum] = useState<string>("");
   const [spkItemsCheck, setSpkItemsCheck] = useState<Array<{
@@ -339,6 +362,7 @@ export default function ReceivingView({
   const [manualPoNum, setManualPoNum] = useState("");
   const [manualDnNum, setManualDnNum] = useState("");
   const [manualVendorName, setManualVendorName] = useState("Vendor Non-SPK / Manual");
+  const [manualVesselName, setManualVesselName] = useState("MV. KARTINI BARUNA");
   const [manualPhotoUrl, setManualPhotoUrl] = useState("");
   const [manualOverallNotes, setManualOverallNotes] = useState("");
   const [isSavingManual, setIsSavingManual] = useState(false);
@@ -449,6 +473,7 @@ export default function ReceivingView({
   const [editPoNum, setEditPoNum] = useState("");
   const [editDnNum, setEditDnNum] = useState("");
   const [editVendorName, setEditVendorName] = useState("");
+  const [editVesselName, setEditVesselName] = useState("MV. KARTINI BARUNA");
   const [editReceivedDate, setEditReceivedDate] = useState("");
   const [editStatus, setEditStatus] = useState<ReceivingStatus>(ReceivingStatus.ACCEPTED);
   const [editKeeperNotes, setEditKeeperNotes] = useState("");
@@ -461,6 +486,8 @@ export default function ReceivingView({
     setEditPoNum(rec.purchase_order_num || "");
     setEditDnNum(rec.delivery_note_num || "");
     setEditVendorName(rec.vendor_name || "");
+    const existingVessel = rec.vessel_name || rec.items?.find((i: any) => i && i.vessel_name)?.vessel_name || "MV. KARTINI BARUNA";
+    setEditVesselName(existingVessel);
     const dateFormatted = rec.received_date ? String(rec.received_date).split("T")[0] : new Date().toISOString().split("T")[0];
     setEditReceivedDate(dateFormatted);
     setEditStatus(rec.status || ReceivingStatus.ACCEPTED);
@@ -474,7 +501,8 @@ export default function ReceivingView({
         qty_received: itm.qty_received !== undefined ? itm.qty_received : (itm.qty_ordered || itm.quantity || 1),
         unit: itm.unit || "PCS",
         item_matched: itm.item_matched || "Sesuai",
-        photo_url: itm.photo_url || existingPhoto || ""
+        photo_url: itm.photo_url || existingPhoto || "",
+        vessel_name: itm.vessel_name || existingVessel
       }))
     );
     setIsEditModalOpen(true);
@@ -516,6 +544,7 @@ export default function ReceivingView({
     try {
       const updatedItems = editItems.map((itm, idx) => ({
         ...itm,
+        vessel_name: editVesselName,
         photo_url: itm.photo_url || (idx === 0 ? editPhotoUrl : itm.photo_url) || ""
       }));
 
@@ -523,6 +552,7 @@ export default function ReceivingView({
         purchase_order_num: editPoNum.trim(),
         delivery_note_num: editDnNum.trim() || "-",
         vendor_name: editVendorName.trim() || "Vendor Logistik",
+        vessel_name: editVesselName,
         received_date: editReceivedDate || new Date().toISOString().split("T")[0],
         status: editStatus,
         keeper_notes: editKeeperNotes,
@@ -834,7 +864,11 @@ export default function ReceivingView({
         delivery_note_num: deliveryNoteNum || `DN-SPK-${Math.floor(1000 + Math.random() * 9000)}`,
         vendor_id: "vnd-spk",
         vendor_name: selectedSpk?.vessels?.[0]?.vessel_name ? `Kapal ${selectedSpk.vessels[0].vessel_name}` : (selectedSpk as any)?.vessel_name ? `Kapal ${(selectedSpk as any).vessel_name}` : "Vendor Logistik BAG",
-        items: itemsToSave,
+        vessel_name: selectedSpk?.vessels?.[0]?.vessel_name || (selectedSpk as any)?.vessel_name || "MV. KARTINI BARUNA",
+        items: itemsToSave.map(itm => ({
+          ...itm,
+          vessel_name: selectedSpk?.vessels?.[0]?.vessel_name || (selectedSpk as any)?.vessel_name || "MV. KARTINI BARUNA"
+        })),
         status: calculatedStatus,
         keeper_notes: (keeperOverallNotes || "").trim() || defaultOverallNotes,
         received_date: new Date().toISOString().split("T")[0],
@@ -962,7 +996,8 @@ export default function ReceivingView({
           item_matched: "Sesuai" as const,
           qty_matched_status: "QTY Sesuai",
           keeper_notes: itm.keeper_notes ? `[Input Manual] ${itm.keeper_notes}` : "Input manual penyerahan penerimaan gudang",
-          photo_url: itm.photo_url || manualPhotoUrl || ""
+          photo_url: itm.photo_url || manualPhotoUrl || "",
+          vessel_name: manualVesselName || "MV. KARTINI BARUNA"
         });
       }
 
@@ -971,7 +1006,7 @@ export default function ReceivingView({
         timestamp: new Date().toISOString(),
         username: role === UserRole.SUPER_ADMIN ? "Super Admin" : "Penjaga Gudang",
         action: "Penerimaan Manual Dicatat (Non-SPK)",
-        notes: manualOverallNotes || `Input penerimaan manual ${preparedItems.length} item. Fisik barang langsung terverifikasi lengkap di stok gudang.`,
+        notes: manualOverallNotes || `Input penerimaan manual ${preparedItems.length} item [Kapal: ${manualVesselName || "Umum"}]. Fisik barang langsung terverifikasi lengkap di stok gudang.`,
         status_before: "-",
         status_after: ReceivingStatus.ACCEPTED
       }];
@@ -983,10 +1018,11 @@ export default function ReceivingView({
         delivery_note_num: manualDnNum.trim() || `DN-MANUAL-${Math.floor(1000 + Math.random() * 9000)}`,
         vendor_id: "vnd-manual",
         vendor_name: manualVendorName.trim() || "Vendor Non-SPK / Manual",
+        vessel_name: manualVesselName || "MV. KARTINI BARUNA",
         items: preparedItems,
         status: ReceivingStatus.ACCEPTED,
         photo_evidence_url: overallPhotoEvidence,
-        keeper_notes: manualOverallNotes || "Penerimaan barang fisik manual gudang terverifikasi langsung.",
+        keeper_notes: manualOverallNotes || `Penerimaan barang fisik manual gudang terverifikasi langsung untuk ${manualVesselName || "Kapal"}.`,
         received_date: new Date().toISOString().split("T")[0],
         completion_date: new Date().toISOString(),
         audit_logs: initialLogs
@@ -996,6 +1032,7 @@ export default function ReceivingView({
       setManualPoNum("");
       setManualDnNum("");
       setManualVendorName("Vendor Non-SPK / Manual");
+      setManualVesselName("MV. KARTINI BARUNA");
       setManualPhotoUrl("");
       setManualOverallNotes("");
       setManualItems([createInitialManualItem()]);
@@ -1182,7 +1219,7 @@ export default function ReceivingView({
                   <th className="p-3.5 w-10 text-center bg-slate-50">NO</th>
                   <th className="p-3.5">No. SPK / Ref Pekerjaan</th>
                   <th className="p-3.5">No. Surat Jalan (DN)</th>
-                  <th className="p-3.5">Vendor / Asal Kapal</th>
+                  <th className="p-3.5">Vendor &amp; Kapal Tujuan</th>
                   <th className="p-3.5 text-center">Bukti Foto Fisik</th>
                   <th className="p-3.5">Jumlah Item &amp; QTY Datang</th>
                   <th className="p-3.5">Tanggal Penerimaan</th>
@@ -1223,7 +1260,21 @@ export default function ReceivingView({
                         )}
                       </td>
                       <td className="p-3.5 font-mono text-slate-600">{item.delivery_note_num}</td>
-                      <td className="p-3.5 truncate max-w-[160px] font-bold text-slate-900">{item.vendor_name}</td>
+                      <td className="p-3.5 truncate max-w-[190px]">
+                        <span className="font-bold text-slate-900 block truncate" title={item.vendor_name}>{item.vendor_name}</span>
+                        {(() => {
+                          const vName = item.vessel_name || item.items?.find((i: any) => i && i.vessel_name)?.vessel_name;
+                          if (vName) {
+                            return (
+                              <span className="inline-flex items-center gap-1 mt-1 text-[9.5px] font-mono font-bold text-sky-800 bg-sky-50 px-1.5 py-0.5 rounded border border-sky-200" title={`Kapal Tujuan: ${vName}`}>
+                                <Ship className="w-3 h-3 text-sky-600 shrink-0" />
+                                <span className="truncate max-w-[145px]">{vName}</span>
+                              </span>
+                            );
+                          }
+                          return null;
+                        })()}
+                      </td>
                       
                       {/* DEDICATED PHOTO EVIDENCE COLUMN */}
                       <td className="p-3.5 text-center" onClick={(e) => e.stopPropagation()}>
@@ -1565,8 +1616,20 @@ export default function ReceivingView({
                   <p className="text-slate-700 font-semibold mt-0.5">Surat Jalan (DN): {activeReceiving.delivery_note_num}</p>
                 </div>
                 <div>
-                  <p className="text-slate-400 font-bold uppercase tracking-wider text-[9px] mb-1 font-mono">Pemasok / Armada Kapal</p>
+                  <p className="text-slate-400 font-bold uppercase tracking-wider text-[9px] mb-1 font-mono">Pemasok &amp; Kapal Tujuan</p>
                   <p className="text-slate-900 font-extrabold text-sm">{activeReceiving.vendor_name}</p>
+                  {(() => {
+                    const vName = activeReceiving.vessel_name || activeReceiving.items?.find((i: any) => i && i.vessel_name)?.vessel_name;
+                    if (vName) {
+                      return (
+                        <div className="mt-1 inline-flex items-center gap-1 text-[10px] font-mono font-bold text-sky-800 bg-sky-50 px-2 py-0.5 rounded border border-sky-200">
+                          <Ship className="w-3.5 h-3.5 text-sky-600 shrink-0" />
+                          <span>Kapal Tujuan: {vName}</span>
+                        </div>
+                      );
+                    }
+                    return null;
+                  })()}
                   <div className="mt-1 flex items-center gap-2">
                     <span className={`inline-block font-bold px-2 py-0.5 rounded text-[10px] font-mono border ${
                       overallStatus === ReceivingStatus.ACCEPTED || overallStatus === ReceivingStatus.VERIFIED
@@ -2425,7 +2488,7 @@ export default function ReceivingView({
                       </button>
                     </div>
 
-                    <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+                    <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
                       <div>
                         <label className="text-[10px] uppercase font-bold text-slate-600 font-mono block mb-1">
                           Nomor Referensi PO / Dokumen *
@@ -2464,6 +2527,22 @@ export default function ReceivingView({
                           placeholder="PT. Bahtera Logistik / Vendor Bebas"
                           className="w-full bg-white border border-slate-300 p-2 text-xs text-slate-900 rounded-lg focus:ring-1 focus:ring-blue-500 outline-none font-semibold"
                         />
+                      </div>
+
+                      <div>
+                        <label className="text-[10px] uppercase font-bold text-slate-600 font-mono block mb-1 flex items-center gap-1">
+                          <Ship className="w-3 h-3 text-blue-600" />
+                          <span>Kapal Tujuan (Vessel) *</span>
+                        </label>
+                        <select
+                          value={manualVesselName}
+                          onChange={(e) => setManualVesselName(e.target.value)}
+                          className="w-full bg-white border border-slate-300 p-2 text-xs font-bold text-slate-900 rounded-lg focus:ring-1 focus:ring-blue-500 outline-none cursor-pointer"
+                        >
+                          {vesselOptions.map(v => (
+                            <option key={v} value={v}>{v}</option>
+                          ))}
+                        </select>
                       </div>
                     </div>
                   </div>
@@ -3191,6 +3270,22 @@ export default function ReceivingView({
                       <option value={ReceivingStatus.PARTIAL_REJECT}>Ditolak Sebagian (PARTIAL REJECT)</option>
                       <option value={ReceivingStatus.FULL_REJECT}>Ditolak Penuh (FULL REJECT)</option>
                       <option value={ReceivingStatus.PENDING}>Menunggu Verifikasi (PENDING)</option>
+                    </select>
+                  </div>
+
+                  <div>
+                    <label className="block text-[11px] font-bold text-slate-600 uppercase mb-1 flex items-center gap-1">
+                      <Ship className="w-3.5 h-3.5 text-blue-600" />
+                      <span>Kapal Tujuan (Vessel)</span>
+                    </label>
+                    <select
+                      value={editVesselName}
+                      onChange={(e) => setEditVesselName(e.target.value)}
+                      className="w-full px-3 py-2 bg-slate-50 border border-slate-300 rounded-lg text-xs font-bold focus:bg-white focus:border-blue-500 focus:outline-none cursor-pointer"
+                    >
+                      {vesselOptions.map(v => (
+                        <option key={v} value={v}>{v}</option>
+                      ))}
                     </select>
                   </div>
                 </div>
