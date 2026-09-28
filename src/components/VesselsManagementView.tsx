@@ -3,7 +3,7 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
-import React, { useState, useMemo } from "react";
+import React, { useState, useMemo, useEffect } from "react";
 import { 
   Ship, 
   Plus, 
@@ -234,11 +234,32 @@ export default function VesselsManagementView({
     });
   }, [vessels, searchQuery, statusFilter, typeFilter]);
 
+  // Pagination states
+  const [currentPage, setCurrentPage] = useState<number>(1);
+  const [itemsPerPage, setItemsPerPage] = useState<number>(8);
+
+  // Reset to first page when search query or filters change
+  useEffect(() => {
+    setCurrentPage(1);
+  }, [searchQuery, statusFilter, typeFilter]);
+
+  const totalPages = Math.max(1, Math.ceil(filteredVessels.length / (itemsPerPage || 8)));
+  const safeCurrentPage = Math.min(currentPage, totalPages);
+
+  const paginatedVessels = useMemo(() => {
+    if (itemsPerPage >= 9999) return filteredVessels;
+    const start = (safeCurrentPage - 1) * itemsPerPage;
+    return filteredVessels.slice(start, start + itemsPerPage);
+  }, [filteredVessels, safeCurrentPage, itemsPerPage]);
+
+  const startIdx = filteredVessels.length === 0 ? 0 : (safeCurrentPage - 1) * itemsPerPage + 1;
+  const endIdx = itemsPerPage >= 9999 ? filteredVessels.length : Math.min(safeCurrentPage * itemsPerPage, filteredVessels.length);
+
   return (
-    <div className="flex-1 flex flex-col bg-slate-50 min-h-screen text-slate-800 font-sans selection:bg-blue-100">
+    <div className="flex-1 flex flex-col overflow-hidden bg-slate-50 text-slate-800 font-sans selection:bg-blue-100 h-full">
       
       {/* Top Banner / Breadcrumb Header */}
-      <div className="bg-white border-b border-slate-200 px-6 py-5 shadow-2xs">
+      <div className="bg-white border-b border-slate-200 px-6 py-5 shadow-2xs shrink-0">
         <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
           <div>
             <div className="flex items-center gap-2 mb-1">
@@ -310,8 +331,8 @@ export default function VesselsManagementView({
         )}
       </div>
 
-      {/* Main Body Container */}
-      <div className="p-6 space-y-6 max-w-7xl w-full mx-auto">
+      {/* Main Body Container with Vertical Scrolling */}
+      <div className="flex-1 overflow-y-auto p-6 space-y-6 max-w-7xl w-full mx-auto">
         
         {/* KPI Summary Cards */}
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
@@ -468,9 +489,10 @@ export default function VesselsManagementView({
                     </td>
                   </tr>
                 ) : (
-                  filteredVessels.map((vessel, index) => {
+                  paginatedVessels.map((vessel, index) => {
                     const isNonVessel = vessel.name.toLowerCase().includes("gudang") || (vessel.code || "").includes("NON-VESSEL");
                     const st = (vessel.status || "Active").toLowerCase();
+                    const rowNumber = (safeCurrentPage - 1) * (itemsPerPage >= 9999 ? 0 : itemsPerPage) + index + 1;
                     
                     return (
                       <tr 
@@ -478,7 +500,7 @@ export default function VesselsManagementView({
                         className="hover:bg-slate-50/80 transition-colors group"
                       >
                         <td className="p-3.5 pl-5 text-center font-mono text-slate-400 text-[11px]">
-                          {index + 1}
+                          {rowNumber}
                         </td>
 
                         <td className="p-3.5 font-mono text-[11px]">
@@ -572,9 +594,112 @@ export default function VesselsManagementView({
             </table>
           </div>
 
-          <div className="bg-slate-50/80 border-t border-slate-200 px-5 py-3 flex items-center justify-between text-xs text-slate-500 font-mono">
-            <span>Menampilkan <strong>{filteredVessels.length}</strong> dari total {vessels.length} kapal</span>
-            <span>Semua entitas nama kapal otomatis berhuruf kapital (UPPERCASE)</span>
+          {/* Table Footer with Rich Pagination Controls */}
+          <div className="bg-slate-50/90 border-t border-slate-200 px-5 py-3.5 flex flex-col sm:flex-row items-center justify-between gap-3 text-xs text-slate-600 font-sans">
+            {/* Left: Range and Info */}
+            <div className="flex items-center gap-2 text-slate-500 font-mono text-[11px]">
+              <span>
+                Menampilkan <strong className="text-slate-900 font-bold">{startIdx} - {endIdx}</strong> dari total <strong className="text-slate-900 font-bold">{filteredVessels.length}</strong> kapal
+              </span>
+            </div>
+
+            {/* Center / Right: Items per page and Page navigation */}
+            <div className="flex items-center gap-4 flex-wrap">
+              {/* Items Per Page Selector */}
+              <div className="flex items-center gap-1.5 font-mono text-[11px]">
+                <span className="text-slate-400">Tampilkan:</span>
+                <select
+                  value={itemsPerPage}
+                  onChange={(e) => {
+                    setItemsPerPage(Number(e.target.value));
+                    setCurrentPage(1);
+                  }}
+                  className="bg-white border border-slate-300 rounded px-2 py-1 text-slate-800 font-bold focus:outline-none focus:border-blue-500 cursor-pointer shadow-2xs"
+                >
+                  <option value={5}>5 baris</option>
+                  <option value={8}>8 baris</option>
+                  <option value={10}>10 baris</option>
+                  <option value={15}>15 baris</option>
+                  <option value={20}>20 baris</option>
+                  <option value={9999}>Semua</option>
+                </select>
+              </div>
+
+              {/* Page Buttons */}
+              {totalPages > 1 && (
+                <div className="flex items-center gap-1">
+                  {/* First & Prev */}
+                  <button
+                    type="button"
+                    onClick={() => setCurrentPage(1)}
+                    disabled={safeCurrentPage === 1}
+                    className="p-1 px-2 rounded border border-slate-250 bg-white text-slate-600 hover:bg-slate-100 disabled:opacity-30 disabled:cursor-not-allowed cursor-pointer text-xs font-mono font-bold"
+                    title="Halaman Pertama"
+                  >
+                    «
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setCurrentPage(p => Math.max(1, p - 1))}
+                    disabled={safeCurrentPage === 1}
+                    className="p-1 px-2.5 rounded border border-slate-250 bg-white text-slate-600 hover:bg-slate-100 disabled:opacity-30 disabled:cursor-not-allowed cursor-pointer text-xs font-mono font-bold"
+                    title="Halaman Sebelumnya"
+                  >
+                    ‹
+                  </button>
+
+                  {/* Page number buttons */}
+                  {Array.from({ length: totalPages }, (_, i) => i + 1).map((pageNum) => {
+                    if (
+                      totalPages > 7 &&
+                      pageNum !== 1 &&
+                      pageNum !== totalPages &&
+                      Math.abs(pageNum - safeCurrentPage) > 1
+                    ) {
+                      if (pageNum === 2 && safeCurrentPage > 3) return <span key={pageNum} className="px-1 text-slate-400">...</span>;
+                      if (pageNum === totalPages - 1 && safeCurrentPage < totalPages - 2) return <span key={pageNum} className="px-1 text-slate-400">...</span>;
+                      return null;
+                    }
+
+                    const isActive = pageNum === safeCurrentPage;
+                    return (
+                      <button
+                        key={pageNum}
+                        type="button"
+                        onClick={() => setCurrentPage(pageNum)}
+                        className={`w-7 h-7 rounded text-xs font-mono font-bold transition-all cursor-pointer ${
+                          isActive
+                            ? "bg-blue-600 text-white shadow-xs border border-blue-600"
+                            : "bg-white text-slate-700 hover:bg-slate-100 border border-slate-250"
+                        }`}
+                      >
+                        {pageNum}
+                      </button>
+                    );
+                  })}
+
+                  {/* Next & Last */}
+                  <button
+                    type="button"
+                    onClick={() => setCurrentPage(p => Math.min(totalPages, p + 1))}
+                    disabled={safeCurrentPage === totalPages}
+                    className="p-1 px-2.5 rounded border border-slate-250 bg-white text-slate-600 hover:bg-slate-100 disabled:opacity-30 disabled:cursor-not-allowed cursor-pointer text-xs font-mono font-bold"
+                    title="Halaman Berikutnya"
+                  >
+                    ›
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setCurrentPage(totalPages)}
+                    disabled={safeCurrentPage === totalPages}
+                    className="p-1 px-2 rounded border border-slate-250 bg-white text-slate-600 hover:bg-slate-100 disabled:opacity-30 disabled:cursor-not-allowed cursor-pointer text-xs font-mono font-bold"
+                    title="Halaman Terakhir"
+                  >
+                    »
+                  </button>
+                </div>
+              )}
+            </div>
           </div>
         </div>
       </div>
