@@ -64,7 +64,22 @@ export interface WarehouseLocation {
   zone: string; // e.g. "Zone A"
   rack: string; // e.g. "Rack 01"
   shelf: string; // e.g. "Shelf 02"
-  bin: string; // e.g. "Bin 01"
+  bin?: string; // e.g. "Bin 01"
+}
+
+export interface Vessel {
+  id: string;
+  name: string;
+  code?: string;
+  vessel_type?: string;
+  capacity?: string;
+  year_built?: number;
+  flag?: string;
+  call_sign?: string;
+  status: "Active" | "Maintenance" | "Docking" | "Standby" | "Inactive" | string;
+  notes?: string;
+  created_at?: string;
+  updated_at?: string;
 }
 
 export interface SparePart {

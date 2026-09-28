@@ -22,7 +22,8 @@ import {
   DispatchStatus,
   ReceivingStatus,
   DigitalSignature,
-  normalizeUserRole
+  normalizeUserRole,
+  Vessel
 } from "./types.js";
 import { supabase, isSupabaseConfigured, uploadSignatureToStorage } from "./supabaseClient.js";
 import { 
@@ -175,8 +176,82 @@ function saveLocalUsers(data: User[]) {
   } catch (e) {}
 }
 
+// Master Vessels Default Seed
+export const DEFAULT_VESSELS: Vessel[] = [
+  { id: "vsl-1", name: "MV. KARTINI BARUNA", code: "VSL-KTN-01", vessel_type: "Bulk Carrier (Panamax)", capacity: "75,000 DWT", flag: "Indonesia", status: "Active", notes: "Armada Utama Pengangkut Batubara" },
+  { id: "vsl-2", name: "MV. ARIMBI BARUNA", code: "VSL-ARM-02", vessel_type: "Bulk Carrier (Supramax)", capacity: "56,000 DWT", flag: "Indonesia", status: "Active", notes: "Armada Pengangkut Batubara Rute Jawa - Sumatera" },
+  { id: "vsl-3", name: "MV. MALAHAYATI BARUNA", code: "VSL-MLH-03", vessel_type: "Bulk Carrier (Handymax)", capacity: "45,000 DWT", flag: "Indonesia", status: "Active", notes: "Rute Pelayaran Domestik" },
+  { id: "vsl-4", name: "MV. MEUTIA BARUNA", code: "VSL-MEU-04", vessel_type: "Bulk Carrier (Handymax)", capacity: "45,000 DWT", flag: "Indonesia", status: "Active", notes: "Rute Pelayaran Kalimantan - Jawa" },
+  { id: "vsl-5", name: "MV. SARTIKA BARUNA", code: "VSL-SRT-05", vessel_type: "Bulk Carrier (Supramax)", capacity: "53,000 DWT", flag: "Indonesia", status: "Active", notes: "Rute Operasional Batubara" },
+  { id: "vsl-6", name: "MV. INTAN BARUNA", code: "VSL-INT-06", vessel_type: "Bulk Carrier (Supramax)", capacity: "55,000 DWT", flag: "Indonesia", status: "Active", notes: "Rute Operasional Domestik" },
+  { id: "vsl-7", name: "MV. KENCANA BARUNA", code: "VSL-KNC-07", vessel_type: "Bulk Carrier (Handysize)", capacity: "32,000 DWT", flag: "Indonesia", status: "Active", notes: "Armada Pengangkut Logistik Curah" },
+  { id: "vsl-8", name: "MV. LATIFAH BARUNA", code: "VSL-LTF-08", vessel_type: "Bulk Carrier (Supramax)", capacity: "53,000 DWT", flag: "Indonesia", status: "Active", notes: "Operasional Rutin Armada" },
+  { id: "vsl-9", name: "MV. WALIDAH BARUNA", code: "VSL-WLD-09", vessel_type: "Bulk Carrier (Supramax)", capacity: "55,000 DWT", flag: "Indonesia", status: "Active", notes: "Armada Angkutan Pasokan Energi" },
+  { id: "vsl-10", name: "MV. MARTHA BARUNA", code: "VSL-MRT-10", vessel_type: "Bulk Carrier (Panamax)", capacity: "70,000 DWT", flag: "Indonesia", status: "Active", notes: "Operasional Rute Utama Pasokan PLTU" },
+  { id: "vsl-11", name: "MV. JAYANTI BARUNA", code: "VSL-JYT-11", vessel_type: "Bulk Carrier (Handymax)", capacity: "48,000 DWT", flag: "Indonesia", status: "Active", notes: "Operasional Angkutan Curah Kering" },
+  { id: "vsl-12", name: "MV. ZALECHA BARUNA", code: "VSL-ZLC-12", vessel_type: "Bulk Carrier (Supramax)", capacity: "53,000 DWT", flag: "Indonesia", status: "Active", notes: "Armada Operasional Siaga" },
+  { id: "vsl-13", name: "MV. SRIKANDI BARUNA 2202", code: "VSL-SRK-2202", vessel_type: "Tug & Barge Set", capacity: "10,000 DWT", flag: "Indonesia", status: "Active", notes: "Tongkang Curah Batubara" },
+  { id: "vsl-14", name: "MV. SRIKANDI BARUNA 2204", code: "VSL-SRK-2204", vessel_type: "Tug & Barge Set", capacity: "10,000 DWT", flag: "Indonesia", status: "Active", notes: "Tongkang Curah Batubara" },
+  { id: "vsl-15", name: "MV. SRIKANDI BARUNA 2205", code: "VSL-SRK-2205", vessel_type: "Tug & Barge Set", capacity: "10,000 DWT", flag: "Indonesia", status: "Active", notes: "Tongkang Curah Batubara" },
+  { id: "vsl-16", name: "Gudang Logistik / Stok Cadangan (Non-Kapal)", code: "NON-VESSEL", vessel_type: "Warehouse Buffer", capacity: "-", flag: "Indonesia", status: "Active", notes: "Alokasi Persediaan Non-Armada / Gudang Penyangga" }
+];
+
+export function loadLocalVessels(): Vessel[] {
+  try {
+    const saved = localStorage.getItem("wms_local_vessels");
+    if (saved) {
+      let parsed = JSON.parse(saved);
+      if (Array.isArray(parsed) && parsed.length > 0) {
+        const cleaned: Vessel[] = [];
+        const seenNames = new Set<string>();
+
+        parsed.forEach((v: any) => {
+          if (!v || !v.name) return;
+          const rawName = String(v.name).trim();
+          // Filter out un-capitalized / non-capital ship duplicates (e.g. Srikandi Baruna 2202, Intan Baruna, etc.)
+          const isNonCapsDuplicate = /^[A-Z][a-z]+(\s+[A-Za-z0-9]+)*$/.test(rawName) && !rawName.startsWith("MV.") && !rawName.startsWith("Gudang");
+          if (isNonCapsDuplicate) return;
+
+          const upperName = rawName.startsWith("Gudang") ? rawName : rawName.toUpperCase();
+          if (!seenNames.has(upperName)) {
+            seenNames.add(upperName);
+            cleaned.push({
+              ...v,
+              name: upperName
+            });
+          }
+        });
+
+        // Ensure MV. ARIMBI BARUNA is in the list
+        if (!cleaned.some(v => v.name === "MV. ARIMBI BARUNA")) {
+          cleaned.splice(1, 0, DEFAULT_VESSELS[1]);
+        }
+
+        saveLocalVessels(cleaned);
+        return cleaned;
+      }
+    }
+  } catch (e) {
+    console.error("Failed to load vessels from localStorage", e);
+  }
+
+  try {
+    localStorage.setItem("wms_local_vessels", JSON.stringify(DEFAULT_VESSELS));
+  } catch (e) {}
+  return [...DEFAULT_VESSELS];
+}
+
+export function saveLocalVessels(vessels: Vessel[]) {
+  try {
+    localStorage.setItem("wms_local_vessels", JSON.stringify(vessels));
+  } catch (e) {
+    console.error("Failed to save vessels to localStorage", e);
+  }
+}
+
 // Local fallback state
 let localUsers: User[] = loadLocalUsers();
+let localVessels: Vessel[] = loadLocalVessels();
 
 let localVendors: Vendor[] = [
   { id: "vnd-1", name: "Wärtsilä Marine Power Systems", code: "VND-WRT-01", email: "parts.marine@wartsila.com", phone: "+358 10 709 0000", address: "Helsinki, Finland", contactPerson: "Mikael Lindqvist" },
@@ -313,6 +388,58 @@ function getLocalFallbackData<T>(url: string, options: RequestInit = {}): T {
     return { success: true, id } as any;
   }
   if (path.startsWith("/api/users")) return localUsers as any;
+
+  // --- VESSELS (MASTER DATABASE KAPAL) FALLBACK ---
+  if (path === "/api/vessels" && options.method === "POST") {
+    const rawName = String(body.name || "").trim();
+    const upperName = rawName.startsWith("Gudang") ? rawName : rawName.toUpperCase();
+    const newId = body.id || `vsl-${Date.now()}`;
+    const newVessel: Vessel = {
+      id: newId,
+      name: upperName,
+      code: body.code ? String(body.code).trim().toUpperCase() : `VSL-${upperName.substring(0, 3)}-${Math.floor(10 + Math.random() * 90)}`,
+      vessel_type: body.vessel_type || "Motor Vessel (MV)",
+      capacity: body.capacity || "-",
+      flag: body.flag || "Indonesia",
+      status: body.status || "Active",
+      notes: body.notes || "",
+      created_at: new Date().toISOString(),
+      updated_at: new Date().toISOString()
+    };
+    localVessels = [...localVessels.filter(v => v.id !== newId && v.name !== upperName), newVessel];
+    saveLocalVessels(localVessels);
+    return newVessel as any;
+  }
+  if (path === "/api/vessels/reset" && options.method === "POST") {
+    localVessels = [...DEFAULT_VESSELS];
+    saveLocalVessels(localVessels);
+    return localVessels as any;
+  }
+  if (path.startsWith("/api/vessels/") && options.method === "PUT") {
+    const id = path.split("/").pop();
+    const idx = localVessels.findIndex(v => v.id === id);
+    if (idx !== -1) {
+      const rawName = body.name !== undefined ? String(body.name).trim() : localVessels[idx].name;
+      const upperName = rawName.startsWith("Gudang") ? rawName : rawName.toUpperCase();
+      localVessels[idx] = {
+        ...localVessels[idx],
+        ...body,
+        name: upperName,
+        code: body.code ? String(body.code).trim().toUpperCase() : localVessels[idx].code,
+        updated_at: new Date().toISOString()
+      };
+      saveLocalVessels(localVessels);
+      return localVessels[idx] as any;
+    }
+  }
+  if (path.startsWith("/api/vessels/") && options.method === "DELETE") {
+    const id = path.split("/").pop();
+    localVessels = localVessels.filter(v => v.id !== id);
+    saveLocalVessels(localVessels);
+    return { success: true, id } as any;
+  }
+  if (path.startsWith("/api/vessels")) return loadLocalVessels() as any;
+
   if (path.startsWith("/api/signatures") && options.method === "POST" && path === "/api/signatures") {
     const newSig: DigitalSignature = {
       id: `sig-${Date.now()}`,
@@ -620,6 +747,10 @@ const VALID_SIG_COLUMNS = new Set([
 
 const VALID_USER_COLUMNS = new Set([
   "id", "username", "name", "email", "role", "password", "vessel_name", "created_at"
+]);
+
+const VALID_VESSEL_COLUMNS = new Set([
+  "id", "name", "code", "vessel_type", "capacity", "year_built", "flag", "call_sign", "status", "notes", "created_at", "updated_at"
 ]);
 
 function sanitizeRecord(data: any, validCols: Set<string>): any {
@@ -1213,6 +1344,100 @@ async function fetcher<T>(url: string, options: RequestInit = {}): Promise<T> {
         return { success: true, id } as any;
       }
 
+      // --- 7.1 VESSELS MASTER DATABASE ---
+      if (path === "/api/vessels/reset" && method === "POST") {
+        localVessels = [...DEFAULT_VESSELS];
+        saveLocalVessels(localVessels);
+        return localVessels as any;
+      }
+      if (path.startsWith("/api/vessels") && method === "GET") {
+        try {
+          const { data, error } = await supabase.from("vessels").select("*").order("name", { ascending: true });
+          if (!error && data && data.length > 0) {
+            const mapped = data.map((v: any) => ({
+              ...v,
+              name: String(v.name || "").trim().toUpperCase()
+            }));
+            saveLocalVessels(mapped);
+            return mapped as any;
+          }
+        } catch (err) {
+          console.warn("Supabase vessels table error, falling back to local vessels:", err);
+        }
+        return loadLocalVessels() as any;
+      }
+      if (path === "/api/vessels" && method === "POST") {
+        const rawName = String(body.name || "").trim();
+        const upperName = rawName.startsWith("Gudang") ? rawName : rawName.toUpperCase();
+        const newVessel = {
+          ...body,
+          id: body.id || `vsl-${Date.now()}`,
+          name: upperName,
+          code: body.code ? String(body.code).trim().toUpperCase() : `VSL-${upperName.substring(0, 3)}-${Math.floor(10 + Math.random() * 90)}`,
+          vessel_type: body.vessel_type || "Motor Vessel (MV)",
+          capacity: body.capacity || "-",
+          flag: body.flag || "Indonesia",
+          status: body.status || "Active",
+          notes: body.notes || "",
+          created_at: now,
+          updated_at: now
+        };
+        const cleanVessel = sanitizeRecord(newVessel, VALID_VESSEL_COLUMNS);
+        try {
+          const { data, error } = await supabase.from("vessels").insert([cleanVessel]).select().single();
+          if (!error && data) {
+            localVessels = [...localVessels.filter(v => v.id !== data.id), data];
+            saveLocalVessels(localVessels);
+            return data as any;
+          }
+        } catch (err) {
+          console.warn("Supabase vessel insert failed, saving locally:", err);
+        }
+        localVessels = [...localVessels.filter(v => v.id !== newVessel.id), newVessel];
+        saveLocalVessels(localVessels);
+        return newVessel as any;
+      }
+      if (path.startsWith("/api/vessels/") && method === "PUT") {
+        const id = path.split("/").pop();
+        const rawName = body.name !== undefined ? String(body.name).trim() : undefined;
+        const upperName = rawName ? (rawName.startsWith("Gudang") ? rawName : rawName.toUpperCase()) : undefined;
+        const payload: any = {
+          ...body,
+          ...(upperName ? { name: upperName } : {}),
+          ...(body.code ? { code: String(body.code).trim().toUpperCase() } : {}),
+          updated_at: now
+        };
+        const cleanUpdate = sanitizeRecord(payload, VALID_VESSEL_COLUMNS);
+        try {
+          const { data, error } = await supabase.from("vessels").update(cleanUpdate).eq("id", id).select().single();
+          if (!error && data) {
+            const idx = localVessels.findIndex(v => v.id === id);
+            if (idx !== -1) localVessels[idx] = data;
+            saveLocalVessels(localVessels);
+            return data as any;
+          }
+        } catch (err) {
+          console.warn("Supabase vessel update failed, updating locally:", err);
+        }
+        const idx = localVessels.findIndex(v => v.id === id);
+        if (idx !== -1) {
+          localVessels[idx] = { ...localVessels[idx], ...payload };
+          saveLocalVessels(localVessels);
+          return localVessels[idx] as any;
+        }
+      }
+      if (path.startsWith("/api/vessels/") && method === "DELETE") {
+        const id = path.split("/").pop();
+        try {
+          await supabase.from("vessels").delete().eq("id", id);
+        } catch (err) {
+          console.warn("Supabase vessel delete failed, removing locally:", err);
+        }
+        localVessels = localVessels.filter(v => v.id !== id);
+        saveLocalVessels(localVessels);
+        return { success: true, id } as any;
+      }
+
       // --- 8. SPK WORK ORDERS ---
       if (path.startsWith("/api/spk") && method === "GET") {
         const { data, error } = await supabase.from("spk_work_orders").select("*");
@@ -1611,6 +1836,37 @@ export const api = {
     return fetcher<Vendor>("/api/vendors", {
       method: "POST",
       body: JSON.stringify(data),
+    });
+  },
+
+  // Vessels (Master Database Kapal)
+  async getVessels(): Promise<Vessel[]> {
+    return fetcher<Vessel[]>("/api/vessels");
+  },
+
+  async createVessel(data: Partial<Vessel>): Promise<Vessel> {
+    return fetcher<Vessel>("/api/vessels", {
+      method: "POST",
+      body: JSON.stringify(data),
+    });
+  },
+
+  async updateVessel(id: string, data: Partial<Vessel>): Promise<Vessel> {
+    return fetcher<Vessel>(`/api/vessels/${id}`, {
+      method: "PUT",
+      body: JSON.stringify(data),
+    });
+  },
+
+  async deleteVessel(id: string): Promise<{ success: boolean; id?: string }> {
+    return fetcher<{ success: boolean; id?: string }>(`/api/vessels/${id}`, {
+      method: "DELETE",
+    });
+  },
+
+  async resetVessels(): Promise<Vessel[]> {
+    return fetcher<Vessel[]>("/api/vessels/reset", {
+      method: "POST",
     });
   },
 

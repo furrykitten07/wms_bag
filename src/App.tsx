@@ -28,7 +28,8 @@ import {
   MaterialRequestStatus,
   MaterialReturn,
   MaterialReturnStatus,
-  DigitalSignature
+  DigitalSignature,
+  Vessel
 } from "./types.js";
 import { ChevronRight, ShieldAlert, CheckCircle } from "lucide-react";
 
@@ -50,6 +51,7 @@ import MaterialReturnView from "./components/MaterialReturnView.js";
 import SparePartCatalogView from "./components/SparePartCatalogView.js";
 import UsersManagementView from "./components/UsersManagementView.js";
 import SignatureManagementView from "./components/SignatureManagementView.js";
+import VesselsManagementView from "./components/VesselsManagementView.js";
 
 import { AlertCircle, RefreshCw, Layers } from "lucide-react";
 
@@ -83,6 +85,7 @@ export default function App() {
   const [materialRequestsTUG6, setMaterialRequestsTUG6] = useState<MaterialRequest[]>([]);
   const [materialReturns, setMaterialReturns] = useState<MaterialReturn[]>([]);
   const [signatures, setSignatures] = useState<DigitalSignature[]>([]);
+  const [vessels, setVessels] = useState<Vessel[]>([]);
   
   // Dashboard summary combined calculations
   const [summary, setSummary] = useState<any>({
@@ -152,6 +155,9 @@ export default function App() {
       const vendList = await api.getVendors();
       setVendors(vendList);
 
+      const vslList = await api.getVessels();
+      setVessels(vslList);
+
       // 3. Fire transactions synchronizer for all tables
       await syncAllTables();
     } catch (err: any) {
@@ -209,6 +215,9 @@ export default function App() {
 
       const sigsData = await api.getSignatures();
       setSignatures(sigsData);
+
+      const vslList = await api.getVessels();
+      setVessels(vslList);
 
       const usrList = await api.getUsers();
       setSimulatedUsers(usrList);
@@ -666,6 +675,47 @@ export default function App() {
     });
   };
 
+  // Vessel Master Management Event Handlers
+  const handleAddVessel = async (data: Partial<Vessel>) => {
+    try {
+      await api.createVessel(data);
+      await syncAllTables();
+    } catch (err: any) {
+      console.error(err);
+      alert(err.message || "Failed to create vessel");
+    }
+  };
+
+  const handleUpdateVessel = async (id: string, data: Partial<Vessel>) => {
+    try {
+      await api.updateVessel(id, data);
+      await syncAllTables();
+    } catch (err: any) {
+      console.error(err);
+      alert(err.message || "Failed to update vessel");
+    }
+  };
+
+  const handleDeleteVessel = async (id: string) => {
+    try {
+      await api.deleteVessel(id);
+      await syncAllTables();
+    } catch (err: any) {
+      console.error(err);
+      alert(err.message || "Failed to delete vessel");
+    }
+  };
+
+  const handleResetVessels = async () => {
+    try {
+      await api.resetVessels();
+      await syncAllTables();
+    } catch (err: any) {
+      console.error(err);
+      alert(err.message || "Failed to reset vessels");
+    }
+  };
+
   // Spinner Screen
   if (loading && isAuthenticated) {
     return (
@@ -956,6 +1006,7 @@ export default function App() {
               parts={parts}
               spkList={spkList}
               locations={locations}
+              vessels={vessels}
               role={currentUser!.role}
               onAddReceiving={handleAddReceiving}
               onAddPart={handleAddPart}
@@ -990,6 +1041,7 @@ export default function App() {
               onUpdateSPK={handleUpdateSPK}
               materialReturns={materialReturns}
               onUpdateReturn={handleUpdateMaterialReturn}
+              vessels={vessels}
             />
           )}
 
@@ -1004,6 +1056,7 @@ export default function App() {
               onUpdateSPK={handleUpdateSPK}
               onDeleteSPK={handleDeleteSPK}
               onUpdatePart={handleUpdatePart}
+              vesselsList={vessels}
             />
           )}
 
@@ -1063,6 +1116,7 @@ export default function App() {
               autoOpenMRId={autoOpenMRId}
               onClearAutoOpenMRId={() => setAutoOpenMRId(null)}
               signatures={signatures}
+              vessels={vessels}
             />
           )}
 
@@ -1080,6 +1134,7 @@ export default function App() {
               onPreviewTUG6={handlePreviewTUG6}
               spkList={spkList}
               signatures={signatures}
+              vessels={vessels}
             />
           )}
 
@@ -1096,6 +1151,20 @@ export default function App() {
               onLogMRAction={handleLogMRAction}
               onPreviewTUG10={handlePreviewTUG10}
               spkList={spkList}
+              vessels={vessels}
+            />
+          )}
+
+          {/* Database Kapal (Fleet Management - Super Admin) */}
+          {currentTab === "vessels-management" && (
+            <VesselsManagementView 
+              vessels={vessels}
+              currentUser={currentUser}
+              onAddVessel={handleAddVessel}
+              onUpdateVessel={handleUpdateVessel}
+              onDeleteVessel={handleDeleteVessel}
+              onResetVessels={handleResetVessels}
+              onRefresh={syncAllTables}
             />
           )}
 

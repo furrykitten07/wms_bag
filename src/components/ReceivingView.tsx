@@ -46,13 +46,14 @@ import {
   Save,
   Ship
 } from "lucide-react";
-import { InboundReceiving, ReceivingStatus, SparePart, UserRole, SPKWorkOrder, WarehouseLocation } from "../types.js";
+import { InboundReceiving, ReceivingStatus, SparePart, UserRole, SPKWorkOrder, WarehouseLocation, Vessel } from "../types.js";
 import { demoSPKs } from "../demoSeedData.js";
 import { api } from "../api.js";
 import { supabase } from "../supabaseClient.js";
 
 export const FLEET_VESSELS = [
   "MV. KARTINI BARUNA",
+  "MV. ARIMBI BARUNA",
   "MV. MALAHAYATI BARUNA",
   "MV. MEUTIA BARUNA",
   "MV. SARTIKA BARUNA",
@@ -74,6 +75,7 @@ interface ReceivingViewProps {
   parts: SparePart[];
   spkList?: SPKWorkOrder[];
   locations?: WarehouseLocation[];
+  vessels?: Vessel[];
   role: UserRole;
   onAddReceiving: (rec: Partial<InboundReceiving>) => Promise<any>;
   onAddPart?: (partData: Partial<SparePart>) => Promise<any>;
@@ -87,6 +89,7 @@ export default function ReceivingView({
   parts,
   spkList,
   locations = [],
+  vessels,
   role,
   onAddReceiving,
   onAddPart,
@@ -117,9 +120,25 @@ export default function ReceivingView({
   // SPK List fallback
   const availableSpks = (spkList && spkList.length > 0) ? spkList : demoSPKs;
   const vesselOptions = React.useMemo(() => {
-    const spkVessels = (availableSpks || []).map(s => s?.vessels?.[0]?.vessel_name || (s as any)?.vessel_name).filter(Boolean);
-    return Array.from(new Set([...FLEET_VESSELS, ...spkVessels]));
-  }, [availableSpks]);
+    // Single source of truth from master vessels database
+    const masterList = (vessels && vessels.length > 0)
+      ? vessels.map(v => v.name.trim())
+      : FLEET_VESSELS;
+
+    // Filter out un-capitalized duplicates (e.g. Srikandi Baruna 2202, Intan Baruna, etc.) and enforce uppercase
+    const cleanList = masterList.filter(name => {
+      if (!name) return false;
+      const isNonCapsDuplicate = /^[A-Z][a-z]+(\s+[A-Za-z0-9]+)*$/.test(name) && !name.startsWith("MV.") && !name.startsWith("Gudang");
+      return !isNonCapsDuplicate;
+    }).map(n => n.startsWith("Gudang") ? n : n.toUpperCase());
+
+    // Ensure MV. ARIMBI BARUNA is always included
+    if (!cleanList.includes("MV. ARIMBI BARUNA")) {
+      cleanList.splice(1, 0, "MV. ARIMBI BARUNA");
+    }
+
+    return Array.from(new Set(cleanList));
+  }, [vessels]);
   const [selectedSpkNumber, setSelectedSpkNumber] = useState<string>("");
   const [deliveryNoteNum, setDeliveryNoteNum] = useState<string>("");
   const [spkReceivedDate, setSpkReceivedDate] = useState<string>(() => new Date().toISOString().split("T")[0]);

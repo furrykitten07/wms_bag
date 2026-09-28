@@ -47,8 +47,10 @@ import {
   SPKWorkOrder,
   DigitalSignature,
   InboundReceiving,
-  ReceivingStatus
+  ReceivingStatus,
+  Vessel
 } from "../types.js";
+import { FLEET_VESSELS } from "./ReceivingView.js";
 import BatchPrintZipModal from "./BatchPrintZipModal.js";
 
 const ALDI_SIGNATURE_URL = `data:image/svg+xml;utf8,<svg xmlns="http://www.w3.org/2000/svg" width="220" height="70" viewBox="0 0 220 70"><path d="M 20 42 C 45 15, 60 55, 90 28 C 110 15, 130 52, 160 32 C 180 22, 190 48, 200 40" stroke="%230f2b5c" stroke-width="2.5" fill="none" stroke-linecap="round"/><path d="M 35 52 L 185 48" stroke="%231e293b" stroke-width="1.8" fill="none" stroke-linecap="round"/><text x="75" y="62" font-family="cursive" font-size="11" font-weight="bold" fill="%230f2b5c">Aldi Hidayat</text></svg>`;
@@ -69,6 +71,7 @@ interface MaterialRequestViewProps {
   autoOpenMRId?: string | null;
   onClearAutoOpenMRId?: () => void;
   signatures?: DigitalSignature[];
+  vessels?: Vessel[];
 }
 
 export default function MaterialRequestView({
@@ -85,7 +88,8 @@ export default function MaterialRequestView({
   receivingList = [],
   autoOpenMRId,
   onClearAutoOpenMRId,
-  signatures = []
+  signatures = [],
+  vessels = []
 }: MaterialRequestViewProps) {
   const [selectedMRId, setSelectedMRId] = useState<string | null>(null);
   const [activeActionId, setActiveActionId] = useState<string | null>(null);
@@ -132,8 +136,14 @@ export default function MaterialRequestView({
   const [workOrderRef, setWorkOrderRef] = useState<string>("");
   const [accountCode, setAccountCode] = useState<string>("BPP");
   const [functionCode, setFunctionCode] = useState<string>("ARMADA");
-  const [remarks, setRemarks] = useState<string>("");
   const [formItems, setFormItems] = useState<Partial<MaterialRequestItem>[]>([]);
+
+  const vesselOptions = useMemo(() => {
+    const list = (vessels && vessels.length > 0)
+      ? vessels.map(v => v.name.trim().toUpperCase())
+      : FLEET_VESSELS;
+    return Array.from(new Set(list));
+  }, [vessels]);
 
   // Selected item selector lists
   const [selectedPartId, setSelectedPartId] = useState<string>("");
@@ -2006,14 +2016,16 @@ export default function MaterialRequestView({
                       />
                     </div>
                     <div>
-                      <label className="text-[10px] font-bold text-slate-505 uppercase tracking-wider block mb-1">Nama Kapal (Vessel Destination)</label>
-                      <input
-                        type="text"
+                      <label className="text-[10px] font-bold text-slate-505 uppercase tracking-wider block mb-1">Nama Kapal (Vessel Destination) *</label>
+                      <select
                         value={vesselName}
                         onChange={(e) => setVesselName(e.target.value)}
-                        placeholder="MV. KARTINI BARUNA"
-                        className="w-full bg-white border border-slate-250 rounded-lg text-xs px-3 py-2 font-bold text-slate-800 focus:outline-none focus:ring-1 focus:ring-emerald-500"
-                      />
+                        className="w-full bg-white border border-slate-250 rounded-lg text-xs px-3 py-2 font-bold text-slate-800 focus:outline-none focus:ring-1 focus:ring-emerald-500 cursor-pointer"
+                      >
+                        {vesselOptions.map(v => (
+                          <option key={v} value={v}>{v}</option>
+                        ))}
+                      </select>
                     </div>
                   </div>
 

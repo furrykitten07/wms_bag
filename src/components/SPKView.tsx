@@ -25,8 +25,10 @@ import {
   SPKItemSelection, 
   SparePart, 
   WarehouseLocation, 
-  UserRole 
+  UserRole,
+  Vessel
 } from "../types.js";
+import { FLEET_VESSELS } from "./ReceivingView.js";
 
 interface SPKViewProps {
   spkList: SPKWorkOrder[];
@@ -37,6 +39,7 @@ interface SPKViewProps {
   onUpdateSPK: (id: string, spk: Partial<SPKWorkOrder>) => Promise<any>;
   onDeleteSPK: (id: string) => Promise<any>;
   onUpdatePart?: (id: string, part: Partial<SparePart>) => Promise<any>;
+  vesselsList?: Vessel[];
 }
 
 export default function SPKView({
@@ -47,7 +50,8 @@ export default function SPKView({
   onAddSPK,
   onUpdateSPK,
   onDeleteSPK,
-  onUpdatePart
+  onUpdatePart,
+  vesselsList = []
 }: SPKViewProps) {
   const [selectedSPK, setSelectedSPK] = useState<SPKWorkOrder | null>(spkList[0] || null);
   const [isCreateModalOpen, setIsCreateModalOpen] = useState(false);
@@ -65,10 +69,16 @@ export default function SPKView({
 
   // Creation form states
   const [targetPort, setTargetPort] = useState("");
-  const [remarks, setRemarks] = useState("");
   const [vessels, setVessels] = useState<Array<{ vessel_name: string; items: Array<{ spare_part_id: string; qty_to_pick: number }> }>>([
-    { vessel_name: "", items: [{ spare_part_id: "", qty_to_pick: 1 }] }
+    { vessel_name: "MV. KARTINI BARUNA", items: [{ spare_part_id: "", qty_to_pick: 1 }] }
   ]);
+
+  const vesselOptions = useMemo(() => {
+    const fromList = (vesselsList && vesselsList.length > 0)
+      ? vesselsList.map(v => v.name.trim().toUpperCase())
+      : FLEET_VESSELS;
+    return Array.from(new Set(fromList));
+  }, [vesselsList]);
 
   const handleOpenCreateModal = () => {
     setTargetPort("");
@@ -627,14 +637,17 @@ export default function SPKView({
                       <label className="text-[10px] uppercase font-bold text-slate-505 font-mono block mb-1">
                         Nama Kapal Penerima *
                       </label>
-                      <input
-                        type="text"
+                      <select
                         required
                         value={vForm.vessel_name}
                         onChange={(e) => handleVesselNameChange(vIdx, e.target.value)}
-                        className="w-full max-w-md bg-white border border-slate-250 rounded text-xs px-2.5 py-1.5 font-bold"
-                        placeholder="e.g. MV. KARTINI BARUNA"
-                      />
+                        className="w-full max-w-md bg-white border border-slate-250 rounded text-xs px-2.5 py-1.5 font-bold cursor-pointer"
+                      >
+                        <option value="">-- Pilih Kapal Tujuan dari Master Database --</option>
+                        {vesselOptions.map(vName => (
+                          <option key={vName} value={vName}>{vName}</option>
+                        ))}
+                      </select>
                     </div>
 
                     {/* ITEMS SUB-FORMS */}

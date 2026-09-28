@@ -20,6 +20,7 @@ DROP TABLE IF EXISTS warehouse_locations CASCADE;
 DROP TABLE IF EXISTS vendors CASCADE;
 DROP TABLE IF EXISTS users CASCADE;
 DROP TABLE IF EXISTS digital_signatures CASCADE;
+DROP TABLE IF EXISTS vessels CASCADE;
 DROP TABLE IF EXISTS audit_logs CASCADE;
 
 -- ========================================================
@@ -48,6 +49,22 @@ CREATE TABLE vendors (
     email VARCHAR(255),
     address TEXT,
     created_at TIMESTAMPTZ DEFAULT NOW()
+);
+
+-- Table 2.1: Master Armada Kapal Pelayaran (Vessels)
+CREATE TABLE vessels (
+    id VARCHAR(50) PRIMARY KEY,
+    name VARCHAR(255) UNIQUE NOT NULL,
+    code VARCHAR(50) UNIQUE,
+    vessel_type VARCHAR(100) DEFAULT 'Motor Vessel (MV)',
+    capacity VARCHAR(100),
+    year_built INT,
+    flag VARCHAR(100) DEFAULT 'Indonesia',
+    call_sign VARCHAR(50),
+    status VARCHAR(50) DEFAULT 'Active' NOT NULL,
+    notes TEXT,
+    created_at TIMESTAMPTZ DEFAULT NOW(),
+    updated_at TIMESTAMPTZ DEFAULT NOW()
 );
 
 -- Table 3: Warehouse Master Locations (Racks, Bins, Shelves)
@@ -308,11 +325,32 @@ INSERT INTO spare_parts (id, sku, part_number, part_name, maker, unit, category,
 ('part-5', 'SKU-SF-301', 'LIFERAFT-15P-SOLAS', 'Inflatable Liferaft 15 Persons', 'Survitec', 'UNIT', 'Consumable', 5, 2, 'loc-4', 'Pemeriksaan hydrostatic release unit (HRU) wajib berkala')
 ON CONFLICT (sku) DO NOTHING;
 
+-- Insert Initial Master Vessels (Armada Kapal PT. BAG)
+INSERT INTO vessels (id, name, code, vessel_type, capacity, flag, status, notes) VALUES
+('vsl-1', 'MV. KARTINI BARUNA', 'VSL-KTN-01', 'Bulk Carrier (Panamax)', '75,000 DWT', 'Indonesia', 'Active', 'Armada Utama Pengangkut Batubara'),
+('vsl-2', 'MV. ARIMBI BARUNA', 'VSL-ARM-02', 'Bulk Carrier (Supramax)', '56,000 DWT', 'Indonesia', 'Active', 'Armada Pengangkut Batubara Rute Jawa - Sumatera'),
+('vsl-3', 'MV. MALAHAYATI BARUNA', 'VSL-MLH-03', 'Bulk Carrier (Handymax)', '45,000 DWT', 'Indonesia', 'Active', 'Rute Pelayaran Domestik'),
+('vsl-4', 'MV. MEUTIA BARUNA', 'VSL-MEU-04', 'Bulk Carrier (Handymax)', '45,000 DWT', 'Indonesia', 'Active', 'Rute Pelayaran Kalimantan - Jawa'),
+('vsl-5', 'MV. SARTIKA BARUNA', 'VSL-SRT-05', 'Bulk Carrier (Supramax)', '53,000 DWT', 'Indonesia', 'Active', 'Rute Operasional Batubara'),
+('vsl-6', 'MV. INTAN BARUNA', 'VSL-INT-06', 'Bulk Carrier (Supramax)', '55,000 DWT', 'Indonesia', 'Active', 'Rute Operasional Domestik'),
+('vsl-7', 'MV. KENCANA BARUNA', 'VSL-KNC-07', 'Bulk Carrier (Handysize)', '32,000 DWT', 'Indonesia', 'Active', 'Armada Pengangkut Logistik Curah'),
+('vsl-8', 'MV. LATIFAH BARUNA', 'VSL-LTF-08', 'Bulk Carrier (Supramax)', '53,000 DWT', 'Indonesia', 'Active', 'Operasional Rutin Armada'),
+('vsl-9', 'MV. WALIDAH BARUNA', 'VSL-WLD-09', 'Bulk Carrier (Supramax)', '55,000 DWT', 'Indonesia', 'Active', 'Armada Angkutan Pasokan Energi'),
+('vsl-10', 'MV. MARTHA BARUNA', 'VSL-MRT-10', 'Bulk Carrier (Panamax)', '70,000 DWT', 'Indonesia', 'Active', 'Operasional Rute Utama Pasokan PLTU'),
+('vsl-11', 'MV. JAYANTI BARUNA', 'VSL-JYT-11', 'Bulk Carrier (Handymax)', '48,000 DWT', 'Indonesia', 'Active', 'Operasional Angkutan Curah Kering'),
+('vsl-12', 'MV. ZALECHA BARUNA', 'VSL-ZLC-12', 'Bulk Carrier (Supramax)', '53,000 DWT', 'Indonesia', 'Active', 'Armada Operasional Siaga'),
+('vsl-13', 'MV. SRIKANDI BARUNA 2202', 'VSL-SRK-2202', 'Tug & Barge Set', '10,000 DWT', 'Indonesia', 'Active', 'Tongkang Curah Batubara'),
+('vsl-14', 'MV. SRIKANDI BARUNA 2204', 'VSL-SRK-2204', 'Tug & Barge Set', '10,000 DWT', 'Indonesia', 'Active', 'Tongkang Curah Batubara'),
+('vsl-15', 'MV. SRIKANDI BARUNA 2205', 'VSL-SRK-2205', 'Tug & Barge Set', '10,000 DWT', 'Indonesia', 'Active', 'Tongkang Curah Batubara'),
+('vsl-16', 'Gudang Logistik / Stok Cadangan (Non-Kapal)', 'NON-VESSEL', 'Warehouse Buffer', '-', 'Indonesia', 'Active', 'Alokasi Persediaan Non-Armada / Gudang Penyangga')
+ON CONFLICT (name) DO NOTHING;
+
 -- ========================================================
 -- 4. ENABLE ROW LEVEL SECURITY (RLS) & PUBLIC POLICIES
 -- ========================================================
 ALTER TABLE users ENABLE ROW LEVEL SECURITY;
 ALTER TABLE vendors ENABLE ROW LEVEL SECURITY;
+ALTER TABLE vessels ENABLE ROW LEVEL SECURITY;
 ALTER TABLE warehouse_locations ENABLE ROW LEVEL SECURITY;
 ALTER TABLE spare_parts ENABLE ROW LEVEL SECURITY;
 ALTER TABLE inbound_receivings ENABLE ROW LEVEL SECURITY;
@@ -326,6 +364,7 @@ ALTER TABLE audit_logs ENABLE ROW LEVEL SECURITY;
 
 CREATE POLICY "Allow anon all on users" ON users FOR ALL USING (true);
 CREATE POLICY "Allow anon all on vendors" ON vendors FOR ALL USING (true);
+CREATE POLICY "Allow anon all on vessels" ON vessels FOR ALL USING (true);
 CREATE POLICY "Allow anon all on warehouse_locations" ON warehouse_locations FOR ALL USING (true);
 CREATE POLICY "Allow anon all on spare_parts" ON spare_parts FOR ALL USING (true);
 CREATE POLICY "Allow anon all on inbound_receivings" ON inbound_receivings FOR ALL USING (true);

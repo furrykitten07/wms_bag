@@ -37,7 +37,8 @@ import {
   ShieldCheck,
   CheckCircle
 } from "lucide-react";
-import { OutboundDispatch, DispatchStatus, UserRole, SparePart, MaterialRequest, SPKWorkOrder, MaterialReturn, InboundReceiving, ReceivingStatus } from "../types.js";
+import { OutboundDispatch, DispatchStatus, UserRole, SparePart, MaterialRequest, SPKWorkOrder, MaterialReturn, InboundReceiving, ReceivingStatus, Vessel } from "../types.js";
+import { FLEET_VESSELS } from "./ReceivingView.js";
 
 interface DispatchViewProps {
   dispatchList: OutboundDispatch[];
@@ -56,6 +57,7 @@ interface DispatchViewProps {
   onUpdateReturn?: (id: string, update: Partial<MaterialReturn>) => Promise<any>;
   onDeleteDispatch?: (id: string) => Promise<any>;
   receivingList?: InboundReceiving[];
+  vessels?: Vessel[];
 }
 
 const ALDI_SIGNATURE_URL = `data:image/svg+xml;utf8,<svg xmlns="http://www.w3.org/2000/svg" width="220" height="70" viewBox="0 0 220 70"><path d="M 20 42 C 45 15, 60 55, 90 28 C 110 15, 130 52, 160 32 C 180 22, 190 48, 200 40" stroke="%230f2b5c" stroke-width="2.5" fill="none" stroke-linecap="round"/><path d="M 35 52 L 185 48" stroke="%231e293b" stroke-width="1.8" fill="none" stroke-linecap="round"/><text x="75" y="62" font-family="cursive" font-size="11" font-weight="bold" fill="%230f2b5c">Aldi Hidayat</text></svg>`;
@@ -77,7 +79,8 @@ export default function DispatchView({
   materialReturns = [],
   onUpdateReturn,
   onDeleteDispatch,
-  receivingList = []
+  receivingList = [],
+  vessels = []
 }: DispatchViewProps) {
   const [activeTab, setActiveTab] = useState<"queue" | "archive">("queue");
   const [activeActionId, setActiveActionId] = useState<string | null>(null);
@@ -128,6 +131,13 @@ export default function DispatchView({
   const [selectedTug5Id, setSelectedTug5Id] = useState("");
   const [selectedTug10Id, setSelectedTug10Id] = useState("");
   const [targetVesselName, setTargetVesselName] = useState("");
+
+  const vesselOptions = useMemo(() => {
+    const list = (vessels && vessels.length > 0)
+      ? vessels.map(v => v.name.trim().toUpperCase())
+      : FLEET_VESSELS;
+    return Array.from(new Set(list));
+  }, [vessels]);
   const [cName, setCName] = useState("Internal Cargo");
   const [tNumber, setTNumber] = useState("");
   const [dPic, setDPic] = useState("");
@@ -2805,13 +2815,16 @@ export default function DispatchView({
                         <label className="text-[10px] font-bold text-slate-500 uppercase tracking-wider block mb-1">
                           Kapal Tujuan Transfer (Vessel Destination)
                         </label>
-                        <input
-                          type="text"
+                        <select
                           value={targetVesselName}
                           onChange={(e) => setTargetVesselName(e.target.value)}
-                          placeholder="Contoh: MV. KARTINI BARUNA (opsional)"
-                          className="w-full bg-white border border-slate-300 rounded-lg text-xs px-3 py-2.5 font-bold text-slate-800 focus:outline-none focus:ring-1 focus:ring-emerald-500"
-                        />
+                          className="w-full bg-white border border-slate-300 rounded-lg text-xs px-3 py-2.5 font-bold text-slate-800 focus:outline-none focus:ring-1 focus:ring-emerald-500 cursor-pointer"
+                        >
+                          <option value="">-- Pilih Kapal Tujuan dari Master Database (Otomatis jika kosong) --</option>
+                          {vesselOptions.map((v) => (
+                            <option key={v} value={v}>{v}</option>
+                          ))}
+                        </select>
                         <span className="text-[9.5px] text-slate-400 block mt-1.5">
                           Nama kapal penerima transfer baru (otomatis terisi jika dikosongkan).
                         </span>

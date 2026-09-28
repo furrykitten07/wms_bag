@@ -44,8 +44,10 @@ import {
   MaterialReturnItem, 
   MaterialReturnStatus,
   SPKWorkOrder,
-  MaterialRequest
+  MaterialRequest,
+  Vessel
 } from "../types.js";
+import { FLEET_VESSELS } from "./ReceivingView.js";
 
 interface MaterialReturnViewProps {
   returns: MaterialReturn[];
@@ -58,6 +60,7 @@ interface MaterialReturnViewProps {
   onLogMRAction: (id: string, action: "Printed" | "Downloaded") => Promise<void>;
   onPreviewTUG10: (ret: MaterialReturn) => void;
   spkList?: SPKWorkOrder[];
+  vessels?: Vessel[];
 }
 
 const ALDI_SIGNATURE_URL = `data:image/svg+xml;utf8,<svg xmlns="http://www.w3.org/2000/svg" width="220" height="70" viewBox="0 0 220 70"><path d="M 20 42 C 45 15, 60 55, 90 28 C 110 15, 130 52, 160 32 C 180 22, 190 48, 200 40" stroke="%230f2b5c" stroke-width="2.5" fill="none" stroke-linecap="round"/><path d="M 35 52 L 185 48" stroke="%231e293b" stroke-width="1.8" fill="none" stroke-linecap="round"/><text x="75" y="62" font-family="cursive" font-size="11" font-weight="bold" fill="%230f2b5c">Aldi Hidayat</text></svg>`;
@@ -73,7 +76,8 @@ export default function MaterialReturnView({
   onDeleteReturn,
   onLogMRAction,
   onPreviewTUG10,
-  spkList = []
+  spkList = [],
+  vessels = []
 }: MaterialReturnViewProps) {
   const [selectedReturnId, setSelectedReturnId] = useState<string | null>(null);
   const [activeActionId, setActiveActionId] = useState<string | null>(null);
@@ -116,6 +120,13 @@ export default function MaterialReturnView({
   const [warehouseName, setWarehouseName] = useState<string>("Gudang Merak");
   const [spkNumber, setSpkNumber] = useState<string>("");
   const [dispatchReference, setDispatchReference] = useState<string>("");
+
+  const vesselOptions = useMemo(() => {
+    const list = (vessels && vessels.length > 0)
+      ? vessels.map(v => v.name.trim().toUpperCase())
+      : FLEET_VESSELS;
+    return Array.from(new Set(list));
+  }, [vessels]);
   const [returnReason, setReturnReason] = useState<string>("Broken");
   const [notes, setNotes] = useState<string>("");
   const [formItems, setFormItems] = useState<Partial<MaterialReturnItem>[]>([]);
@@ -788,15 +799,17 @@ export default function MaterialReturnView({
 
                   <div>
                     <label className="block text-[10px] font-mono font-bold text-slate-500 uppercase tracking-wider mb-1.5">
-                      Nama Kapal Penerima
+                      Nama Kapal Penerima *
                     </label>
-                    <input
-                      type="text"
-                      className="w-full bg-slate-50 border border-slate-250 text-slate-900 p-2 text-xs rounded outline-none focus:border-indigo-500 uppercase font-medium"
+                    <select
+                      className="w-full bg-slate-50 border border-slate-250 text-slate-900 p-2 text-xs rounded outline-none focus:border-indigo-500 uppercase font-bold cursor-pointer"
                       value={vesselName}
                       onChange={(e) => setVesselName(e.target.value)}
-                      placeholder="Masukkan nama kapal penerima..."
-                    />
+                    >
+                      {vesselOptions.map(v => (
+                        <option key={v} value={v}>{v}</option>
+                      ))}
+                    </select>
                   </div>
                 </div>
 

@@ -19,7 +19,8 @@ import {
   Bell, 
   UsersRound,
   ShieldCheck,
-  FileSignature
+  FileSignature,
+  Ship
 } from "lucide-react";
 import { UserRole, User } from "../types.js";
 
@@ -251,6 +252,20 @@ export default function Sidebar({
         <div className="text-[10px] font-bold text-slate-400 uppercase px-2 mt-4 mb-2 tracking-widest font-display">
           Administration
         </div>
+
+        <button
+          onClick={() => setCurrentTab("vessels-management")}
+          className={`flex items-center justify-between px-3 py-2.5 rounded-md text-xs font-semibold tracking-tight transition-all duration-150 ${
+            currentTab === "vessels-management" 
+              ? "bg-white text-blue-600 border border-slate-200 shadow-xs font-bold" 
+              : "text-slate-650 hover:bg-slate-200/70 hover:text-slate-900"
+          }`}
+        >
+          <div className="flex items-center gap-2.5">
+            <Ship className={`w-4 h-4 ${currentTab === "vessels-management" ? "text-blue-500" : "text-slate-400"} shrink-0`} />
+            <span>Database Kapal</span>
+          </div>
+        </button>
 
         <button
           onClick={() => setCurrentTab("users-management")}
