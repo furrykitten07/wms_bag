@@ -109,14 +109,33 @@ body {
     display: block !important;
   }
   table {
-    page-break-inside: auto;
+    page-break-inside: auto !important;
+    break-inside: auto !important;
     width: 100% !important;
     border-collapse: collapse !important;
+  }
+  thead {
+    display: table-header-group !important;
+  }
+  tbody {
+    display: table-row-group !important;
+  }
+  tfoot {
+    display: table-footer-group !important;
   }
   tr {
     page-break-inside: avoid !important;
     break-inside: avoid !important;
+    break-inside: avoid-page !important;
     page-break-after: auto;
+  }
+  .print-break-after-avoid {
+    page-break-after: avoid !important;
+    break-after: avoid !important;
+  }
+  .print-break-inside-avoid {
+    page-break-inside: avoid !important;
+    break-inside: avoid !important;
   }
   th, td {
     padding: 4px 6px !important;

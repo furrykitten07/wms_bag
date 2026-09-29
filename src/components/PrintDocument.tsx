@@ -306,14 +306,18 @@ export default function PrintDocument({
             font-family: ui-sans-serif, system-ui, sans-serif;
             padding: 1.5rem 1rem;
         }
-        table { width: 100% !important; border-collapse: collapse !important; }
+        table { width: 100% !important; border-collapse: collapse !important; page-break-inside: auto !important; break-inside: auto !important; }
+        thead { display: table-header-group !important; }
+        tbody { display: table-row-group !important; }
         th, td { padding: 4px 6px !important; }
         @media print {
             .no-print { display: none !important; }
             body, html { padding: 0 !important; margin: 0 !important; background-color: white !important; height: auto !important; overflow: visible !important; }
-            .print-card-wrapper { border: none !important; box-shadow: none !important; padding: 0 !important; margin: 0 !important; width: 100% !important; max-width: 100% !important; }
-            tr { page-break-inside: avoid !important; break-inside: avoid !important; }
-            .no-print-break, .signature-container { page-break-inside: avoid !important; break-inside: avoid !important; display: block !important; }
+            .print-card-wrapper { border: none !important; box-shadow: none !important; padding: 0 !important; margin: 0 !important; width: 100% !important; max-width: 100% !important; overflow: visible !important; }
+            tr { page-break-inside: avoid !important; break-inside: avoid !important; break-inside: avoid-page !important; }
+            .signature-container { page-break-inside: avoid !important; break-inside: avoid !important; display: block !important; }
+            .print-break-after-avoid { page-break-after: avoid !important; break-after: avoid !important; }
+            .print-break-inside-avoid { page-break-inside: avoid !important; break-inside: avoid !important; }
         }
     </style>
 </head>
@@ -584,8 +588,8 @@ export default function PrintDocument({
 
               {/* Information Block: Warehouse/Vessel particulars */}
               {type === "mutation_report" ? (
-                <div className="grid grid-cols-2 gap-6 border-2 border-slate-900 p-3 rounded text-xs mb-4 relative">
-                  <div className="space-y-1 font-mono text-[11px] leading-normal z-10 font-bold uppercase">
+                <div className="grid grid-cols-2 gap-4 border-2 border-slate-900 p-3 rounded text-xs mb-4 relative print:border print:border-slate-900 print:mb-3">
+                  <div className="space-y-1 font-mono text-[10.5px] leading-normal z-10 font-bold uppercase">
                     <div className="grid grid-cols-3">
                       <span className="text-slate-500 text-[9px]">Fasilitas Gudang:</span>
                       <span className="col-span-2 text-slate-900 font-extrabold">WAREHOUSE MERAK (WH-MERAK)</span>
@@ -598,15 +602,22 @@ export default function PrintDocument({
                       <span className="text-slate-500 text-[9px]">Status Audit:</span>
                       <span className="col-span-2 text-emerald-800 font-black">AUDITED & VERIFIED LIVE LEDGER</span>
                     </div>
+                  </div>
+                  <div className="space-y-1 font-mono text-[10.5px] leading-normal z-10 font-bold uppercase border-l border-slate-300 pl-4 print:border-slate-400">
                     <div className="grid grid-cols-3">
                       <span className="text-slate-500 text-[9px]">Untuk Kapal:</span>
                       <span className="col-span-2 text-blue-950 font-black tracking-tight">
                         {reportVesselDisplay}
                       </span>
                     </div>
-                  </div>
-                  <div>
-                    {/* Visual balance spacer */}
+                    <div className="grid grid-cols-3">
+                      <span className="text-slate-500 text-[9px]">Tanggal Cetak:</span>
+                      <span className="col-span-2 text-slate-800 font-bold">{todayStr}</span>
+                    </div>
+                    <div className="grid grid-cols-3">
+                      <span className="text-slate-500 text-[9px]">Dokumen Form:</span>
+                      <span className="col-span-2 text-slate-900 font-bold">TUG 11 (MUTASI HARIAN GUDANG)</span>
+                    </div>
                   </div>
                 </div>
               ) : type === "bon" ? (
@@ -878,11 +889,11 @@ export default function PrintDocument({
 
               {/* Main Itemized Table / Grouped Reference Sections */}
               {type === "mutation_report" ? (
-                <div className="space-y-4 mb-6">
+                <div className="space-y-4 mb-6 print:space-y-4 print:mb-4">
                   {(!groupedMutationList || groupedMutationList.length === 0) ? (
-                    <div className="border border-slate-900 rounded overflow-hidden bg-white text-xs font-mono no-print-break shadow-xs">
+                    <div className="border border-slate-900 rounded-sm bg-white text-xs font-mono shadow-xs print:border print:border-slate-900 print:shadow-none print:overflow-visible print:break-inside-auto print:rounded-none">
                       {/* Reference Group Banner */}
-                      <div className="bg-slate-100 border-b border-slate-900 px-3.5 py-2 flex flex-wrap items-center justify-between gap-2 font-bold uppercase text-[11px] text-slate-900">
+                      <div className="bg-slate-100 border-b border-slate-900 px-3.5 py-2 flex flex-wrap items-center justify-between gap-2 font-bold uppercase text-[11px] text-slate-900 print:break-after-avoid">
                         <div className="flex items-center gap-3">
                           <span className="text-blue-900 font-mono font-black">
                             NO. REFERENSI DOKUMEN: (-)
@@ -899,42 +910,40 @@ export default function PrintDocument({
                       </div>
 
                       {/* Subtable of items under this Reference Number */}
-                      <table className="w-full text-xs text-left border-collapse">
-                        <thead className="bg-slate-100 border-b border-slate-900 text-[10px] font-bold text-slate-800 uppercase tracking-wider">
+                      <table className="w-full text-xs text-left border-collapse print:text-[10px]">
+                        <thead className="bg-slate-100 border-b border-slate-900 text-[10px] font-bold text-slate-800 uppercase tracking-wider print:table-header-group">
                           <tr>
-                            <th className="px-3 py-2 border-r border-slate-300 text-center w-8">#</th>
-                            <th className="px-4 py-2 border-r border-slate-300">NAMA SUKU CADANG / SPARE PART</th>
-                            <th className="px-3 py-2 border-r border-slate-300 text-center">PART NUMBER</th>
-                            <th className="px-3 py-2 border-r border-slate-300 text-center text-emerald-800">MASUK (IN)</th>
-                            <th className="px-3 py-2 border-r border-slate-300 text-center text-rose-800">KELUAR (OUT)</th>
-                            <th className="px-4 py-2 text-left">CATATAN & REMARKS</th>
+                            <th className="px-3 py-1.5 border-r border-slate-300 text-center w-8">#</th>
+                            <th className="px-4 py-1.5 border-r border-slate-300">NAMA SUKU CADANG / SPARE PART</th>
+                            <th className="px-3 py-1.5 border-r border-slate-300 text-center w-28">PART NUMBER</th>
+                            <th className="px-2 py-1.5 border-r border-slate-300 text-center w-20 text-emerald-800">MASUK (IN)</th>
+                            <th className="px-2 py-1.5 border-r border-slate-300 text-center w-20 text-rose-800">KELUAR (OUT)</th>
+                            <th className="px-3 py-1.5 text-left">CATATAN & REMARKS</th>
                           </tr>
                         </thead>
                         <tbody className="divide-y divide-slate-300">
-                          <tr className="font-semibold text-slate-900 border-b border-slate-300">
-                            <td className="px-3 py-2 border-r border-slate-300 text-center text-slate-400 font-mono text-[10px]">1</td>
-                            <td className="px-4 py-2 border-r border-slate-300 font-sans font-black text-slate-400 text-center">(-)</td>
-                            <td className="px-3 py-2 border-r border-slate-300 font-mono text-center text-slate-400 text-[11px]">(-)</td>
-                            <td className="px-3 py-2 border-r border-slate-300 text-center font-mono font-bold text-slate-400">-</td>
-                            <td className="px-3 py-2 border-r border-slate-300 text-center font-mono font-bold text-slate-400">-</td>
-                            <td className="px-4 py-2 text-slate-500 font-sans font-normal italic text-[11px] text-center">NIHIL / TIDAK ADA TRANSAKSI MUTASI PADA PERIODE TANGGAL INI (-)</td>
+                          <tr className="font-semibold text-slate-900 border-b border-slate-300 print:break-inside-avoid">
+                            <td className="px-3 py-1.5 border-r border-slate-300 text-center text-slate-400 font-mono text-[10px]">1</td>
+                            <td className="px-4 py-1.5 border-r border-slate-300 font-sans font-black text-slate-400 text-center">(-)</td>
+                            <td className="px-3 py-1.5 border-r border-slate-300 font-mono text-center text-slate-400 text-[11px]">(-)</td>
+                            <td className="px-2 py-1.5 border-r border-slate-300 text-center font-mono font-bold text-slate-400">-</td>
+                            <td className="px-2 py-1.5 border-r border-slate-300 text-center font-mono font-bold text-slate-400">-</td>
+                            <td className="px-3 py-1.5 text-slate-500 font-sans font-normal italic text-[11px] text-center">NIHIL / TIDAK ADA TRANSAKSI MUTASI PADA PERIODE TANGGAL INI (-)</td>
+                          </tr>
+                          <tr className="bg-slate-100/90 border-t-2 border-slate-900 font-bold text-[10px] text-slate-900 uppercase print:break-inside-avoid">
+                            <td colSpan={3} className="px-3 py-1.5 text-right border-r border-slate-300">SUBTOTAL REFERENSI (1 ITEM):</td>
+                            <td className="px-2 py-1.5 text-center border-r border-slate-300 text-slate-500 font-black">-</td>
+                            <td className="px-2 py-1.5 text-center border-r border-slate-300 text-slate-500 font-black">-</td>
+                            <td className="px-3 py-1.5"></td>
                           </tr>
                         </tbody>
-                        <tfoot className="bg-slate-100/90 border-t border-slate-900 font-bold text-[10px] text-slate-900 uppercase">
-                          <tr>
-                            <td colSpan={3} className="px-3 py-1.5 text-right border-r border-slate-300">SUBTOTAL REFERENSI (1 ITEM):</td>
-                            <td className="px-3 py-1.5 text-center border-r border-slate-300 text-slate-500 font-black">-</td>
-                            <td className="px-3 py-1.5 text-center border-r border-slate-300 text-slate-500 font-black">-</td>
-                            <td className="px-4 py-1.5"></td>
-                          </tr>
-                        </tfoot>
                       </table>
                     </div>
                   ) : (
                     groupedMutationList.map((group, groupIdx) => (
-                      <div key={groupIdx} className="border border-slate-900 rounded overflow-hidden bg-white text-xs font-mono no-print-break shadow-xs">
+                      <div key={groupIdx} className="border border-slate-900 rounded-sm bg-white text-xs font-mono shadow-xs mb-5 print:mb-4 print:border print:border-slate-900 print:shadow-none print:overflow-visible print:break-inside-auto print:rounded-none">
                         {/* Reference Group Banner */}
-                        <div className="bg-slate-100 border-b border-slate-900 px-3.5 py-2 flex flex-wrap items-center justify-between gap-2 font-bold uppercase text-[11px] text-slate-900">
+                        <div className="bg-slate-100 border-b border-slate-900 px-3.5 py-2 flex flex-wrap items-center justify-between gap-2 font-bold uppercase text-[11px] text-slate-900 print:break-after-avoid">
                           <div className="flex items-center gap-3">
                             <span className="text-blue-900 font-mono font-black">
                               NO. REFERENSI DOKUMEN: {group.reference_number}
@@ -957,37 +966,36 @@ export default function PrintDocument({
                         </div>
 
                         {/* Subtable of items under this Reference Number */}
-                        <table className="w-full text-xs text-left border-collapse">
-                          <thead className="bg-slate-100 border-b border-slate-900 text-[10px] font-bold text-slate-800 uppercase tracking-wider">
+                        <table className="w-full text-xs text-left border-collapse print:text-[10px]">
+                          <thead className="bg-slate-100 border-b border-slate-900 text-[10px] font-bold text-slate-800 uppercase tracking-wider print:table-header-group">
                             <tr>
-                              <th className="px-3 py-2 border-r border-slate-300 text-center w-8">#</th>
-                              <th className="px-4 py-2 border-r border-slate-300">NAMA SUKU CADANG / SPARE PART</th>
-                              <th className="px-3 py-2 border-r border-slate-300 text-center">PART NUMBER</th>
-                              <th className="px-3 py-2 border-r border-slate-300 text-center text-emerald-800">MASUK (IN)</th>
-                              <th className="px-3 py-2 border-r border-slate-300 text-center text-rose-800">KELUAR (OUT)</th>
-                              <th className="px-4 py-2 text-left">CATATAN & REMARKS</th>
+                              <th className="px-3 py-1.5 border-r border-slate-300 text-center w-8">#</th>
+                              <th className="px-4 py-1.5 border-r border-slate-300">NAMA SUKU CADANG / SPARE PART</th>
+                              <th className="px-3 py-1.5 border-r border-slate-300 text-center w-28">PART NUMBER</th>
+                              <th className="px-2 py-1.5 border-r border-slate-300 text-center w-20 text-emerald-800">MASUK (IN)</th>
+                              <th className="px-2 py-1.5 border-r border-slate-300 text-center w-20 text-rose-800">KELUAR (OUT)</th>
+                              <th className="px-3 py-1.5 text-left">CATATAN & REMARKS</th>
                             </tr>
                           </thead>
                           <tbody className="divide-y divide-slate-300">
                             {group.items.map((it: any, itIdx: number) => (
-                              <tr key={itIdx} className="font-semibold text-slate-900 border-b border-slate-300">
-                                <td className="px-3 py-2 border-r border-slate-300 text-center text-slate-400 font-mono text-[10px]">{itIdx + 1}</td>
-                                <td className="px-4 py-2 border-r border-slate-300 font-sans font-black text-slate-900">{it.spare_part_name}</td>
-                                <td className="px-3 py-2 border-r border-slate-300 font-mono text-center text-slate-750 text-[11px]">{it.part_number}</td>
-                                <td className="px-3 py-2 border-r border-slate-300 text-center font-mono font-black text-emerald-700">{it.qty_in > 0 ? `+${it.qty_in}` : "-"}</td>
-                                <td className="px-3 py-2 border-r border-slate-300 text-center font-mono font-black text-rose-700">{it.qty_out > 0 ? `-${it.qty_out}` : "-"}</td>
-                                <td className="px-4 py-2 text-slate-650 font-sans font-normal italic text-[11px]">{it.remarks || "(-)"}</td>
+                              <tr key={itIdx} className="font-semibold text-slate-900 border-b border-slate-300 print:break-inside-avoid">
+                                <td className="px-3 py-1.5 border-r border-slate-300 text-center text-slate-400 font-mono text-[10px]">{itIdx + 1}</td>
+                                <td className="px-4 py-1.5 border-r border-slate-300 font-sans font-black text-slate-900 text-[11px] print:text-[10px]">{it.spare_part_name}</td>
+                                <td className="px-3 py-1.5 border-r border-slate-300 font-mono text-center text-slate-750 text-[10px]">{it.part_number}</td>
+                                <td className="px-2 py-1.5 border-r border-slate-300 text-center font-mono font-black text-emerald-700">{it.qty_in > 0 ? `+${it.qty_in}` : "-"}</td>
+                                <td className="px-2 py-1.5 border-r border-slate-300 text-center font-mono font-black text-rose-700">{it.qty_out > 0 ? `-${it.qty_out}` : "-"}</td>
+                                <td className="px-3 py-1.5 text-slate-650 font-sans font-normal italic text-[10px] print:text-[9.5px] leading-tight">{it.remarks || "(-)"}</td>
                               </tr>
                             ))}
-                          </tbody>
-                          <tfoot className="bg-slate-100/90 border-t border-slate-900 font-bold text-[10px] text-slate-900 uppercase">
-                            <tr>
+                            {/* Subtotal row inside tbody so it ONLY renders once at the end of all items, never repeating on mid-table page splits */}
+                            <tr className="bg-slate-100/90 border-t-2 border-slate-900 font-bold text-[10px] text-slate-900 uppercase print:break-inside-avoid">
                               <td colSpan={3} className="px-3 py-1.5 text-right border-r border-slate-300">SUBTOTAL REFERENSI ({group.items.length} ITEM):</td>
-                              <td className="px-3 py-1.5 text-center border-r border-slate-300 text-emerald-800 font-black">{group.total_in > 0 ? `+${group.total_in}` : "-"}</td>
-                              <td className="px-3 py-1.5 text-center border-r border-slate-300 text-rose-800 font-black">{group.total_out > 0 ? `-${group.total_out}` : "-"}</td>
-                              <td className="px-4 py-1.5"></td>
+                              <td className="px-2 py-1.5 text-center border-r border-slate-300 text-emerald-800 font-black">{group.total_in > 0 ? `+${group.total_in}` : "-"}</td>
+                              <td className="px-2 py-1.5 text-center border-r border-slate-300 text-rose-800 font-black">{group.total_out > 0 ? `-${group.total_out}` : "-"}</td>
+                              <td className="px-3 py-1.5"></td>
                             </tr>
-                          </tfoot>
+                          </tbody>
                         </table>
                       </div>
                     ))
