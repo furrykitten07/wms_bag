@@ -164,7 +164,7 @@ export default function BatchPrintZipModal({
 
           {/* Info note */}
           <div className="p-3 bg-slate-100 rounded-lg text-[11px] text-slate-600 leading-relaxed border border-slate-200">
-            💡 <strong>Format output ZIP:</strong> Di dalam file ZIP akan berisi file <strong>PDF</strong> resmi masing-masing per No. Request (misal: <code>TUG5_REQ-2026-001.pdf</code>). Setiap file PDF terformat A4 presisi lengkap dengan kop surat resmi, rincian barang, dan tanda tangan digital.
+            💡 <strong>Format output ZIP:</strong> Di dalam file ZIP akan berisi file <strong>PDF</strong> resmi masing-masing per No. Request (misal: <code>{type.toUpperCase()}-2026-001.pdf</code>). Setiap file PDF terformat A4 presisi lengkap dengan kop surat resmi, rincian barang, dan tanda tangan digital.
           </div>
 
         </div>
