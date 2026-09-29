@@ -431,103 +431,128 @@ export default function PrintDocument({
 
   return (
     <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-xs flex items-center justify-center z-50 p-2 sm:p-4 overflow-y-auto print:static print:inset-auto print:bg-transparent print:p-0 print:overflow-visible print-document-overlay">
-      <div className="bg-white text-slate-800 rounded-xl shadow-2xl w-full max-w-4xl max-h-[92vh] print:max-h-none print:h-auto print:overflow-visible print:border-none print:shadow-none print:w-full print:max-w-full flex flex-col my-auto border border-slate-200 overflow-hidden">
+      <div className="bg-white text-slate-800 rounded-xl shadow-2xl w-full max-w-5xl max-h-[94vh] print:max-h-none print:h-auto print:overflow-visible print:border-none print:shadow-none print:w-full print:max-w-full flex flex-col my-auto border border-slate-200 overflow-hidden">
 
-        {/* Header toolbar - hidden on physical print */}
-        <div className="bg-slate-900 text-white px-6 py-3.5 flex flex-col md:flex-row items-center justify-between gap-3 border-b border-slate-800 no-print">
-          <div className="flex items-center gap-2">
-            <Anchor className="text-blue-400 w-5 h-5 shrink-0" />
-            <div>
-              <h3 className="font-display font-semibold text-xs uppercase tracking-wider text-white">
-                Pratinjau Dokumen Logistik — {
-                  type === "bon" ? "Bon Pengeluaran Barang (TUG 8)"
-                    : type === "surat_jalan" ? "Surat Jalan (Outbound)"
-                      : type === "manifest" ? "Cargo Manifest"
-                        : type === "stock_report" ? "Laporan Stok Suku Cadang"
-                          : type === "mutation_report" ? "Laporan Mutasi Keluar Masuk Barang"
-                            : type === "tug5" ? "Daftar Permintaan Barang-Barang (Material Umum)"
-                              : type === "tug6" ? "Daftar Permintaan Barang-Barang (Sparepart)"
-                                : "Bon Pengembalian Barang-Barang (TUG 10)"
-                }
-              </h3>
-              <span className="text-[10px] text-slate-400 font-mono">
-                PT. Pelayaran Bahtera Adhiguna &bull; Total {totalItems} Record Barang
-              </span>
+        {/* Header toolbar - modern, clean, ergonomic UX */}
+        <div className="bg-slate-900 text-white px-6 py-3.5 border-b border-slate-800 no-print flex flex-col gap-3 shrink-0">
+          {/* Top row: Title, Document Type Badge, and Primary Action Buttons */}
+          <div className="flex items-center justify-between gap-4">
+            {/* Title & Document Badge */}
+            <div className="flex items-center gap-3 min-w-0 flex-1">
+              <div className="w-10 h-10 rounded-xl bg-blue-500/10 border border-blue-500/30 flex items-center justify-center shrink-0">
+                <Anchor className="text-blue-400 w-5 h-5" />
+              </div>
+              <div className="min-w-0 flex-1">
+                <div className="flex items-center gap-2 flex-wrap">
+                  <h3 className="font-display font-bold text-sm text-white tracking-wide">
+                    {type === "bon" ? "Bon Pengeluaran Barang (TUG 8)"
+                      : type === "surat_jalan" ? "Surat Jalan (Outbound)"
+                        : type === "manifest" ? "Cargo Manifest"
+                          : type === "stock_report" ? "Laporan Monitoring Stok Warehouse"
+                            : type === "mutation_report" ? "Laporan Mutasi Keluar Masuk Barang"
+                              : type === "tug5" ? "Daftar Permintaan Barang-Barang (Material Umum)"
+                                : type === "tug6" ? "Daftar Permintaan Barang-Barang (Sparepart)"
+                                  : "Bon Pengembalian Barang-Barang (TUG 10)"}
+                  </h3>
+                  <span className="text-[10px] font-mono font-black px-2 py-0.5 rounded bg-blue-900/80 text-blue-200 border border-blue-700/60 uppercase tracking-wider shrink-0">
+                    {type === "mutation_report" ? "TUG 11" : type === "tug5" ? "TUG 5" : type === "tug6" ? "TUG 6" : type === "tug10" ? "TUG 10" : type === "bon" ? "TUG 8" : "FORM"}
+                  </span>
+                </div>
+                <p className="text-xs text-slate-400 font-sans mt-0.5 flex items-center gap-2 flex-wrap">
+                  <span>PT. Pelayaran Bahtera Adhiguna</span>
+                  <span className="text-slate-600">&bull;</span>
+                  <span>Total <strong className="text-slate-200 font-mono">{totalItems}</strong> Record Barang</span>
+                  <span className="text-slate-600">&bull;</span>
+                  <span>Ref: <strong className="font-mono text-slate-300">{docNum}</strong></span>
+                </p>
+              </div>
+            </div>
+
+            {/* Top Right: Actions & Close */}
+            <div className="flex items-center gap-2.5 shrink-0">
+              <button
+                type="button"
+                onClick={downloadInteractiveHTML}
+                className="flex items-center gap-1.5 bg-slate-800 hover:bg-slate-700 text-slate-100 hover:text-white text-xs font-bold px-3.5 py-2 rounded-lg border border-slate-700 shadow-xs transition-all cursor-pointer"
+                title="Download file cetak interaktif HTML/PDF"
+              >
+                <FileDown className="w-4 h-4 text-blue-400" />
+                <span>Download PDF</span>
+              </button>
+
+              <button
+                type="button"
+                onClick={printDoc}
+                className="flex items-center gap-1.5 bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-500 hover:to-teal-500 text-white text-xs font-bold px-4 py-2 rounded-lg shadow-sm transition-all cursor-pointer"
+                title="Buka dialog cetak browser (Ctrl + P)"
+              >
+                <Printer className="w-4 h-4" />
+                <span>Cetak Sekarang</span>
+              </button>
+
+              <button
+                type="button"
+                onClick={onClose}
+                className="p-2 text-slate-400 hover:text-white hover:bg-slate-800 rounded-lg transition-colors cursor-pointer border border-transparent hover:border-slate-700 ml-1"
+                title="Tutup (Esc)"
+              >
+                <X className="w-4 h-4" />
+              </button>
             </div>
           </div>
 
-          {/* Controls: Pagination + Print Actions */}
-          <div className="flex items-center gap-2 shrink-0">
-
-            {/* Pagination Controls for Reports */}
-            {(type === "mutation_report" || type === "stock_report") && totalItems > 0 && (
-              <div className="flex items-center gap-2 bg-slate-800 border border-slate-700 px-3 py-1.5 rounded-lg text-xs font-mono">
-                <span className="text-slate-400 text-[11px]">Tampilkan:</span>
+          {/* Bottom row: Pagination & View Filter Controls for Reports */}
+          {(type === "mutation_report" || type === "stock_report") && totalItems > 0 && (
+            <div className="pt-2.5 border-t border-slate-800/80 flex flex-wrap items-center justify-between gap-3 text-xs font-mono">
+              <div className="flex items-center gap-2.5 text-slate-400 text-xs">
+                <span>Tampilkan:</span>
                 <select
                   value={pageSize}
                   onChange={(e) => {
                     setPageSize(Number(e.target.value));
                     setCurrentPage(1);
                   }}
-                  className="bg-slate-900 text-white border border-slate-700 rounded px-2 py-0.5 text-xs focus:outline-none cursor-pointer"
+                  className="bg-slate-800 text-white border border-slate-700 rounded-lg px-3 py-1 text-xs focus:ring-2 focus:ring-blue-500 focus:outline-none cursor-pointer"
                 >
-                  <option value={10}>10 / Hal</option>
-                  <option value={15}>15 / Hal</option>
-                  <option value={25}>25 / Hal</option>
-                  <option value={50}>50 / Hal</option>
-                  <option value={0}>Semua ({totalItems} Cetak Utuh)</option>
+                  <option value={10}>10 Baris / Halaman</option>
+                  <option value={15}>15 Baris / Halaman</option>
+                  <option value={25}>25 Baris / Halaman</option>
+                  <option value={50}>50 Baris / Halaman</option>
+                  <option value={0}>Semua ({totalItems} Baris - Cetak Utuh)</option>
                 </select>
-
-                {pageSize > 0 && totalPages > 1 && (
-                  <div className="flex items-center gap-1.5 ml-2 border-l border-slate-700 pl-2">
-                    <button
-                      type="button"
-                      disabled={currentPage === 1}
-                      onClick={() => setCurrentPage(p => Math.max(1, p - 1))}
-                      className="px-2 py-0.5 bg-slate-700 hover:bg-slate-600 disabled:opacity-30 rounded text-[11px] font-bold cursor-pointer transition-colors"
-                    >
-                      ← Prev
-                    </button>
-                    <span className="text-blue-300 font-bold text-[11px] px-1">
-                      {currentPage}/{totalPages}
-                    </span>
-                    <button
-                      type="button"
-                      disabled={currentPage >= totalPages}
-                      onClick={() => setCurrentPage(p => Math.min(totalPages, p + 1))}
-                      className="px-2 py-0.5 bg-slate-700 hover:bg-slate-600 disabled:opacity-30 rounded text-[11px] font-bold cursor-pointer transition-colors"
-                    >
-                      Next →
-                    </button>
-                  </div>
-                )}
+                <span className="text-slate-600 hidden sm:inline">&bull;</span>
+                <span className="text-slate-400 hidden sm:inline">
+                  {pageSize > 0 
+                    ? `Menampilkan ${(currentPage - 1) * pageSize + 1} - ${Math.min(currentPage * pageSize, totalItems)} dari total ${totalItems} record`
+                    : `Menampilkan seluruh ${totalItems} record sekaligus`}
+                </span>
               </div>
-            )}
 
-            <button
-              onClick={downloadInteractiveHTML}
-              className="flex items-center gap-1.5 bg-blue-600 hover:bg-blue-500 text-white text-xs font-bold uppercase px-3.5 py-1.5 rounded-lg shadow-sm hover:shadow transition-all cursor-pointer"
-              title="Download dokumen cetak interaktif PDF/HTML"
-            >
-              <FileDown className="w-4 h-4 text-white" />
-              <span>Download PDF</span>
-            </button>
-
-            <button
-              onClick={printDoc}
-              className="flex items-center gap-1.5 bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-bold uppercase px-3.5 py-1.5 rounded-lg shadow-sm hover:shadow transition-all cursor-pointer"
-            >
-              <Printer className="w-4 h-4 text-white" />
-              <span>Cetak Sekarang</span>
-            </button>
-
-            <button
-              onClick={onClose}
-              className="bg-slate-800 hover:bg-slate-700 p-1.5 rounded-lg transition-colors text-slate-400 cursor-pointer"
-            >
-              <X className="w-4 h-4" />
-            </button>
-          </div>
+              {pageSize > 0 && totalPages > 1 && (
+                <div className="flex items-center gap-2 bg-slate-800/90 border border-slate-700 px-2.5 py-1 rounded-lg">
+                  <button
+                    type="button"
+                    disabled={currentPage === 1}
+                    onClick={() => setCurrentPage(p => Math.max(1, p - 1))}
+                    className="px-2.5 py-0.5 bg-slate-700 hover:bg-slate-600 disabled:opacity-30 rounded text-[11px] font-bold cursor-pointer transition-colors"
+                  >
+                    ← Sebelumnya
+                  </button>
+                  <span className="text-blue-300 font-bold text-[11px] px-2">
+                    Hal {currentPage} / {totalPages}
+                  </span>
+                  <button
+                    type="button"
+                    disabled={currentPage >= totalPages}
+                    onClick={() => setCurrentPage(p => Math.min(totalPages, p + 1))}
+                    className="px-2.5 py-0.5 bg-slate-700 hover:bg-slate-600 disabled:opacity-30 rounded text-[11px] font-bold cursor-pointer transition-colors"
+                  >
+                    Berikutnya →
+                  </button>
+                </div>
+              )}
+            </div>
+          )}
         </div>
 
         {/* Printable Paper Form Content Area (Styled like crisp A4 sheet) */}
