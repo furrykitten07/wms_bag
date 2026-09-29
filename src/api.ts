@@ -550,6 +550,19 @@ function getLocalFallbackData<T>(url: string, options: RequestInit = {}): T {
     saveLocalReceiving(localReceiving);
     return newRec as any;
   }
+  if (path === "/api/receiving/batch" && options.method === "POST") {
+    const list = Array.isArray(body) ? body : [body];
+    const createdList = list.map((b: any, idx: number) => ({
+      ...b,
+      id: b.id || `rec-${Date.now()}-${idx}`,
+      purchase_order_num: b.purchase_order_num || `PO-2026-${Math.floor(10000 + Math.random() * 90000)}`,
+      delivery_note_num: b.delivery_note_num || `DN-${Date.now().toString().slice(-5)}-${idx}`,
+      created_by: currentUsername || "Petugas Gudang"
+    }));
+    localReceiving = [...createdList, ...localReceiving];
+    saveLocalReceiving(localReceiving);
+    return createdList as any;
+  }
   if (path.startsWith("/api/receiving/") && options.method === "PUT") {
     const id = path.split("/").pop();
     const idx = localReceiving.findIndex(r => r.id === id);
@@ -1188,6 +1201,39 @@ async function fetcher<T>(url: string, options: RequestInit = {}): Promise<T> {
         localReceiving = [createdRecord, ...localReceiving.filter(r => r.id !== createdRecord.id)];
         saveLocalReceiving(localReceiving);
         return createdRecord as any;
+      }
+      if (path === "/api/receiving/batch" && method === "POST") {
+        const rows = (Array.isArray(body) ? body : [body]).map((b: any, idx: number) => {
+          let validVendorId = b.vendor_id || null;
+          if (validVendorId && !["vnd-1", "vnd-2", "vnd-3", "vnd-4", "vnd-manual"].includes(validVendorId)) {
+            validVendorId = null;
+          }
+          const rec = {
+            ...b,
+            id: b.id || `rec-${Date.now()}-${idx}`,
+            purchase_order_num: b.purchase_order_num || `PO-2026-${Math.floor(10000 + Math.random() * 90000)}`,
+            delivery_note_num: b.delivery_note_num || `DN-${Date.now().toString().slice(-5)}-${idx}`,
+            vendor_id: validVendorId,
+            vendor_name: b.vendor_name || "Vendor Logistik BAG",
+            received_by: b.received_by || b.created_by || currentUsername || "Petugas Gudang",
+            status: b.status || "ACCEPTED",
+            items: b.items || [],
+            received_date: b.received_date ? String(b.received_date).split("T")[0] : now.split("T")[0],
+            created_at: now,
+            updated_at: now
+          };
+          return sanitizeRecord(rec, VALID_REC_COLUMNS);
+        });
+        const { data, error } = await supabase.from("inbound_receivings").upsert(rows).select();
+        if (error) {
+          console.error("Supabase receiving batch error:", error);
+          throw new Error(error.message);
+        }
+        if (data) {
+          localReceiving = [...data, ...localReceiving.filter(r => !data.some(d => d.id === r.id))];
+          saveLocalReceiving(localReceiving);
+        }
+        return (data || rows) as any;
       }
       if (path.startsWith("/api/receiving/") && method === "PUT") {
         const id = path.split("/").pop();
@@ -1936,6 +1982,13 @@ export const api = {
 
   async createReceiving(data: Partial<InboundReceiving>): Promise<InboundReceiving> {
     return fetcher<InboundReceiving>("/api/receiving", {
+      method: "POST",
+      body: JSON.stringify(data),
+    });
+  },
+
+  async createReceivingBatch(data: Partial<InboundReceiving>[]): Promise<InboundReceiving[]> {
+    return fetcher<InboundReceiving[]>("/api/receiving/batch", {
       method: "POST",
       body: JSON.stringify(data),
     });
