@@ -35,7 +35,11 @@ import {
   Archive,
   ShieldCheck,
   CheckCircle2,
-  SlidersHorizontal
+  SlidersHorizontal,
+  Calendar,
+  ArrowUpDown,
+  ChevronUp,
+  RotateCcw
 } from "lucide-react";
 import { 
   User as UserType, 
@@ -100,6 +104,36 @@ export default function MaterialRequestView({
   const [searchQuery, setSearchQuery] = useState<string>("");
   const [statusFilter, setStatusFilter] = useState<string>("All");
 
+  // Date filter & sorting states
+  const [datePreset, setDatePreset] = useState<string>("ALL"); // "ALL" | "YYYY-MM" | "CUSTOM"
+  const [startDate, setStartDate] = useState<string>("");
+  const [endDate, setEndDate] = useState<string>("");
+  const [sortOrder, setSortOrder] = useState<"desc" | "asc">("desc");
+
+  // Extract all available months dynamically from requests
+  const availableMonths = useMemo(() => {
+    const monthMap = new Map<string, number>();
+    (requests || []).forEach(r => {
+      const d = (r.request_date || "").trim();
+      if (d.length >= 7) {
+        const ym = d.substring(0, 7); // "YYYY-MM"
+        monthMap.set(ym, (monthMap.get(ym) || 0) + 1);
+      }
+    });
+    // Sort descending by ym (newest month first, e.g., 2026-09, 2026-08, 2026-07)
+    return Array.from(monthMap.entries()).sort((a, b) => b[0].localeCompare(a[0]));
+  }, [requests]);
+
+  const formatMonthName = (ym: string) => {
+    try {
+      const [year, month] = ym.split("-");
+      const d = new Date(parseInt(year, 10), parseInt(month, 10) - 1, 1);
+      return d.toLocaleDateString("id-ID", { month: "long", year: "numeric" });
+    } catch {
+      return ym;
+    }
+  };
+
   React.useEffect(() => {
     if (autoOpenMRId) {
       const target = requests.find(
@@ -126,7 +160,7 @@ export default function MaterialRequestView({
   React.useEffect(() => {
     setTugPage(1);
     setSelectedMRIds([]);
-  }, [searchQuery, statusFilter]);
+  }, [searchQuery, statusFilter, datePreset, startDate, endDate, sortOrder]);
 
   // Create form state
   const [requestDate, setRequestDate] = useState<string>(new Date().toISOString().split("T")[0]);
@@ -571,44 +605,73 @@ export default function MaterialRequestView({
     }
   };
 
-  // Filter requests
-  const filteredRequests = (requests || []).filter(mr => {
-    if (!mr) return false;
-    const q = searchQuery.toLowerCase().trim();
-    if (!q) {
-      if (statusFilter === "All") return true;
-      return mr.status === statusFilter;
-    }
+  // Filter & Sort requests based on search, status, and request_date
+  const filteredRequests = useMemo(() => {
+    const list = (requests || []).filter(mr => {
+      if (!mr) return false;
 
-    const reqNum = mr.request_number || "";
-    const vesName = mr.vessel_name || "";
+      // 1. Status Filter
+      if (statusFilter !== "All" && mr.status !== statusFilter) {
+        return false;
+      }
 
-    const matchesHeader = 
-      reqNum.toLowerCase().includes(q) ||
-      (mr.tug5_number && mr.tug5_number.toLowerCase().includes(q)) ||
-      (mr.tug6_number && mr.tug6_number.toLowerCase().includes(q)) ||
-      (mr.tug_number && mr.tug_number.toLowerCase().includes(q)) ||
-      (mr.spk_number && mr.spk_number.toLowerCase().includes(q)) ||
-      (mr.spk_id && mr.spk_id.toLowerCase().includes(q)) ||
-      vesName.toLowerCase().includes(q) ||
-      (mr.requester_name && mr.requester_name.toLowerCase().includes(q)) ||
-      (mr.requested_by && mr.requested_by.toLowerCase().includes(q)) ||
-      (mr.created_by && mr.created_by.toLowerCase().includes(q)) ||
-      (mr.work_order_ref && mr.work_order_ref.toLowerCase().includes(q)) ||
-      (mr.remarks && mr.remarks.toLowerCase().includes(q)) ||
-      (mr.notes && mr.notes.toLowerCase().includes(q));
+      // 2. Date Filter (Tanggal Pengajuan)
+      const reqDate = (mr.request_date || "").trim();
+      if (datePreset !== "ALL" && datePreset !== "CUSTOM") {
+        // Specific month preset e.g. "2026-09"
+        if (!reqDate.startsWith(datePreset)) return false;
+      }
+      if (startDate && reqDate && reqDate < startDate) return false;
+      if (endDate && reqDate && reqDate > endDate) return false;
 
-    const matchesItems = mr.items && mr.items.some(item => 
-      (item.spare_part_name && item.spare_part_name.toLowerCase().includes(q)) ||
-      (item.part_number && item.part_number.toLowerCase().includes(q)) ||
-      (item.notes && item.notes.toLowerCase().includes(q))
-    );
+      // 3. Search Query Filter
+      const q = searchQuery.toLowerCase().trim();
+      if (!q) return true;
 
-    const matchesSearch = matchesHeader || matchesItems;
-    
-    if (statusFilter === "All") return matchesSearch;
-    return mr.status === statusFilter && matchesSearch;
-  });
+      const reqNum = mr.request_number || "";
+      const vesName = mr.vessel_name || "";
+
+      const matchesHeader = 
+        reqNum.toLowerCase().includes(q) ||
+        (mr.tug5_number && mr.tug5_number.toLowerCase().includes(q)) ||
+        (mr.tug6_number && mr.tug6_number.toLowerCase().includes(q)) ||
+        (mr.tug_number && mr.tug_number.toLowerCase().includes(q)) ||
+        (mr.spk_number && mr.spk_number.toLowerCase().includes(q)) ||
+        (mr.spk_id && mr.spk_id.toLowerCase().includes(q)) ||
+        vesName.toLowerCase().includes(q) ||
+        (mr.requester_name && mr.requester_name.toLowerCase().includes(q)) ||
+        (mr.requested_by && mr.requested_by.toLowerCase().includes(q)) ||
+        (mr.created_by && mr.created_by.toLowerCase().includes(q)) ||
+        (mr.work_order_ref && mr.work_order_ref.toLowerCase().includes(q)) ||
+        (mr.remarks && mr.remarks.toLowerCase().includes(q)) ||
+        (mr.notes && mr.notes.toLowerCase().includes(q));
+
+      const matchesItems = mr.items && mr.items.some(item => 
+        (item.spare_part_name && item.spare_part_name.toLowerCase().includes(q)) ||
+        (item.part_number && item.part_number.toLowerCase().includes(q)) ||
+        (item.notes && item.notes.toLowerCase().includes(q))
+      );
+
+      return matchesHeader || matchesItems;
+    });
+
+    // 4. CHRONOLOGICAL SORT BY request_date (Tanggal Pengajuan)
+    return [...list].sort((a, b) => {
+      const dateA = (a.request_date || "").trim();
+      const dateB = (b.request_date || "").trim();
+      const numA = a.request_number || "";
+      const numB = b.request_number || "";
+
+      if (dateA !== dateB) {
+        return sortOrder === "desc" 
+          ? dateB.localeCompare(dateA) 
+          : dateA.localeCompare(dateB);
+      }
+      return sortOrder === "desc" 
+        ? numB.localeCompare(numA) 
+        : numA.localeCompare(numB);
+    });
+  }, [requests, statusFilter, datePreset, startDate, endDate, searchQuery, sortOrder]);
 
   const unmatchedCount = spkList.filter(spk => !requests.some(req => req.work_order_ref === spk.spk_number)).length;
 
@@ -772,36 +835,144 @@ export default function MaterialRequestView({
       </div>
 
       {/* 2. SEARCH & FILTER PANEL */}
-      <div className="bg-white border-b border-slate-200 px-6 py-4 flex flex-col md:flex-row items-center justify-between gap-4 shrink-0 shadow-xs">
-        <div className="relative w-full md:w-80">
-          <input
-            type="text"
-            placeholder="Cari nomor request, kapal penerima, WO..."
-            value={searchQuery}
-            onChange={(e) => setSearchQuery(e.target.value)}
-            className="w-full bg-slate-50 border border-slate-250 text-slate-800 p-2.5 pl-9 text-xs rounded-lg outline-none focus:border-emerald-600 focus:bg-white placeholder:text-slate-450 font-sans font-medium"
-          />
-          <Search className="w-4 h-4 text-slate-400 absolute left-3 top-3.5" />
+      <div className="bg-white border-b border-slate-200 px-6 py-4 flex flex-col gap-3 shrink-0 shadow-xs">
+        {/* Row 1: Search and Status Filter */}
+        <div className="flex flex-col lg:flex-row items-stretch lg:items-center justify-between gap-4">
+          <div className="relative w-full lg:w-80">
+            <input
+              type="text"
+              placeholder="Cari nomor request, kapal penerima, WO..."
+              value={searchQuery}
+              onChange={(e) => setSearchQuery(e.target.value)}
+              className="w-full bg-slate-50 border border-slate-250 text-slate-800 p-2.5 pl-9 text-xs rounded-lg outline-none focus:border-emerald-600 focus:bg-white placeholder:text-slate-450 font-sans font-medium"
+            />
+            <Search className="w-4 h-4 text-slate-400 absolute left-3 top-3.5" />
+          </div>
+
+          <div className="flex flex-wrap items-center gap-2 font-mono text-[11px] font-bold">
+            <span className="text-slate-450 uppercase tracking-wider flex items-center gap-1.5 mr-1 text-[10px] font-extrabold">
+              <Filter className="w-3.5 h-3.5 text-slate-400" /> STATUS FILTER TUG 5:
+            </span>
+            <div className="flex flex-wrap gap-1.5">
+              {["All", "Draft", "Submitted", "Approved", "Rejected", "Processed"].map((st) => (
+                <button
+                  key={st}
+                  onClick={() => setStatusFilter(st)}
+                  className={`px-3 py-1.5 rounded-lg border uppercase transition-all duration-150 cursor-pointer text-[10px] font-black ${
+                    statusFilter === st 
+                      ? "bg-slate-900 border-slate-900 text-white shadow-xs" 
+                      : "bg-white border-slate-200 text-slate-500 hover:text-slate-800 hover:bg-slate-50"
+                  }`}
+                >
+                  {st}
+                </button>
+              ))}
+            </div>
+          </div>
         </div>
 
-        <div className="flex items-center gap-2 w-full md:w-auto justify-end font-mono text-[11px] font-bold">
-          <span className="text-slate-450 uppercase tracking-wider flex items-center gap-1.5 mr-1 text-[10px] font-extrabold">
-            <Filter className="w-3.5 h-3.5 text-slate-400" /> STATUS FILTER TUG 5:
-          </span>
-          <div className="flex gap-2">
-            {["All", "Draft", "Submitted", "Approved", "Rejected", "Processed"].map((st) => (
+        {/* Row 2: Date Filter & Sorting Panel */}
+        <div className="flex flex-col xl:flex-row xl:items-center justify-between gap-3 pt-2.5 border-t border-slate-100">
+          {/* Left: Quick Month Presets & Custom Date Picker */}
+          <div className="flex flex-wrap items-center gap-2">
+            <span className="text-slate-500 uppercase tracking-wider flex items-center gap-1.5 mr-1 text-[10px] font-extrabold font-mono">
+              <Calendar className="w-3.5 h-3.5 text-emerald-600" /> PERIODE TANGGAL:
+            </span>
+
+            {/* Quick Month Buttons */}
+            <div className="flex flex-wrap items-center gap-1.5">
               <button
-                key={st}
-                onClick={() => setStatusFilter(st)}
-                className={`px-3 py-2 rounded-lg border uppercase transition-all duration-150 cursor-pointer text-[10px] font-black ${
-                  statusFilter === st 
-                    ? "bg-slate-900 border-slate-900 text-white shadow-xs" 
-                    : "bg-white border-slate-200 text-slate-500 hover:text-slate-800 hover:bg-slate-50"
+                type="button"
+                onClick={() => { setDatePreset("ALL"); setStartDate(""); setEndDate(""); }}
+                className={`px-2.5 py-1 rounded-lg border text-[10px] font-bold cursor-pointer transition-all ${
+                  datePreset === "ALL" && !startDate && !endDate
+                    ? "bg-emerald-600 border-emerald-600 text-white shadow-xs"
+                    : "bg-white border-slate-200 text-slate-600 hover:bg-slate-50 hover:text-slate-900"
                 }`}
               >
-                {st}
+                Semua ({requests.length})
               </button>
-            ))}
+
+              {availableMonths.map(([ym, count]) => {
+                const label = formatMonthName(ym);
+                const isActive = datePreset === ym && !startDate && !endDate;
+                return (
+                  <button
+                    key={ym}
+                    type="button"
+                    onClick={() => { setDatePreset(ym); setStartDate(""); setEndDate(""); }}
+                    className={`px-2.5 py-1 rounded-lg border text-[10px] font-bold cursor-pointer transition-all flex items-center gap-1.5 ${
+                      isActive
+                        ? "bg-emerald-600 border-emerald-600 text-white shadow-xs"
+                        : "bg-white border-slate-200 text-slate-600 hover:bg-slate-50 hover:text-slate-900"
+                    }`}
+                  >
+                    <span>{label}</span>
+                    <span className={`px-1.5 py-0.2 rounded-full text-[9px] font-mono font-black ${
+                      isActive ? "bg-emerald-700 text-emerald-100" : "bg-slate-100 text-slate-600"
+                    }`}>
+                      {count}
+                    </span>
+                  </button>
+                );
+              })}
+            </div>
+
+            {/* Date Range Inputs */}
+            <div className="flex items-center gap-1.5 ml-1 bg-slate-50 p-1 rounded-lg border border-slate-200">
+              <input
+                type="date"
+                value={startDate}
+                onChange={(e) => {
+                  setStartDate(e.target.value);
+                  setDatePreset("CUSTOM");
+                }}
+                className="bg-white border border-slate-200 rounded px-2 py-1 text-[11px] font-mono font-semibold text-slate-700 focus:outline-none focus:border-emerald-500"
+                title="Tanggal Pengajuan Dari"
+              />
+              <span className="text-[10px] font-bold text-slate-400 font-mono">s/d</span>
+              <input
+                type="date"
+                value={endDate}
+                onChange={(e) => {
+                  setEndDate(e.target.value);
+                  setDatePreset("CUSTOM");
+                }}
+                className="bg-white border border-slate-200 rounded px-2 py-1 text-[11px] font-mono font-semibold text-slate-700 focus:outline-none focus:border-emerald-500"
+                title="Tanggal Pengajuan Sampai"
+              />
+            </div>
+
+            {/* Reset Button */}
+            {(datePreset !== "ALL" || startDate || endDate) && (
+              <button
+                type="button"
+                onClick={() => { setDatePreset("ALL"); setStartDate(""); setEndDate(""); }}
+                className="px-2.5 py-1 bg-rose-50 hover:bg-rose-100 border border-rose-200 text-rose-700 rounded-lg text-[10px] font-bold cursor-pointer transition-all flex items-center gap-1"
+                title="Reset Filter Tanggal"
+              >
+                <X className="w-3 h-3" />
+                <span>Reset Tanggal</span>
+              </button>
+            )}
+          </div>
+
+          {/* Right: Sort Order Toggle & Result Counter */}
+          <div className="flex items-center gap-2.5 shrink-0 self-end xl:self-center">
+            <span className="text-slate-400 text-[10px] font-mono">
+              Menampilkan <strong className="text-slate-800 font-black">{filteredRequests.length}</strong> dari {requests.length} dokumen
+            </span>
+
+            <button
+              type="button"
+              onClick={() => setSortOrder(prev => prev === "desc" ? "asc" : "desc")}
+              className="px-3 py-1.5 bg-slate-100 hover:bg-slate-200 border border-slate-250 text-slate-800 rounded-lg text-[10px] font-mono font-bold cursor-pointer transition-all flex items-center gap-1.5 shadow-2xs"
+              title="Klik untuk mengubah arah urutan tanggal pengajuan"
+            >
+              <ArrowUpDown className="w-3.5 h-3.5 text-slate-600" />
+              <span>Urutan: {sortOrder === "desc" ? "Terbaru (30 → 1)" : "Terlama (1 → 30)"}</span>
+              <span className="text-emerald-700 font-black">{sortOrder === "desc" ? "▼" : "▲"}</span>
+            </button>
           </div>
         </div>
       </div>
@@ -855,7 +1026,18 @@ export default function MaterialRequestView({
                 </th>
                 <th className="py-4 px-6 font-black w-16 text-center">NO</th>
                 <th className="py-4 px-6 font-semibold">No. Request</th>
-                <th className="py-4 px-6 font-semibold">Tanggal Pengajuan</th>
+                <th 
+                  className="py-4 px-6 font-semibold cursor-pointer select-none hover:text-emerald-700 transition-colors group"
+                  onClick={() => setSortOrder(prev => prev === "desc" ? "asc" : "desc")}
+                  title="Klik untuk mengubah urutan tanggal pengajuan (Terbaru / Terlama)"
+                >
+                  <div className="flex items-center gap-1.5">
+                    <span>Tanggal Pengajuan</span>
+                    <span className="text-[10px] text-emerald-600 font-mono font-bold group-hover:scale-110 transition-transform">
+                      {sortOrder === "desc" ? "▼ Terbaru" : "▲ Terlama"}
+                    </span>
+                  </div>
+                </th>
                 <th className="py-4 px-6 font-semibold">Kapal Penerima</th>
                 <th className="py-4 px-6 font-semibold">Pemohon (Chief Eng.)</th>
                 <th className="py-4 px-6 font-semibold text-center">Status Inbound</th>

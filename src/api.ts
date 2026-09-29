@@ -807,7 +807,7 @@ async function fetcher<T>(url: string, options: RequestInit = {}): Promise<T> {
 
       // --- 1. MATERIAL REQUESTS (TUG 5) ---
       if (path === "/api/material-requests" && method === "GET") {
-        const { data, error } = await supabase.from("material_requests").select("*").order("created_at", { ascending: false });
+        const { data, error } = await supabase.from("material_requests").select("*").order("request_date", { ascending: false }).order("request_number", { ascending: false });
         if (!error && data) {
           localMaterialRequests = data as any;
           return data as any;
@@ -897,7 +897,7 @@ async function fetcher<T>(url: string, options: RequestInit = {}): Promise<T> {
 
       // --- 2. MATERIAL REQUESTS (TUG 6) ---
       if (path === "/api/material-requests-tug6" && method === "GET") {
-        const { data, error } = await supabase.from("material_requests").select("*").order("created_at", { ascending: false });
+        const { data, error } = await supabase.from("material_requests").select("*").order("request_date", { ascending: false }).order("request_number", { ascending: false });
         if (!error && data) {
           const tug6Only = data.filter((d: any) => d.tug6_number);
           localMaterialRequestsTUG6 = (tug6Only.length > 0 ? tug6Only : data) as any;
