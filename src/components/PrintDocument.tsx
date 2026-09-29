@@ -1652,15 +1652,7 @@ export default function PrintDocument({
                     <div className="flex flex-col justify-between h-24">
                       <span>Penerima :</span>
                       <div className="border-t border-slate-400 pt-1 flex flex-col items-center relative">
-                        {getSignatureForSlot("Authorized Carrier", docData.driver_pic || docData.courier_name, signatures) && (
-                          <div className="absolute bottom-5 left-0 right-0 flex items-center justify-center pointer-events-none h-12">
-                            <img
-                              src={getSignatureForSlot("Authorized Carrier", docData.driver_pic || docData.courier_name, signatures)!}
-                              alt="Tanda Tangan Carrier"
-                              className="max-h-12 max-w-[140px] object-contain mix-blend-multiply select-none"
-                            />
-                          </div>
-                        )}
+                        {/* Tanda tangan penerima dikosongkan untuk TUG 8 agar ditandatangani manual saat serah terima */}
                         <span className="text-slate-955 font-black">{docData.driver_pic || docData.courier_name || "......................................."}</span>
                         <span className="text-slate-500 text-[7px] font-mono font-normal leading-tight normal-case italic mt-0.5">Authorized Carrier</span>
                       </div>
