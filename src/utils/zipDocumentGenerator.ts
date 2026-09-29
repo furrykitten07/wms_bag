@@ -438,6 +438,18 @@ export function generateSingleTUGHTML(
 </html>`;
 }
 
+async function waitForImagesToLoad(container: HTMLElement): Promise<void> {
+  const images = Array.from(container.querySelectorAll("img"));
+  const promises = images.map(img => {
+    if (img.complete && img.naturalHeight !== 0) return Promise.resolve();
+    return new Promise<void>(resolve => {
+      img.onload = () => resolve();
+      img.onerror = () => resolve();
+    });
+  });
+  await Promise.all(promises);
+}
+
 /**
  * High-fidelity, balanced A4 PDF generator for TUG 5 and TUG 6 documents.
  * Employs optimal vertical space distribution with commanding table sizing,
