@@ -698,9 +698,9 @@ export default function SparePartCatalogView({
 
                 {/* QR Code & Barcode Side */}
                 <div className="w-full md:w-44 flex flex-col items-center justify-center border-t md:border-t-0 md:border-l border-slate-100 pt-4 md:pt-0 md:pl-5 shrink-0 select-none bg-slate-50/70 rounded-r-xl p-3">
-                  <div className="p-2 bg-white border border-slate-200 rounded-lg shadow-xs max-w-[95px] flex items-center justify-center">
+                  <div className="p-2 bg-white border border-slate-200 rounded-lg shadow-xs max-w-[95px] flex items-center justify-center" title="Scan dengan Kamera HP untuk membuka informasi part langsung">
                     <QRCode
-                      value={`WMS-BAG|ID:${item.id}|BC:${item.barcode}|PN:${item.part_number}|NAME:${item.part_name}`}
+                      value={typeof window !== "undefined" ? `${window.location.origin}/?part=${encodeURIComponent(item.barcode || item.id)}` : `/?part=${encodeURIComponent(item.barcode || item.id)}`}
                       size={80}
                       style={{ height: "auto", maxWidth: "100%", width: "100%" }}
                       viewBox={`0 0 256 256`}
@@ -711,6 +711,9 @@ export default function SparePartCatalogView({
                   <div className="mt-2 text-center w-full">
                     <span className="text-[8.5px] font-mono font-bold text-slate-600 uppercase tracking-widest block">
                       TOKEN: #{item.barcode}
+                    </span>
+                    <span className="text-[7.5px] text-blue-600 font-semibold block mt-0.5">
+                      ✓ Scan Kamera HP Langsung
                     </span>
                   </div>
                   
@@ -1247,9 +1250,9 @@ export default function SparePartCatalogView({
                     
                     {/* Left: QR Code side */}
                     <div className="flex flex-col items-center justify-center shrink-0 border-b md:border-b-0 md:border-r border-slate-100 pb-4 md:pb-0 md:pr-6">
-                      <div className="p-3 bg-white border border-slate-300 rounded-xl shadow-xs">
+                      <div className="p-3 bg-white border border-slate-300 rounded-xl shadow-xs" title="Scan dengan Kamera HP untuk membuka informasi part tanpa login">
                         <QRCode
-                          value={`WMS-BAG|ID:${selectedItem.id}|BC:${selectedItem.barcode}|PN:${selectedItem.part_number}|NAME:${selectedItem.part_name}`}
+                          value={typeof window !== "undefined" ? `${window.location.origin}/?part=${encodeURIComponent(selectedItem.barcode || selectedItem.id)}` : `/?part=${encodeURIComponent(selectedItem.barcode || selectedItem.id)}`}
                           size={135}
                           style={{ height: "auto", maxWidth: "100%", width: "100%" }}
                           viewBox={`0 0 256 256`}
@@ -1260,8 +1263,17 @@ export default function SparePartCatalogView({
                           TOKEN: #{selectedItem.barcode}
                         </span>
                         <span className="text-[8px] text-slate-400 block mt-1 uppercase tracking-widest">
-                          Verified Master Token ID
+                          Scan Langsung via Kamera HP
                         </span>
+                        <a
+                          href={typeof window !== "undefined" ? `${window.location.origin}/?part=${encodeURIComponent(selectedItem.barcode || selectedItem.id)}` : `/?part=${encodeURIComponent(selectedItem.barcode || selectedItem.id)}`}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className="text-[10px] text-blue-600 hover:text-blue-800 font-bold underline mt-2 inline-flex items-center gap-1 no-print cursor-pointer"
+                          title="Klik untuk menguji tampilan halaman mobile langsung di tab browser baru"
+                        >
+                          Uji Buka Tautan Scan HP ↗
+                        </a>
                       </div>
                     </div>
 
@@ -1332,10 +1344,10 @@ export default function SparePartCatalogView({
                   {/* Informational Guidance */}
                   <div className="bg-blue-50 border border-blue-200 text-blue-900 p-3 rounded-lg text-xs space-y-1 no-print">
                     <p className="font-bold uppercase tracking-wider text-[10px] flex items-center gap-1.5 text-blue-900 font-mono">
-                      <Info className="w-4 h-4 text-blue-600" /> PANDUAN SCANNER BARCODE &amp; QR
+                      <Info className="w-4 h-4 text-blue-600" /> PANDUAN SCANNER KAMERA HP &amp; BARCODE
                     </p>
                     <p className="leading-relaxed">
-                      Barcode dan QR Code suku cadang ini dibuat unik dan terdaftar di database Spare Part Master. Anda dapat memindai label ini menggunakan scanner optik 1D barcode genggam atau kamera perangkat untuk pencatatan otomatis di modul Inbound, TUG 5, TUG 6, dan Stock Opname.
+                      Kode QR ini dapat dipindai langsung menggunakan kamera smartphone (iPhone/Android). Saat dipindai, HP akan langsung membuka halaman rincian informasi spesifikasi, stok riil, lokasi rak, dan kesesuaian kapal suku cadang ini <strong>tanpa perlu login</strong>. Label fisik juga dapat dipindai oleh scanner barcode 1D optik di gudang.
                     </p>
                   </div>
                 </>

@@ -52,13 +52,53 @@ import SparePartCatalogView from "./components/SparePartCatalogView.js";
 import UsersManagementView from "./components/UsersManagementView.js";
 import SignatureManagementView from "./components/SignatureManagementView.js";
 import VesselsManagementView from "./components/VesselsManagementView.js";
+import PublicPartDetailView from "./components/PublicPartDetailView.js";
 
 import { AlertCircle, RefreshCw, Layers } from "lucide-react";
+
+// Helper to detect if page is opened via QR / Barcode Scan link (e.g. ?part=BC-..., ?scan=..., /part/...)
+function getScannedCodeFromUrl(): string | null {
+  try {
+    if (typeof window === "undefined") return null;
+    const params = new URLSearchParams(window.location.search);
+    const code = params.get("part") || params.get("scan") || params.get("bc") || params.get("barcode");
+    if (code) return decodeURIComponent(code).trim();
+
+    const path = window.location.pathname;
+    if (path.startsWith("/part/")) {
+      return decodeURIComponent(path.replace("/part/", "")).trim();
+    }
+    if (path.startsWith("/item/")) {
+      return decodeURIComponent(path.replace("/item/", "")).trim();
+    }
+
+    const hash = window.location.hash;
+    if (hash.includes("part=")) {
+      const match = hash.match(/part=([^&]+)/);
+      if (match) return decodeURIComponent(match[1]).trim();
+    }
+    if (hash.startsWith("#/part/")) {
+      return decodeURIComponent(hash.replace("#/part/", "")).trim();
+    }
+  } catch (e) {}
+  return null;
+}
 
 export default function App() {
   const [currentTab, setCurrentTab] = useState<string>("dashboard");
   const [loading, setLoading] = useState<boolean>(true);
   const [error, setError] = useState<string | null>(null);
+
+  // Public scanned part code (NO LOGIN REQUIRED)
+  const [publicScannedCode, setPublicScannedCode] = useState<string | null>(() => getScannedCodeFromUrl());
+
+  useEffect(() => {
+    const handlePopState = () => {
+      setPublicScannedCode(getScannedCodeFromUrl());
+    };
+    window.addEventListener("popstate", handlePopState);
+    return () => window.removeEventListener("popstate", handlePopState);
+  }, []);
 
   // Global search managed in Header
   const [searchValue, setSearchValue] = useState<string>("");
@@ -724,6 +764,36 @@ export default function App() {
         <h2 className="text-sm font-bold uppercase tracking-widest text-slate-300">MARE-WMS SYSTEM RECONCILING</h2>
         <p className="text-[10px] text-slate-500 mt-2 uppercase tracking-wide">Syncing local data structures with backend in-memory databases...</p>
       </div>
+    );
+  }
+
+  // Public Part Information Scan Gate (Direct QR / Barcode phone scan, NO LOGIN REQUIRED!)
+  if (publicScannedCode) {
+    return (
+      <PublicPartDetailView 
+        code={publicScannedCode}
+        parts={parts}
+        locations={locations}
+        loading={loading}
+        onBackToApp={() => {
+          setPublicScannedCode(null);
+          const url = new URL(window.location.href);
+          url.searchParams.delete("part");
+          url.searchParams.delete("scan");
+          url.searchParams.delete("bc");
+          url.searchParams.delete("barcode");
+          window.history.pushState({}, "", url.pathname || "/");
+        }}
+        onGoToLogin={() => {
+          setPublicScannedCode(null);
+          const url = new URL(window.location.href);
+          url.searchParams.delete("part");
+          url.searchParams.delete("scan");
+          url.searchParams.delete("bc");
+          url.searchParams.delete("barcode");
+          window.history.pushState({}, "", url.pathname || "/");
+        }}
+      />
     );
   }
 
