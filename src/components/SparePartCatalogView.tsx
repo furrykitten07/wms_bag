@@ -28,7 +28,9 @@ import {
   CheckCircle2, 
   Package, 
   MapPin, 
-  ShieldCheck 
+  ShieldCheck,
+  Copy,
+  ExternalLink
 } from "lucide-react";
 
 import { SparePart } from "../types.js";
@@ -142,6 +144,12 @@ function saveCatalogMetadata(meta: Record<string, Partial<CatalogItem>>) {
 function generateRandomBarcode(): string {
   const num = Math.floor(10000000 + Math.random() * 90000000);
   return `BC-${num}`;
+}
+
+// Generate full public URL for mobile QR code scan without requiring login
+export function getPublicSparePartUrl(id: string): string {
+  const origin = typeof window !== "undefined" ? window.location.origin : "";
+  return `${origin}/sparepart/${encodeURIComponent(id)}`;
 }
 
 export default function SparePartCatalogView({ 
@@ -698,9 +706,9 @@ export default function SparePartCatalogView({
 
                 {/* QR Code & Barcode Side */}
                 <div className="w-full md:w-44 flex flex-col items-center justify-center border-t md:border-t-0 md:border-l border-slate-100 pt-4 md:pt-0 md:pl-5 shrink-0 select-none bg-slate-50/70 rounded-r-xl p-3">
-                  <div className="p-2 bg-white border border-slate-200 rounded-lg shadow-xs max-w-[95px] flex items-center justify-center" title="Scan dengan Kamera HP untuk membuka informasi part langsung">
+                  <div className="p-2 bg-white border border-slate-200 rounded-lg shadow-xs max-w-[95px] flex items-center justify-center">
                     <QRCode
-                      value={typeof window !== "undefined" ? `${window.location.origin}/?part=${encodeURIComponent(item.barcode || item.id)}` : `/?part=${encodeURIComponent(item.barcode || item.id)}`}
+                      value={getPublicSparePartUrl(item.id)}
                       size={80}
                       style={{ height: "auto", maxWidth: "100%", width: "100%" }}
                       viewBox={`0 0 256 256`}
@@ -711,9 +719,6 @@ export default function SparePartCatalogView({
                   <div className="mt-2 text-center w-full">
                     <span className="text-[8.5px] font-mono font-bold text-slate-600 uppercase tracking-widest block">
                       TOKEN: #{item.barcode}
-                    </span>
-                    <span className="text-[7.5px] text-blue-600 font-semibold block mt-0.5">
-                      ✓ Scan Kamera HP Langsung
                     </span>
                   </div>
                   
@@ -1250,30 +1255,45 @@ export default function SparePartCatalogView({
                     
                     {/* Left: QR Code side */}
                     <div className="flex flex-col items-center justify-center shrink-0 border-b md:border-b-0 md:border-r border-slate-100 pb-4 md:pb-0 md:pr-6">
-                      <div className="p-3 bg-white border border-slate-300 rounded-xl shadow-xs" title="Scan dengan Kamera HP untuk membuka informasi part tanpa login">
+                      <div className="p-3 bg-white border border-slate-300 rounded-xl shadow-xs">
                         <QRCode
-                          value={typeof window !== "undefined" ? `${window.location.origin}/?part=${encodeURIComponent(selectedItem.barcode || selectedItem.id)}` : `/?part=${encodeURIComponent(selectedItem.barcode || selectedItem.id)}`}
+                          value={getPublicSparePartUrl(selectedItem.id)}
                           size={135}
                           style={{ height: "auto", maxWidth: "100%", width: "100%" }}
                           viewBox={`0 0 256 256`}
                         />
                       </div>
-                      <div className="text-center mt-3 font-mono">
+                      <div className="text-center mt-3 font-mono space-y-1">
                         <span className="text-[10px] font-black text-blue-700 uppercase bg-blue-50 border border-blue-100 px-2 py-0.5 rounded block">
                           TOKEN: #{selectedItem.barcode}
                         </span>
-                        <span className="text-[8px] text-slate-400 block mt-1 uppercase tracking-widest">
-                          Scan Langsung via Kamera HP
+                        <span className="text-[8px] text-slate-400 block uppercase tracking-widest font-bold">
+                          Scan HP Terbuka Tanpa Login
                         </span>
-                        <a
-                          href={typeof window !== "undefined" ? `${window.location.origin}/?part=${encodeURIComponent(selectedItem.barcode || selectedItem.id)}` : `/?part=${encodeURIComponent(selectedItem.barcode || selectedItem.id)}`}
-                          target="_blank"
-                          rel="noopener noreferrer"
-                          className="text-[10px] text-blue-600 hover:text-blue-800 font-bold underline mt-2 inline-flex items-center gap-1 no-print cursor-pointer"
-                          title="Klik untuk menguji tampilan halaman mobile langsung di tab browser baru"
-                        >
-                          Uji Buka Tautan Scan HP ↗
-                        </a>
+
+                        {/* Public Link Testing Buttons */}
+                        <div className="pt-2 no-print flex flex-col gap-1.5 w-full">
+                          <a
+                            href={getPublicSparePartUrl(selectedItem.id)}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            className="px-2 py-1.5 bg-blue-50 hover:bg-blue-100 text-blue-700 border border-blue-200 rounded text-[9.5px] font-bold flex items-center justify-center gap-1 transition-colors"
+                          >
+                            <ExternalLink className="w-3 h-3" /> Uji Buka di Browser
+                          </a>
+                          <button
+                            type="button"
+                            onClick={() => {
+                              if (navigator.clipboard) {
+                                navigator.clipboard.writeText(getPublicSparePartUrl(selectedItem.id));
+                                alert("Tautan scan HP berhasil disalin ke clipboard!");
+                              }
+                            }}
+                            className="px-2 py-1.5 bg-slate-100 hover:bg-slate-200 text-slate-700 border border-slate-250 rounded text-[9.5px] font-bold flex items-center justify-center gap-1 transition-colors cursor-pointer"
+                          >
+                            <Copy className="w-3 h-3" /> Salin Link Scan
+                          </button>
+                        </div>
                       </div>
                     </div>
 
@@ -1344,10 +1364,10 @@ export default function SparePartCatalogView({
                   {/* Informational Guidance */}
                   <div className="bg-blue-50 border border-blue-200 text-blue-900 p-3 rounded-lg text-xs space-y-1 no-print">
                     <p className="font-bold uppercase tracking-wider text-[10px] flex items-center gap-1.5 text-blue-900 font-mono">
-                      <Info className="w-4 h-4 text-blue-600" /> PANDUAN SCANNER KAMERA HP &amp; BARCODE
+                      <Info className="w-4 h-4 text-blue-600" /> PANDUAN SCANNER BARCODE &amp; QR
                     </p>
                     <p className="leading-relaxed">
-                      Kode QR ini dapat dipindai langsung menggunakan kamera smartphone (iPhone/Android). Saat dipindai, HP akan langsung membuka halaman rincian informasi spesifikasi, stok riil, lokasi rak, dan kesesuaian kapal suku cadang ini <strong>tanpa perlu login</strong>. Label fisik juga dapat dipindai oleh scanner barcode 1D optik di gudang.
+                      Barcode dan QR Code suku cadang ini dibuat unik dan terdaftar di database Spare Part Master. Anda dapat memindai label ini menggunakan scanner optik 1D barcode genggam atau kamera perangkat untuk pencatatan otomatis di modul Inbound, TUG 5, TUG 6, dan Stock Opname.
                     </p>
                   </div>
                 </>
