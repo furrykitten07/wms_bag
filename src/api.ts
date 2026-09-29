@@ -35,6 +35,7 @@ import {
   demoReceiving, 
   demoMaterialReturns 
 } from "./demoSeedData.js";
+import { deriveTUG6FromTUG5 } from "./utils/criticalItemsMatcher.js";
 
 // Default System Signatures Seed
 export const defaultSignatures: DigitalSignature[] = [
@@ -316,7 +317,7 @@ function saveLocalDispatches(data: OutboundDispatch[]) {
 let localSpareParts: SparePart[] = [...demoSpareParts];
 let localSPKs: SPKWorkOrder[] = [...demoSPKs];
 let localMaterialRequests: MaterialRequest[] = [...demoMaterialRequests];
-let localMaterialRequestsTUG6: MaterialRequest[] = [...demoMaterialRequestsTUG6];
+let localMaterialRequestsTUG6: MaterialRequest[] = deriveTUG6FromTUG5(localMaterialRequests);
 let localDispatches: OutboundDispatch[] = loadLocalDispatches();
 let localReceiving: InboundReceiving[] = loadLocalReceiving();
 let localMaterialReturns: MaterialReturn[] = [...demoMaterialReturns];
@@ -721,7 +722,7 @@ function getLocalFallbackData<T>(url: string, options: RequestInit = {}): T {
     localSpareParts = [...demoSpareParts];
     localSPKs = [...demoSPKs];
     localMaterialRequests = [...demoMaterialRequests];
-    localMaterialRequestsTUG6 = [...demoMaterialRequestsTUG6];
+    localMaterialRequestsTUG6 = deriveTUG6FromTUG5(localMaterialRequests);
     localDispatches = [];
     saveLocalDispatches(localDispatches);
     localReceiving = [...demoReceiving];

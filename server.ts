@@ -1797,9 +1797,7 @@ app.post("/api/material-requests/:id/action-log", (req, res) => {
 app.get("/api/material-requests-tug6", (req, res) => {
   // USER DIRECTIVE: TUG 6 is derived from TUG 5 based on sheet 'CRITICAL' in data/FIKRI.xlsx
   const derivedTUG6 = deriveTUG6FromTUG5(materialRequests || []);
-  const derivedIds = new Set(derivedTUG6.map(d => d.id));
-  const manualOnly = (materialRequestsTUG6 || []).filter(m => !derivedIds.has(m.id));
-  res.json([...derivedTUG6, ...manualOnly]);
+  res.json(derivedTUG6);
 });
 
 app.post("/api/material-requests-tug6", (req, res) => {

@@ -34,58 +34,35 @@ export const CRITICAL_PARTS_SHEET_DATA = [
   { name: "O-RING", part_no: "9" }
 ];
 
-export const CRITICAL_NAME_KEYWORDS = [
-  "CYLINDER LINER",
-  "MAIN & THRUST BEARING SHELL",
-  "ORING CYL. LOWER",
-  "O-RING CYL. LOWER",
-  "PISTON RING",
-  "CONNECTING ROD",
-  "CYLINDER COVER",
-  "GASKET",
-  "MAIN BEARING",
-  "PISTON ROD",
-  "FUEL INJECTION PUMP",
-  "METAL,MAIN BEARING",
-  "PACKING P.",
-  "PISTON CROWN"
-];
-
-export const CRITICAL_PART_NUMBERS = [
-  "E245200090A", "00047-001", "Z565002700ZZ", "E200750010",
-  "E205150240B", "E205150200A", "E205150170A", "746623-51403",
-  "146673-02352", "24316-000210", "24316-000240", "24311-020280",
-  "24316-000350", "24311-000090"
-];
+// Normalized exact lookup set: `${PART_NAME.trim().toUpperCase()}||${PART_NO.trim().toUpperCase()}`
+const CRITICAL_EXACT_MAP = new Set(
+  CRITICAL_PARTS_SHEET_DATA.map(item =>
+    `${item.name.trim().toUpperCase()}||${item.part_no.trim().toUpperCase()}`
+  )
+);
 
 /**
- * Checks if a given spare part item matches the CRITICAL sheet in FIKRI.xlsx
+ * Checks if a given spare part item matches the CRITICAL sheet in FIKRI.xlsx.
+ * Strictly performs exact matching based on the combination of PART_NAME + PART_NO.
+ * Both fields must match sheet CRITICAL. No partial or fuzzy matching is performed.
  */
 export function isItemCritical(item: Partial<MaterialRequestItem>): boolean {
   if (!item) return false;
-  if ((item as any).is_critical === true) return true;
 
-  const nameUpper = (item.spare_part_name || "").toUpperCase().trim();
-  const partNoUpper = (item.part_number || "").toUpperCase().trim();
+  const nameUpper = (item.spare_part_name || "").trim().toUpperCase();
+  const partNoUpper = (item.part_number || "").trim().toUpperCase();
 
-  // Check exact/partial name matches
-  for (const kw of CRITICAL_NAME_KEYWORDS) {
-    if (nameUpper.includes(kw)) return true;
-  }
+  if (!nameUpper || !partNoUpper) return false;
 
-  // Check part number matches
-  if (partNoUpper && partNoUpper !== "-" && partNoUpper !== "1") {
-    for (const pno of CRITICAL_PART_NUMBERS) {
-      if (partNoUpper.includes(pno) || pno.includes(partNoUpper)) return true;
-    }
-  }
-
-  return false;
+  return CRITICAL_EXACT_MAP.has(`${nameUpper}||${partNoUpper}`);
 }
 
 /**
- * Derives TUG 6 records directly from TUG 5 material requests.
- * Only TUG 5 requests containing items from sheet CRITICAL are included in TUG 6.
+ * Derives TUG 6 records directly from TUG 5 material requests as the data source.
+ * Filters all TUG 5 records by exact matching (PART_NAME + PART_NO) against sheet CRITICAL.
+ * If both match, the record/item is included in TUG 6.
+ * If either field does not match or is not found, it is excluded.
+ * Preserves all other fields/data from TUG 5 without altering their values.
  */
 export function deriveTUG6FromTUG5(tug5List: MaterialRequest[]): MaterialRequest[] {
   if (!Array.isArray(tug5List)) return [];
@@ -96,23 +73,26 @@ export function deriveTUG6FromTUG5(tug5List: MaterialRequest[]): MaterialRequest
   for (const mr5 of tug5List) {
     if (!mr5 || !Array.isArray(mr5.items)) continue;
 
-    // Filter items to keep only critical items matching sheet CRITICAL in FIKRI.xlsx
+    // Filter items to keep only items exactly matching sheet CRITICAL in FIKRI.xlsx
     const criticalItems: MaterialRequestItem[] = mr5.items
       .filter(isItemCritical)
       .map(it => ({ ...it, is_critical: true }));
 
     if (criticalItems.length > 0) {
       const tug5Num = mr5.tug5_number || `TUG5-2026-${String(seq).padStart(3, "0")}`;
-      const tug6Num = tug5Num.replace("TUG5", "TUG6");
-      const mr6Num = mr5.request_number.replace("MR-", "MR6-");
+      const tug6Num = mr5.tug6_number || tug5Num.replace("TUG5", "TUG6");
+      const mr6Num = mr5.request_number.startsWith("MR6-")
+        ? mr5.request_number
+        : mr5.request_number.replace("MR-", "MR6-");
 
+      // Preserve all other fields and values from TUG 5 without modification
       const tug6Entry: MaterialRequest = {
         ...mr5,
         id: mr5.id.startsWith("mr6-") ? mr5.id : `mr6-${mr5.id}`,
         request_number: mr6Num,
         tug5_number: tug5Num,
         tug6_number: tug6Num,
-        remarks: mr5.remarks ? `${mr5.remarks} (Material Kritis TUG 6)` : `Permintaan Material Kritis TUG 6 untuk ${mr5.vessel_name}`,
+        tug_type: "TUG6",
         items: criticalItems
       };
 
