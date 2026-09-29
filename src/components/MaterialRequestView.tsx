@@ -76,6 +76,7 @@ interface MaterialRequestViewProps {
   onClearAutoOpenMRId?: () => void;
   signatures?: DigitalSignature[];
   vessels?: Vessel[];
+  onUpdateReceiving?: (id: string, update: Partial<InboundReceiving>) => Promise<void>;
 }
 
 export default function MaterialRequestView({
@@ -93,7 +94,8 @@ export default function MaterialRequestView({
   autoOpenMRId,
   onClearAutoOpenMRId,
   signatures = [],
-  vessels = []
+  vessels = [],
+  onUpdateReceiving
 }: MaterialRequestViewProps) {
   const [selectedMRId, setSelectedMRId] = useState<string | null>(null);
   const [activeActionId, setActiveActionId] = useState<string | null>(null);
@@ -101,6 +103,14 @@ export default function MaterialRequestView({
   const [isEditing, setIsEditing] = useState<boolean>(false);
   const [isDetailsOpen, setIsDetailsOpen] = useState<boolean>(false);
   const [isBatchZipModalOpen, setIsBatchZipModalOpen] = useState<boolean>(false);
+
+  // Inbound Synchronization modal states
+  const [isInboundSyncModalOpen, setIsInboundSyncModalOpen] = useState<boolean>(false);
+  const [selectedInboundMRId, setSelectedInboundMRId] = useState<string | null>(null);
+  const [inboundSearchQuery, setInboundSearchQuery] = useState<string>("");
+  const [inboundFilterStatus, setInboundFilterStatus] = useState<"ALL" | "SESUAI" | "TIDAK_SESUAI">("ALL");
+  const [isSyncingInbound, setIsSyncingInbound] = useState<boolean>(false);
+
   const [searchQuery, setSearchQuery] = useState<string>("");
   const [statusFilter, setStatusFilter] = useState<string>("All");
 
@@ -218,71 +228,108 @@ export default function MaterialRequestView({
 
   // Helper to resolve Inbound Receiving & Partial completeness info for a TUG 5 document
   const getInboundInfoForMR = (mr: Partial<MaterialRequest> | MaterialRequest) => {
-    const spkRef = mr.work_order_ref || mr.spk_number;
-    const match = receivingList.find(r => 
-      (spkRef && r.spk_number === spkRef) ||
-      (mr.receiving_ref_id && r.id === mr.receiving_ref_id)
-    );
+    const spkRef = (mr.work_order_ref || mr.spk_number || "").trim();
+
+    // Comprehensive matching:
+    // 1. By direct receiving_ref_id
+    // 2. By remarks tag [INBOUND_SYNC: <id> ...]
+    // 3. By item inbound_rec_id
+    // 4. By exact spk_number match
+    // 5. By PO or SJ number match with work_order_ref
+    // 6. By normalized SPK match
+    const match = receivingList.find(r => {
+      if (!r) return false;
+      if (mr.receiving_ref_id && r.id === mr.receiving_ref_id) return true;
+      if (mr.remarks && mr.remarks.includes(r.id)) return true;
+      if (mr.items && mr.items.some((it: any) => it.inbound_rec_id === r.id)) return true;
+      if (spkRef && r.spk_number && r.spk_number.trim() === spkRef) return true;
+      if (spkRef && (r.purchase_order_num === spkRef || r.delivery_note_num === spkRef)) return true;
+      if (spkRef && r.spk_number) {
+        const normR = r.spk_number.replace(/[\s\.\-\/]/g, '').toLowerCase();
+        const normMR = spkRef.replace(/[\s\.\-\/]/g, '').toLowerCase();
+        if (normR && normMR && (normR === normMR || normR.includes(normMR) || normMR.includes(normR))) return true;
+      }
+      return false;
+    });
 
     if (!match) {
+      // Check if MR itself has manually synced inbound info or remarks
+      const hasSyncedInbound = mr.receiving_status || (mr.remarks && mr.remarks.includes("[INBOUND_SYNC"));
+      if (hasSyncedInbound) {
+        const isPart = mr.is_partial || (mr.remarks && mr.remarks.toLowerCase().includes("tidak sesuai"));
+        return {
+          hasInbound: true,
+          receivingRecord: null,
+          status: mr.receiving_status || (isPart ? "Partial Reject" : "Accepted"),
+          isPartial: !!isPart,
+          isSesuai: !isPart,
+          incompleteItems: mr.incomplete_items_summary || (isPart ? "Tercatat selisih verifikasi gudang" : ""),
+          completionDate: mr.completion_date || mr.updated_at || mr.created_at || new Date().toISOString(),
+          isProgressed: true,
+          auditLogs: [] as any[]
+        };
+      }
+
       return {
         hasInbound: false,
         receivingRecord: null,
-        status: mr.receiving_status || "BELUM_INBOUND",
-        isPartial: mr.is_partial || false,
-        incompleteItems: mr.incomplete_items_summary || "",
-        completionDate: mr.completion_date || null,
+        status: "BELUM_INBOUND",
+        isPartial: false,
+        isSesuai: false,
+        incompleteItems: "",
+        completionDate: null,
+        isProgressed: false,
         auditLogs: [] as any[]
       };
     }
+
+    const isExplicitSesuai = match.status === ReceivingStatus.ACCEPTED || 
+                             match.status === ReceivingStatus.VERIFIED || 
+                             (match.status as string) === "ACCEPTED" || 
+                             (match.status as string) === "VERIFIED";
+
+    const hasItemMismatch = match.items.some(i => {
+      const targetQty = i.qty_spk ?? i.qty_ordered ?? 0;
+      const st = i.status || i.qc_status;
+      return i.qty_received < targetQty || st === "PARTIAL" || st === "REJECTED" || st === "Rejected" || i.item_matched === "Tidak Sesuai" || i.item_matched === false;
+    });
 
     const isPartial = match.status === ReceivingStatus.PARTIAL_REJECT || 
                       match.status === ReceivingStatus.FULL_REJECT || 
                       (match.status as string) === "PARTIAL_REJECT" || 
                       (match.status as string) === "FULL_REJECT" || 
-                      match.items.some(i => {
-                        const targetQty = i.qty_spk ?? i.qty_ordered ?? 0;
-                        const st = i.status || i.qc_status;
-                        return i.qty_received < targetQty || st === "PARTIAL" || st === "REJECTED" || st === "Rejected";
-                      });
+                      hasItemMismatch;
 
-    const isComplete = match.status === ReceivingStatus.ACCEPTED || 
-                       match.status === ReceivingStatus.VERIFIED || 
-                       (match.status as string) === "ACCEPTED" || 
-                       (match.status as string) === "VERIFIED";
+    const isSesuai = isExplicitSesuai && !hasItemMismatch;
 
     const incompleteItemsList = match.items
       .filter(i => {
         const targetQty = i.qty_spk ?? i.qty_ordered ?? 0;
         const st = i.status || i.qc_status;
-        return i.qty_received < targetQty || st === "REJECTED" || st === "Rejected" || st === "PARTIAL";
+        return i.qty_received < targetQty || st === "REJECTED" || st === "Rejected" || st === "PARTIAL" || i.item_matched === "Tidak Sesuai" || i.item_matched === false;
       })
       .map(i => {
         const targetQty = i.qty_spk ?? i.qty_ordered ?? 0;
-        const diff = targetQty - i.qty_received;
+        const diff = Math.max(0, targetQty - i.qty_received);
         const noteStr = i.keeper_notes ? ` (${i.keeper_notes})` : "";
         const name = i.part_name || i.spare_part_name;
-        return `${name}: SPK ${targetQty} ${i.unit || 'PCS'} → Diterima ${i.qty_received} ${i.unit || 'PCS'} (Selisih: ${diff} ${i.unit || 'PCS'}${noteStr})`;
+        return `${name}: Target ${targetQty} ${i.unit || 'PCS'} → Diterima ${i.qty_received} ${i.unit || 'PCS'} ${diff > 0 ? `(Selisih: ${diff})` : ''}${noteStr}`;
       });
     
-    const incompleteItemsSummary = incompleteItemsList.join(" | ") || (isPartial ? "Beberapa barang dalam status parsial / belum lengkap." : "");
+    const incompleteItemsSummary = incompleteItemsList.join(" | ") || (isPartial ? "Beberapa barang dalam status parsial / selisih verifikasi." : "");
 
-    let completionDate = mr.completion_date || null;
-    if (isComplete && match.verified_at) {
-      completionDate = match.verified_at;
-    } else if (isComplete && match.completion_date) {
-      completionDate = match.completion_date;
-    } else if (isComplete && !completionDate) {
-      completionDate = match.created_at || new Date().toISOString();
-    }
+    // Even if isPartial or Tidak Sesuai, completionDate is resolved so it can PROGRESS!
+    let completionDate = match.verified_at || match.completion_date || match.received_date || match.created_at || mr.completion_date || new Date().toISOString();
 
     return {
       hasInbound: true,
       receivingRecord: match,
       status: match.status,
       isPartial,
+      isSesuai,
       incompleteItems: incompleteItemsSummary,
-      completionDate: isComplete ? completionDate : null,
+      completionDate,
+      isProgressed: true, // PROGRESS IS TRUE FOR BOTH SESUAI & TIDAK SESUAI
       auditLogs: match.audit_logs || []
     };
   };
@@ -405,6 +452,236 @@ export default function MaterialRequestView({
     } finally {
       setIsSyncing(false);
     }
+  };
+
+  // Handler: Link a specific Inbound Receiving record to a target Material Request (TUG 5)
+  const handleLinkInboundToTUG5 = async (
+    targetMR: MaterialRequest,
+    inboundRec: InboundReceiving
+  ) => {
+    try {
+      setIsSyncingInbound(true);
+
+      const isSesuai = inboundRec.status === ReceivingStatus.ACCEPTED || 
+                       inboundRec.status === ReceivingStatus.VERIFIED || 
+                       (inboundRec.status as string) === "ACCEPTED" || 
+                       (inboundRec.status as string) === "VERIFIED" ||
+                       inboundRec.items.every(i => i.item_matched === "Sesuai" || i.item_matched === true || i.qty_matched_status === "QTY Sesuai");
+
+      const isPartialOrDiscrepancy = !isSesuai || 
+        inboundRec.status === ReceivingStatus.PARTIAL_REJECT || 
+        inboundRec.status === ReceivingStatus.FULL_REJECT || 
+        (inboundRec.status as string) === "PARTIAL_REJECT" || 
+        (inboundRec.status as string) === "FULL_REJECT" || 
+        inboundRec.items.some(i => {
+          const targetQty = i.qty_spk ?? i.qty_ordered ?? 0;
+          const st = i.status || i.qc_status;
+          return i.qty_received < targetQty || st === "PARTIAL" || st === "REJECTED" || st === "Rejected" || i.item_matched === "Tidak Sesuai" || i.item_matched === false;
+        });
+
+      // Update TUG 5 items with inbound arrival information
+      const updatedItems = (targetMR.items || []).map(mrItem => {
+        const matchedInbItem = inboundRec.items.find(ib => 
+          (ib.spare_part_id && ib.spare_part_id === mrItem.spare_part_id) ||
+          (ib.part_number && ib.part_number !== "-" && ib.part_number.trim().toLowerCase() === (mrItem.part_number || "").trim().toLowerCase()) ||
+          (ib.spare_part_name && ib.spare_part_name.trim().toLowerCase() === mrItem.spare_part_name.trim().toLowerCase())
+        );
+
+        if (matchedInbItem) {
+          const qtyRec = matchedInbItem.qty_received ?? 0;
+          const targetQ = mrItem.requested_qty ?? 1;
+          const isItemSesuai = matchedInbItem.item_matched === "Sesuai" || matchedInbItem.item_matched === true || qtyRec >= targetQ;
+          
+          return {
+            ...mrItem,
+            item_status: qtyRec > 0 ? ("Arrived" as const) : ("Pending" as const),
+            inbound_rec_id: inboundRec.id,
+            inbound_status: matchedInbItem.item_matched || matchedInbItem.qc_status || "Verified",
+            notes: `[Inbound ${inboundRec.delivery_note_num || inboundRec.purchase_order_num}: Diterima ${qtyRec} ${mrItem.unit} (${isItemSesuai ? "Sesuai" : "Tidak Sesuai/Selisih"})] ${mrItem.notes || ""}`.trim()
+          };
+        }
+
+        return {
+          ...mrItem,
+          item_status: "Arrived" as const,
+          inbound_rec_id: inboundRec.id,
+          notes: `[Inbound ${inboundRec.delivery_note_num || inboundRec.purchase_order_num} Terhubung] ${mrItem.notes || ""}`.trim()
+        };
+      });
+
+      const completionDate = inboundRec.verified_at || inboundRec.received_date || new Date().toISOString();
+      const verificationTag = isSesuai ? "Sesuai (Lengkap)" : "Tidak Sesuai (Parsial / Selisih)";
+      const syncNote = `[INBOUND_SYNC: ${inboundRec.id} | SJ: ${inboundRec.delivery_note_num || inboundRec.purchase_order_num} | Verifikasi: ${verificationTag}]`;
+      
+      const cleanRemarks = (targetMR.remarks || "").replace(/\[INBOUND_SYNC:[^\]]+\]/g, "").trim();
+      const newRemarks = `${cleanRemarks} ${syncNote}`.trim();
+
+      // Progress TUG 5: If Draft -> Submitted so it progresses to approval and delivery!
+      const nextStatus = targetMR.status === "Draft" ? "Submitted" : targetMR.status;
+
+      const payload: Partial<MaterialRequest> = {
+        items: updatedItems,
+        remarks: newRemarks,
+        status: nextStatus,
+        receiving_ref_id: inboundRec.id,
+        receiving_status: isSesuai ? "ACCEPTED" : "PARTIAL_REJECT",
+        is_partial: isPartialOrDiscrepancy,
+        completion_date: completionDate
+      };
+
+      await onUpdateRequest(targetMR.id, payload);
+
+      // Link inbound record's spk_number if empty
+      if (onUpdateReceiving && !inboundRec.spk_number && (targetMR.work_order_ref || targetMR.spk_number)) {
+        await onUpdateReceiving(inboundRec.id, {
+          spk_number: targetMR.work_order_ref || targetMR.spk_number,
+          vessel_name: targetMR.vessel_name
+        });
+      }
+
+      alert(`✅ Berhasil mengambil data Inbound (${inboundRec.delivery_note_num || inboundRec.purchase_order_num}) ke TUG 5 (${targetMR.request_number})!\n\nStatus Verifikasi: ${verificationTag}\nDokumen TUG 5 berhasil terprogress.`);
+      setIsInboundSyncModalOpen(false);
+      setSelectedInboundMRId(null);
+    } catch (err: any) {
+      console.error("Gagal menghubungkan data Inbound:", err);
+      alert("Terjadi kesalahan: " + err.message);
+    } finally {
+      setIsSyncingInbound(false);
+    }
+  };
+
+  // Handler: Batch auto sync all inbound receivings to matching TUG 5 documents
+  const handleAutoSyncAllInbound = async () => {
+    if (!receivingList || receivingList.length === 0) {
+      alert("Tidak ada data Inbound Receiving yang tersedia untuk disinkronkan.");
+      return;
+    }
+
+    if (!confirm(`Apakah Anda yakin ingin menjalankan sinkronisasi otomatis untuk seluruh data Inbound (${receivingList.length} penerimaan) ke dokumen TUG 5?\n\nDokumen TUG 5 yang cocok akan otomatis terprogress walaupun status verifikasi Sesuai maupun Tidak Sesuai.`)) {
+      return;
+    }
+
+    setIsSyncingInbound(true);
+    let syncedCount = 0;
+
+    try {
+      for (const inboundRec of receivingList) {
+        // Find matching TUG 5 by SPK, PO, delivery note, or Vessel name
+        const targetMR = requests.find(mr => {
+          const spk = (mr.work_order_ref || mr.spk_number || "").trim();
+          if (inboundRec.spk_number && spk && inboundRec.spk_number.trim() === spk) return true;
+          if (spk && (inboundRec.purchase_order_num === spk || inboundRec.delivery_note_num === spk)) return true;
+          if (spk && inboundRec.spk_number) {
+            const normR = inboundRec.spk_number.replace(/[\s\.\-\/]/g, '').toLowerCase();
+            const normMR = spk.replace(/[\s\.\-\/]/g, '').toLowerCase();
+            if (normR && normMR && (normR === normMR || normR.includes(normMR) || normMR.includes(normR))) return true;
+          }
+          // Vessel match
+          const mrVessel = (mr.vessel_name || "").toLowerCase().replace(/^(mv\.?\s*)/i, "").trim();
+          const inbVessels = inboundRec.items.map(it => (it.vessel_name || "").toLowerCase().replace(/^(mv\.?\s*)/i, "").trim()).filter(Boolean);
+          if (mrVessel && inbVessels.some(iv => iv.includes(mrVessel) || mrVessel.includes(iv))) {
+            const hasCommonItem = inboundRec.items.some(ib => 
+              mr.items && mr.items.some(mi => mi.spare_part_name.toLowerCase().includes(ib.spare_part_name.toLowerCase()) || ib.spare_part_name.toLowerCase().includes(mi.spare_part_name.toLowerCase()))
+            );
+            if (hasCommonItem) return true;
+          }
+          return false;
+        });
+
+        if (targetMR) {
+          const isSesuai = inboundRec.status === ReceivingStatus.ACCEPTED || 
+                           inboundRec.status === ReceivingStatus.VERIFIED || 
+                           (inboundRec.status as string) === "ACCEPTED" || 
+                           (inboundRec.status as string) === "VERIFIED" ||
+                           inboundRec.items.every(i => i.item_matched === "Sesuai" || i.item_matched === true || i.qty_matched_status === "QTY Sesuai");
+
+          const isPartialOrDiscrepancy = !isSesuai || 
+            inboundRec.status === ReceivingStatus.PARTIAL_REJECT || 
+            inboundRec.status === ReceivingStatus.FULL_REJECT || 
+            (inboundRec.status as string) === "PARTIAL_REJECT" || 
+            (inboundRec.status as string) === "FULL_REJECT";
+
+          const updatedItems = (targetMR.items || []).map(mrItem => {
+            const matchedInbItem = inboundRec.items.find(ib => 
+              (ib.spare_part_id && ib.spare_part_id === mrItem.spare_part_id) ||
+              (ib.part_number && ib.part_number !== "-" && ib.part_number.trim().toLowerCase() === (mrItem.part_number || "").trim().toLowerCase()) ||
+              (ib.spare_part_name && ib.spare_part_name.trim().toLowerCase() === mrItem.spare_part_name.trim().toLowerCase())
+            );
+            return {
+              ...mrItem,
+              item_status: "Arrived" as const,
+              inbound_rec_id: inboundRec.id,
+              notes: matchedInbItem 
+                ? `[Inbound ${inboundRec.delivery_note_num || inboundRec.purchase_order_num}: Diterima ${matchedInbItem.qty_received} ${mrItem.unit}] ${mrItem.notes || ""}`.trim()
+                : mrItem.notes
+            };
+          });
+
+          const completionDate = inboundRec.verified_at || inboundRec.received_date || new Date().toISOString();
+          const verificationTag = isSesuai ? "Sesuai" : "Tidak Sesuai/Parsial";
+          const syncNote = `[INBOUND_SYNC: ${inboundRec.id} | SJ: ${inboundRec.delivery_note_num || inboundRec.purchase_order_num} | Verifikasi: ${verificationTag}]`;
+          const cleanRemarks = (targetMR.remarks || "").replace(/\[INBOUND_SYNC:[^\]]+\]/g, "").trim();
+
+          // Progress status: if Draft -> Submitted
+          const nextStatus = targetMR.status === "Draft" ? "Submitted" : targetMR.status;
+
+          await onUpdateRequest(targetMR.id, {
+            items: updatedItems,
+            remarks: `${cleanRemarks} ${syncNote}`.trim(),
+            status: nextStatus,
+            receiving_ref_id: inboundRec.id,
+            receiving_status: isSesuai ? "ACCEPTED" : "PARTIAL_REJECT",
+            is_partial: isPartialOrDiscrepancy,
+            completion_date: completionDate
+          });
+
+          syncedCount++;
+        }
+      }
+
+      alert(`✅ Sinkronisasi Inbound Selesai!\n\nSebanyak ${syncedCount} dokumen TUG 5 berhasil mengambil data dan terprogress dari Inbound Receiving.`);
+      setIsInboundSyncModalOpen(false);
+    } catch (err: any) {
+      console.error("Gagal sinkronisasi inbound otomatis:", err);
+      alert("Terjadi kesalahan: " + err.message);
+    } finally {
+      setIsSyncingInbound(false);
+    }
+  };
+
+  // Handler: Load items from Inbound into Create/Edit form
+  const handleLoadItemsFromInbound = () => {
+    let matchedInbound = receivingList.find(r => 
+      (workOrderRef && r.spk_number === workOrderRef) ||
+      (workOrderRef && (r.purchase_order_num === workOrderRef || r.delivery_note_num === workOrderRef))
+    );
+
+    if (!matchedInbound && receivingList.length > 0) {
+      const byVsl = receivingList.filter(r => 
+        r.items && r.items.some(i => i.vessel_name && i.vessel_name.toLowerCase().includes((vesselName || "").toLowerCase()))
+      );
+      matchedInbound = byVsl[0] || receivingList[0];
+    }
+
+    if (!matchedInbound) {
+      alert("Tidak ditemukan data Inbound Receiving yang cocok.");
+      return;
+    }
+
+    const loadedItems: Partial<MaterialRequestItem>[] = matchedInbound.items.map(ib => ({
+      spare_part_id: ib.spare_part_id || `sp-inb-${Date.now()}`,
+      spare_part_name: ib.part_name || ib.spare_part_name,
+      part_number: ib.part_number || "-",
+      unit: ib.unit || "PCS",
+      avg_monthly_usage: 1,
+      remaining_stock: 10,
+      requested_qty: ib.qty_received > 0 ? ib.qty_received : (ib.qty_ordered || 1),
+      notes: `Diambil dari Inbound ${matchedInbound.delivery_note_num || matchedInbound.purchase_order_num} (Verifikasi: ${ib.item_matched || "Sesuai"})`,
+      item_status: "Arrived"
+    }));
+
+    setFormItems(loadedItems);
+    alert(`Berhasil memuat ${loadedItems.length} item suku cadang dari Inbound ${matchedInbound.delivery_note_num || matchedInbound.purchase_order_num}!`);
   };
 
   const handleStartCreate = () => {
@@ -814,6 +1091,24 @@ export default function MaterialRequestView({
           </button>
 
           <button
+            onClick={() => {
+              setSelectedInboundMRId(null);
+              setIsInboundSyncModalOpen(true);
+            }}
+            disabled={isSyncingInbound}
+            className="px-4 py-3 bg-gradient-to-r from-emerald-600 to-teal-700 hover:from-emerald-500 hover:to-teal-600 text-white font-bold text-xs uppercase rounded-lg flex items-center justify-center gap-2 transition-all shadow-sm cursor-pointer"
+            title="Ambil data dari Inbound Receiving untuk mem-progress TUG 5 (Sesuai maupun Tidak Sesuai)"
+          >
+            <Download className="w-4 h-4 text-emerald-100" />
+            <span>📥 Ambil Data Dari Inbound</span>
+            {(receivingList || []).length > 0 && (
+              <span className="bg-emerald-800 text-white text-[9px] px-1.5 py-0.5 rounded-full font-bold ml-0.5 border border-emerald-400/40">
+                {(receivingList || []).length}
+              </span>
+            )}
+          </button>
+
+          <button
             onClick={handleSyncSPK}
             disabled={isSyncing}
             className={`px-4 py-3 font-bold text-xs uppercase rounded-lg flex items-center justify-center gap-2 transition-all shadow-sm border cursor-pointer text-center relative ${
@@ -1094,17 +1389,22 @@ export default function MaterialRequestView({
                             <div className="flex flex-col items-center gap-0.5" title={inboundInfo.incompleteItems}>
                               <span className="bg-amber-100 text-amber-900 border border-amber-300 px-2.5 py-0.5 rounded-full text-[9.5px] font-black uppercase tracking-wider flex items-center gap-1 w-fit shadow-2xs">
                                 <AlertTriangle className="w-3 h-3 text-amber-600 shrink-0" />
-                                ⚠️ Parsial (Selisih)
+                                ⚠️ Tidak Sesuai (Terprogress)
                               </span>
                               <span className="text-[9px] text-amber-700 font-sans font-medium line-clamp-1 max-w-[150px]">
                                 {inboundInfo.incompleteItems}
                               </span>
+                              {inboundInfo.completionDate && (
+                                <span className="text-[8.5px] text-slate-500 font-mono">
+                                  Tercatat: {new Date(inboundInfo.completionDate).toLocaleDateString("id-ID", { day: "numeric", month: "short" })}
+                                </span>
+                              )}
                             </div>
                           ) : (
                             <div className="flex flex-col items-center gap-0.5">
                               <span className="bg-emerald-100 text-emerald-900 border border-emerald-300 px-2.5 py-0.5 rounded-full text-[9.5px] font-black uppercase tracking-wider flex items-center gap-1 w-fit shadow-2xs">
                                 <CheckCircle className="w-3 h-3 text-emerald-600 shrink-0" />
-                                ✓ Lengkap
+                                ✓ Sesuai (Terprogress)
                               </span>
                               {inboundInfo.completionDate && (
                                 <span className="text-[9px] text-emerald-700 font-mono font-bold">
@@ -1114,9 +1414,24 @@ export default function MaterialRequestView({
                             </div>
                           )
                         ) : (
-                          <span className="bg-slate-100 text-slate-500 border border-slate-200 px-2.5 py-0.5 rounded-full text-[9.5px] font-bold uppercase tracking-wider w-fit inline-block">
-                            ⚪ Belum Inbound
-                          </span>
+                          <div className="flex flex-col items-center gap-1">
+                            <span className="bg-slate-100 text-slate-500 border border-slate-200 px-2.5 py-0.5 rounded-full text-[9.5px] font-bold uppercase tracking-wider w-fit inline-block">
+                              ⚪ Belum Inbound
+                            </span>
+                            <button
+                              type="button"
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                setSelectedInboundMRId(mr.id);
+                                setIsInboundSyncModalOpen(true);
+                              }}
+                              className="text-[10px] text-teal-700 hover:text-teal-900 font-bold underline cursor-pointer hover:bg-teal-50 px-1.5 py-0.5 rounded transition-all flex items-center gap-0.5"
+                              title="Ambil data Inbound untuk TUG 5 ini"
+                            >
+                              <Download className="w-2.5 h-2.5" />
+                              <span>Ambil Inbound</span>
+                            </button>
+                          </div>
                         )}
                       </td>
                       <td className="py-4.5 px-6 text-center font-mono font-bold">
@@ -1324,6 +1639,20 @@ export default function MaterialRequestView({
 
                                   {/* SECTION 2: AKSI DOKUMEN & CETAK */}
                                   <div className="py-1.5 space-y-0.5">
+                                    <button
+                                      type="button"
+                                      onClick={(e) => {
+                                        e.stopPropagation();
+                                        setActiveActionId(null);
+                                        setSelectedInboundMRId(mr.id);
+                                        setIsInboundSyncModalOpen(true);
+                                      }}
+                                      className="w-full px-2.5 py-2 text-xs font-bold hover:bg-teal-50 text-teal-800 rounded-lg flex items-center gap-2.5 cursor-pointer transition-colors text-left"
+                                    >
+                                      <Download className="w-4 h-4 text-teal-600 shrink-0" />
+                                      <span>Ambil Data Dari Inbound</span>
+                                    </button>
+
                                     <button
                                       type="button"
                                       onClick={(e) => {
@@ -1663,21 +1992,47 @@ export default function MaterialRequestView({
                       </div>
                       <div>
                         {inboundInfo.hasInbound ? (
-                          inboundInfo.isPartial ? (
-                            <span className="bg-amber-500/20 text-amber-300 border border-amber-500/40 px-3 py-1 rounded-full text-[10px] font-black uppercase tracking-wider flex items-center gap-1.5">
-                              <AlertTriangle className="w-3.5 h-3.5 text-amber-400 shrink-0" />
-                              ⚠️ DATA PARSIAL (BELUM LENGKAP)
-                            </span>
-                          ) : (
-                            <span className="bg-emerald-500/20 text-emerald-300 border border-emerald-500/40 px-3 py-1 rounded-full text-[10px] font-black uppercase tracking-wider flex items-center gap-1.5">
-                              <CheckCircle className="w-3.5 h-3.5 text-emerald-400 shrink-0" />
-                              ✓ DATA LENGKAP & TERVERIFIKASI
-                            </span>
-                          )
+                          <div className="flex items-center gap-2">
+                            {inboundInfo.isPartial ? (
+                              <span className="bg-amber-500/20 text-amber-300 border border-amber-500/40 px-3 py-1 rounded-full text-[10px] font-black uppercase tracking-wider flex items-center gap-1.5">
+                                <AlertTriangle className="w-3.5 h-3.5 text-amber-400 shrink-0" />
+                                ⚠️ DATA TIDAK SESUAI (TERPROGRESS)
+                              </span>
+                            ) : (
+                              <span className="bg-emerald-500/20 text-emerald-300 border border-emerald-500/40 px-3 py-1 rounded-full text-[10px] font-black uppercase tracking-wider flex items-center gap-1.5">
+                                <CheckCircle className="w-3.5 h-3.5 text-emerald-400 shrink-0" />
+                                ✓ DATA SESUAI & TERVERIFIKASI
+                              </span>
+                            )}
+                            <button
+                              type="button"
+                              onClick={() => {
+                                setSelectedInboundMRId(activeMR.id);
+                                setIsInboundSyncModalOpen(true);
+                              }}
+                              className="px-2.5 py-1 bg-slate-800 hover:bg-slate-700 text-slate-200 border border-slate-600 rounded text-[10px] font-bold cursor-pointer transition-all flex items-center gap-1"
+                            >
+                              <Download className="w-3 h-3 text-teal-400" />
+                              <span>Ubah Tautan Inbound</span>
+                            </button>
+                          </div>
                         ) : (
-                          <span className="bg-slate-800 text-slate-400 border border-slate-700 px-3 py-1 rounded-full text-[10px] font-bold uppercase tracking-wider">
-                            ⚪ BELUM TERDAPAT DATA INBOUND
-                          </span>
+                          <div className="flex items-center gap-2">
+                            <span className="bg-slate-800 text-slate-400 border border-slate-700 px-3 py-1 rounded-full text-[10px] font-bold uppercase tracking-wider">
+                              ⚪ BELUM TERDAPAT DATA INBOUND
+                            </span>
+                            <button
+                              type="button"
+                              onClick={() => {
+                                setSelectedInboundMRId(activeMR.id);
+                                setIsInboundSyncModalOpen(true);
+                              }}
+                              className="px-3 py-1 bg-emerald-600 hover:bg-emerald-500 text-white rounded text-[10px] font-bold font-sans cursor-pointer transition-all shadow-xs flex items-center gap-1"
+                            >
+                              <Download className="w-3 h-3" />
+                              <span>Ambil Data Dari Inbound</span>
+                            </button>
+                          </div>
                         )}
                       </div>
                     </div>
@@ -2279,6 +2634,16 @@ export default function MaterialRequestView({
                             >
                               ✨ Muat Suku Cadang Dari SPK
                             </button>
+
+                            <button
+                              type="button"
+                              onClick={handleLoadItemsFromInbound}
+                              className="w-full mt-1.5 py-1.5 px-3 bg-teal-600 hover:bg-teal-700 text-white font-bold rounded text-[10px] uppercase tracking-wider transition-all shadow-xs cursor-pointer flex items-center justify-center gap-1.5"
+                            >
+                              <Download className="w-3.5 h-3.5" />
+                              <span>📥 Muat Suku Cadang Dari Inbound Receiving</span>
+                            </button>
+
                             <span className="text-[8px] text-slate-500 block mt-1 leading-tight">
                               Kapal yang ada dalam SPK: {matchedSPK.vessels.map(v => v.vessel_name).join(", ")}
                             </span>
@@ -2713,6 +3078,369 @@ export default function MaterialRequestView({
                 )}
               </button>
             </div>
+          </div>
+        </div>
+      )}
+
+      {/* 5. MODAL AMBIL DATA DARI INBOUND RECEIVING */}
+      {isInboundSyncModalOpen && (
+        <div className="fixed inset-0 z-50 bg-slate-900/70 backdrop-blur-xs flex items-center justify-center p-4 overflow-y-auto no-print">
+          <div className="bg-white border border-slate-200 rounded-2xl shadow-2xl max-w-4xl w-full font-sans overflow-hidden my-8 flex flex-col max-h-[92vh] animate-in fade-in zoom-in-95 duration-200">
+            
+            {/* Modal Header */}
+            <div className="px-6 py-4 border-b border-slate-200 bg-gradient-to-r from-slate-900 via-teal-950 to-slate-900 text-white flex justify-between items-center shrink-0">
+              <div className="flex items-center gap-3">
+                <div className="p-2.5 rounded-xl bg-teal-500/20 border border-teal-500/30 text-teal-300">
+                  <Download className="w-5 h-5" />
+                </div>
+                <div>
+                  <h3 className="text-base font-black font-display tracking-wide uppercase text-white flex items-center gap-2">
+                    <span>Ambil Data Dari Inbound Receiving ke TUG 5</span>
+                  </h3>
+                  <p className="text-xs text-teal-200/80 font-sans mt-0.5">
+                    Tarik data penerimaan kargo gudang agar TUG 5 terprogress (baik status verifikasi Sesuai maupun Tidak Sesuai).
+                  </p>
+                </div>
+              </div>
+              <button 
+                onClick={() => {
+                  setIsInboundSyncModalOpen(false);
+                  setSelectedInboundMRId(null);
+                }}
+                className="p-1.5 text-slate-400 hover:text-white hover:bg-white/10 rounded-full transition-colors cursor-pointer"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            {/* Modal Body */}
+            <div className="flex-1 overflow-y-auto p-6 space-y-5 bg-slate-50/50">
+              
+              {/* Target TUG 5 Document Selector */}
+              <div className="bg-white p-4 rounded-xl border border-slate-250 shadow-2xs space-y-2">
+                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 border-b border-slate-100 pb-2">
+                  <div className="flex items-center gap-2 font-mono text-xs font-black text-slate-800">
+                    <FileSpreadsheet className="w-4 h-4 text-emerald-600" />
+                    <span>DOKUMEN TUG 5 SASARAN:</span>
+                  </div>
+                  {selectedInboundMRId && (
+                    <button
+                      type="button"
+                      onClick={() => setSelectedInboundMRId(null)}
+                      className="text-[11px] text-blue-600 hover:text-blue-800 font-bold underline cursor-pointer self-start sm:self-auto"
+                    >
+                      Pilih Dokumen TUG 5 Lain / Otomatis
+                    </button>
+                  )}
+                </div>
+
+                <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-3">
+                  <select
+                    value={selectedInboundMRId || ""}
+                    onChange={(e) => setSelectedInboundMRId(e.target.value || null)}
+                    className="flex-1 bg-slate-50 border border-slate-250 rounded-lg text-xs px-3 py-2.5 font-bold text-slate-800 focus:outline-none focus:ring-1 focus:ring-emerald-500 cursor-pointer"
+                  >
+                    <option value="">-- [OTOMATIS COCOKKAN KE TUG 5 SESUAI SPK / KAPAL] --</option>
+                    {requests.map(r => (
+                      <option key={r.id} value={r.id}>
+                        {r.request_number} &bull; {r.vessel_name} ({r.items?.length || 0} Suku Cadang) &bull; SPK: {r.work_order_ref || '-'} &bull; [{r.status}]
+                      </option>
+                    ))}
+                  </select>
+
+                  <button
+                    type="button"
+                    disabled={isSyncingInbound}
+                    onClick={handleAutoSyncAllInbound}
+                    className="px-4 py-2.5 bg-blue-600 hover:bg-blue-500 text-white rounded-lg text-xs font-bold transition-all shadow-xs flex items-center justify-center gap-1.5 cursor-pointer shrink-0 disabled:opacity-50"
+                    title="Jalankan sinkronisasi otomatis untuk seluruh data Inbound ke dokumen TUG 5"
+                  >
+                    <span>⚡ Sinkronkan Semua Otomatis</span>
+                  </button>
+                </div>
+
+                {selectedInboundMRId && (() => {
+                  const targetMR = requests.find(r => r.id === selectedInboundMRId);
+                  if (!targetMR) return null;
+                  const inbInfo = getInboundInfoForMR(targetMR);
+                  return (
+                    <div className="mt-2 p-2.5 bg-emerald-50/70 border border-emerald-200 rounded-lg text-xs flex flex-wrap items-center justify-between gap-2">
+                      <div className="flex items-center gap-2">
+                        <span className="font-mono font-bold text-emerald-900">{targetMR.request_number}</span>
+                        <span className="text-slate-600">&bull; {targetMR.vessel_name}</span>
+                        <span className="text-rose-600 font-mono font-bold">&bull; SPK: {targetMR.work_order_ref || '-'}</span>
+                      </div>
+                      <div className="flex items-center gap-2">
+                        <span className="text-[10.5px] text-slate-600">Status Saat Ini:</span>
+                        <span className="bg-white border border-emerald-300 text-emerald-800 px-2 py-0.5 rounded font-mono font-bold text-[10px]">
+                          {targetMR.status}
+                        </span>
+                        {inbInfo.hasInbound && (
+                          <span className="bg-teal-100 text-teal-800 px-2 py-0.5 rounded font-mono font-bold text-[10px]">
+                            {inbInfo.isPartial ? "⚠️ Terhubung (Tidak Sesuai)" : "✓ Terhubung (Sesuai)"}
+                          </span>
+                        )}
+                      </div>
+                    </div>
+                  );
+                })()}
+              </div>
+
+              {/* Inbound Search & Status Filters */}
+              <div className="flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-3">
+                <div className="relative flex-1">
+                  <input
+                    type="text"
+                    placeholder="Cari berdasarkan Surat Jalan (SJ), No. PO, No. SPK, atau Kapal..."
+                    value={inboundSearchQuery}
+                    onChange={(e) => setInboundSearchQuery(e.target.value)}
+                    className="w-full bg-white border border-slate-250 text-slate-800 p-2.5 pl-9 text-xs rounded-lg outline-none focus:border-emerald-600 font-sans"
+                  />
+                  <Search className="w-4 h-4 text-slate-400 absolute left-3 top-3" />
+                  {inboundSearchQuery && (
+                    <button
+                      type="button"
+                      onClick={() => setInboundSearchQuery("")}
+                      className="absolute right-2.5 top-2.5 text-slate-400 hover:text-slate-600"
+                    >
+                      <X className="w-4 h-4" />
+                    </button>
+                  )}
+                </div>
+
+                <div className="flex items-center gap-1.5 shrink-0 bg-white p-1 rounded-lg border border-slate-250 text-[11px] font-bold">
+                  <button
+                    type="button"
+                    onClick={() => setInboundFilterStatus("ALL")}
+                    className={`px-3 py-1.5 rounded-md transition-all cursor-pointer ${
+                      inboundFilterStatus === "ALL"
+                        ? "bg-slate-900 text-white shadow-xs"
+                        : "text-slate-600 hover:text-slate-900"
+                    }`}
+                  >
+                    Semua ({receivingList.length})
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setInboundFilterStatus("SESUAI")}
+                    className={`px-3 py-1.5 rounded-md transition-all cursor-pointer flex items-center gap-1 ${
+                      inboundFilterStatus === "SESUAI"
+                        ? "bg-emerald-600 text-white shadow-xs"
+                        : "text-emerald-700 hover:bg-emerald-50"
+                    }`}
+                  >
+                    <span>✓ Sesuai</span>
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setInboundFilterStatus("TIDAK_SESUAI")}
+                    className={`px-3 py-1.5 rounded-md transition-all cursor-pointer flex items-center gap-1 ${
+                      inboundFilterStatus === "TIDAK_SESUAI"
+                        ? "bg-amber-600 text-white shadow-xs"
+                        : "text-amber-700 hover:bg-amber-50"
+                    }`}
+                  >
+                    <span>⚠️ Tidak Sesuai</span>
+                  </button>
+                </div>
+              </div>
+
+              {/* List of Inbound Receivings */}
+              <div className="space-y-3">
+                {(() => {
+                  const filteredInbound = receivingList.filter(rec => {
+                    const q = inboundSearchQuery.trim().toLowerCase();
+                    const matchesSearch = !q || (
+                      (rec.purchase_order_num || "").toLowerCase().includes(q) ||
+                      (rec.delivery_note_num || "").toLowerCase().includes(q) ||
+                      (rec.spk_number || "").toLowerCase().includes(q) ||
+                      (rec.supplier_name || "").toLowerCase().includes(q) ||
+                      (rec.vessel_name || "").toLowerCase().includes(q) ||
+                      (rec.items || []).some(i => 
+                        (i.part_name || i.spare_part_name || "").toLowerCase().includes(q) ||
+                        (i.part_number || "").toLowerCase().includes(q) ||
+                        (i.vessel_name || "").toLowerCase().includes(q)
+                      )
+                    );
+
+                    if (!matchesSearch) return false;
+
+                    const isSesuai = rec.status === ReceivingStatus.ACCEPTED || 
+                                     rec.status === ReceivingStatus.VERIFIED || 
+                                     (rec.status as string) === "ACCEPTED" || 
+                                     (rec.status as string) === "VERIFIED" ||
+                                     rec.items.every(i => i.item_matched === "Sesuai" || i.item_matched === true || i.qty_matched_status === "QTY Sesuai");
+
+                    if (inboundFilterStatus === "SESUAI" && !isSesuai) return false;
+                    if (inboundFilterStatus === "TIDAK_SESUAI" && isSesuai) return false;
+
+                    return true;
+                  });
+
+                  if (filteredInbound.length === 0) {
+                    return (
+                      <div className="bg-white rounded-xl border border-slate-200 p-10 text-center text-slate-400 font-mono text-xs">
+                        Tidak ada data Inbound Receiving yang sesuai dengan pencarian atau filter.
+                      </div>
+                    );
+                  }
+
+                  return filteredInbound.map(inboundRec => {
+                    const isSesuai = inboundRec.status === ReceivingStatus.ACCEPTED || 
+                                     inboundRec.status === ReceivingStatus.VERIFIED || 
+                                     (inboundRec.status as string) === "ACCEPTED" || 
+                                     (inboundRec.status as string) === "VERIFIED" ||
+                                     inboundRec.items.every(i => i.item_matched === "Sesuai" || i.item_matched === true || i.qty_matched_status === "QTY Sesuai");
+
+                    const mismatchItems = inboundRec.items.filter(i => {
+                      const targetQty = i.qty_spk ?? i.qty_ordered ?? 0;
+                      const st = i.status || i.qc_status;
+                      return i.qty_received < targetQty || st === "PARTIAL" || st === "REJECTED" || st === "Rejected" || i.item_matched === "Tidak Sesuai" || i.item_matched === false;
+                    });
+
+                    // Target MR resolution: if selectedInboundMRId is chosen, use that; else find best match
+                    const targetMR = selectedInboundMRId 
+                      ? requests.find(r => r.id === selectedInboundMRId)
+                      : requests.find(r => {
+                          const spk = (r.work_order_ref || r.spk_number || "").trim();
+                          if (inboundRec.spk_number && spk && inboundRec.spk_number.trim() === spk) return true;
+                          if (spk && (inboundRec.purchase_order_num === spk || inboundRec.delivery_note_num === spk)) return true;
+                          return false;
+                        });
+
+                    return (
+                      <div 
+                        key={inboundRec.id} 
+                        className={`bg-white rounded-xl border transition-all p-4.5 shadow-2xs space-y-3 ${
+                          isSesuai ? "border-slate-200 hover:border-emerald-300" : "border-amber-200 bg-amber-50/20 hover:border-amber-300"
+                        }`}
+                      >
+                        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2.5">
+                          <div className="space-y-1">
+                            <div className="flex items-center gap-2">
+                              <span className="font-mono text-sm font-black text-slate-900">
+                                {inboundRec.delivery_note_num || inboundRec.purchase_order_num || "Inbound Receiving"}
+                              </span>
+                              {isSesuai ? (
+                                <span className="bg-emerald-100 text-emerald-900 border border-emerald-300 text-[10px] font-black uppercase px-2 py-0.5 rounded-full flex items-center gap-1">
+                                  <CheckCircle className="w-3 h-3 text-emerald-600" />
+                                  ✓ Sesuai (Lengkap)
+                                </span>
+                              ) : (
+                                <span className="bg-amber-100 text-amber-900 border border-amber-300 text-[10px] font-black uppercase px-2 py-0.5 rounded-full flex items-center gap-1">
+                                  <AlertTriangle className="w-3 h-3 text-amber-600" />
+                                  ⚠️ Tidak Sesuai / Selisih (Terprogress)
+                                </span>
+                              )}
+                            </div>
+                            <div className="flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-slate-500 font-sans">
+                              {inboundRec.purchase_order_num && (
+                                <span>PO: <strong className="text-slate-700 font-mono">{inboundRec.purchase_order_num}</strong></span>
+                              )}
+                              {inboundRec.spk_number && (
+                                <span>SPK: <strong className="text-rose-600 font-mono font-bold">{inboundRec.spk_number}</strong></span>
+                              )}
+                              <span>Penerimaan: <strong className="text-slate-700">{inboundRec.received_date ? new Date(inboundRec.received_date).toLocaleDateString("id-ID", { day: "numeric", month: "short", year: "numeric" }) : "-"}</strong></span>
+                              {inboundRec.supplier_name && (
+                                <span>Vendor: <strong className="text-slate-700">{inboundRec.supplier_name}</strong></span>
+                              )}
+                            </div>
+                          </div>
+
+                          {/* Action Button */}
+                          <div className="shrink-0 flex items-center gap-2">
+                            <button
+                              type="button"
+                              disabled={isSyncingInbound}
+                              onClick={async () => {
+                                let destinationMR = targetMR;
+                                if (!destinationMR) {
+                                  alert("Harap pilih Dokumen TUG 5 Sasaran di bagian atas terlebih dahulu sebelum menghubungkan data ini.");
+                                  return;
+                                }
+                                await handleLinkInboundToTUG5(destinationMR, inboundRec);
+                              }}
+                              className={`px-4 py-2 text-xs font-bold rounded-lg flex items-center gap-1.5 transition-all shadow-xs cursor-pointer ${
+                                isSesuai 
+                                  ? "bg-emerald-600 hover:bg-emerald-500 text-white" 
+                                  : "bg-amber-600 hover:bg-amber-500 text-white"
+                              }`}
+                            >
+                              <Download className="w-3.5 h-3.5" />
+                              <span>{targetMR ? `Ambil Data ke ${targetMR.request_number} ➔` : "Pilih TUG 5 & Hubungkan ➔"}</span>
+                            </button>
+                          </div>
+                        </div>
+
+                        {/* Items breakdown list */}
+                        <div className="bg-slate-50 border border-slate-200/80 rounded-lg p-3 text-xs space-y-1.5">
+                          <div className="flex items-center justify-between text-[11px] font-bold text-slate-600 font-mono border-b border-slate-200 pb-1">
+                            <span>Daftar {inboundRec.items?.length || 0} Barang Diterima Inbound:</span>
+                            {mismatchItems.length > 0 && (
+                              <span className="text-amber-700 font-black">
+                                {mismatchItems.length} Barang Tercatat Selisih / Tidak Sesuai
+                              </span>
+                            )}
+                          </div>
+
+                          <div className="grid grid-cols-1 md:grid-cols-2 gap-2 pt-1 max-h-36 overflow-y-auto pr-1">
+                            {(inboundRec.items || []).map((itm, idx) => {
+                              const targetQ = itm.qty_spk ?? itm.qty_ordered ?? 0;
+                              const isItemOk = (itm.qty_received >= targetQ) && (itm.item_matched === "Sesuai" || itm.item_matched === true || itm.qty_matched_status === "QTY Sesuai");
+                              return (
+                                <div 
+                                  key={idx} 
+                                  className={`p-1.5 rounded border text-[11px] flex items-center justify-between gap-1.5 ${
+                                    isItemOk ? "bg-white border-slate-200" : "bg-amber-50 border-amber-300"
+                                  }`}
+                                >
+                                  <div className="truncate flex-1">
+                                    <span className="font-semibold text-slate-800">{itm.part_name || itm.spare_part_name}</span>
+                                    <span className="text-slate-400 font-mono text-[9.5px] ml-1">({itm.part_number || "-"})</span>
+                                    {itm.vessel_name && (
+                                      <span className="text-blue-600 block text-[9.5px]">{itm.vessel_name}</span>
+                                    )}
+                                  </div>
+                                  <div className="font-mono text-[10px] shrink-0 text-right">
+                                    <span className="text-slate-500">Tgt: {targetQ}</span> &bull;{" "}
+                                    <span className="font-bold text-emerald-700">Diterima: {itm.qty_received} {itm.unit || "PCS"}</span>
+                                    {!isItemOk && (
+                                      <span className="text-amber-700 font-bold block text-[9px]">
+                                        [Selisih: {Math.max(0, targetQ - itm.qty_received)}]
+                                      </span>
+                                    )}
+                                  </div>
+                                </div>
+                              );
+                            })}
+                          </div>
+                        </div>
+
+                      </div>
+                    );
+                  });
+                })()}
+              </div>
+
+            </div>
+
+            {/* Modal Footer */}
+            <div className="px-6 py-3.5 bg-slate-100 border-t border-slate-200 flex items-center justify-between text-xs">
+              <span className="text-slate-500 font-mono text-[11px]">
+                Total Penerimaan Inbound: <strong>{receivingList.length}</strong> transaksi terekam
+              </span>
+              <button
+                type="button"
+                onClick={() => {
+                  setIsInboundSyncModalOpen(false);
+                  setSelectedInboundMRId(null);
+                }}
+                className="px-4 py-2 bg-white border border-slate-300 hover:bg-slate-50 text-slate-700 font-bold rounded-lg cursor-pointer transition-colors"
+              >
+                Tutup
+              </button>
+            </div>
+
           </div>
         </div>
       )}
