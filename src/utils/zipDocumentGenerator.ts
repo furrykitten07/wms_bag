@@ -186,8 +186,8 @@ export function generateSingleTUGHTML(
 
   const sigVP = getSignatureForSlot("VP RENDALHAR", "Sumbono", signatures, req);
   const sigManager = getSignatureForSlot("Manager Logistik", "Mohamat Emir Ferdian", signatures, req);
-  const sigGudang = getSignatureForSlot("Kepala Gudang", "MAGHFUR MUHAMMAD ALFIN", signatures, req);
-  const sigPetugasGudang = getSignatureForSlot("Petugas Gudang", "Aldi Hidayat", signatures, req);
+  const sigGudang = null;
+  const sigPetugasGudang = getSignatureForSlot("Petugas Gudang", "MAGHFUR MUHAMMAD ALFIN", signatures, req) || getSignatureForSlot("Petugas Gudang", "Aldi Hidayat", signatures, req) || createSVGSignatureDataUrl("MAGHFUR MUHAMMAD ALFIN");
 
   const cleanAddress = (req.delivery_address || "Pelabuhan Merak, Cilegon, Banten")
     .replace(/,\s*SPK\s+[^,]+/gi, "")
@@ -199,23 +199,23 @@ export function generateSingleTUGHTML(
 
   const itemsHtml = (!req.items || req.items.length === 0) ? `
     <tr style="border-bottom: 1px solid #cbd5e1; font-weight: 600;">
-      <td style="padding: 8px 6px; border-right: 1px solid #cbd5e1; text-align: center; font-family: 'JetBrains Mono', monospace; font-size: 10px; color: #94a3b8;">1</td>
-      <td style="padding: 8px 12px; border-right: 1px solid #cbd5e1; font-family: 'Inter', sans-serif; font-weight: 700; font-size: 11px; color: #94a3b8;">(-)</td>
-      <td style="padding: 8px 10px; border-right: 1px solid #cbd5e1; font-family: 'JetBrains Mono', monospace; font-size: 10.5px; color: #94a3b8;">(-)</td>
-      <td style="padding: 8px 6px; border-right: 1px solid #cbd5e1; text-align: center; font-family: 'JetBrains Mono', monospace; font-size: 10.5px; color: #94a3b8;">(-)</td>
-      <td style="padding: 8px 6px; border-right: 1px solid #cbd5e1; text-align: center; font-family: 'JetBrains Mono', monospace; color: #94a3b8; font-size: 11px;">(-)</td>
-      <td style="padding: 8px 6px; border-right: 1px solid #cbd5e1; text-align: center; font-family: 'JetBrains Mono', monospace; font-size: 10px; color: #94a3b8;"></td>
-      <td style="padding: 8px 12px; color: #64748b; font-family: 'Inter', sans-serif; font-style: italic; font-size: 10px;">NIHIL (-)</td>
+      <td style="padding: 6px 5px; border-right: 1px solid #cbd5e1; text-align: center; font-family: monospace; font-size: 10px; color: #94a3b8;">1</td>
+      <td style="padding: 6px 10px; border-right: 1px solid #cbd5e1; font-family: monospace; font-weight: bold; font-size: 10.5px; color: #94a3b8;">(-)</td>
+      <td style="padding: 6px 8px; border-right: 1px solid #cbd5e1; font-family: monospace; font-size: 10.5px; color: #94a3b8;">(-)</td>
+      <td style="padding: 6px 5px; border-right: 1px solid #cbd5e1; text-align: center; font-family: monospace; font-size: 10px; color: #94a3b8;">(-)</td>
+      <td style="padding: 6px 5px; border-right: 1px solid #cbd5e1; text-align: center; font-family: monospace; color: #94a3b8; font-size: 11px;">(-)</td>
+      <td style="padding: 6px 5px; border-right: 1px solid #cbd5e1; text-align: center; font-family: monospace; font-size: 10px; color: #94a3b8;"></td>
+      <td style="padding: 6px 10px; color: #64748b; font-family: monospace; font-style: italic; font-size: 9.5px;">NIHIL (-)</td>
     </tr>
   ` : req.items.map((item, idx) => `
-    <tr style="border-bottom: 1px solid #cbd5e1; font-weight: 600;">
-      <td style="padding: 8px 6px; border-right: 1px solid #cbd5e1; text-align: center; font-family: 'JetBrains Mono', monospace; font-size: 10px; color: #64748b;">${idx + 1}</td>
-      <td style="padding: 8px 12px; border-right: 1px solid #cbd5e1; font-family: 'Inter', sans-serif; font-weight: 900; font-size: 11px; color: #0f172a;">${item.spare_part_name || "(-)"}</td>
-      <td style="padding: 8px 10px; border-right: 1px solid #cbd5e1; font-family: 'JetBrains Mono', monospace; font-size: 10.5px; color: #334155;">${item.part_number || "-"}</td>
-      <td style="padding: 8px 6px; border-right: 1px solid #cbd5e1; text-align: center; text-transform: uppercase; font-family: 'JetBrains Mono', monospace; font-size: 10.5px; color: #334155;">${item.unit || "(-)"}</td>
-      <td style="padding: 8px 6px; border-right: 1px solid #cbd5e1; text-align: center; font-family: 'JetBrains Mono', monospace; color: #1e3a8a; font-weight: 900; font-size: 12px;">${item.requested_qty || "(-)"}</td>
-      <td style="padding: 8px 6px; border-right: 1px solid #cbd5e1; text-align: center; font-family: 'JetBrains Mono', monospace; font-size: 10px; color: #334155;"></td>
-      <td style="padding: 8px 12px; color: #475569; font-family: 'Inter', sans-serif; font-style: italic; font-size: 10px; font-weight: normal;">${item.notes || defaultNotes}</td>
+    <tr style="border-bottom: 1px solid #cbd5e1; font-weight: 600; color: #0f172a;">
+      <td style="padding: 6px 5px; border-right: 1px solid #cbd5e1; text-align: center; font-family: monospace; color: #64748b; font-size: 10px;">${idx + 1}</td>
+      <td style="padding: 6px 10px; border-right: 1px solid #cbd5e1; font-family: monospace; font-weight: bold; font-size: 10.5px; color: #0f172a; line-height: 1.25;">${item.spare_part_name || "(-)"}</td>
+      <td style="padding: 6px 8px; border-right: 1px solid #cbd5e1; font-family: monospace; font-size: 10.5px; color: #334155;">${item.part_number || "-"}</td>
+      <td style="padding: 6px 5px; border-right: 1px solid #cbd5e1; text-align: center; text-transform: uppercase; font-family: monospace; font-size: 10px; color: #334155;">${item.unit || "(-)"}</td>
+      <td style="padding: 6px 5px; border-right: 1px solid #cbd5e1; text-align: center; font-family: monospace; color: #1e3a8a; font-weight: 900; font-size: 11.5px;">${item.requested_qty || "(-)"}</td>
+      <td style="padding: 6px 5px; border-right: 1px solid #cbd5e1; text-align: center; font-family: monospace; font-size: 10px; color: #334155;"></td>
+      <td style="padding: 6px 10px; color: #475569; font-family: monospace; font-style: italic; font-size: 9.5px; font-weight: normal; line-height: 1.25;">${item.notes || defaultNotes}</td>
     </tr>
   `).join("");
 
@@ -225,12 +225,11 @@ export function generateSingleTUGHTML(
     <meta charset="UTF-8">
     <title>${typeBadge} - ${docNum}</title>
     <style>
-        @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800;900&family=JetBrains+Mono:wght@400;500;600;700;800&family=Space+Grotesk:wght@500;600;700&display=swap');
         * { box-sizing: border-box; }
         body { 
             background-color: #ffffff; 
             color: #0f172a; 
-            font-family: 'Inter', system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; 
+            font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace; 
             padding: 0; 
             margin: 0; 
             -webkit-font-smoothing: antialiased;
@@ -240,7 +239,7 @@ export function generateSingleTUGHTML(
             max-width: 794px; 
             margin: 0 auto; 
             background: #ffffff; 
-            padding: 24px 28px; 
+            padding: 20px 24px; 
             box-sizing: border-box; 
         }
         .no-print-btn { display: flex; justify-content: center; gap: 1rem; margin-top: 2rem; }
@@ -251,98 +250,65 @@ export function generateSingleTUGHTML(
 <body>
     <div class="card">
         <!-- Letterhead -->
-        <div style="border-bottom: 2px double #0f172a; padding-bottom: 12px; margin-bottom: 14px; display: flex; justify-content: space-between; align-items: flex-start;">
+        <div style="border-bottom: 3px double #0f172a; padding-bottom: 10px; margin-bottom: 12px; display: flex; justify-content: space-between; align-items: flex-start;">
             <div style="display: flex; align-items: center; gap: 12px;">
-                <img src="/bag-logo.jpg" alt="BAG Logo" style="height: 52px; width: auto; object-fit: contain;" onerror="this.style.display='none'" />
+                <img src="/bag-logo.jpg" alt="BAG Logo" style="height: 48px; width: auto;" onerror="this.style.display='none'" />
                 <div>
-                    <h1 style="margin: 0; font-family: 'Space Grotesk', 'Inter', sans-serif; font-size: 16px; font-weight: 700; text-transform: uppercase; color: #020617; line-height: 1.2; letter-spacing: -0.02em;">PT. PELAYARAN BAHTERA ADHIGUNA (BAG)</h1>
-                    <p style="margin: 3px 0 0 0; font-size: 9.5px; color: #64748b; font-family: 'JetBrains Mono', monospace; line-height: 1.45;">
+                    <h1 style="margin: 0; font-size: 15px; font-weight: bold; text-transform: uppercase; color: #0f172a; font-family: monospace;">PT. PELAYARAN BAHTERA ADHIGUNA (BAG)</h1>
+                    <p style="margin: 2px 0 0 0; font-size: 8.5px; color: #64748b; font-family: monospace; line-height: 1.35;">
                         Maritime Logistics and Spares Warehouse<br>
-                        Jl. Yos Sudarso No 193 Tanjung Sekong, Merak, Banten<br>
-                        Phone: (021) 229-099-01
+                        Jl. Yos Sudarso No 193 Tanjung Sekong, Merak, Banten | Phone: (021) 229-099-01
                     </p>
                 </div>
             </div>
             <div style="text-align: right;">
-                <span style="background-color: #0f172a; color: #ffffff; padding: 2px 8px; border-radius: 4px; font-family: 'JetBrains Mono', monospace; font-size: 10px; font-weight: 700; letter-spacing: 0.05em; display: inline-block;">WMS-SYSTEM</span>
-                <p style="margin: 4px 0 0 0; font-family: 'JetBrains Mono', monospace; font-size: 11px; color: #334155;">Ref: <strong style="color: #020617; font-weight: 700;">${docNum}</strong></p>
-                <p style="margin: 2px 0 0 0; font-family: 'Inter', sans-serif; font-size: 9px; color: #64748b;">Date: ${headerDate}</p>
+                <span style="background: #f1f5f9; color: #64748b; padding: 2px 6px; border-radius: 4px; font-size: 9px; font-family: monospace; font-weight: bold; border: 1px solid #cbd5e1; display: inline-block;">WMS-SYSTEM</span>
+                <p style="margin: 4px 0 0 0; font-size: 11px; font-family: monospace; color: #334155;">Ref: <strong style="color: #0f172a;">${docNum}</strong></p>
+                <p style="margin: 2px 0 0 0; font-size: 9px; font-family: monospace; color: #64748b;">Date: ${headerDate}</p>
                 <div style="margin-top: 4px; display: flex; justify-content: flex-end;">
-                    <div style="font-size: 11px; font-weight: 900; border: 1.5px solid #0f172a; padding: 2px 8px; border-radius: 4px; display: inline-block; background-color: #f8fafc; color: #0f172a; font-family: 'JetBrains Mono', monospace; letter-spacing: 0.05em;">
-                        ${typeBadge}
-                    </div>
+                    <span style="font-size: 11px; font-weight: 900; border: 1.5px solid #0f172a; padding: 2px 8px; border-radius: 4px; background: #ffffff; font-family: monospace; color: #0f172a;">${typeBadge}</span>
                 </div>
             </div>
         </div>
 
         <!-- Document Title -->
-        <div style="text-align: center; margin-bottom: 16px;">
-            <h2 style="margin: 0; font-family: 'Space Grotesk', 'Inter', sans-serif; font-weight: 700; font-size: 15px; text-transform: uppercase; letter-spacing: 0.1em; color: #0f172a; text-decoration: underline; text-underline-offset: 4px;">${titleText}</h2>
-            <p style="margin: 4px 0 0 0; font-family: 'JetBrains Mono', monospace; font-size: 10px; text-transform: uppercase; letter-spacing: 0.08em; font-style: italic; color: #64748b;">${typeDesc}</p>
+        <div style="text-align: center; margin-bottom: 12px;">
+            <h2 style="margin: 0; font-size: 14.5px; text-transform: uppercase; text-decoration: underline; color: #0f172a; font-weight: 800; letter-spacing: 0.2px; font-family: monospace;">${titleText}</h2>
+            <p style="margin: 3px 0 0 0; font-size: 9.5px; text-transform: uppercase; font-family: monospace; color: #64748b; font-style: italic; letter-spacing: 0.5px;">${typeDesc}</p>
         </div>
 
         <!-- Particulars Table Box -->
-        <div style="border: 1px solid #0f172a; border-radius: 8px; padding: 12px 14px; background-color: #ffffff; font-size: 10px; font-family: 'JetBrains Mono', monospace; line-height: 1.6; margin-bottom: 16px; text-transform: uppercase;">
-            <div style="display: grid; grid-template-columns: 1.15fr 0.85fr; gap: 14px;">
+        <div style="border: 1px solid #475569; border-radius: 8px; padding: 10px 14px; background: #ffffff; font-size: 10px; font-family: monospace; margin-bottom: 12px; text-transform: uppercase; line-height: 1.55;">
+            <div style="display: grid; grid-template-columns: 1.15fr 0.85fr; gap: 12px;">
                 <div style="display: flex; flex-direction: column; gap: 4px;">
-                    <div style="display: flex; align-items: baseline;">
-                        <span style="color: #64748b; width: 140px; flex-shrink: 0;">KAPAL PENERIMA :</span>
-                        <strong style="color: #020617; font-family: 'Inter', sans-serif; font-weight: 900; font-size: 13px; letter-spacing: -0.01em;">${req.vessel_name || "MV. KARTINI BARUNA"}</strong>
-                    </div>
-                    <div style="display: flex; align-items: baseline;">
-                        <span style="color: #64748b; width: 140px; flex-shrink: 0;">FASILITAS GUDANG :</span>
-                        <strong style="color: #0f172a; font-weight: 700;">MERAK WAREHOUSE</strong>
-                    </div>
-                    <div style="display: flex; align-items: baseline;">
-                        <span style="color: #64748b; width: 140px; flex-shrink: 0;">ALAMAT PENGIRIMAN :</span>
-                        <strong style="color: #1e293b; font-weight: 700;">${cleanAddress}</strong>
-                    </div>
-                    <div style="display: flex; align-items: baseline;">
-                        <span style="color: #64748b; width: 140px; flex-shrink: 0;">PEKERJAAN (WO REF) :</span>
-                        <strong style="color: #1e3a8a; font-weight: 700;">${req.work_order_ref || req.spk_number || "Daftar Permintaan / WO"}</strong>
-                    </div>
-                    <div style="display: flex; align-items: baseline;">
-                        <span style="color: #64748b; width: 140px; flex-shrink: 0;">KODE AKUN :</span>
-                        <strong style="color: #0f172a; font-weight: 700;">${req.account_code || "BPP"}</strong>
-                    </div>
+                    <div><span style="color: #64748b; width: 140px; display: inline-block;">KAPAL PENERIMA :</span><strong style="color: #0f172a; font-size: 11.5px;">${req.vessel_name || "MV. KARTINI BARUNA"}</strong></div>
+                    <div><span style="color: #64748b; width: 140px; display: inline-block;">FASILITAS GUDANG :</span><strong style="color: #0f172a;">MERAK WAREHOUSE</strong></div>
+                    <div><span style="color: #64748b; width: 140px; display: inline-block;">ALAMAT PENGIRIMAN :</span><strong style="color: #1e293b;">${cleanAddress}</strong></div>
+                    <div><span style="color: #64748b; width: 140px; display: inline-block;">PEKERJAAN (WO REF) :</span><strong style="color: #1e3a8a;">${req.work_order_ref || req.spk_number || "Daftar Permintaan / WO"}</strong></div>
+                    <div><span style="color: #64748b; width: 140px; display: inline-block;">KODE AKUN :</span><strong style="color: #0f172a;">${req.account_code || "BPP"}</strong></div>
                 </div>
                 <div style="display: flex; flex-direction: column; gap: 4px; text-align: right;">
-                    <div style="display: flex; justify-content: flex-end; align-items: baseline;">
-                        <span style="color: #64748b; margin-right: 8px;">PEMOHON / REQUESTER :</span>
-                        <strong style="color: #3730a3; font-weight: 700;">${req.requester_name || req.requested_by || "CHIEF ENGINEER"}</strong>
-                    </div>
-                    <div style="display: flex; justify-content: flex-end; align-items: baseline;">
-                        <span style="color: #64748b; margin-right: 8px;">TANGGAL PENGAJUAN :</span>
-                        <strong style="color: #92400e; font-weight: 700;">${tanggalPengajuan}</strong>
-                    </div>
-                    <div style="display: flex; justify-content: flex-end; align-items: baseline;">
-                        <span style="color: #64748b; margin-right: 8px;">NO. DOKUMEN TUG :</span>
-                        <strong style="color: #0f172a; font-weight: 700;">${docNum}</strong>
-                    </div>
-                    <div style="display: flex; justify-content: flex-end; align-items: baseline;">
-                        <span style="color: #64748b; margin-right: 8px;">FUNGSI :</span>
-                        <strong style="color: #047857; font-weight: 700;">${req.function_code || "ARMADA"}</strong>
-                    </div>
+                    <div><span style="color: #64748b; margin-right: 8px;">PEMOHON / REQUESTER :</span><strong style="color: #3730a3;">${req.requester_name || req.requested_by || "CHIEF ENGINEER"}</strong></div>
+                    <div><span style="color: #64748b; margin-right: 8px;">TANGGAL PENGAJUAN :</span><strong style="color: #92400e;">${tanggalPengajuan}</strong></div>
+                    <div><span style="color: #64748b; margin-right: 8px;">NO. DOKUMEN TUG :</span><strong style="color: #0f172a;">${docNum}</strong></div>
+                    <div><span style="color: #64748b; margin-right: 8px;">FUNGSI :</span><strong style="color: #047857;">${req.function_code || "ARMADA"}</strong></div>
                 </div>
             </div>
-            ${req.remarks ? `
-            <div style="margin-top: 10px; padding: 6px 10px; background-color: #f8fafc; border: 1px solid #cbd5e1; border-radius: 6px; font-family: 'Inter', sans-serif; font-size: 10px; color: #475569; font-style: italic; text-transform: lowercase;">
-                <strong style="text-transform: uppercase; font-style: normal; color: #1e293b; font-family: 'JetBrains Mono', monospace; font-size: 9px; font-weight: 700; margin-right: 8px;">Catatan Permintaan:</strong>${req.remarks}
-            </div>` : ""}
+            ${req.remarks ? `<div style="margin-top: 8px; padding: 5px 9px; background: #f8fafc; border: 1px solid #cbd5e1; font-size: 9.5px; font-style: italic; border-radius: 4px; text-transform: none; font-family: monospace;"><strong style="text-transform: uppercase; font-style: normal; color: #0f172a; margin-right: 6px;">CATATAN PERMINTAAN:</strong>${req.remarks}</div>` : ""}
         </div>
 
         <!-- Items Table -->
-        <div style="border: 1px solid #cbd5e1; border-radius: 4px; overflow: hidden; margin-top: 16px; margin-bottom: 16px;">
+        <div style="border: 1px solid #cbd5e1; border-radius: 4px; overflow: hidden; margin-top: 12px; margin-bottom: 12px;">
             <table style="width: 100%; border-collapse: collapse; text-align: left;">
-                <thead style="background-color: #f8fafc; border-bottom: 1px solid #cbd5e1; font-size: 10px; font-weight: 700; color: #334155; text-transform: uppercase; letter-spacing: 0.05em; font-family: 'Inter', sans-serif;">
+                <thead style="background-color: #f8fafc; border-bottom: 1.5px solid #475569; font-size: 9.5px; font-weight: bold; color: #1e293b; text-transform: uppercase; font-family: monospace;">
                     <tr>
-                        <th style="padding: 8px 6px; border-right: 1px solid #cbd5e1; text-align: center; width: 32px;">#</th>
-                        <th style="padding: 8px 12px; border-right: 1px solid #cbd5e1; text-align: left;">${nameColHeader}</th>
-                        <th style="padding: 8px 10px; border-right: 1px solid #cbd5e1; text-align: left; width: 140px;">NOMOR / PART NUMBER</th>
-                        <th style="padding: 8px 6px; border-right: 1px solid #cbd5e1; text-align: center; width: 48px;">STN</th>
-                        <th style="padding: 8px 6px; border-right: 1px solid #cbd5e1; text-align: center; width: 90px; color: #1e3a8a; font-weight: 700;">BANYAKNYA (DIBERIKAN)</th>
-                        <th style="padding: 8px 6px; border-right: 1px solid #cbd5e1; text-align: center; width: 75px;">NOMOR DO</th>
-                        <th style="padding: 8px 12px; text-align: left; width: 160px;">KETERANGAN</th>
+                        <th style="padding: 7px 5px; border-right: 1px solid #cbd5e1; text-align: center; width: 32px;">#</th>
+                        <th style="padding: 7px 10px; border-right: 1px solid #cbd5e1; text-align: left;">${nameColHeader}</th>
+                        <th style="padding: 7px 8px; border-right: 1px solid #cbd5e1; text-align: left; width: 140px;">NOMOR / PART NUMBER</th>
+                        <th style="padding: 7px 5px; border-right: 1px solid #cbd5e1; text-align: center; width: 48px;">STN</th>
+                        <th style="padding: 7px 5px; border-right: 1px solid #cbd5e1; text-align: center; width: 90px; color: #1e40af; font-weight: bold; background-color: #eff6ff;">BANYAKNYA (DIBERIKAN)</th>
+                        <th style="padding: 7px 5px; border-right: 1px solid #cbd5e1; text-align: center; width: 75px;">NOMOR DO</th>
+                        <th style="padding: 7px 10px; text-align: left; width: 160px;">KETERANGAN</th>
                     </tr>
                 </thead>
                 <tbody style="border-top: none;">
@@ -352,61 +318,52 @@ export function generateSingleTUGHTML(
         </div>
 
         <!-- Perintah Kerja Box -->
-        <div style="border: 1.5px solid #0f172a; border-radius: 6px; padding: 10px 14px; margin-top: 14px; margin-bottom: 16px; background-color: #f8fafc; font-size: 10.5px; font-family: 'JetBrains Mono', monospace; text-transform: uppercase; font-weight: 700; color: #1e293b; display: grid; grid-template-columns: 1.4fr 1fr 1fr; align-items: center;">
-            <div>
-                <span style="color: #0f172a; font-weight: 700; display: block; font-size: 9.5px; margin-bottom: 2px;">PERINTAH KERJA:</span>
-                <span style="color: #b91c1c; font-weight: 900; font-size: 11px;">${req.work_order_ref || req.spk_number || "TIADA"}</span>
-            </div>
-            <div style="text-align: center;">
-                <span style="color: #0f172a;">KODE AKUN:</span>
-                <span style="color: #4338ca; font-weight: 800; margin-left: 6px;">${req.account_code || "BPP"}</span>
-            </div>
-            <div style="text-align: right;">
-                <span style="color: #0f172a;">FUNGSI:</span>
-                <span style="color: #047857; font-weight: 800; margin-left: 6px;">${req.function_code || "ARMADA"}</span>
-            </div>
+        <div style="border: 1.5px solid #1e3a8a; border-radius: 8px; padding: 8px 14px; margin-top: 10px; margin-bottom: 12px; background: #ffffff; font-size: 10px; font-family: monospace; display: flex; justify-content: space-between; align-items: center; text-transform: uppercase;">
+            <div><span style="color: #0f172a; font-weight: bold;">PERINTAH KERJA:</span> <strong style="color: #b91c1c; margin-left: 6px; font-weight: 900;">${req.work_order_ref || req.spk_number || "TIADA"}</strong></div>
+            <div><span style="color: #0f172a; font-weight: bold;">KODE AKUN:</span> <strong style="color: #1e3a8a; margin-left: 6px; font-weight: 900;">${req.account_code || "BPP"}</strong></div>
+            <div><span style="color: #0f172a; font-weight: bold;">FUNGSI:</span> <strong style="color: #047857; margin-left: 6px; font-weight: 900;">${req.function_code || "ARMADA"}</strong></div>
         </div>
 
         <!-- Disclaimer & Signatures -->
-        <div style="margin-top: 16px;">
-            <p style="font-style: italic; color: #64748b; font-size: 9px; font-family: 'Inter', sans-serif; line-height: 1.4; margin-top: 14px; margin-bottom: 16px;">
+        <div style="margin-top: 12px;">
+            <p style="font-style: italic; color: #64748b; font-size: 8.5px; margin-bottom: 12px; font-family: monospace; line-height: 1.35;">
                 Disclaimer: PT. Pelayaran Bahtera Adhiguna assumes fully audited logistics carriage parameters upon signed counter-authority signature dispatch tags. Checked physically against corrosion, salt contamination, marine class markings and full vendor structural seal integrity.
             </p>
 
-            <div style="display: grid; grid-template-columns: repeat(4, 1fr); gap: 16px; text-align: center; text-transform: uppercase; font-size: 8px; font-weight: 700; color: #334155; margin-top: 14px;">
-                <div style="display: flex; flex-direction: column; justify-content: space-between; height: 80px;">
-                    <span style="font-size: 8px; color: #334155; font-family: 'Inter', sans-serif;">MENGETAHUI :</span>
-                    <div style="border-top: 1px solid #94a3b8; padding-top: 4px; position: relative;">
-                        ${sigVP ? `<div style="position: absolute; bottom: 18px; left: 0; right: 0; display: flex; justify-content: center; pointer-events: none;"><img src="${sigVP}" style="max-height: 48px; max-width: 130px; object-fit: contain;" /></div>` : ""}
-                        <div style="font-weight: 900; color: #020617; font-size: 9.5px; font-family: 'Inter', sans-serif;">SUMBONO</div>
-                        <div style="font-size: 7.5px; font-family: 'Inter', sans-serif; font-weight: normal; font-style: italic; color: #64748b; text-transform: none; margin-top: 1px;">VP RENDALHAR</div>
+            <div style="display: grid; grid-template-columns: repeat(4, 1fr); gap: 14px; text-align: center; text-transform: uppercase; font-size: 8.5px; font-weight: bold; color: #334155; margin-top: 12px;">
+                <div style="display: flex; flex-direction: column; justify-content: space-between; height: 75px;">
+                    <span style="font-size: 8px; color: #334155; font-family: monospace;">MENGETAHUI :</span>
+                    <div style="border-top: 1.5px solid #64748b; padding-top: 4px; position: relative;">
+                        ${sigVP ? `<div style="position: absolute; bottom: 18px; left: 0; right: 0; display: flex; justify-content: center; pointer-events: none;"><img src="${sigVP}" style="max-height: 44px; max-width: 120px; object-fit: contain;" /></div>` : ""}
+                        <div style="font-weight: 900; color: #0f172a; font-size: 9.5px; font-family: monospace;">SUMBONO</div>
+                        <div style="font-size: 7.5px; font-family: monospace; font-weight: normal; font-style: italic; color: #64748b; text-transform: none; margin-top: 1px;">VP RENDALHAR</div>
                     </div>
                 </div>
 
-                <div style="display: flex; flex-direction: column; justify-content: space-between; height: 80px;">
-                    <span style="font-size: 8px; color: #334155; font-family: 'Inter', sans-serif;">DISETUJUI OLEH :</span>
-                    <div style="border-top: 1px solid #94a3b8; padding-top: 4px; position: relative;">
-                        ${sigManager ? `<div style="position: absolute; bottom: 18px; left: 0; right: 0; display: flex; justify-content: center; pointer-events: none;"><img src="${sigManager}" style="max-height: 48px; max-width: 130px; object-fit: contain;" /></div>` : ""}
-                        <div style="font-weight: 900; color: #020617; font-size: 9.5px; font-family: 'Inter', sans-serif;">MOHAMAT EMIR FERDIAN</div>
-                        <div style="font-size: 7.5px; font-family: 'Inter', sans-serif; font-weight: normal; font-style: italic; color: #64748b; text-transform: none; margin-top: 1px;">Manager Logistik</div>
+                <div style="display: flex; flex-direction: column; justify-content: space-between; height: 75px;">
+                    <span style="font-size: 8px; color: #334155; font-family: monospace;">DISETUJUI OLEH :</span>
+                    <div style="border-top: 1.5px solid #64748b; padding-top: 4px; position: relative;">
+                        ${sigManager ? `<div style="position: absolute; bottom: 18px; left: 0; right: 0; display: flex; justify-content: center; pointer-events: none;"><img src="${sigManager}" style="max-height: 44px; max-width: 120px; object-fit: contain;" /></div>` : ""}
+                        <div style="font-weight: 900; color: #0f172a; font-size: 9.5px; font-family: monospace;">MOHAMAT EMIR FERDIAN</div>
+                        <div style="font-size: 7.5px; font-family: monospace; font-weight: normal; font-style: italic; color: #64748b; text-transform: none; margin-top: 1px;">Manager Logistik</div>
                     </div>
                 </div>
 
-                <div style="display: flex; flex-direction: column; justify-content: space-between; height: 80px;">
-                    <span style="font-size: 8px; color: #334155; font-family: 'Inter', sans-serif;">KEPALA GUDANG :</span>
-                    <div style="border-top: 1px solid #94a3b8; padding-top: 4px; position: relative;">
-                        ${sigGudang ? `<div style="position: absolute; bottom: 18px; left: 0; right: 0; display: flex; justify-content: center; pointer-events: none;"><img src="${sigGudang}" style="max-height: 48px; max-width: 130px; object-fit: contain;" /></div>` : ""}
-                        <div style="font-weight: 900; color: #020617; font-size: 9.5px; font-family: 'Inter', sans-serif;">MAGHFUR MUHAMMAD ALFIN</div>
-                        <div style="font-size: 7.5px; font-family: 'Inter', sans-serif; font-weight: normal; font-style: italic; color: #64748b; text-transform: none; margin-top: 1px;">Kepala Gudang</div>
+                <div style="display: flex; flex-direction: column; justify-content: space-between; height: 75px;">
+                    <span style="font-size: 8px; color: #334155; font-family: monospace;">KEPALA GUDANG :</span>
+                    <div style="border-top: 1.5px solid #64748b; padding-top: 4px; position: relative;">
+                        ${sigGudang ? `<div style="position: absolute; bottom: 18px; left: 0; right: 0; display: flex; justify-content: center; pointer-events: none;"><img src="${sigGudang}" style="max-height: 44px; max-width: 120px; object-fit: contain;" /></div>` : ""}
+                        <div style="font-weight: 900; color: #0f172a; font-size: 9.5px; font-family: monospace;">&nbsp;</div>
+                        <div style="font-size: 7.5px; font-family: monospace; font-weight: normal; font-style: italic; color: #64748b; text-transform: none; margin-top: 1px;">Gudang Merak</div>
                     </div>
                 </div>
 
-                <div style="display: flex; flex-direction: column; justify-content: space-between; height: 80px;">
-                    <span style="font-size: 8px; color: #334155; font-family: 'Inter', sans-serif;">PETUGAS GUDANG :</span>
-                    <div style="border-top: 1px solid #94a3b8; padding-top: 4px; position: relative;">
-                        ${sigPetugasGudang ? `<div style="position: absolute; bottom: 18px; left: 0; right: 0; display: flex; justify-content: center; pointer-events: none;"><img src="${sigPetugasGudang}" style="max-height: 48px; max-width: 130px; object-fit: contain;" /></div>` : ""}
-                        <div style="font-weight: 900; color: #020617; font-size: 9.5px; font-family: 'Inter', sans-serif;">Aldi Hidayat</div>
-                        <div style="font-size: 7.5px; font-family: 'Inter', sans-serif; font-weight: normal; font-style: italic; color: #64748b; text-transform: none; margin-top: 1px;">Petugas Gudang</div>
+                <div style="display: flex; flex-direction: column; justify-content: space-between; height: 75px;">
+                    <span style="font-size: 8px; color: #334155; font-family: monospace;">PETUGAS GUDANG :</span>
+                    <div style="border-top: 1.5px solid #64748b; padding-top: 4px; position: relative;">
+                        ${sigPetugasGudang ? `<div style="position: absolute; bottom: 18px; left: 0; right: 0; display: flex; justify-content: center; pointer-events: none;"><img src="${sigPetugasGudang}" style="max-height: 44px; max-width: 120px; object-fit: contain;" /></div>` : ""}
+                        <div style="font-weight: 900; color: #0f172a; font-size: 9.5px; font-family: monospace;">MAGHFUR MUHAMMAD ALFIN</div>
+                        <div style="font-size: 7.5px; font-family: monospace; font-weight: normal; font-style: italic; color: #64748b; text-transform: none; margin-top: 1px;">Petugas Gudang</div>
                     </div>
                 </div>
             </div>
@@ -456,8 +413,8 @@ export async function generateTUGPDFArrayBuffer(
 
   const sigVP = getSignatureForSlot("VP RENDALHAR", "Sumbono", signatures, req);
   const sigManager = getSignatureForSlot("Manager Logistik", "Mohamat Emir Ferdian", signatures, req);
-  const sigGudang = getSignatureForSlot("Kepala Gudang", "MAGHFUR MUHAMMAD ALFIN", signatures, req);
-  const sigPetugasGudang = getSignatureForSlot("Petugas Gudang", "Aldi Hidayat", signatures, req);
+  const sigGudang = null;
+  const sigPetugasGudang = getSignatureForSlot("Petugas Gudang", "MAGHFUR MUHAMMAD ALFIN", signatures, req) || getSignatureForSlot("Petugas Gudang", "Aldi Hidayat", signatures, req) || createSVGSignatureDataUrl("MAGHFUR MUHAMMAD ALFIN");
 
   const cleanAddress = (req.delivery_address || "Pelabuhan Merak, Cilegon, Banten")
     .replace(/,\s*SPK\s+[^,]+/gi, "")
@@ -469,26 +426,25 @@ export async function generateTUGPDFArrayBuffer(
 
   // Letterhead HTML for Page 1
   const letterheadHtml = `
-    <div style="border-bottom: 2px double #0f172a; padding-bottom: 10px; margin-bottom: 12px; display: flex; justify-content: space-between; align-items: flex-start;">
+    <div style="border-bottom: 3px double #0f172a; padding-bottom: 10px; margin-bottom: 12px; display: flex; justify-content: space-between; align-items: flex-start;">
       <div style="display: flex; align-items: center; gap: 12px;">
-        <img src="/bag-logo.jpg" alt="BAG Logo" style="height: 50px; width: auto; object-fit: contain;" onerror="this.style.display='none'" />
+        <img src="/bag-logo.jpg" alt="BAG Logo" style="height: 48px; width: auto; object-fit: contain;" onerror="this.style.display='none'" />
         <div>
-          <h1 style="margin: 0; font-family: 'Space Grotesk', 'Inter', sans-serif; font-size: 15.5px; font-weight: 700; text-transform: uppercase; color: #020617; line-height: 1.2; letter-spacing: -0.02em;">PT. PELAYARAN BAHTERA ADHIGUNA (BAG)</h1>
-          <p style="margin: 2px 0 0 0; font-size: 9px; color: #64748b; font-family: 'JetBrains Mono', monospace; line-height: 1.4;">
+          <h1 style="margin: 0; font-family: monospace; font-size: 15px; font-weight: bold; text-transform: uppercase; color: #0f172a; line-height: 1.2;">PT. PELAYARAN BAHTERA ADHIGUNA (BAG)</h1>
+          <p style="margin: 2px 0 0 0; font-size: 8.5px; color: #64748b; font-family: monospace; line-height: 1.35;">
             Maritime Logistics and Spares Warehouse<br>
-            Jl. Yos Sudarso No 193 Tanjung Sekong, Merak, Banten<br>
-            Phone: (021) 229-099-01
+            Jl. Yos Sudarso No 193 Tanjung Sekong, Merak, Banten | Phone: (021) 229-099-01
           </p>
         </div>
       </div>
       <div style="text-align: right;">
-        <span style="background-color: #0f172a; color: #ffffff; padding: 2px 8px; border-radius: 4px; font-family: 'JetBrains Mono', monospace; font-size: 10px; font-weight: 700; letter-spacing: 0.05em; display: inline-block;">WMS-SYSTEM</span>
-        <p style="margin: 3px 0 0 0; font-family: 'JetBrains Mono', monospace; font-size: 10.5px; color: #334155;">Ref: <strong style="color: #020617; font-weight: 700;">${docNum}</strong></p>
-        <p style="margin: 1px 0 0 0; font-family: 'Inter', sans-serif; font-size: 8.5px; color: #64748b;">Date: ${headerDate}</p>
-        <div style="margin-top: 3px; display: flex; justify-content: flex-end;">
-          <div style="font-size: 11px; font-weight: 900; border: 1.5px solid #0f172a; padding: 1px 8px; border-radius: 4px; display: inline-block; background-color: #f8fafc; color: #0f172a; font-family: 'JetBrains Mono', monospace; letter-spacing: 0.05em;">
+        <span style="background-color: #f1f5f9; color: #64748b; padding: 2px 6px; border-radius: 4px; font-family: monospace; font-size: 9px; font-weight: bold; border: 1px solid #cbd5e1; display: inline-block;">WMS-SYSTEM</span>
+        <p style="margin: 4px 0 0 0; font-family: monospace; font-size: 11px; color: #334155;">Ref: <strong style="color: #0f172a;">${docNum}</strong></p>
+        <p style="margin: 2px 0 0 0; font-family: monospace; font-size: 9px; color: #64748b;">Date: ${headerDate}</p>
+        <div style="margin-top: 4px; display: flex; justify-content: flex-end;">
+          <span style="font-size: 11px; font-weight: 900; border: 1.5px solid #0f172a; padding: 2px 8px; border-radius: 4px; display: inline-block; background-color: #ffffff; color: #0f172a; font-family: monospace;">
             ${typeBadge}
-          </div>
+          </span>
         </div>
       </div>
     </div>
@@ -497,160 +453,160 @@ export async function generateTUGPDFArrayBuffer(
   // Title HTML for Page 1
   const titleHtml = `
     <div style="text-align: center; margin-bottom: 12px;">
-      <h2 style="margin: 0; font-family: 'Space Grotesk', 'Inter', sans-serif; font-weight: 700; font-size: 14.5px; text-transform: uppercase; letter-spacing: 0.1em; color: #0f172a; text-decoration: underline; text-underline-offset: 4px;">${titleText}</h2>
-      <p style="margin: 3px 0 0 0; font-family: 'JetBrains Mono', monospace; font-size: 9.5px; text-transform: uppercase; letter-spacing: 0.08em; font-style: italic; color: #64748b;">${typeDesc}</p>
+      <h2 style="margin: 0; font-family: monospace; font-weight: 800; font-size: 14.5px; text-transform: uppercase; letter-spacing: 0.2px; color: #0f172a; text-decoration: underline; text-underline-offset: 4px;">${titleText}</h2>
+      <p style="margin: 3px 0 0 0; font-family: monospace; font-size: 9.5px; text-transform: uppercase; letter-spacing: 0.5px; font-style: italic; color: #64748b;">${typeDesc}</p>
     </div>
   `;
 
   // Particulars Box HTML for Page 1
   const particularsHtml = `
-    <div style="border: 1px solid #0f172a; border-radius: 7px; padding: 10px 13px; background-color: #ffffff; font-size: 9.5px; font-family: 'JetBrains Mono', monospace; line-height: 1.55; margin-bottom: 12px; text-transform: uppercase;">
+    <div style="border: 1px solid #475569; border-radius: 8px; padding: 10px 14px; background-color: #ffffff; font-size: 10px; font-family: monospace; line-height: 1.55; margin-bottom: 12px; text-transform: uppercase;">
       <div style="display: grid; grid-template-columns: 1.15fr 0.85fr; gap: 12px;">
-        <div style="display: flex; flex-direction: column; gap: 3.5px;">
-          <div style="display: flex; align-items: baseline;">
-            <span style="color: #64748b; width: 135px; flex-shrink: 0;">KAPAL PENERIMA :</span>
-            <strong style="color: #020617; font-family: 'Inter', sans-serif; font-weight: 900; font-size: 12px; letter-spacing: -0.01em;">${req.vessel_name || "MV. KARTINI BARUNA"}</strong>
+        <div style="display: flex; flex-direction: column; gap: 4px;">
+          <div>
+            <span style="color: #64748b; width: 140px; display: inline-block;">KAPAL PENERIMA :</span>
+            <strong style="color: #0f172a; font-size: 11.5px;">${req.vessel_name || "MV. KARTINI BARUNA"}</strong>
           </div>
-          <div style="display: flex; align-items: baseline;">
-            <span style="color: #64748b; width: 135px; flex-shrink: 0;">FASILITAS GUDANG :</span>
-            <strong style="color: #0f172a; font-weight: 700;">MERAK WAREHOUSE</strong>
+          <div>
+            <span style="color: #64748b; width: 140px; display: inline-block;">FASILITAS GUDANG :</span>
+            <strong style="color: #0f172a;">MERAK WAREHOUSE</strong>
           </div>
-          <div style="display: flex; align-items: baseline;">
-            <span style="color: #64748b; width: 135px; flex-shrink: 0;">ALAMAT PENGIRIMAN :</span>
-            <strong style="color: #1e293b; font-weight: 700;">${cleanAddress}</strong>
+          <div>
+            <span style="color: #64748b; width: 140px; display: inline-block;">ALAMAT PENGIRIMAN :</span>
+            <strong style="color: #1e293b;">${cleanAddress}</strong>
           </div>
-          <div style="display: flex; align-items: baseline;">
-            <span style="color: #64748b; width: 135px; flex-shrink: 0;">PEKERJAAN (WO REF) :</span>
-            <strong style="color: #1e3a8a; font-weight: 700;">${req.work_order_ref || req.spk_number || "Daftar Permintaan / WO"}</strong>
+          <div>
+            <span style="color: #64748b; width: 140px; display: inline-block;">PEKERJAAN (WO REF) :</span>
+            <strong style="color: #1e3a8a;">${req.work_order_ref || req.spk_number || "Daftar Permintaan / WO"}</strong>
           </div>
-          <div style="display: flex; align-items: baseline;">
-            <span style="color: #64748b; width: 135px; flex-shrink: 0;">KODE AKUN :</span>
-            <strong style="color: #0f172a; font-weight: 700;">${req.account_code || "BPP"}</strong>
+          <div>
+            <span style="color: #64748b; width: 140px; display: inline-block;">KODE AKUN :</span>
+            <strong style="color: #0f172a;">${req.account_code || "BPP"}</strong>
           </div>
         </div>
-        <div style="display: flex; flex-direction: column; gap: 3.5px; text-align: right;">
-          <div style="display: flex; justify-content: flex-end; align-items: baseline;">
+        <div style="display: flex; flex-direction: column; gap: 4px; text-align: right;">
+          <div>
             <span style="color: #64748b; margin-right: 8px;">PEMOHON / REQUESTER :</span>
-            <strong style="color: #3730a3; font-weight: 700;">${req.requester_name || req.requested_by || "CHIEF ENGINEER"}</strong>
+            <strong style="color: #3730a3;">${req.requester_name || req.requested_by || "CHIEF ENGINEER"}</strong>
           </div>
-          <div style="display: flex; justify-content: flex-end; align-items: baseline;">
+          <div>
             <span style="color: #64748b; margin-right: 8px;">TANGGAL PENGAJUAN :</span>
-            <strong style="color: #92400e; font-weight: 700;">${tanggalPengajuan}</strong>
+            <strong style="color: #92400e;">${tanggalPengajuan}</strong>
           </div>
-          <div style="display: flex; justify-content: flex-end; align-items: baseline;">
+          <div>
             <span style="color: #64748b; margin-right: 8px;">NO. DOKUMEN TUG :</span>
-            <strong style="color: #0f172a; font-weight: 700;">${docNum}</strong>
+            <strong style="color: #0f172a;">${docNum}</strong>
           </div>
-          <div style="display: flex; justify-content: flex-end; align-items: baseline;">
+          <div>
             <span style="color: #64748b; margin-right: 8px;">FUNGSI :</span>
-            <strong style="color: #047857; font-weight: 700;">${req.function_code || "ARMADA"}</strong>
+            <strong style="color: #047857;">${req.function_code || "ARMADA"}</strong>
           </div>
         </div>
       </div>
       ${req.remarks ? `
-      <div style="margin-top: 8px; padding: 5px 9px; background-color: #f8fafc; border: 1px solid #cbd5e1; border-radius: 5px; font-family: 'Inter', sans-serif; font-size: 9.5px; color: #475569; font-style: italic; text-transform: lowercase;">
-        <strong style="text-transform: uppercase; font-style: normal; color: #1e293b; font-family: 'JetBrains Mono', monospace; font-size: 8.5px; font-weight: 700; margin-right: 7px;">Catatan Permintaan:</strong>${req.remarks}
+      <div style="margin-top: 8px; padding: 5px 9px; background-color: #f8fafc; border: 1px solid #cbd5e1; border-radius: 4px; font-family: monospace; font-size: 9.5px; color: #475569; font-style: italic; text-transform: lowercase;">
+        <strong style="text-transform: uppercase; font-style: normal; color: #0f172a; font-family: monospace; font-size: 9px; font-weight: bold; margin-right: 6px;">CATATAN PERMINTAAN:</strong>${req.remarks}
       </div>` : ""}
     </div>
   `;
 
-  // Sleek Continuation Header for Page 2 and beyond
+  // Continuation Header for Page 2 and beyond
   const continuationHeaderHtml = `
     <div style="border-bottom: 2px solid #0f172a; padding-bottom: 8px; margin-bottom: 10px; display: flex; justify-content: space-between; align-items: center;">
       <div style="display: flex; align-items: center; gap: 10px;">
         <img src="/bag-logo.jpg" alt="BAG Logo" style="height: 34px; width: auto; object-fit: contain;" onerror="this.style.display='none'" />
         <div>
-          <h2 style="margin: 0; font-family: 'Space Grotesk', 'Inter', sans-serif; font-size: 12.5px; font-weight: 700; text-transform: uppercase; color: #020617; letter-spacing: -0.01em;">
+          <h2 style="margin: 0; font-family: monospace; font-size: 12.5px; font-weight: bold; text-transform: uppercase; color: #020617;">
             PT. PELAYARAN BAHTERA ADHIGUNA (BAG)
           </h2>
-          <p style="margin: 2px 0 0 0; font-size: 8.5px; color: #64748b; font-family: 'JetBrains Mono', monospace; text-transform: uppercase;">
+          <p style="margin: 2px 0 0 0; font-size: 8.5px; color: #64748b; font-family: monospace; text-transform: uppercase;">
             ${titleText} (Lanjutan) &bull; Kapal: <strong style="color: #0f172a;">${req.vessel_name || "MV. KARTINI BARUNA"}</strong>
           </p>
         </div>
       </div>
       <div style="text-align: right; display: flex; align-items: center; gap: 8px;">
-        <span style="font-family: 'JetBrains Mono', monospace; font-size: 10.5px; color: #334155;">Ref: <strong style="color: #0f172a;">${docNum}</strong></span>
-        <span style="font-size: 10px; font-weight: 900; border: 1.5px solid #0f172a; padding: 1px 7px; border-radius: 4px; background-color: #f8fafc; color: #0f172a; font-family: 'JetBrains Mono', monospace;">
+        <span style="font-family: monospace; font-size: 10.5px; color: #334155;">Ref: <strong style="color: #0f172a;">${docNum}</strong></span>
+        <span style="font-size: 10px; font-weight: 900; border: 1.5px solid #0f172a; padding: 1px 7px; border-radius: 4px; background-color: #f8fafc; color: #0f172a; font-family: monospace;">
           ${typeBadge}
         </span>
       </div>
     </div>
   `;
 
-  // Standard Table THEAD
+  // Standard Table THEAD matching Image 1
   const theadHtml = `
-    <thead style="background-color: #f8fafc; border-bottom: 1.5px solid #0f172a; font-size: 9.5px; font-weight: 700; color: #334155; text-transform: uppercase; letter-spacing: 0.05em; font-family: 'Inter', sans-serif;">
+    <thead style="background-color: #f8fafc; border-bottom: 1.5px solid #475569; font-size: 9.5px; font-weight: bold; color: #1e293b; text-transform: uppercase; font-family: monospace;">
       <tr>
-        <th style="padding: 7px 6px; border-right: 1px solid #cbd5e1; text-align: center; width: 34px;">#</th>
-        <th style="padding: 7px 12px; border-right: 1px solid #cbd5e1; text-align: left;">${nameColHeader}</th>
-        <th style="padding: 7px 10px; border-right: 1px solid #cbd5e1; text-align: left; width: 140px;">NOMOR / PART NUMBER</th>
-        <th style="padding: 7px 6px; border-right: 1px solid #cbd5e1; text-align: center; width: 48px;">STN</th>
-        <th style="padding: 7px 6px; border-right: 1px solid #cbd5e1; text-align: center; width: 90px; color: #1e3a8a; font-weight: 700;">BANYAKNYA (DIBERIKAN)</th>
-        <th style="padding: 7px 6px; border-right: 1px solid #cbd5e1; text-align: center; width: 75px;">NOMOR DO</th>
-        <th style="padding: 7px 12px; text-align: left; width: 155px;">KETERANGAN</th>
+        <th style="padding: 7px 5px; border-right: 1px solid #cbd5e1; text-align: center; width: 32px;">#</th>
+        <th style="padding: 7px 10px; border-right: 1px solid #cbd5e1; text-align: left;">${nameColHeader}</th>
+        <th style="padding: 7px 8px; border-right: 1px solid #cbd5e1; text-align: left; width: 140px;">NOMOR / PART NUMBER</th>
+        <th style="padding: 7px 5px; border-right: 1px solid #cbd5e1; text-align: center; width: 48px;">STN</th>
+        <th style="padding: 7px 5px; border-right: 1px solid #cbd5e1; text-align: center; width: 90px; color: #1e40af; font-weight: bold; background-color: #eff6ff;">BANYAKNYA (DIBERIKAN)</th>
+        <th style="padding: 7px 5px; border-right: 1px solid #cbd5e1; text-align: center; width: 75px;">NOMOR DO</th>
+        <th style="padding: 7px 10px; text-align: left; width: 160px;">KETERANGAN</th>
       </tr>
     </thead>
   `;
 
-  // Footer Block HTML (Perintah Kerja + Disclaimer + Signatures)
+  // Footer Block HTML (Perintah Kerja + Disclaimer + Signatures) matching Image 2
   const footerSignBlockHtml = `
     <div class="footer-sign-block" style="margin-top: 10px;">
       <!-- Perintah Kerja Box -->
-      <div style="border: 1.5px solid #0f172a; border-radius: 6px; padding: 7px 14px; margin-bottom: 10px; background-color: #f8fafc; font-size: 10px; font-family: 'JetBrains Mono', monospace; text-transform: uppercase; font-weight: 700; color: #1e293b; display: grid; grid-template-columns: 1.4fr 1fr 1fr; align-items: center;">
+      <div style="border: 1.5px solid #1e3a8a; border-radius: 8px; padding: 8px 14px; margin-bottom: 10px; background-color: #ffffff; font-size: 10px; font-family: monospace; text-transform: uppercase; font-weight: 700; color: #1e293b; display: flex; justify-content: space-between; align-items: center;">
         <div>
-          <span style="color: #0f172a; font-weight: 700; display: block; font-size: 8.5px; margin-bottom: 2px;">PERINTAH KERJA:</span>
-          <span style="color: #b91c1c; font-weight: 900; font-size: 10.5px;">${req.work_order_ref || req.spk_number || "TIADA"}</span>
+          <span style="color: #0f172a; font-weight: bold;">PERINTAH KERJA:</span>
+          <span style="color: #b91c1c; font-weight: 900; font-size: 10.5px; margin-left: 6px;">${req.work_order_ref || req.spk_number || "TIADA"}</span>
         </div>
         <div style="text-align: center;">
-          <span style="color: #0f172a;">KODE AKUN:</span>
-          <span style="color: #4338ca; font-weight: 800; margin-left: 6px;">${req.account_code || "BPP"}</span>
+          <span style="color: #0f172a; font-weight: bold;">KODE AKUN:</span>
+          <span style="color: #1e3a8a; font-weight: 900; margin-left: 6px;">${req.account_code || "BPP"}</span>
         </div>
         <div style="text-align: right;">
-          <span style="color: #0f172a;">FUNGSI:</span>
-          <span style="color: #047857; font-weight: 800; margin-left: 6px;">${req.function_code || "ARMADA"}</span>
+          <span style="color: #0f172a; font-weight: bold;">FUNGSI:</span>
+          <span style="color: #047857; font-weight: 900; margin-left: 6px;">${req.function_code || "ARMADA"}</span>
         </div>
       </div>
 
       <!-- Disclaimer -->
-      <p style="font-style: italic; color: #64748b; font-size: 8.5px; font-family: 'Inter', sans-serif; line-height: 1.35; margin: 0 0 10px 0;">
+      <p style="font-style: italic; color: #64748b; font-size: 8.5px; font-family: monospace; line-height: 1.35; margin: 0 0 10px 0;">
         Disclaimer: PT. Pelayaran Bahtera Adhiguna assumes fully audited logistics carriage parameters upon signed counter-authority signature dispatch tags. Checked physically against corrosion, salt contamination, marine class markings and full vendor structural seal integrity.
       </p>
 
       <!-- 4 Signatures Grid -->
-      <div style="display: grid; grid-template-columns: repeat(4, 1fr); gap: 14px; text-align: center; text-transform: uppercase; font-size: 8px; font-weight: 700; color: #334155;">
+      <div style="display: grid; grid-template-columns: repeat(4, 1fr); gap: 14px; text-align: center; text-transform: uppercase; font-size: 8.5px; font-weight: bold; color: #334155;">
         <div style="display: flex; flex-direction: column; justify-content: space-between; height: 75px;">
-          <span style="font-size: 8px; color: #334155; font-family: 'Inter', sans-serif;">MENGETAHUI :</span>
-          <div style="border-top: 1px solid #94a3b8; padding-top: 4px; position: relative;">
-            ${sigVP ? `<div style="position: absolute; bottom: 16px; left: 0; right: 0; display: flex; justify-content: center; pointer-events: none;"><img src="${sigVP}" style="max-height: 44px; max-width: 120px; object-fit: contain;" /></div>` : ""}
-            <div style="font-weight: 900; color: #020617; font-size: 9.5px; font-family: 'Inter', sans-serif;">SUMBONO</div>
-            <div style="font-size: 7.5px; font-family: 'Inter', sans-serif; font-weight: normal; font-style: italic; color: #64748b; text-transform: none; margin-top: 1px;">VP RENDALHAR</div>
+          <span style="font-size: 8px; color: #334155; font-family: monospace;">MENGETAHUI :</span>
+          <div style="border-top: 1.5px solid #64748b; padding-top: 4px; position: relative;">
+            ${sigVP ? `<div style="position: absolute; bottom: 18px; left: 0; right: 0; display: flex; justify-content: center; pointer-events: none;"><img src="${sigVP}" style="max-height: 44px; max-width: 120px; object-fit: contain;" /></div>` : ""}
+            <div style="font-weight: 900; color: #020617; font-size: 9.5px; font-family: monospace;">SUMBONO</div>
+            <div style="font-size: 7.5px; font-family: monospace; font-weight: normal; font-style: italic; color: #64748b; text-transform: none; margin-top: 1px;">VP RENDALHAR</div>
           </div>
         </div>
 
         <div style="display: flex; flex-direction: column; justify-content: space-between; height: 75px;">
-          <span style="font-size: 8px; color: #334155; font-family: 'Inter', sans-serif;">DISETUJUI OLEH :</span>
-          <div style="border-top: 1px solid #94a3b8; padding-top: 4px; position: relative;">
-            ${sigManager ? `<div style="position: absolute; bottom: 16px; left: 0; right: 0; display: flex; justify-content: center; pointer-events: none;"><img src="${sigManager}" style="max-height: 44px; max-width: 120px; object-fit: contain;" /></div>` : ""}
-            <div style="font-weight: 900; color: #020617; font-size: 9.5px; font-family: 'Inter', sans-serif;">MOHAMAT EMIR FERDIAN</div>
-            <div style="font-size: 7.5px; font-family: 'Inter', sans-serif; font-weight: normal; font-style: italic; color: #64748b; text-transform: none; margin-top: 1px;">Manager Logistik</div>
+          <span style="font-size: 8px; color: #334155; font-family: monospace;">DISETUJUI OLEH :</span>
+          <div style="border-top: 1.5px solid #64748b; padding-top: 4px; position: relative;">
+            ${sigManager ? `<div style="position: absolute; bottom: 18px; left: 0; right: 0; display: flex; justify-content: center; pointer-events: none;"><img src="${sigManager}" style="max-height: 44px; max-width: 120px; object-fit: contain;" /></div>` : ""}
+            <div style="font-weight: 900; color: #020617; font-size: 9.5px; font-family: monospace;">MOHAMAT EMIR FERDIAN</div>
+            <div style="font-size: 7.5px; font-family: monospace; font-weight: normal; font-style: italic; color: #64748b; text-transform: none; margin-top: 1px;">Manager Logistik</div>
           </div>
         </div>
 
         <div style="display: flex; flex-direction: column; justify-content: space-between; height: 75px;">
-          <span style="font-size: 8px; color: #334155; font-family: 'Inter', sans-serif;">KEPALA GUDANG :</span>
-          <div style="border-top: 1px solid #94a3b8; padding-top: 4px; position: relative;">
-            ${sigGudang ? `<div style="position: absolute; bottom: 16px; left: 0; right: 0; display: flex; justify-content: center; pointer-events: none;"><img src="${sigGudang}" style="max-height: 44px; max-width: 120px; object-fit: contain;" /></div>` : ""}
-            <div style="font-weight: 900; color: #020617; font-size: 9.5px; font-family: 'Inter', sans-serif;">MAGHFUR MUHAMMAD ALFIN</div>
-            <div style="font-size: 7.5px; font-family: 'Inter', sans-serif; font-weight: normal; font-style: italic; color: #64748b; text-transform: none; margin-top: 1px;">Kepala Gudang</div>
+          <span style="font-size: 8px; color: #334155; font-family: monospace;">KEPALA GUDANG :</span>
+          <div style="border-top: 1.5px solid #64748b; padding-top: 4px; position: relative;">
+            ${sigGudang ? `<div style="position: absolute; bottom: 18px; left: 0; right: 0; display: flex; justify-content: center; pointer-events: none;"><img src="${sigGudang}" style="max-height: 44px; max-width: 120px; object-fit: contain;" /></div>` : ""}
+            <div style="font-weight: 900; color: #020617; font-size: 9.5px; font-family: monospace;">&nbsp;</div>
+            <div style="font-size: 7.5px; font-family: monospace; font-weight: normal; font-style: italic; color: #64748b; text-transform: none; margin-top: 1px;">Gudang Merak</div>
           </div>
         </div>
 
         <div style="display: flex; flex-direction: column; justify-content: space-between; height: 75px;">
-          <span style="font-size: 8px; color: #334155; font-family: 'Inter', sans-serif;">PETUGAS GUDANG :</span>
-          <div style="border-top: 1px solid #94a3b8; padding-top: 4px; position: relative;">
-            ${sigPetugasGudang ? `<div style="position: absolute; bottom: 16px; left: 0; right: 0; display: flex; justify-content: center; pointer-events: none;"><img src="${sigPetugasGudang}" style="max-height: 44px; max-width: 120px; object-fit: contain;" /></div>` : ""}
-            <div style="font-weight: 900; color: #020617; font-size: 9.5px; font-family: 'Inter', sans-serif;">Aldi Hidayat</div>
-            <div style="font-size: 7.5px; font-family: 'Inter', sans-serif; font-weight: normal; font-style: italic; color: #64748b; text-transform: none; margin-top: 1px;">Petugas Gudang</div>
+          <span style="font-size: 8px; color: #334155; font-family: monospace;">PETUGAS GUDANG :</span>
+          <div style="border-top: 1.5px solid #64748b; padding-top: 4px; position: relative;">
+            ${sigPetugasGudang ? `<div style="position: absolute; bottom: 18px; left: 0; right: 0; display: flex; justify-content: center; pointer-events: none;"><img src="${sigPetugasGudang}" style="max-height: 44px; max-width: 120px; object-fit: contain;" /></div>` : ""}
+            <div style="font-weight: 900; color: #020617; font-size: 9.5px; font-family: monospace;">MAGHFUR MUHAMMAD ALFIN</div>
+            <div style="font-size: 7.5px; font-family: monospace; font-weight: normal; font-style: italic; color: #64748b; text-transform: none; margin-top: 1px;">Petugas Gudang</div>
           </div>
         </div>
       </div>
@@ -690,7 +646,7 @@ export async function generateTUGPDFArrayBuffer(
     pageEl.style.justifyContent = "space-between";
     pageEl.style.position = "relative";
     pageEl.style.overflow = "hidden";
-    pageEl.style.fontFamily = "'Inter', system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif";
+    pageEl.style.fontFamily = 'ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace';
     pageEl.style.color = "#0f172a";
 
     const contentWrapper = document.createElement("div");
@@ -731,7 +687,7 @@ export async function generateTUGPDFArrayBuffer(
     footerEl.style.borderTop = "1px solid #e2e8f0";
     footerEl.style.paddingTop = "5px";
     footerEl.style.fontSize = "8.5px";
-    footerEl.style.fontFamily = "'JetBrains Mono', monospace";
+    footerEl.style.fontFamily = "ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace";
     footerEl.style.color = "#94a3b8";
     footerEl.style.textTransform = "uppercase";
 
@@ -776,23 +732,23 @@ export async function generateTUGPDFArrayBuffer(
 
       if (!itm) {
         rowEl.innerHTML = `
-          <td style="padding: 7px 6px; border-right: 1px solid #cbd5e1; text-align: center; font-family: 'JetBrains Mono', monospace; font-size: 10px; color: #94a3b8;">1</td>
-          <td style="padding: 7px 12px; border-right: 1px solid #cbd5e1; font-family: 'Inter', sans-serif; font-weight: 700; font-size: 11px; color: #94a3b8;">(-)</td>
-          <td style="padding: 7px 10px; border-right: 1px solid #cbd5e1; font-family: 'JetBrains Mono', monospace; font-size: 10.5px; color: #94a3b8;">(-)</td>
-          <td style="padding: 7px 6px; border-right: 1px solid #cbd5e1; text-align: center; font-family: 'JetBrains Mono', monospace; font-size: 10.5px; color: #94a3b8;">(-)</td>
-          <td style="padding: 7px 6px; border-right: 1px solid #cbd5e1; text-align: center; font-family: 'JetBrains Mono', monospace; color: #94a3b8; font-size: 11px;">(-)</td>
-          <td style="padding: 7px 6px; border-right: 1px solid #cbd5e1; text-align: center; font-family: 'JetBrains Mono', monospace; font-size: 10px; color: #94a3b8;"></td>
-          <td style="padding: 7px 12px; color: #64748b; font-family: 'Inter', sans-serif; font-style: italic; font-size: 10px;">NIHIL (-)</td>
+          <td style="padding: 6px 5px; border-right: 1px solid #cbd5e1; text-align: center; font-family: monospace; font-size: 10px; color: #94a3b8;">1</td>
+          <td style="padding: 6px 10px; border-right: 1px solid #cbd5e1; font-family: monospace; font-weight: bold; font-size: 10.5px; color: #94a3b8;">(-)</td>
+          <td style="padding: 6px 8px; border-right: 1px solid #cbd5e1; font-family: monospace; font-size: 10.5px; color: #94a3b8;">(-)</td>
+          <td style="padding: 6px 5px; border-right: 1px solid #cbd5e1; text-align: center; font-family: monospace; font-size: 10.5px; color: #94a3b8;">(-)</td>
+          <td style="padding: 6px 5px; border-right: 1px solid #cbd5e1; text-align: center; font-family: monospace; color: #94a3b8; font-size: 11px; background-color: #eff6ff;">(-)</td>
+          <td style="padding: 6px 5px; border-right: 1px solid #cbd5e1; text-align: center; font-family: monospace; font-size: 10px; color: #94a3b8;"></td>
+          <td style="padding: 6px 10px; color: #64748b; font-family: monospace; font-style: italic; font-size: 9.5px;">NIHIL (-)</td>
         `;
       } else {
         rowEl.innerHTML = `
-          <td style="padding: 6px 6px; border-right: 1px solid #cbd5e1; text-align: center; font-family: 'JetBrains Mono', monospace; font-size: 10px; color: #64748b;">${idx + 1}</td>
-          <td style="padding: 6px 12px; border-right: 1px solid #cbd5e1; font-family: 'Inter', sans-serif; font-weight: 900; font-size: 11px; color: #0f172a; line-height: 1.3;">${itm.spare_part_name || "(-)"}</td>
-          <td style="padding: 6px 10px; border-right: 1px solid #cbd5e1; font-family: 'JetBrains Mono', monospace; font-size: 10.5px; color: #334155;">${itm.part_number || "-"}</td>
-          <td style="padding: 6px 6px; border-right: 1px solid #cbd5e1; text-align: center; text-transform: uppercase; font-family: 'JetBrains Mono', monospace; font-size: 10.5px; color: #334155;">${itm.unit || "(-)"}</td>
-          <td style="padding: 6px 6px; border-right: 1px solid #cbd5e1; text-align: center; font-family: 'JetBrains Mono', monospace; color: #1e3a8a; font-weight: 900; font-size: 12px;">${itm.requested_qty || "(-)"}</td>
-          <td style="padding: 6px 6px; border-right: 1px solid #cbd5e1; text-align: center; font-family: 'JetBrains Mono', monospace; font-size: 10px; color: #334155;"></td>
-          <td style="padding: 6px 12px; color: #475569; font-family: 'Inter', sans-serif; font-style: italic; font-size: 10px; font-weight: normal; line-height: 1.3;">${itm.notes || defaultNotes}</td>
+          <td style="padding: 6px 5px; border-right: 1px solid #cbd5e1; text-align: center; font-family: monospace; font-size: 10px; font-weight: bold; color: #475569;">${idx + 1}</td>
+          <td style="padding: 6px 10px; border-right: 1px solid #cbd5e1; font-family: monospace; font-weight: 800; font-size: 10.5px; color: #0f172a; line-height: 1.25;">${itm.spare_part_name || "(-)"}</td>
+          <td style="padding: 6px 8px; border-right: 1px solid #cbd5e1; font-family: monospace; font-size: 10.5px; font-weight: 700; color: #1e293b;">${itm.part_number || "-"}</td>
+          <td style="padding: 6px 5px; border-right: 1px solid #cbd5e1; text-align: center; text-transform: uppercase; font-family: monospace; font-size: 10.5px; font-weight: 700; color: #1e293b;">${itm.unit || "(-)"}</td>
+          <td style="padding: 6px 5px; border-right: 1px solid #cbd5e1; text-align: center; font-family: monospace; color: #1e40af; font-weight: 800; font-size: 11px; background-color: #eff6ff;">${itm.requested_qty || "(-)"}</td>
+          <td style="padding: 6px 5px; border-right: 1px solid #cbd5e1; text-align: center; font-family: monospace; font-size: 10px; color: #334155;"></td>
+          <td style="padding: 6px 10px; color: #334155; font-family: monospace; font-style: italic; font-size: 9.5px; font-weight: normal; line-height: 1.25;">${itm.notes || defaultNotes}</td>
         `;
       }
 
