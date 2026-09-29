@@ -29,6 +29,7 @@ interface PrintDocumentProps {
 }
 
 import { sanitizeSignatureUrl, createSVGSignatureDataUrl } from "../utils/signatureUtils.js";
+import { generateTUGPDFArrayBuffer, getCleanTUGFilename } from "../utils/zipDocumentGenerator.js";
 
 const getSignatureForSlot = (roleOrTitle: string, name?: string, signaturesList?: DigitalSignature[], docData?: any) => {
   const rLower = roleOrTitle.toLowerCase().trim();
@@ -286,6 +287,27 @@ export default function PrintDocument({
 
     let container: HTMLElement | null = null;
     try {
+      if ((type === "tug5" || type === "tug6") && data) {
+        const buffer = await generateTUGPDFArrayBuffer(data, type, signatures || []);
+        const blob = new Blob([buffer], { type: "application/pdf" });
+        const url = URL.createObjectURL(blob);
+        const link = document.createElement("a");
+        link.href = url;
+        const filename = getCleanTUGFilename(data, type, 0);
+        link.download = filename;
+        document.body.appendChild(link);
+        link.click();
+        document.body.removeChild(link);
+        URL.revokeObjectURL(url);
+
+        if (type === "tug5" && data.id) {
+          api.logMaterialRequestAction(data.id, "Downloaded").catch(e => console.error(e));
+        } else if (type === "tug6" && data.id) {
+          api.logMaterialRequestTUG6Action(data.id, "Downloaded").catch(e => console.error(e));
+        }
+        return;
+      }
+
       // Allow React to re-render DOM with complete unpaginated dataset
       await new Promise(r => setTimeout(r, 300));
 
