@@ -4,7 +4,9 @@
  */
 
 import React, { useState, useMemo } from "react";
-import { Printer, X, Shield, Anchor, CheckCircle, FileDown, ChevronLeft, ChevronRight } from "lucide-react";
+import { Printer, X, Shield, Anchor, CheckCircle, FileDown, ChevronLeft, ChevronRight, Loader2 } from "lucide-react";
+import jsPDF from "jspdf";
+import html2canvas from "html2canvas";
 import { OutboundDispatch, SparePart, InboundReceiving, SPKWorkOrder, DigitalSignature } from "../types.js";
 import { api } from "../api.js";
 
@@ -120,6 +122,7 @@ export default function PrintDocument({
   const [currentPage, setCurrentPage] = useState<number>(1);
   const [pageSize, setPageSize] = useState<number>(15);
   const [isPrinting, setIsPrinting] = useState<boolean>(false);
+  const [isGeneratingPDF, setIsGeneratingPDF] = useState<boolean>(false);
 
   // Cast data as any inside template properties safely to access union attributes
   const docData = (data || {}) as any;
@@ -276,96 +279,142 @@ export default function PrintDocument({
     }
   };
 
-  const downloadInteractiveHTML = () => {
+  const downloadPDF = async () => {
+    if (isGeneratingPDF) return;
+    setIsGeneratingPDF(true);
     setIsPrinting(true);
-    setTimeout(() => {
-      const printableElement = document.getElementById("printable-area");
-      if (!printableElement) {
-        setIsPrinting(false);
-        return;
+
+    let container: HTMLElement | null = null;
+    try {
+      // Allow React to re-render DOM with complete unpaginated dataset
+      await new Promise(r => setTimeout(r, 300));
+
+      const paperEl = document.getElementById("paper-card");
+      if (!paperEl) {
+        throw new Error("Elemen dokumen cetak tidak ditemukan.");
       }
 
-      const contentHtml = printableElement.innerHTML;
-      const documentTitle = type === "tug5" ? "TUG 5 - Permintaan Barang" : type === "tug6" ? "TUG 6 - Permintaan Barang" : type === "tug10" ? "TUG 10 - Bon Pengembalian" : "WMS Dokumen";
+      // Wait for fonts to be ready
+      if ((document as any).fonts && (document as any).fonts.ready) {
+        await (document as any).fonts.ready;
+      }
 
-      const fullHtml = `<!DOCTYPE html>
-<html lang="id">
-<head>
-    <meta charset="UTF-8">
-    <title>${documentTitle}</title>
-    <!-- Tailwind CSS CDN -->
-    <script src="https://cdn.tailwindcss.com"></script>
-    <style>
-        @page {
-            size: A4 portrait;
-            margin: 8mm 10mm;
-        }
-        body {
-            background-color: #f8fafc;
-            color: #1e293b;
-            font-family: ui-sans-serif, system-ui, sans-serif;
-            padding: 1.5rem 1rem;
-        }
-        table { width: 100% !important; border-collapse: collapse !important; page-break-inside: auto !important; break-inside: auto !important; }
-        thead { display: table-header-group !important; }
-        tbody { display: table-row-group !important; }
-        th, td { padding: 4px 6px !important; }
-        @media print {
-            .no-print { display: none !important; }
-            body, html { padding: 0 !important; margin: 0 !important; background-color: white !important; height: auto !important; overflow: visible !important; }
-            .print-card-wrapper { border: none !important; box-shadow: none !important; padding: 0 !important; margin: 0 !important; width: 100% !important; max-width: 100% !important; overflow: visible !important; }
-            tr { page-break-inside: avoid !important; break-inside: avoid !important; break-inside: avoid-page !important; }
-            .signature-container { page-break-inside: avoid !important; break-inside: avoid !important; display: block !important; }
-            .print-break-after-avoid { page-break-after: avoid !important; break-after: avoid !important; }
-            .print-break-inside-avoid { page-break-inside: avoid !important; break-inside: avoid !important; }
-        }
-    </style>
-</head>
-<body>
-    <div class="print-card-wrapper max-w-4xl mx-auto bg-white border border-slate-200 p-10 rounded-xl shadow-md">
-        ${contentHtml}
-    </div>
-    
-    <div class="no-print flex justify-center gap-4 mt-8 pb-12">
-        <button onclick="window.print()" class="bg-blue-600 hover:bg-blue-500 text-white font-bold text-xs uppercase tracking-wider px-6 py-3 rounded-lg shadow-md transition-all cursor-pointer">
-            🖨️ Cetak / Simpan PDF Sekarang
-        </button>
-        <button onclick="window.close()" class="bg-slate-800 hover:bg-slate-700 text-slate-200 font-bold text-xs uppercase tracking-wider px-6 py-3 rounded-lg transition-all cursor-pointer">
-            ❌ Tutup Halaman
-        </button>
-    </div>
+      // Create an offscreen staging container at exact A4 width (794px ~ 210mm at 96 DPI)
+      container = document.createElement("div");
+      container.style.position = "fixed";
+      container.style.left = "-9999px";
+      container.style.top = "0";
+      container.style.width = "794px";
+      container.style.backgroundColor = "#ffffff";
+      container.style.boxSizing = "border-box";
+      container.style.padding = "28px";
+      container.style.zIndex = "-9999";
+      container.style.color = "#0f172a";
 
-    <script>
-        window.addEventListener('DOMContentLoaded', () => {
-            setTimeout(() => {
-                window.focus();
-                window.print();
-            }, 600);
-        });
-    </script>
-</body>
-</html>`;
+      const clone = paperEl.cloneNode(true) as HTMLElement;
+      // Strip on-screen presentation styles (borders, drop shadows, responsive max-widths)
+      clone.style.maxWidth = "none";
+      clone.style.width = "100%";
+      clone.style.margin = "0";
+      clone.style.padding = "0";
+      clone.style.boxShadow = "none";
+      clone.style.border = "none";
+      clone.style.borderRadius = "0";
+      clone.style.backgroundColor = "#ffffff";
 
-      const blob = new Blob([fullHtml], { type: "text/html;charset=utf-8" });
-      const url = URL.createObjectURL(blob);
-      const link = document.createElement("a");
-      link.href = url;
-      const cleanNum = (data?.request_number || data?.bon_pengeluaran_number || data?.id || "doc").replace(/\//g, "_");
-      link.download = `CETAK_${type.toUpperCase()}_${cleanNum}.html`;
-      document.body.appendChild(link);
-      link.click();
-      document.body.removeChild(link);
-      URL.revokeObjectURL(url);
+      container.appendChild(clone);
+      document.body.appendChild(container);
 
+      // Ensure all images (BAG Logo, digital signatures) in the container are fully loaded
+      const images = Array.from(container.querySelectorAll("img"));
+      await Promise.all(
+        images.map(img => {
+          if (img.complete && img.naturalHeight !== 0) return Promise.resolve();
+          return new Promise<void>(resolve => {
+            img.onload = () => resolve();
+            img.onerror = () => resolve();
+          });
+        })
+      );
+
+      // Render crisp canvas with html2canvas (2x scale for sharp text and borders)
+      const canvas = await html2canvas(container, {
+        scale: 2,
+        useCORS: true,
+        allowTaint: true,
+        logging: false,
+        backgroundColor: "#ffffff",
+        windowWidth: 794
+      });
+
+      // Generate multi-page A4 PDF using jsPDF
+      const pdf = new jsPDF({
+        orientation: "portrait",
+        unit: "mm",
+        format: "a4"
+      });
+
+      const pdfWidth = pdf.internal.pageSize.getWidth(); // 210 mm
+      const pdfHeight = pdf.internal.pageSize.getHeight(); // 297 mm
+      const imgWidth = pdfWidth;
+      const imgHeight = (canvas.height * pdfWidth) / canvas.width;
+      const imgData = canvas.toDataURL("image/jpeg", 0.98);
+
+      let position = 0;
+      pdf.addImage(imgData, "JPEG", 0, position, imgWidth, imgHeight, undefined, "FAST");
+      let heightLeft = imgHeight - pdfHeight;
+
+      while (heightLeft > 2) {
+        position -= pdfHeight;
+        pdf.addPage();
+        pdf.addImage(imgData, "JPEG", 0, position, imgWidth, imgHeight, undefined, "FAST");
+        heightLeft -= pdfHeight;
+      }
+
+      const rawNum = (
+        docData?.bon_pengeluaran_number ||
+        docData?.tug5_number ||
+        docData?.tug6_number ||
+        docData?.request_number ||
+        docData?.return_number ||
+        docData?.surat_jalan_number ||
+        docData?.manifest_number ||
+        docNum ||
+        "DOC"
+      );
+      const cleanNum = String(rawNum).replace(/[/\\?%*:|"<>]/g, "_").trim();
+
+      const docPrefix = type === "mutation_report" ? "LAPORAN_MUTASI_TUG11"
+        : type === "stock_report" ? "LAPORAN_STOK_GUDANG"
+        : type === "tug5" ? "TUG5_PERMINTAAN_BARANG"
+        : type === "tug6" ? "TUG6_PERMINTAAN_SPAREPART"
+        : type === "tug10" ? "TUG10_BON_PENGEMBALIAN"
+        : type === "bon" ? "TUG8_BON_PENGELUARAN"
+        : type === "surat_jalan" ? "SURAT_JALAN"
+        : type === "manifest" ? "CARGO_MANIFEST"
+        : "DOKUMEN_WMS";
+
+      const filename = `${docPrefix}_${cleanNum}.pdf`;
+      pdf.save(filename);
+
+      if (type === "bon" && data && data.id) {
+        api.logDispatchAction(data.id, "Downloaded").catch(e => console.error(e));
+      } else if (type === "tug5" && data && data.id) {
+        api.logMaterialRequestAction(data.id, "Downloaded").catch(e => console.error(e));
+      } else if (type === "tug6" && data && data.id) {
+        api.logMaterialRequestTUG6Action(data.id, "Downloaded").catch(e => console.error(e));
+      } else if (type === "tug10" && data && data.id) {
+        api.logMaterialReturnAction(data.id, "Downloaded").catch(e => console.error(e));
+      }
+    } catch (err) {
+      console.error("Gagal men-generate PDF:", err);
+      alert("Terjadi kendala saat memproses file PDF. Silakan gunakan tombol 'Cetak Sekarang' dan pilih 'Save as PDF'.");
+    } finally {
+      if (container && document.body.contains(container)) {
+        document.body.removeChild(container);
+      }
+      setIsGeneratingPDF(false);
       setIsPrinting(false);
-    }, 150);
-
-    if (type === "bon" && data && data.id) {
-      api.logDispatchAction(data.id, "Downloaded").catch(e => console.error(e));
-    } else if (type === "tug5" && data && data.id) {
-      api.logMaterialRequestAction(data.id, "Downloaded").catch(e => console.error(e));
-    } else if (type === "tug10" && data && data.id) {
-      api.logMaterialReturnAction(data.id, "Downloaded").catch(e => console.error(e));
     }
   };
 
@@ -472,12 +521,22 @@ export default function PrintDocument({
             <div className="flex items-center gap-2.5 shrink-0">
               <button
                 type="button"
-                onClick={downloadInteractiveHTML}
-                className="flex items-center gap-1.5 bg-slate-800 hover:bg-slate-700 text-slate-100 hover:text-white text-xs font-bold px-3.5 py-2 rounded-lg border border-slate-700 shadow-xs transition-all cursor-pointer"
-                title="Download file cetak interaktif HTML/PDF"
+                disabled={isGeneratingPDF}
+                onClick={downloadPDF}
+                className="flex items-center gap-1.5 bg-blue-600 hover:bg-blue-500 disabled:bg-blue-800 disabled:opacity-70 text-white text-xs font-bold px-3.5 py-2 rounded-lg border border-blue-500/50 shadow-sm transition-all cursor-pointer"
+                title="Download dokumen resmi format PDF"
               >
-                <FileDown className="w-4 h-4 text-blue-400" />
-                <span>Download PDF</span>
+                {isGeneratingPDF ? (
+                  <>
+                    <Loader2 className="w-4 h-4 text-blue-200 animate-spin" />
+                    <span>Menyiapkan PDF...</span>
+                  </>
+                ) : (
+                  <>
+                    <FileDown className="w-4 h-4 text-blue-200" />
+                    <span>Download PDF</span>
+                  </>
+                )}
               </button>
 
               <button
@@ -557,7 +616,7 @@ export default function PrintDocument({
 
         {/* Printable Paper Form Content Area (Styled like crisp A4 sheet) */}
         <div className="p-3 sm:p-5 flex-1 overflow-y-auto print:p-0 print:overflow-visible print:h-auto print:max-h-none print-card bg-slate-100/50 print:bg-white" id="printable-area">
-          <div className="max-w-4xl mx-auto bg-white border border-slate-300 shadow-xl rounded-xs p-4 sm:p-6 md:p-8 print:p-0 print:border-none print:shadow-none print:bg-white print:max-w-full print:w-full print:overflow-visible">
+          <div id="paper-card" className="max-w-4xl mx-auto bg-white border border-slate-300 shadow-xl rounded-xs p-4 sm:p-6 md:p-8 print:p-0 print:border-none print:shadow-none print:bg-white print:max-w-full print:w-full print:overflow-visible">
             <div className="flex-1">
 
               {/* Company Official Letterhead Header */}
