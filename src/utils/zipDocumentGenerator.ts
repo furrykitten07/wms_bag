@@ -198,25 +198,25 @@ export function generateSingleTUGHTML(
   const defaultNotes = req.spk_number || req.work_order_ref ? `Permintaan SPK ${req.spk_number || req.work_order_ref}` : "(-)";
 
   const itemsHtml = (!req.items || req.items.length === 0) ? `
-    <tr style="border-bottom: 1px solid #cbd5e1; font-weight: 600;">
-      <td style="padding: 6px 5px; border-right: 1px solid #cbd5e1; text-align: center; font-family: monospace; font-size: 10px; color: #94a3b8;">1</td>
-      <td style="padding: 6px 10px; border-right: 1px solid #cbd5e1; font-family: monospace; font-weight: bold; font-size: 10.5px; color: #94a3b8;">(-)</td>
-      <td style="padding: 6px 8px; border-right: 1px solid #cbd5e1; font-family: monospace; font-size: 10.5px; color: #94a3b8;">(-)</td>
-      <td style="padding: 6px 5px; border-right: 1px solid #cbd5e1; text-align: center; font-family: monospace; font-size: 10px; color: #94a3b8;">(-)</td>
-      <td style="padding: 6px 5px; border-right: 1px solid #cbd5e1; text-align: center; font-family: monospace; color: #94a3b8; font-size: 11px;">(-)</td>
-      <td style="padding: 6px 5px; border-right: 1px solid #cbd5e1; text-align: center; font-family: monospace; font-size: 10px; color: #94a3b8;"></td>
-      <td style="padding: 6px 10px; color: #64748b; font-family: monospace; font-style: italic; font-size: 9.5px;">NIHIL (-)</td>
-    </tr>
+    <div style="display: flex; width: 100%; border-bottom: 1px solid #cbd5e1; box-sizing: border-box; font-family: Consolas, 'Courier New', monospace; font-size: 10px; align-items: stretch; background-color: #ffffff;">
+      <div style="width: 38px; flex-shrink: 0; padding: 6px 4px; border-right: 1px solid #cbd5e1; text-align: center; color: #94a3b8; box-sizing: border-box; display: flex; align-items: center; justify-content: center;">1</div>
+      <div style="flex: 1; min-width: 0; padding: 6px 10px; border-right: 1px solid #cbd5e1; font-weight: bold; color: #94a3b8; box-sizing: border-box; display: flex; align-items: center;">(-)</div>
+      <div style="width: 140px; flex-shrink: 0; padding: 6px 8px; border-right: 1px solid #cbd5e1; color: #94a3b8; box-sizing: border-box; display: flex; align-items: center;">(-)</div>
+      <div style="width: 48px; flex-shrink: 0; padding: 6px 4px; border-right: 1px solid #cbd5e1; text-align: center; color: #94a3b8; box-sizing: border-box; display: flex; align-items: center; justify-content: center;">(-)</div>
+      <div style="width: 92px; flex-shrink: 0; padding: 6px 4px; border-right: 1px solid #cbd5e1; text-align: center; color: #94a3b8; background-color: #eff6ff; box-sizing: border-box; display: flex; align-items: center; justify-content: center;">(-)</div>
+      <div style="width: 70px; flex-shrink: 0; padding: 6px 4px; border-right: 1px solid #cbd5e1; text-align: center; color: #94a3b8; box-sizing: border-box; display: flex; align-items: center; justify-content: center;"></div>
+      <div style="width: 160px; flex-shrink: 0; padding: 6px 8px; color: #64748b; font-style: italic; font-size: 9.5px; box-sizing: border-box; display: flex; align-items: center;">NIHIL (-)</div>
+    </div>
   ` : req.items.map((item, idx) => `
-    <tr style="border-bottom: 1px solid #cbd5e1; font-weight: 600; color: #0f172a;">
-      <td style="padding: 6px 5px; border-right: 1px solid #cbd5e1; text-align: center; font-family: monospace; color: #64748b; font-size: 10px;">${idx + 1}</td>
-      <td style="padding: 6px 10px; border-right: 1px solid #cbd5e1; font-family: monospace; font-weight: bold; font-size: 10.5px; color: #0f172a; line-height: 1.25;">${item.spare_part_name || "(-)"}</td>
-      <td style="padding: 6px 8px; border-right: 1px solid #cbd5e1; font-family: monospace; font-size: 10.5px; color: #334155;">${item.part_number || "-"}</td>
-      <td style="padding: 6px 5px; border-right: 1px solid #cbd5e1; text-align: center; text-transform: uppercase; font-family: monospace; font-size: 10px; color: #334155;">${item.unit || "(-)"}</td>
-      <td style="padding: 6px 5px; border-right: 1px solid #cbd5e1; text-align: center; font-family: monospace; color: #1e3a8a; font-weight: 900; font-size: 11.5px;">${item.requested_qty || "(-)"}</td>
-      <td style="padding: 6px 5px; border-right: 1px solid #cbd5e1; text-align: center; font-family: monospace; font-size: 10px; color: #334155;"></td>
-      <td style="padding: 6px 10px; color: #475569; font-family: monospace; font-style: italic; font-size: 9.5px; font-weight: normal; line-height: 1.25;">${item.notes || defaultNotes}</td>
-    </tr>
+    <div style="display: flex; width: 100%; ${idx < req.items.length - 1 ? 'border-bottom: 1px solid #cbd5e1;' : ''} box-sizing: border-box; font-family: Consolas, 'Courier New', monospace; font-size: 10px; align-items: stretch; background-color: #ffffff;">
+      <div style="width: 38px; flex-shrink: 0; padding: 6px 4px; border-right: 1px solid #cbd5e1; text-align: center; font-weight: bold; color: #475569; box-sizing: border-box; display: flex; align-items: center; justify-content: center;">${idx + 1}</div>
+      <div style="flex: 1; min-width: 0; padding: 6px 10px; border-right: 1px solid #cbd5e1; font-weight: bold; color: #0f172a; line-height: 1.25; box-sizing: border-box; display: flex; align-items: center;">${item.spare_part_name || "(-)"}</div>
+      <div style="width: 140px; flex-shrink: 0; padding: 6px 8px; border-right: 1px solid #cbd5e1; font-weight: 600; color: #1e293b; box-sizing: border-box; display: flex; align-items: center;">${item.part_number || "-"}</div>
+      <div style="width: 48px; flex-shrink: 0; padding: 6px 4px; border-right: 1px solid #cbd5e1; text-align: center; text-transform: uppercase; font-weight: 600; color: #1e293b; box-sizing: border-box; display: flex; align-items: center; justify-content: center;">${item.unit || "(-)"}</div>
+      <div style="width: 92px; flex-shrink: 0; padding: 6px 4px; border-right: 1px solid #cbd5e1; text-align: center; color: #1e40af; font-weight: bold; font-size: 11px; background-color: #eff6ff; box-sizing: border-box; display: flex; align-items: center; justify-content: center;">${item.requested_qty || "(-)"}</div>
+      <div style="width: 70px; flex-shrink: 0; padding: 6px 4px; border-right: 1px solid #cbd5e1; text-align: center; color: #334155; box-sizing: border-box; display: flex; align-items: center; justify-content: center;"></div>
+      <div style="width: 160px; flex-shrink: 0; padding: 6px 8px; color: #334155; font-style: italic; font-size: 9.5px; line-height: 1.25; box-sizing: border-box; display: flex; align-items: center;">${item.notes || defaultNotes}</div>
+    </div>
   `).join("");
 
   return `<!DOCTYPE html>
@@ -229,7 +229,7 @@ export function generateSingleTUGHTML(
         body { 
             background-color: #ffffff; 
             color: #0f172a; 
-            font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace; 
+            font-family: Consolas, 'Courier New', monospace; 
             padding: 0; 
             margin: 0; 
             -webkit-font-smoothing: antialiased;
@@ -239,7 +239,7 @@ export function generateSingleTUGHTML(
             max-width: 794px; 
             margin: 0 auto; 
             background: #ffffff; 
-            padding: 20px 24px; 
+            padding: 24px 28px; 
             box-sizing: border-box; 
         }
         .no-print-btn { display: flex; justify-content: center; gap: 1rem; margin-top: 2rem; }
@@ -250,120 +250,126 @@ export function generateSingleTUGHTML(
 <body>
     <div class="card">
         <!-- Letterhead -->
-        <div style="border-bottom: 3px double #0f172a; padding-bottom: 10px; margin-bottom: 12px; display: flex; justify-content: space-between; align-items: flex-start;">
+        <div style="border-bottom: 3px double #0f172a; padding-bottom: 10px; margin-bottom: 12px; display: flex; justify-content: space-between; align-items: flex-start; box-sizing: border-box;">
             <div style="display: flex; align-items: center; gap: 12px;">
-                <img src="/bag-logo.jpg" alt="BAG Logo" style="height: 48px; width: auto;" onerror="this.style.display='none'" />
+                <img src="/bag-logo.jpg" alt="BAG Logo" style="height: 48px; width: auto; object-fit: contain;" onerror="this.style.display='none'" />
                 <div>
-                    <h1 style="margin: 0; font-size: 15px; font-weight: bold; text-transform: uppercase; color: #0f172a; font-family: monospace;">PT. PELAYARAN BAHTERA ADHIGUNA (BAG)</h1>
-                    <p style="margin: 2px 0 0 0; font-size: 8.5px; color: #64748b; font-family: monospace; line-height: 1.35;">
+                    <h1 style="margin: 0; font-size: 15px; font-weight: bold; text-transform: uppercase; color: #0f172a; font-family: Consolas, 'Courier New', monospace; line-height: 1.2;">PT. PELAYARAN BAHTERA ADHIGUNA (BAG)</h1>
+                    <p style="margin: 2px 0 0 0; font-size: 8.5px; color: #64748b; font-family: Consolas, 'Courier New', monospace; line-height: 1.35;">
                         Maritime Logistics and Spares Warehouse<br>
                         Jl. Yos Sudarso No 193 Tanjung Sekong, Merak, Banten | Phone: (021) 229-099-01
                     </p>
                 </div>
             </div>
-            <div style="text-align: right;">
-                <span style="background: #f1f5f9; color: #64748b; padding: 2px 6px; border-radius: 4px; font-size: 9px; font-family: monospace; font-weight: bold; border: 1px solid #cbd5e1; display: inline-block;">WMS-SYSTEM</span>
-                <p style="margin: 4px 0 0 0; font-size: 11px; font-family: monospace; color: #334155;">Ref: <strong style="color: #0f172a;">${docNum}</strong></p>
-                <p style="margin: 2px 0 0 0; font-size: 9px; font-family: monospace; color: #64748b;">Date: ${headerDate}</p>
-                <div style="margin-top: 4px; display: flex; justify-content: flex-end;">
-                    <span style="font-size: 11px; font-weight: 900; border: 1.5px solid #0f172a; padding: 2px 8px; border-radius: 4px; background: #ffffff; font-family: monospace; color: #0f172a;">${typeBadge}</span>
+            <div style="text-align: right; display: flex; flex-direction: column; align-items: flex-end; gap: 2px;">
+                <span style="background-color: #f1f5f9; color: #475569; padding: 2px 7px; border-radius: 4px; font-size: 9px; font-family: Consolas, 'Courier New', monospace; font-weight: bold; border: 1px solid #cbd5e1; display: inline-block;">WMS-SYSTEM</span>
+                <div style="margin-top: 3px; font-size: 11px; font-family: Consolas, 'Courier New', monospace; color: #334155;">Ref: <strong style="color: #0f172a;">${docNum}</strong></div>
+                <div style="font-size: 9px; font-family: Consolas, 'Courier New', monospace; color: #64748b;">Date: ${headerDate}</div>
+                <div style="margin-top: 3px;">
+                    <span style="font-size: 11px; font-weight: 900; border: 1.5px solid #0f172a; padding: 2px 10px; border-radius: 4px; background: #ffffff; font-family: Consolas, 'Courier New', monospace; color: #0f172a; display: inline-block;">${typeBadge}</span>
                 </div>
             </div>
         </div>
 
         <!-- Document Title -->
-        <div style="text-align: center; margin-bottom: 12px;">
-            <h2 style="margin: 0; font-size: 14.5px; text-transform: uppercase; text-decoration: underline; color: #0f172a; font-weight: 800; letter-spacing: 0.2px; font-family: monospace;">${titleText}</h2>
-            <p style="margin: 3px 0 0 0; font-size: 9.5px; text-transform: uppercase; font-family: monospace; color: #64748b; font-style: italic; letter-spacing: 0.5px;">${typeDesc}</p>
+        <div style="text-align: center; margin-bottom: 12px; box-sizing: border-box;">
+            <h2 style="margin: 0; font-size: 14.5px; text-transform: uppercase; text-decoration: underline; text-underline-offset: 4px; color: #0f172a; font-weight: 800; font-family: Consolas, 'Courier New', monospace;">${titleText}</h2>
+            <p style="margin: 3px 0 0 0; font-size: 9.5px; text-transform: uppercase; font-family: Consolas, 'Courier New', monospace; color: #64748b; font-style: italic;">${typeDesc}</p>
         </div>
 
         <!-- Particulars Table Box -->
-        <div style="border: 1px solid #475569; border-radius: 8px; padding: 10px 14px; background: #ffffff; font-size: 10px; font-family: monospace; margin-bottom: 12px; text-transform: uppercase; line-height: 1.55;">
-            <div style="display: grid; grid-template-columns: 1.15fr 0.85fr; gap: 12px;">
-                <div style="display: flex; flex-direction: column; gap: 4px;">
+        <div style="border: 1px solid #475569; border-radius: 8px; padding: 10px 14px; background: #ffffff; font-size: 10px; font-family: Consolas, 'Courier New', monospace; margin-bottom: 12px; text-transform: uppercase; line-height: 1.55; box-sizing: border-box;">
+            <div style="display: flex; justify-content: space-between; gap: 16px;">
+                <div style="display: flex; flex-direction: column; gap: 4px; flex: 1.2;">
                     <div><span style="color: #64748b; width: 140px; display: inline-block;">KAPAL PENERIMA :</span><strong style="color: #0f172a; font-size: 11.5px;">${req.vessel_name || "MV. KARTINI BARUNA"}</strong></div>
                     <div><span style="color: #64748b; width: 140px; display: inline-block;">FASILITAS GUDANG :</span><strong style="color: #0f172a;">MERAK WAREHOUSE</strong></div>
                     <div><span style="color: #64748b; width: 140px; display: inline-block;">ALAMAT PENGIRIMAN :</span><strong style="color: #1e293b;">${cleanAddress}</strong></div>
                     <div><span style="color: #64748b; width: 140px; display: inline-block;">PEKERJAAN (WO REF) :</span><strong style="color: #1e3a8a;">${req.work_order_ref || req.spk_number || "Daftar Permintaan / WO"}</strong></div>
                     <div><span style="color: #64748b; width: 140px; display: inline-block;">KODE AKUN :</span><strong style="color: #0f172a;">${req.account_code || "BPP"}</strong></div>
                 </div>
-                <div style="display: flex; flex-direction: column; gap: 4px; text-align: right;">
+                <div style="display: flex; flex-direction: column; gap: 4px; text-align: right; flex: 0.8;">
                     <div><span style="color: #64748b; margin-right: 8px;">PEMOHON / REQUESTER :</span><strong style="color: #3730a3;">${req.requester_name || req.requested_by || "CHIEF ENGINEER"}</strong></div>
                     <div><span style="color: #64748b; margin-right: 8px;">TANGGAL PENGAJUAN :</span><strong style="color: #92400e;">${tanggalPengajuan}</strong></div>
                     <div><span style="color: #64748b; margin-right: 8px;">NO. DOKUMEN TUG :</span><strong style="color: #0f172a;">${docNum}</strong></div>
                     <div><span style="color: #64748b; margin-right: 8px;">FUNGSI :</span><strong style="color: #047857;">${req.function_code || "ARMADA"}</strong></div>
                 </div>
             </div>
-            ${req.remarks ? `<div style="margin-top: 8px; padding: 5px 9px; background: #f8fafc; border: 1px solid #cbd5e1; font-size: 9.5px; font-style: italic; border-radius: 4px; text-transform: none; font-family: monospace;"><strong style="text-transform: uppercase; font-style: normal; color: #0f172a; margin-right: 6px;">CATATAN PERMINTAAN:</strong>${req.remarks}</div>` : ""}
+            ${req.remarks ? `<div style="margin-top: 8px; padding: 5px 9px; background: #f8fafc; border: 1px solid #cbd5e1; font-size: 9.5px; font-style: italic; border-radius: 4px; font-family: Consolas, 'Courier New', monospace; box-sizing: border-box;"><strong style="text-transform: uppercase; font-style: normal; color: #0f172a; margin-right: 6px;">CATATAN PERMINTAAN :</strong>${req.remarks}</div>` : ""}
         </div>
 
-        <!-- Items Table -->
-        <div style="border: 1px solid #cbd5e1; border-radius: 4px; overflow: hidden; margin-top: 12px; margin-bottom: 12px;">
-            <table style="width: 100%; border-collapse: collapse; text-align: left;">
-                <thead style="background-color: #f8fafc; border-bottom: 1.5px solid #475569; font-size: 9.5px; font-weight: bold; color: #1e293b; text-transform: uppercase; font-family: monospace;">
-                    <tr>
-                        <th style="padding: 7px 5px; border-right: 1px solid #cbd5e1; text-align: center; width: 32px;">#</th>
-                        <th style="padding: 7px 10px; border-right: 1px solid #cbd5e1; text-align: left;">${nameColHeader}</th>
-                        <th style="padding: 7px 8px; border-right: 1px solid #cbd5e1; text-align: left; width: 140px;">NOMOR / PART NUMBER</th>
-                        <th style="padding: 7px 5px; border-right: 1px solid #cbd5e1; text-align: center; width: 48px;">STN</th>
-                        <th style="padding: 7px 5px; border-right: 1px solid #cbd5e1; text-align: center; width: 90px; color: #1e40af; font-weight: bold; background-color: #eff6ff;">BANYAKNYA (DIBERIKAN)</th>
-                        <th style="padding: 7px 5px; border-right: 1px solid #cbd5e1; text-align: center; width: 75px;">NOMOR DO</th>
-                        <th style="padding: 7px 10px; text-align: left; width: 160px;">KETERANGAN</th>
-                    </tr>
-                </thead>
-                <tbody style="border-top: none;">
-                    ${itemsHtml}
-                </tbody>
-            </table>
+        <!-- Items Table Container (DIV layout to prevent lines bleeding outside) -->
+        <div style="width: 100%; border: 1.5px solid #94a3b8; border-radius: 4px; overflow: hidden; margin-top: 10px; margin-bottom: 12px; box-sizing: border-box; background: #ffffff;">
+            <!-- Header Row -->
+            <div style="display: flex; width: 100%; background-color: #f8fafc; border-bottom: 1.5px solid #475569; font-size: 9.5px; font-weight: bold; color: #1e293b; text-transform: uppercase; font-family: Consolas, 'Courier New', monospace; box-sizing: border-box;">
+                <div style="width: 38px; flex-shrink: 0; padding: 7px 4px; border-right: 1px solid #cbd5e1; text-align: center; box-sizing: border-box; display: flex; align-items: center; justify-content: center;">#</div>
+                <div style="flex: 1; min-width: 0; padding: 7px 10px; border-right: 1px solid #cbd5e1; text-align: left; box-sizing: border-box; display: flex; align-items: center;">${nameColHeader}</div>
+                <div style="width: 140px; flex-shrink: 0; padding: 7px 8px; border-right: 1px solid #cbd5e1; text-align: left; box-sizing: border-box; display: flex; align-items: center;">NOMOR / PART NUMBER</div>
+                <div style="width: 48px; flex-shrink: 0; padding: 7px 4px; border-right: 1px solid #cbd5e1; text-align: center; box-sizing: border-box; display: flex; align-items: center; justify-content: center;">STN</div>
+                <div style="width: 92px; flex-shrink: 0; padding: 7px 4px; border-right: 1px solid #cbd5e1; text-align: center; box-sizing: border-box; color: #1e40af; font-weight: bold; background-color: #eff6ff; display: flex; align-items: center; justify-content: center; line-height: 1.2;">BANYAKNYA (DIBERIKAN)</div>
+                <div style="width: 70px; flex-shrink: 0; padding: 7px 4px; border-right: 1px solid #cbd5e1; text-align: center; box-sizing: border-box; display: flex; align-items: center; justify-content: center;">NOMOR DO</div>
+                <div style="width: 160px; flex-shrink: 0; padding: 7px 8px; text-align: left; box-sizing: border-box; display: flex; align-items: center;">KETERANGAN</div>
+            </div>
+            <!-- Body Rows -->
+            <div style="width: 100%; display: flex; flex-direction: column;">
+                ${itemsHtml}
+            </div>
         </div>
 
         <!-- Perintah Kerja Box -->
-        <div style="border: 1.5px solid #1e3a8a; border-radius: 8px; padding: 8px 14px; margin-top: 10px; margin-bottom: 12px; background: #ffffff; font-size: 10px; font-family: monospace; display: flex; justify-content: space-between; align-items: center; text-transform: uppercase;">
+        <div style="border: 1.5px solid #1e3a8a; border-radius: 8px; padding: 8px 14px; margin-top: 10px; margin-bottom: 10px; background: #ffffff; font-size: 10px; font-family: Consolas, 'Courier New', monospace; display: flex; justify-content: space-between; align-items: center; text-transform: uppercase; box-sizing: border-box;">
             <div><span style="color: #0f172a; font-weight: bold;">PERINTAH KERJA:</span> <strong style="color: #b91c1c; margin-left: 6px; font-weight: 900;">${req.work_order_ref || req.spk_number || "TIADA"}</strong></div>
             <div><span style="color: #0f172a; font-weight: bold;">KODE AKUN:</span> <strong style="color: #1e3a8a; margin-left: 6px; font-weight: 900;">${req.account_code || "BPP"}</strong></div>
             <div><span style="color: #0f172a; font-weight: bold;">FUNGSI:</span> <strong style="color: #047857; margin-left: 6px; font-weight: 900;">${req.function_code || "ARMADA"}</strong></div>
         </div>
 
         <!-- Disclaimer & Signatures -->
-        <div style="margin-top: 12px;">
-            <p style="font-style: italic; color: #64748b; font-size: 8.5px; margin-bottom: 12px; font-family: monospace; line-height: 1.35;">
+        <div style="margin-top: 10px; box-sizing: border-box;">
+            <p style="font-style: italic; color: #64748b; font-size: 8.5px; margin-bottom: 12px; font-family: Consolas, 'Courier New', monospace; line-height: 1.35;">
                 Disclaimer: PT. Pelayaran Bahtera Adhiguna assumes fully audited logistics carriage parameters upon signed counter-authority signature dispatch tags. Checked physically against corrosion, salt contamination, marine class markings and full vendor structural seal integrity.
             </p>
 
-            <div style="display: grid; grid-template-columns: repeat(4, 1fr); gap: 14px; text-align: center; text-transform: uppercase; font-size: 8.5px; font-weight: bold; color: #334155; margin-top: 12px;">
-                <div style="display: flex; flex-direction: column; justify-content: space-between; height: 75px;">
-                    <span style="font-size: 8px; color: #334155; font-family: monospace;">MENGETAHUI :</span>
-                    <div style="border-top: 1.5px solid #64748b; padding-top: 4px; position: relative;">
-                        ${sigVP ? `<div style="position: absolute; bottom: 18px; left: 0; right: 0; display: flex; justify-content: center; pointer-events: none;"><img src="${sigVP}" style="max-height: 44px; max-width: 120px; object-fit: contain;" /></div>` : ""}
-                        <div style="font-weight: 900; color: #0f172a; font-size: 9.5px; font-family: monospace;">SUMBONO</div>
-                        <div style="font-size: 7.5px; font-family: monospace; font-weight: normal; font-style: italic; color: #64748b; text-transform: none; margin-top: 1px;">VP RENDALHAR</div>
+            <div style="display: flex; width: 100%; justify-content: space-between; gap: 14px; text-align: center; box-sizing: border-box;">
+                <div style="flex: 1; display: flex; flex-direction: column; justify-content: flex-end; height: 80px; box-sizing: border-box;">
+                    <span style="font-size: 8px; color: #334155; font-family: Consolas, 'Courier New', monospace; font-weight: bold; margin-bottom: 2px;">MENGETAHUI :</span>
+                    <div style="height: 44px; display: flex; align-items: flex-end; justify-content: center;">
+                        ${sigVP ? `<img src="${sigVP}" style="max-height: 42px; max-width: 110px; object-fit: contain;" />` : `<div style="height: 42px;"></div>`}
+                    </div>
+                    <div style="border-top: 1.5px solid #64748b; padding-top: 4px; width: 100%; box-sizing: border-box;">
+                        <div style="font-weight: 900; color: #020617; font-size: 9.5px; font-family: Consolas, 'Courier New', monospace;">SUMBONO</div>
+                        <div style="font-size: 7.5px; font-family: Consolas, 'Courier New', monospace; font-weight: normal; font-style: italic; color: #64748b; text-transform: none; margin-top: 1px;">VP RENDALHAR</div>
                     </div>
                 </div>
 
-                <div style="display: flex; flex-direction: column; justify-content: space-between; height: 75px;">
-                    <span style="font-size: 8px; color: #334155; font-family: monospace;">DISETUJUI OLEH :</span>
-                    <div style="border-top: 1.5px solid #64748b; padding-top: 4px; position: relative;">
-                        ${sigManager ? `<div style="position: absolute; bottom: 18px; left: 0; right: 0; display: flex; justify-content: center; pointer-events: none;"><img src="${sigManager}" style="max-height: 44px; max-width: 120px; object-fit: contain;" /></div>` : ""}
-                        <div style="font-weight: 900; color: #0f172a; font-size: 9.5px; font-family: monospace;">MOHAMAT EMIR FERDIAN</div>
-                        <div style="font-size: 7.5px; font-family: monospace; font-weight: normal; font-style: italic; color: #64748b; text-transform: none; margin-top: 1px;">Manager Logistik</div>
+                <div style="flex: 1; display: flex; flex-direction: column; justify-content: flex-end; height: 80px; box-sizing: border-box;">
+                    <span style="font-size: 8px; color: #334155; font-family: Consolas, 'Courier New', monospace; font-weight: bold; margin-bottom: 2px;">DISETUJUI OLEH :</span>
+                    <div style="height: 44px; display: flex; align-items: flex-end; justify-content: center;">
+                        ${sigManager ? `<img src="${sigManager}" style="max-height: 42px; max-width: 110px; object-fit: contain;" />` : `<div style="height: 42px;"></div>`}
+                    </div>
+                    <div style="border-top: 1.5px solid #64748b; padding-top: 4px; width: 100%; box-sizing: border-box;">
+                        <div style="font-weight: 900; color: #020617; font-size: 9.5px; font-family: Consolas, 'Courier New', monospace;">MOHAMAT EMIR FERDIAN</div>
+                        <div style="font-size: 7.5px; font-family: Consolas, 'Courier New', monospace; font-weight: normal; font-style: italic; color: #64748b; text-transform: none; margin-top: 1px;">Manager Logistik</div>
                     </div>
                 </div>
 
-                <div style="display: flex; flex-direction: column; justify-content: space-between; height: 75px;">
-                    <span style="font-size: 8px; color: #334155; font-family: monospace;">KEPALA GUDANG :</span>
-                    <div style="border-top: 1.5px solid #64748b; padding-top: 4px; position: relative;">
-                        ${sigGudang ? `<div style="position: absolute; bottom: 18px; left: 0; right: 0; display: flex; justify-content: center; pointer-events: none;"><img src="${sigGudang}" style="max-height: 44px; max-width: 120px; object-fit: contain;" /></div>` : ""}
-                        <div style="font-weight: 900; color: #0f172a; font-size: 9.5px; font-family: monospace;">&nbsp;</div>
-                        <div style="font-size: 7.5px; font-family: monospace; font-weight: normal; font-style: italic; color: #64748b; text-transform: none; margin-top: 1px;">Gudang Merak</div>
+                <div style="flex: 1; display: flex; flex-direction: column; justify-content: flex-end; height: 80px; box-sizing: border-box;">
+                    <span style="font-size: 8px; color: #334155; font-family: Consolas, 'Courier New', monospace; font-weight: bold; margin-bottom: 2px;">KEPALA GUDANG :</span>
+                    <div style="height: 44px; display: flex; align-items: flex-end; justify-content: center;">
+                        ${sigGudang ? `<img src="${sigGudang}" style="max-height: 42px; max-width: 110px; object-fit: contain;" />` : `<div style="height: 42px;"></div>`}
+                    </div>
+                    <div style="border-top: 1.5px solid #64748b; padding-top: 4px; width: 100%; box-sizing: border-box;">
+                        <div style="font-weight: 900; color: #020617; font-size: 9.5px; font-family: Consolas, 'Courier New', monospace;">&nbsp;</div>
+                        <div style="font-size: 7.5px; font-family: Consolas, 'Courier New', monospace; font-weight: normal; font-style: italic; color: #64748b; text-transform: none; margin-top: 1px;">Gudang Merak</div>
                     </div>
                 </div>
 
-                <div style="display: flex; flex-direction: column; justify-content: space-between; height: 75px;">
-                    <span style="font-size: 8px; color: #334155; font-family: monospace;">PETUGAS GUDANG :</span>
-                    <div style="border-top: 1.5px solid #64748b; padding-top: 4px; position: relative;">
-                        ${sigPetugasGudang ? `<div style="position: absolute; bottom: 18px; left: 0; right: 0; display: flex; justify-content: center; pointer-events: none;"><img src="${sigPetugasGudang}" style="max-height: 44px; max-width: 120px; object-fit: contain;" /></div>` : ""}
-                        <div style="font-weight: 900; color: #0f172a; font-size: 9.5px; font-family: monospace;">MAGHFUR MUHAMMAD ALFIN</div>
-                        <div style="font-size: 7.5px; font-family: monospace; font-weight: normal; font-style: italic; color: #64748b; text-transform: none; margin-top: 1px;">Petugas Gudang</div>
+                <div style="flex: 1; display: flex; flex-direction: column; justify-content: flex-end; height: 80px; box-sizing: border-box;">
+                    <span style="font-size: 8px; color: #334155; font-family: Consolas, 'Courier New', monospace; font-weight: bold; margin-bottom: 2px;">PETUGAS GUDANG :</span>
+                    <div style="height: 44px; display: flex; align-items: flex-end; justify-content: center;">
+                        ${sigPetugasGudang ? `<img src="${sigPetugasGudang}" style="max-height: 42px; max-width: 110px; object-fit: contain;" />` : `<div style="height: 42px;"></div>`}
+                    </div>
+                    <div style="border-top: 1.5px solid #64748b; padding-top: 4px; width: 100%; box-sizing: border-box;">
+                        <div style="font-weight: 900; color: #020617; font-size: 9.5px; font-family: Consolas, 'Courier New', monospace;">MAGHFUR MUHAMMAD ALFIN</div>
+                        <div style="font-size: 7.5px; font-family: Consolas, 'Courier New', monospace; font-weight: normal; font-style: italic; color: #64748b; text-transform: none; margin-top: 1px;">Petugas Gudang</div>
                     </div>
                 </div>
             </div>
@@ -426,23 +432,23 @@ export async function generateTUGPDFArrayBuffer(
 
   // Letterhead HTML for Page 1
   const letterheadHtml = `
-    <div style="border-bottom: 3px double #0f172a; padding-bottom: 10px; margin-bottom: 12px; display: flex; justify-content: space-between; align-items: flex-start;">
+    <div style="border-bottom: 3px double #0f172a; padding-bottom: 10px; margin-bottom: 12px; display: flex; justify-content: space-between; align-items: flex-start; box-sizing: border-box;">
       <div style="display: flex; align-items: center; gap: 12px;">
         <img src="/bag-logo.jpg" alt="BAG Logo" style="height: 48px; width: auto; object-fit: contain;" onerror="this.style.display='none'" />
         <div>
-          <h1 style="margin: 0; font-family: monospace; font-size: 15px; font-weight: bold; text-transform: uppercase; color: #0f172a; line-height: 1.2;">PT. PELAYARAN BAHTERA ADHIGUNA (BAG)</h1>
-          <p style="margin: 2px 0 0 0; font-size: 8.5px; color: #64748b; font-family: monospace; line-height: 1.35;">
+          <h1 style="margin: 0; font-family: Consolas, 'Courier New', monospace; font-size: 15px; font-weight: bold; text-transform: uppercase; color: #0f172a; line-height: 1.2;">PT. PELAYARAN BAHTERA ADHIGUNA (BAG)</h1>
+          <p style="margin: 2px 0 0 0; font-size: 8.5px; color: #64748b; font-family: Consolas, 'Courier New', monospace; line-height: 1.35;">
             Maritime Logistics and Spares Warehouse<br>
             Jl. Yos Sudarso No 193 Tanjung Sekong, Merak, Banten | Phone: (021) 229-099-01
           </p>
         </div>
       </div>
-      <div style="text-align: right;">
-        <span style="background-color: #f1f5f9; color: #64748b; padding: 2px 6px; border-radius: 4px; font-family: monospace; font-size: 9px; font-weight: bold; border: 1px solid #cbd5e1; display: inline-block;">WMS-SYSTEM</span>
-        <p style="margin: 4px 0 0 0; font-family: monospace; font-size: 11px; color: #334155;">Ref: <strong style="color: #0f172a;">${docNum}</strong></p>
-        <p style="margin: 2px 0 0 0; font-family: monospace; font-size: 9px; color: #64748b;">Date: ${headerDate}</p>
-        <div style="margin-top: 4px; display: flex; justify-content: flex-end;">
-          <span style="font-size: 11px; font-weight: 900; border: 1.5px solid #0f172a; padding: 2px 8px; border-radius: 4px; display: inline-block; background-color: #ffffff; color: #0f172a; font-family: monospace;">
+      <div style="text-align: right; display: flex; flex-direction: column; align-items: flex-end; gap: 2px;">
+        <span style="background-color: #f1f5f9; color: #475569; padding: 2px 7px; border-radius: 4px; font-family: Consolas, 'Courier New', monospace; font-size: 9px; font-weight: bold; border: 1px solid #cbd5e1; display: inline-block;">WMS-SYSTEM</span>
+        <div style="margin-top: 3px; font-family: Consolas, 'Courier New', monospace; font-size: 11px; color: #334155;">Ref: <strong style="color: #0f172a;">${docNum}</strong></div>
+        <div style="font-family: Consolas, 'Courier New', monospace; font-size: 9px; color: #64748b;">Date: ${headerDate}</div>
+        <div style="margin-top: 3px;">
+          <span style="font-size: 11px; font-weight: 900; border: 1.5px solid #0f172a; padding: 2px 10px; border-radius: 4px; display: inline-block; background-color: #ffffff; color: #0f172a; font-family: Consolas, 'Courier New', monospace;">
             ${typeBadge}
           </span>
         </div>
@@ -452,17 +458,17 @@ export async function generateTUGPDFArrayBuffer(
 
   // Title HTML for Page 1
   const titleHtml = `
-    <div style="text-align: center; margin-bottom: 12px;">
-      <h2 style="margin: 0; font-family: monospace; font-weight: 800; font-size: 14.5px; text-transform: uppercase; letter-spacing: 0.2px; color: #0f172a; text-decoration: underline; text-underline-offset: 4px;">${titleText}</h2>
-      <p style="margin: 3px 0 0 0; font-family: monospace; font-size: 9.5px; text-transform: uppercase; letter-spacing: 0.5px; font-style: italic; color: #64748b;">${typeDesc}</p>
+    <div style="text-align: center; margin-bottom: 12px; box-sizing: border-box;">
+      <h2 style="margin: 0; font-family: Consolas, 'Courier New', monospace; font-weight: 800; font-size: 14.5px; text-transform: uppercase; color: #0f172a; text-decoration: underline; text-underline-offset: 4px;">${titleText}</h2>
+      <p style="margin: 3px 0 0 0; font-family: Consolas, 'Courier New', monospace; font-size: 9.5px; text-transform: uppercase; font-style: italic; color: #64748b;">${typeDesc}</p>
     </div>
   `;
 
   // Particulars Box HTML for Page 1
   const particularsHtml = `
-    <div style="border: 1px solid #475569; border-radius: 8px; padding: 10px 14px; background-color: #ffffff; font-size: 10px; font-family: monospace; line-height: 1.55; margin-bottom: 12px; text-transform: uppercase;">
-      <div style="display: grid; grid-template-columns: 1.15fr 0.85fr; gap: 12px;">
-        <div style="display: flex; flex-direction: column; gap: 4px;">
+    <div style="border: 1px solid #475569; border-radius: 8px; padding: 10px 14px; background-color: #ffffff; font-size: 10px; font-family: Consolas, 'Courier New', monospace; line-height: 1.55; margin-bottom: 12px; text-transform: uppercase; box-sizing: border-box;">
+      <div style="display: flex; justify-content: space-between; gap: 16px;">
+        <div style="display: flex; flex-direction: column; gap: 4px; flex: 1.2;">
           <div>
             <span style="color: #64748b; width: 140px; display: inline-block;">KAPAL PENERIMA :</span>
             <strong style="color: #0f172a; font-size: 11.5px;">${req.vessel_name || "MV. KARTINI BARUNA"}</strong>
@@ -484,7 +490,7 @@ export async function generateTUGPDFArrayBuffer(
             <strong style="color: #0f172a;">${req.account_code || "BPP"}</strong>
           </div>
         </div>
-        <div style="display: flex; flex-direction: column; gap: 4px; text-align: right;">
+        <div style="display: flex; flex-direction: column; gap: 4px; text-align: right; flex: 0.8;">
           <div>
             <span style="color: #64748b; margin-right: 8px;">PEMOHON / REQUESTER :</span>
             <strong style="color: #3730a3;">${req.requester_name || req.requested_by || "CHIEF ENGINEER"}</strong>
@@ -504,55 +510,53 @@ export async function generateTUGPDFArrayBuffer(
         </div>
       </div>
       ${req.remarks ? `
-      <div style="margin-top: 8px; padding: 5px 9px; background-color: #f8fafc; border: 1px solid #cbd5e1; border-radius: 4px; font-family: monospace; font-size: 9.5px; color: #475569; font-style: italic; text-transform: lowercase;">
-        <strong style="text-transform: uppercase; font-style: normal; color: #0f172a; font-family: monospace; font-size: 9px; font-weight: bold; margin-right: 6px;">CATATAN PERMINTAAN:</strong>${req.remarks}
+      <div style="margin-top: 8px; padding: 5px 9px; background-color: #f8fafc; border: 1px solid #cbd5e1; border-radius: 4px; font-family: Consolas, 'Courier New', monospace; font-size: 9.5px; color: #475569; font-style: italic; box-sizing: border-box;">
+        <strong style="text-transform: uppercase; font-style: normal; color: #0f172a; font-family: Consolas, 'Courier New', monospace; font-size: 9px; font-weight: bold; margin-right: 6px;">CATATAN PERMINTAAN :</strong>${req.remarks}
       </div>` : ""}
     </div>
   `;
 
   // Continuation Header for Page 2 and beyond
   const continuationHeaderHtml = `
-    <div style="border-bottom: 2px solid #0f172a; padding-bottom: 8px; margin-bottom: 10px; display: flex; justify-content: space-between; align-items: center;">
+    <div style="border-bottom: 2px solid #0f172a; padding-bottom: 8px; margin-bottom: 10px; display: flex; justify-content: space-between; align-items: center; box-sizing: border-box;">
       <div style="display: flex; align-items: center; gap: 10px;">
         <img src="/bag-logo.jpg" alt="BAG Logo" style="height: 34px; width: auto; object-fit: contain;" onerror="this.style.display='none'" />
         <div>
-          <h2 style="margin: 0; font-family: monospace; font-size: 12.5px; font-weight: bold; text-transform: uppercase; color: #020617;">
+          <h2 style="margin: 0; font-family: Consolas, 'Courier New', monospace; font-size: 12.5px; font-weight: bold; text-transform: uppercase; color: #020617;">
             PT. PELAYARAN BAHTERA ADHIGUNA (BAG)
           </h2>
-          <p style="margin: 2px 0 0 0; font-size: 8.5px; color: #64748b; font-family: monospace; text-transform: uppercase;">
+          <p style="margin: 2px 0 0 0; font-size: 8.5px; color: #64748b; font-family: Consolas, 'Courier New', monospace; text-transform: uppercase;">
             ${titleText} (Lanjutan) &bull; Kapal: <strong style="color: #0f172a;">${req.vessel_name || "MV. KARTINI BARUNA"}</strong>
           </p>
         </div>
       </div>
       <div style="text-align: right; display: flex; align-items: center; gap: 8px;">
-        <span style="font-family: monospace; font-size: 10.5px; color: #334155;">Ref: <strong style="color: #0f172a;">${docNum}</strong></span>
-        <span style="font-size: 10px; font-weight: 900; border: 1.5px solid #0f172a; padding: 1px 7px; border-radius: 4px; background-color: #f8fafc; color: #0f172a; font-family: monospace;">
+        <span style="font-family: Consolas, 'Courier New', monospace; font-size: 10.5px; color: #334155;">Ref: <strong style="color: #0f172a;">${docNum}</strong></span>
+        <span style="font-size: 10px; font-weight: 900; border: 1.5px solid #0f172a; padding: 1px 7px; border-radius: 4px; background-color: #f8fafc; color: #0f172a; font-family: Consolas, 'Courier New', monospace;">
           ${typeBadge}
         </span>
       </div>
     </div>
   `;
 
-  // Standard Table THEAD matching Image 1
+  // Standard Table Header DIV matching Image 1
   const theadHtml = `
-    <thead style="background-color: #f8fafc; border-bottom: 1.5px solid #475569; font-size: 9.5px; font-weight: bold; color: #1e293b; text-transform: uppercase; font-family: monospace;">
-      <tr>
-        <th style="padding: 7px 5px; border-right: 1px solid #cbd5e1; text-align: center; width: 32px;">#</th>
-        <th style="padding: 7px 10px; border-right: 1px solid #cbd5e1; text-align: left;">${nameColHeader}</th>
-        <th style="padding: 7px 8px; border-right: 1px solid #cbd5e1; text-align: left; width: 140px;">NOMOR / PART NUMBER</th>
-        <th style="padding: 7px 5px; border-right: 1px solid #cbd5e1; text-align: center; width: 48px;">STN</th>
-        <th style="padding: 7px 5px; border-right: 1px solid #cbd5e1; text-align: center; width: 90px; color: #1e40af; font-weight: bold; background-color: #eff6ff;">BANYAKNYA (DIBERIKAN)</th>
-        <th style="padding: 7px 5px; border-right: 1px solid #cbd5e1; text-align: center; width: 75px;">NOMOR DO</th>
-        <th style="padding: 7px 10px; text-align: left; width: 160px;">KETERANGAN</th>
-      </tr>
-    </thead>
+    <div style="display: flex; width: 100%; background-color: #f8fafc; border-bottom: 1.5px solid #475569; font-size: 9.5px; font-weight: bold; color: #1e293b; text-transform: uppercase; font-family: Consolas, 'Courier New', monospace; box-sizing: border-box;">
+      <div style="width: 38px; flex-shrink: 0; padding: 7px 4px; border-right: 1px solid #cbd5e1; text-align: center; box-sizing: border-box; display: flex; align-items: center; justify-content: center;">#</div>
+      <div style="flex: 1; min-width: 0; padding: 7px 10px; border-right: 1px solid #cbd5e1; text-align: left; box-sizing: border-box; display: flex; align-items: center;">${nameColHeader}</div>
+      <div style="width: 140px; flex-shrink: 0; padding: 7px 8px; border-right: 1px solid #cbd5e1; text-align: left; box-sizing: border-box; display: flex; align-items: center;">NOMOR / PART NUMBER</div>
+      <div style="width: 48px; flex-shrink: 0; padding: 7px 4px; border-right: 1px solid #cbd5e1; text-align: center; box-sizing: border-box; display: flex; align-items: center; justify-content: center;">STN</div>
+      <div style="width: 92px; flex-shrink: 0; padding: 7px 4px; border-right: 1px solid #cbd5e1; text-align: center; box-sizing: border-box; color: #1e40af; font-weight: bold; background-color: #eff6ff; display: flex; align-items: center; justify-content: center; line-height: 1.2;">BANYAKNYA (DIBERIKAN)</div>
+      <div style="width: 70px; flex-shrink: 0; padding: 7px 4px; border-right: 1px solid #cbd5e1; text-align: center; box-sizing: border-box; display: flex; align-items: center; justify-content: center;">NOMOR DO</div>
+      <div style="width: 160px; flex-shrink: 0; padding: 7px 8px; text-align: left; box-sizing: border-box; display: flex; align-items: center;">KETERANGAN</div>
+    </div>
   `;
 
   // Footer Block HTML (Perintah Kerja + Disclaimer + Signatures) matching Image 2
   const footerSignBlockHtml = `
-    <div class="footer-sign-block" style="margin-top: 10px;">
+    <div class="footer-sign-block" style="margin-top: 10px; box-sizing: border-box;">
       <!-- Perintah Kerja Box -->
-      <div style="border: 1.5px solid #1e3a8a; border-radius: 8px; padding: 8px 14px; margin-bottom: 10px; background-color: #ffffff; font-size: 10px; font-family: monospace; text-transform: uppercase; font-weight: 700; color: #1e293b; display: flex; justify-content: space-between; align-items: center;">
+      <div style="border: 1.5px solid #1e3a8a; border-radius: 8px; padding: 8px 14px; margin-bottom: 10px; background-color: #ffffff; font-size: 10px; font-family: Consolas, 'Courier New', monospace; text-transform: uppercase; font-weight: 700; color: #1e293b; display: flex; justify-content: space-between; align-items: center; box-sizing: border-box;">
         <div>
           <span style="color: #0f172a; font-weight: bold;">PERINTAH KERJA:</span>
           <span style="color: #b91c1c; font-weight: 900; font-size: 10.5px; margin-left: 6px;">${req.work_order_ref || req.spk_number || "TIADA"}</span>
@@ -568,45 +572,53 @@ export async function generateTUGPDFArrayBuffer(
       </div>
 
       <!-- Disclaimer -->
-      <p style="font-style: italic; color: #64748b; font-size: 8.5px; font-family: monospace; line-height: 1.35; margin: 0 0 10px 0;">
+      <p style="font-style: italic; color: #64748b; font-size: 8.5px; font-family: Consolas, 'Courier New', monospace; line-height: 1.35; margin: 0 0 10px 0;">
         Disclaimer: PT. Pelayaran Bahtera Adhiguna assumes fully audited logistics carriage parameters upon signed counter-authority signature dispatch tags. Checked physically against corrosion, salt contamination, marine class markings and full vendor structural seal integrity.
       </p>
 
-      <!-- 4 Signatures Grid -->
-      <div style="display: grid; grid-template-columns: repeat(4, 1fr); gap: 14px; text-align: center; text-transform: uppercase; font-size: 8.5px; font-weight: bold; color: #334155;">
-        <div style="display: flex; flex-direction: column; justify-content: space-between; height: 75px;">
-          <span style="font-size: 8px; color: #334155; font-family: monospace;">MENGETAHUI :</span>
-          <div style="border-top: 1.5px solid #64748b; padding-top: 4px; position: relative;">
-            ${sigVP ? `<div style="position: absolute; bottom: 18px; left: 0; right: 0; display: flex; justify-content: center; pointer-events: none;"><img src="${sigVP}" style="max-height: 44px; max-width: 120px; object-fit: contain;" /></div>` : ""}
-            <div style="font-weight: 900; color: #020617; font-size: 9.5px; font-family: monospace;">SUMBONO</div>
-            <div style="font-size: 7.5px; font-family: monospace; font-weight: normal; font-style: italic; color: #64748b; text-transform: none; margin-top: 1px;">VP RENDALHAR</div>
+      <!-- 4 Signatures Flex Grid -->
+      <div style="display: flex; width: 100%; justify-content: space-between; gap: 14px; text-align: center; box-sizing: border-box;">
+        <div style="flex: 1; display: flex; flex-direction: column; justify-content: flex-end; height: 80px; box-sizing: border-box;">
+          <span style="font-size: 8px; color: #334155; font-family: Consolas, 'Courier New', monospace; font-weight: bold; margin-bottom: 2px;">MENGETAHUI :</span>
+          <div style="height: 44px; display: flex; align-items: flex-end; justify-content: center;">
+            ${sigVP ? `<img src="${sigVP}" style="max-height: 42px; max-width: 110px; object-fit: contain;" />` : `<div style="height: 42px;"></div>`}
+          </div>
+          <div style="border-top: 1.5px solid #64748b; padding-top: 4px; width: 100%; box-sizing: border-box;">
+            <div style="font-weight: 900; color: #020617; font-size: 9.5px; font-family: Consolas, 'Courier New', monospace;">SUMBONO</div>
+            <div style="font-size: 7.5px; font-family: Consolas, 'Courier New', monospace; font-weight: normal; font-style: italic; color: #64748b; text-transform: none; margin-top: 1px;">VP RENDALHAR</div>
           </div>
         </div>
 
-        <div style="display: flex; flex-direction: column; justify-content: space-between; height: 75px;">
-          <span style="font-size: 8px; color: #334155; font-family: monospace;">DISETUJUI OLEH :</span>
-          <div style="border-top: 1.5px solid #64748b; padding-top: 4px; position: relative;">
-            ${sigManager ? `<div style="position: absolute; bottom: 18px; left: 0; right: 0; display: flex; justify-content: center; pointer-events: none;"><img src="${sigManager}" style="max-height: 44px; max-width: 120px; object-fit: contain;" /></div>` : ""}
-            <div style="font-weight: 900; color: #020617; font-size: 9.5px; font-family: monospace;">MOHAMAT EMIR FERDIAN</div>
-            <div style="font-size: 7.5px; font-family: monospace; font-weight: normal; font-style: italic; color: #64748b; text-transform: none; margin-top: 1px;">Manager Logistik</div>
+        <div style="flex: 1; display: flex; flex-direction: column; justify-content: flex-end; height: 80px; box-sizing: border-box;">
+          <span style="font-size: 8px; color: #334155; font-family: Consolas, 'Courier New', monospace; font-weight: bold; margin-bottom: 2px;">DISETUJUI OLEH :</span>
+          <div style="height: 44px; display: flex; align-items: flex-end; justify-content: center;">
+            ${sigManager ? `<img src="${sigManager}" style="max-height: 42px; max-width: 110px; object-fit: contain;" />` : `<div style="height: 42px;"></div>`}
+          </div>
+          <div style="border-top: 1.5px solid #64748b; padding-top: 4px; width: 100%; box-sizing: border-box;">
+            <div style="font-weight: 900; color: #020617; font-size: 9.5px; font-family: Consolas, 'Courier New', monospace;">MOHAMAT EMIR FERDIAN</div>
+            <div style="font-size: 7.5px; font-family: Consolas, 'Courier New', monospace; font-weight: normal; font-style: italic; color: #64748b; text-transform: none; margin-top: 1px;">Manager Logistik</div>
           </div>
         </div>
 
-        <div style="display: flex; flex-direction: column; justify-content: space-between; height: 75px;">
-          <span style="font-size: 8px; color: #334155; font-family: monospace;">KEPALA GUDANG :</span>
-          <div style="border-top: 1.5px solid #64748b; padding-top: 4px; position: relative;">
-            ${sigGudang ? `<div style="position: absolute; bottom: 18px; left: 0; right: 0; display: flex; justify-content: center; pointer-events: none;"><img src="${sigGudang}" style="max-height: 44px; max-width: 120px; object-fit: contain;" /></div>` : ""}
-            <div style="font-weight: 900; color: #020617; font-size: 9.5px; font-family: monospace;">&nbsp;</div>
-            <div style="font-size: 7.5px; font-family: monospace; font-weight: normal; font-style: italic; color: #64748b; text-transform: none; margin-top: 1px;">Gudang Merak</div>
+        <div style="flex: 1; display: flex; flex-direction: column; justify-content: flex-end; height: 80px; box-sizing: border-box;">
+          <span style="font-size: 8px; color: #334155; font-family: Consolas, 'Courier New', monospace; font-weight: bold; margin-bottom: 2px;">KEPALA GUDANG :</span>
+          <div style="height: 44px; display: flex; align-items: flex-end; justify-content: center;">
+            ${sigGudang ? `<img src="${sigGudang}" style="max-height: 42px; max-width: 110px; object-fit: contain;" />` : `<div style="height: 42px;"></div>`}
+          </div>
+          <div style="border-top: 1.5px solid #64748b; padding-top: 4px; width: 100%; box-sizing: border-box;">
+            <div style="font-weight: 900; color: #020617; font-size: 9.5px; font-family: Consolas, 'Courier New', monospace;">&nbsp;</div>
+            <div style="font-size: 7.5px; font-family: Consolas, 'Courier New', monospace; font-weight: normal; font-style: italic; color: #64748b; text-transform: none; margin-top: 1px;">Gudang Merak</div>
           </div>
         </div>
 
-        <div style="display: flex; flex-direction: column; justify-content: space-between; height: 75px;">
-          <span style="font-size: 8px; color: #334155; font-family: monospace;">PETUGAS GUDANG :</span>
-          <div style="border-top: 1.5px solid #64748b; padding-top: 4px; position: relative;">
-            ${sigPetugasGudang ? `<div style="position: absolute; bottom: 18px; left: 0; right: 0; display: flex; justify-content: center; pointer-events: none;"><img src="${sigPetugasGudang}" style="max-height: 44px; max-width: 120px; object-fit: contain;" /></div>` : ""}
-            <div style="font-weight: 900; color: #020617; font-size: 9.5px; font-family: monospace;">MAGHFUR MUHAMMAD ALFIN</div>
-            <div style="font-size: 7.5px; font-family: monospace; font-weight: normal; font-style: italic; color: #64748b; text-transform: none; margin-top: 1px;">Petugas Gudang</div>
+        <div style="flex: 1; display: flex; flex-direction: column; justify-content: flex-end; height: 80px; box-sizing: border-box;">
+          <span style="font-size: 8px; color: #334155; font-family: Consolas, 'Courier New', monospace; font-weight: bold; margin-bottom: 2px;">PETUGAS GUDANG :</span>
+          <div style="height: 44px; display: flex; align-items: flex-end; justify-content: center;">
+            ${sigPetugasGudang ? `<img src="${sigPetugasGudang}" style="max-height: 42px; max-width: 110px; object-fit: contain;" />` : `<div style="height: 42px;"></div>`}
+          </div>
+          <div style="border-top: 1.5px solid #64748b; padding-top: 4px; width: 100%; box-sizing: border-box;">
+            <div style="font-weight: 900; color: #020617; font-size: 9.5px; font-family: Consolas, 'Courier New', monospace;">MAGHFUR MUHAMMAD ALFIN</div>
+            <div style="font-size: 7.5px; font-family: Consolas, 'Courier New', monospace; font-weight: normal; font-style: italic; color: #64748b; text-transform: none; margin-top: 1px;">Petugas Gudang</div>
           </div>
         </div>
       </div>
@@ -626,7 +638,7 @@ export async function generateTUGPDFArrayBuffer(
   interface PageData {
     pageEl: HTMLElement;
     contentWrapper: HTMLElement;
-    tbody: HTMLTableSectionElement;
+    tableBody: HTMLElement;
     pageFooterSpan: HTMLElement;
   }
 
@@ -646,7 +658,7 @@ export async function generateTUGPDFArrayBuffer(
     pageEl.style.justifyContent = "space-between";
     pageEl.style.position = "relative";
     pageEl.style.overflow = "hidden";
-    pageEl.style.fontFamily = 'ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace';
+    pageEl.style.fontFamily = "Consolas, 'Courier New', monospace";
     pageEl.style.color = "#0f172a";
 
     const contentWrapper = document.createElement("div");
@@ -659,26 +671,22 @@ export async function generateTUGPDFArrayBuffer(
         ${letterheadHtml}
         ${titleHtml}
         ${particularsHtml}
-        <div class="table-container" style="border: 1px solid #cbd5e1; border-radius: 4px; overflow: hidden; margin-top: 6px;">
-          <table style="width: 100%; border-collapse: collapse; text-align: left;">
-            ${theadHtml}
-            <tbody style="border-top: none;"></tbody>
-          </table>
+        <div class="table-container" style="width: 100%; border: 1.5px solid #94a3b8; border-radius: 4px; overflow: hidden; box-sizing: border-box; background-color: #ffffff; margin-top: 6px;">
+          ${theadHtml}
+          <div class="table-body" style="width: 100%; display: flex; flex-direction: column;"></div>
         </div>
       `;
     } else {
       contentWrapper.innerHTML = `
         ${continuationHeaderHtml}
-        <div class="table-container" style="border: 1px solid #cbd5e1; border-radius: 4px; overflow: hidden; margin-top: 4px;">
-          <table style="width: 100%; border-collapse: collapse; text-align: left;">
-            ${theadHtml}
-            <tbody style="border-top: none;"></tbody>
-          </table>
+        <div class="table-container" style="width: 100%; border: 1.5px solid #94a3b8; border-radius: 4px; overflow: hidden; box-sizing: border-box; background-color: #ffffff; margin-top: 4px;">
+          ${theadHtml}
+          <div class="table-body" style="width: 100%; display: flex; flex-direction: column;"></div>
         </div>
       `;
     }
 
-    const tbody = contentWrapper.querySelector("tbody") as HTMLTableSectionElement;
+    const tableBody = contentWrapper.querySelector(".table-body") as HTMLElement;
 
     const footerEl = document.createElement("div");
     footerEl.style.display = "flex";
@@ -687,7 +695,7 @@ export async function generateTUGPDFArrayBuffer(
     footerEl.style.borderTop = "1px solid #e2e8f0";
     footerEl.style.paddingTop = "5px";
     footerEl.style.fontSize = "8.5px";
-    footerEl.style.fontFamily = "ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace";
+    footerEl.style.fontFamily = "Consolas, 'Courier New', monospace";
     footerEl.style.color = "#94a3b8";
     footerEl.style.textTransform = "uppercase";
 
@@ -701,7 +709,7 @@ export async function generateTUGPDFArrayBuffer(
     pageEl.appendChild(contentWrapper);
     pageEl.appendChild(footerEl);
 
-    return { pageEl, contentWrapper, tbody, pageFooterSpan };
+    return { pageEl, contentWrapper, tableBody, pageFooterSpan };
   }
 
   try {
@@ -726,58 +734,59 @@ export async function generateTUGPDFArrayBuffer(
       const itm = items[idx];
       const isLastItem = idx === items.length - 1;
 
-      const rowEl = document.createElement("tr");
+      const rowEl = document.createElement("div");
+      rowEl.style.display = "flex";
+      rowEl.style.width = "100%";
       rowEl.style.borderBottom = "1px solid #cbd5e1";
-      rowEl.style.fontWeight = "600";
+      rowEl.style.boxSizing = "border-box";
+      rowEl.style.fontSize = "10px";
+      rowEl.style.fontFamily = "Consolas, 'Courier New', monospace";
+      rowEl.style.alignItems = "stretch";
+      rowEl.style.backgroundColor = "#ffffff";
 
       if (!itm) {
         rowEl.innerHTML = `
-          <td style="padding: 6px 5px; border-right: 1px solid #cbd5e1; text-align: center; font-family: monospace; font-size: 10px; color: #94a3b8;">1</td>
-          <td style="padding: 6px 10px; border-right: 1px solid #cbd5e1; font-family: monospace; font-weight: bold; font-size: 10.5px; color: #94a3b8;">(-)</td>
-          <td style="padding: 6px 8px; border-right: 1px solid #cbd5e1; font-family: monospace; font-size: 10.5px; color: #94a3b8;">(-)</td>
-          <td style="padding: 6px 5px; border-right: 1px solid #cbd5e1; text-align: center; font-family: monospace; font-size: 10.5px; color: #94a3b8;">(-)</td>
-          <td style="padding: 6px 5px; border-right: 1px solid #cbd5e1; text-align: center; font-family: monospace; color: #94a3b8; font-size: 11px; background-color: #eff6ff;">(-)</td>
-          <td style="padding: 6px 5px; border-right: 1px solid #cbd5e1; text-align: center; font-family: monospace; font-size: 10px; color: #94a3b8;"></td>
-          <td style="padding: 6px 10px; color: #64748b; font-family: monospace; font-style: italic; font-size: 9.5px;">NIHIL (-)</td>
+          <div style="width: 38px; flex-shrink: 0; padding: 6px 4px; border-right: 1px solid #cbd5e1; text-align: center; color: #94a3b8; box-sizing: border-box; display: flex; align-items: center; justify-content: center;">1</div>
+          <div style="flex: 1; min-width: 0; padding: 6px 10px; border-right: 1px solid #cbd5e1; font-weight: bold; color: #94a3b8; box-sizing: border-box; display: flex; align-items: center;">(-)</div>
+          <div style="width: 140px; flex-shrink: 0; padding: 6px 8px; border-right: 1px solid #cbd5e1; color: #94a3b8; box-sizing: border-box; display: flex; align-items: center;">(-)</div>
+          <div style="width: 48px; flex-shrink: 0; padding: 6px 4px; border-right: 1px solid #cbd5e1; text-align: center; color: #94a3b8; box-sizing: border-box; display: flex; align-items: center; justify-content: center;">(-)</div>
+          <div style="width: 92px; flex-shrink: 0; padding: 6px 4px; border-right: 1px solid #cbd5e1; text-align: center; color: #94a3b8; background-color: #eff6ff; box-sizing: border-box; display: flex; align-items: center; justify-content: center;">(-)</div>
+          <div style="width: 70px; flex-shrink: 0; padding: 6px 4px; border-right: 1px solid #cbd5e1; text-align: center; color: #94a3b8; box-sizing: border-box; display: flex; align-items: center; justify-content: center;"></div>
+          <div style="width: 160px; flex-shrink: 0; padding: 6px 8px; color: #64748b; font-style: italic; font-size: 9.5px; box-sizing: border-box; display: flex; align-items: center;">NIHIL (-)</div>
         `;
       } else {
         rowEl.innerHTML = `
-          <td style="padding: 6px 5px; border-right: 1px solid #cbd5e1; text-align: center; font-family: monospace; font-size: 10px; font-weight: bold; color: #475569;">${idx + 1}</td>
-          <td style="padding: 6px 10px; border-right: 1px solid #cbd5e1; font-family: monospace; font-weight: 800; font-size: 10.5px; color: #0f172a; line-height: 1.25;">${itm.spare_part_name || "(-)"}</td>
-          <td style="padding: 6px 8px; border-right: 1px solid #cbd5e1; font-family: monospace; font-size: 10.5px; font-weight: 700; color: #1e293b;">${itm.part_number || "-"}</td>
-          <td style="padding: 6px 5px; border-right: 1px solid #cbd5e1; text-align: center; text-transform: uppercase; font-family: monospace; font-size: 10.5px; font-weight: 700; color: #1e293b;">${itm.unit || "(-)"}</td>
-          <td style="padding: 6px 5px; border-right: 1px solid #cbd5e1; text-align: center; font-family: monospace; color: #1e40af; font-weight: 800; font-size: 11px; background-color: #eff6ff;">${itm.requested_qty || "(-)"}</td>
-          <td style="padding: 6px 5px; border-right: 1px solid #cbd5e1; text-align: center; font-family: monospace; font-size: 10px; color: #334155;"></td>
-          <td style="padding: 6px 10px; color: #334155; font-family: monospace; font-style: italic; font-size: 9.5px; font-weight: normal; line-height: 1.25;">${itm.notes || defaultNotes}</td>
+          <div style="width: 38px; flex-shrink: 0; padding: 6px 4px; border-right: 1px solid #cbd5e1; text-align: center; font-weight: bold; color: #475569; box-sizing: border-box; display: flex; align-items: center; justify-content: center;">${idx + 1}</div>
+          <div style="flex: 1; min-width: 0; padding: 6px 10px; border-right: 1px solid #cbd5e1; font-weight: bold; color: #0f172a; line-height: 1.25; box-sizing: border-box; display: flex; align-items: center;">${itm.spare_part_name || "(-)"}</div>
+          <div style="width: 140px; flex-shrink: 0; padding: 6px 8px; border-right: 1px solid #cbd5e1; font-weight: 600; color: #1e293b; box-sizing: border-box; display: flex; align-items: center;">${itm.part_number || "-"}</div>
+          <div style="width: 48px; flex-shrink: 0; padding: 6px 4px; border-right: 1px solid #cbd5e1; text-align: center; text-transform: uppercase; font-weight: 600; color: #1e293b; box-sizing: border-box; display: flex; align-items: center; justify-content: center;">${itm.unit || "(-)"}</div>
+          <div style="width: 92px; flex-shrink: 0; padding: 6px 4px; border-right: 1px solid #cbd5e1; text-align: center; color: #1e40af; font-weight: bold; font-size: 11px; background-color: #eff6ff; box-sizing: border-box; display: flex; align-items: center; justify-content: center;">${itm.requested_qty || "(-)"}</div>
+          <div style="width: 70px; flex-shrink: 0; padding: 6px 4px; border-right: 1px solid #cbd5e1; text-align: center; color: #334155; box-sizing: border-box; display: flex; align-items: center; justify-content: center;"></div>
+          <div style="width: 160px; flex-shrink: 0; padding: 6px 8px; color: #334155; font-style: italic; font-size: 9.5px; font-weight: normal; line-height: 1.25; box-sizing: border-box; display: flex; align-items: center;">${itm.notes || defaultNotes}</div>
         `;
       }
 
-      currentPage.tbody.appendChild(rowEl);
+      currentPage.tableBody.appendChild(rowEl);
 
       // Check if adding this row causes an overflow
       if (isLastItem) {
-        // If it's the last item, check if both row AND footer block can fit together
         if (currentPage.contentWrapper.offsetHeight + footerHeight > MAX_CONTENT_HEIGHT) {
-          // If this page already has at least 1 row, let's see if this row alone fits
-          if (currentPage.contentWrapper.offsetHeight > MAX_CONTENT_HEIGHT && currentPage.tbody.children.length > 1) {
-            // Even the row alone doesn't fit on this page, move row to new page
-            currentPage.tbody.removeChild(rowEl);
+          if (currentPage.contentWrapper.offsetHeight > MAX_CONTENT_HEIGHT && currentPage.tableBody.children.length > 1) {
+            currentPage.tableBody.removeChild(rowEl);
             currentPage = createPage(false, pages.length + 1);
             staging.appendChild(currentPage.pageEl);
             pages.push(currentPage);
-            currentPage.tbody.appendChild(rowEl);
+            currentPage.tableBody.appendChild(rowEl);
           }
-          // The footer block will be placed on either current page or a new page below
         }
       } else {
-        // Not the last item: check if current content height exceeds max allowable
         if (currentPage.contentWrapper.offsetHeight > MAX_CONTENT_HEIGHT) {
-          if (currentPage.tbody.children.length > 1) {
-            currentPage.tbody.removeChild(rowEl);
+          if (currentPage.tableBody.children.length > 1) {
+            currentPage.tableBody.removeChild(rowEl);
             currentPage = createPage(false, pages.length + 1);
             staging.appendChild(currentPage.pageEl);
             pages.push(currentPage);
-            currentPage.tbody.appendChild(rowEl);
+            currentPage.tableBody.appendChild(rowEl);
           }
         }
       }
