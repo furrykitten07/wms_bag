@@ -329,12 +329,23 @@ export default function ReceivingView({
     part_name: string;
     part_number: string;
     sku?: string;
+    barcode?: string;
     unit?: string;
     category?: string;
     location_id?: string;
     description?: string;
   }) => {
     try {
+      const generatedBarcode = part.barcode || `BC-${Math.floor(10000000 + Math.random() * 90000000)}`;
+      
+      // Save barcode in cache
+      try {
+        const cacheSaved = localStorage.getItem("wms_part_barcode_cache");
+        const cache = cacheSaved ? JSON.parse(cacheSaved) : {};
+        cache[part.id] = generatedBarcode;
+        localStorage.setItem("wms_part_barcode_cache", JSON.stringify(cache));
+      } catch (e) {}
+
       const saved = localStorage.getItem("spare_part_catalog_data");
       let currentCatalog: any[] = [];
       if (saved) {
@@ -355,10 +366,11 @@ export default function ReceivingView({
 
       if (!exists) {
         const newCatItem = {
-          id: `SP-CAT-${Date.now().toString().slice(-5)}`,
+          id: part.id || `SP-CAT-${Date.now().toString().slice(-5)}`,
           part_name: part.part_name,
           part_number: part.part_number,
           sku: part.sku || `SKU-${part.part_number}`,
+          barcode: generatedBarcode,
           description: part.description || `${part.part_name} — Suku cadang terdaftar dari Penerimaan Barang Manual.`,
           unit: part.unit || "PCS",
           hierarchy: [part.category || "General Spares", "Depot Gudang", "Manual Inbound"],
@@ -960,11 +972,13 @@ export default function ReceivingView({
           // If not in database, create new sparepart in Master and Catalog!
           const newPartId = `sp-${Date.now()}-${i}-${Math.floor(Math.random() * 1000)}`;
           finalPartId = newPartId;
+          const uniqueBarcode = `BC-${Math.floor(10000000 + Math.random() * 90000000)}`;
           const newPartPayload: Partial<SparePart> = {
             id: newPartId,
             part_name: finalPartName,
             part_number: finalPartNum,
             sku: `SKU-${finalPartNum.replace(/[^a-zA-Z0-9]/g, "").slice(0, 10) || Date.now().toString().slice(-4)}`,
+            barcode: uniqueBarcode,
             unit: finalUnit,
             category: finalCat,
             vendor_id: "vnd-1",
@@ -997,6 +1011,7 @@ export default function ReceivingView({
             part_name: finalPartName,
             part_number: finalPartNum,
             sku: newPartPayload.sku,
+            barcode: uniqueBarcode,
             unit: finalUnit,
             category: finalCat,
             location_id: finalLoc,

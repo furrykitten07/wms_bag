@@ -478,8 +478,38 @@ function getLocalFallbackData<T>(url: string, options: RequestInit = {}): T {
     saveLocalSignatures(localSignatures);
     return { success: true, id } as any;
   }
-  if (path.startsWith("/api/signatures")) return localSignatures as any;
-
+  if (path.startsWith("/api/inventory") && options.method === "POST") {
+    const generatedBarcode = body.barcode || `BC-${Math.floor(10000000 + Math.random() * 90000000)}`;
+    const newPart: any = {
+      id: body.id || `part-${Date.now()}`,
+      sku: body.sku || `SKU-${Date.now().toString().slice(-6)}`,
+      part_number: body.part_number || `PN-${Date.now().toString().slice(-6)}`,
+      part_name: body.part_name || "New Spare Part",
+      maker: body.maker || body.brand || "OEM / Supplier",
+      unit: body.unit || "PCS",
+      category: body.category || "General Spares",
+      location_id: body.location_id || "loc-1",
+      barcode: generatedBarcode,
+      current_stock: Number(body.current_stock || 0),
+      reorder_point: Number(body.reorder_point || 0),
+      created_at: new Date().toISOString(),
+      updated_at: new Date().toISOString(),
+      ...body
+    };
+    localSpareParts = [newPart, ...localSpareParts];
+    return newPart as any;
+  }
+  if (path.startsWith("/api/inventory/") && options.method === "PUT") {
+    const id = path.split("/").pop();
+    localSpareParts = localSpareParts.map(p => p.id === id ? { ...p, ...body, updated_at: new Date().toISOString() } : p);
+    const updated = localSpareParts.find(p => p.id === id);
+    return updated as any;
+  }
+  if (path.startsWith("/api/inventory/") && options.method === "DELETE") {
+    const id = path.split("/").pop();
+    localSpareParts = localSpareParts.filter(p => p.id !== id);
+    return { success: true, message: "Deleted" } as any;
+  }
   if (path.startsWith("/api/inventory")) return localSpareParts as any;
   if (path.startsWith("/api/warehouse/locations")) return localLocations as any;
   if (path.startsWith("/api/vendors")) return localVendors as any;
@@ -1241,8 +1271,19 @@ async function fetcher<T>(url: string, options: RequestInit = {}): Promise<T> {
       if (path.startsWith("/api/inventory") && method === "GET") {
         const { data, error } = await supabase.from("spare_parts").select("*");
         if (!error && data) {
-          localSpareParts = data as any;
-          return data as any;
+          const mapped = data.map((p: any, idx: number) => {
+            let bc = p.barcode;
+            if (!bc && p.remarks && p.remarks.includes("[BC:")) {
+              const match = p.remarks.match(/\[BC:([^\]]+)\]/);
+              if (match) bc = match[1].trim();
+            }
+            return {
+              ...p,
+              barcode: bc || `BC-${Math.floor(10000000 + Math.random() * 90000000)}`
+            };
+          });
+          localSpareParts = mapped as any;
+          return mapped as any;
         }
         return localSpareParts as any;
       }
@@ -1250,6 +1291,7 @@ async function fetcher<T>(url: string, options: RequestInit = {}): Promise<T> {
         const validLocId = body.location_id && ["loc-1", "loc-2", "loc-3", "loc-4", "loc-5"].includes(body.location_id)
           ? body.location_id
           : "loc-1";
+        const generatedBarcode = body.barcode || `BC-${Math.floor(10000000 + Math.random() * 90000000)}`;
         const newPart = {
           ...body,
           id: body.id || `part-${Date.now()}`,
@@ -1260,34 +1302,51 @@ async function fetcher<T>(url: string, options: RequestInit = {}): Promise<T> {
           unit: body.unit || "PCS",
           category: body.category || "General Spares",
           location_id: validLocId,
+          barcode: generatedBarcode,
           current_stock: Number(body.current_stock || 0),
           reorder_point: Number(body.reorder_point || 0),
+          remarks: body.remarks && body.remarks.includes("[BC:")
+            ? body.remarks
+            : `[BC:${generatedBarcode}] ${body.remarks || body.description || ""}`.trim(),
           created_at: now,
           updated_at: now
         };
         const cleanPart = sanitizeRecord(newPart, VALID_PART_COLUMNS);
         const { data, error } = await supabase.from("spare_parts").insert([cleanPart]).select().single();
         if (error) {
-          console.error("Supabase spare_parts insert error:", error);
-          throw new Error(error.message);
+          console.warn("Supabase spare_parts insert error, falling back locally:", error);
+          localSpareParts = [newPart, ...localSpareParts.filter(p => p.id !== newPart.id)];
+          return newPart as any;
         }
-        localSpareParts = [data, ...localSpareParts.filter(p => p.id !== data.id)];
-        return data as any;
+        const savedPart = { ...newPart, ...data, barcode: generatedBarcode };
+        localSpareParts = [savedPart, ...localSpareParts.filter(p => p.id !== savedPart.id)];
+        return savedPart as any;
       }
       if (path.startsWith("/api/inventory/") && method === "PUT") {
         const id = path.split("/").pop();
-        const payload = { ...body, updated_at: now };
+        const existing = localSpareParts.find(p => p.id === id);
+        const finalBarcode = body.barcode || existing?.barcode || `BC-${Math.floor(10000000 + Math.random() * 90000000)}`;
+        const payload = { 
+          ...body, 
+          barcode: finalBarcode,
+          remarks: body.remarks && body.remarks.includes("[BC:")
+            ? body.remarks
+            : `[BC:${finalBarcode}] ${body.remarks || body.description || existing?.remarks || ""}`.trim(),
+          updated_at: now 
+        };
         if (payload.location_id && !["loc-1", "loc-2", "loc-3", "loc-4", "loc-5"].includes(payload.location_id)) {
           payload.location_id = "loc-1";
         }
         const cleanUpdate = sanitizeRecord(payload, VALID_PART_COLUMNS);
         const { data, error } = await supabase.from("spare_parts").update(cleanUpdate).eq("id", id).select().single();
         if (error) {
-          console.error("Supabase spare_parts update error:", error);
-          throw new Error(error.message);
+          console.warn("Supabase spare_parts update error, updating local only:", error);
+          localSpareParts = localSpareParts.map(p => p.id === id ? { ...p, ...payload } : p);
+          return { ...existing, ...payload } as any;
         }
-        localSpareParts = localSpareParts.map(p => p.id === id ? data : p);
-        return data as any;
+        const updatedPart = { ...payload, ...data, barcode: finalBarcode };
+        localSpareParts = localSpareParts.map(p => p.id === id ? updatedPart : p);
+        return updatedPart as any;
       }
       if (path.startsWith("/api/inventory/") && method === "DELETE") {
         const id = path.split("/").pop();

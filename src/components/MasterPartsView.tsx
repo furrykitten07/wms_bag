@@ -170,10 +170,15 @@ export default function MasterPartsView({
     }
 
     try {
+      const barcodeToSave = partForm.barcode?.trim() || `BC-${Math.floor(10000000 + Math.random() * 90000000)}`;
+      const payload = {
+        ...partForm,
+        barcode: barcodeToSave
+      };
       if (editingPart) {
-        await onUpdatePart(editingPart.id, partForm);
+        await onUpdatePart(editingPart.id, payload);
       } else {
-        await onAddPart(partForm);
+        await onAddPart(payload);
       }
       setIsPartModalOpen(false);
     } catch (err: any) {

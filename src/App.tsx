@@ -996,7 +996,11 @@ export default function App() {
 
           {/* Sparepart Catalog View */}
           {currentTab === "sparepart-catalog" && (
-            <SparePartCatalogView parts={parts} />
+            <SparePartCatalogView 
+              parts={parts} 
+              onAddPart={handleAddPart}
+              onUpdatePart={handleUpdatePart}
+            />
           )}
 
           {/* Receiving inbound queue */}
