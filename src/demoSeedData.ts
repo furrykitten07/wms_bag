@@ -94925,7 +94925,7 @@ export const demoMaterialRequestsTUG6: MaterialRequest[] = [
     "function_code": "ARMADA",
     "urgency": "NORMAL",
     "department": "Engine Room",
-    "remarks": "Permintaan Material Umum TUG 5 untuk SPK 1996.SPK/BA.302/BA010102/2025 - BACK UP RING",
+    "remarks": "Permintaan Material Umum TUG 5 untuk SPK 1996.SPK/BA.302/BA010102/2025 - BACK UP RING (Material Kritis TUG 6 - Sheet CRITICAL FIKRI.xlsx)",
     "status": "Submitted",
     "alfin_signed": false,
     "emir_signed": false,
@@ -94940,11 +94940,11 @@ export const demoMaterialRequestsTUG6: MaterialRequest[] = [
         "avg_monthly_usage": 1,
         "remaining_stock": 10,
         "requested_qty": 5,
-        "notes": "Permintaan SPK 1996.SPK/BA.302/BA010102/2025",
-        "item_status": "Pending"
+        "notes": "[ITEM CRITICAL] Permintaan SPK 1996.SPK/BA.302/BA010102/2025",
+        "item_status": "Pending",
+        "is_critical": true
       }
-    ],
-    "tug_type": "TUG6"
+    ]
   },
   {
     "id": "mr6-mr-crit-388",
@@ -94957,7 +94957,7 @@ export const demoMaterialRequestsTUG6: MaterialRequest[] = [
     "work_order_ref": "0352.SPK/BA.101/BA010102/2025",
     "account_code": "BPP",
     "function_code": "ARMADA",
-    "remarks": "Permintaan Material Umum TUG 5 untuk Latifah Baruna",
+    "remarks": "Permintaan Material Umum TUG 5 untuk Latifah Baruna (Material Kritis TUG 6 - Sheet CRITICAL FIKRI.xlsx)",
     "status": "Approved",
     "items": [
       {
@@ -94968,14 +94968,15 @@ export const demoMaterialRequestsTUG6: MaterialRequest[] = [
         "avg_monthly_usage": 1,
         "remaining_stock": 10,
         "requested_qty": 15,
-        "notes": "Permintaan SPK 0352.SPK/BA.101/BA010102/2025",
-        "item_status": "Arrived"
+        "notes": "[ITEM CRITICAL] Permintaan SPK 0352.SPK/BA.101/BA010102/2025",
+        "item_status": "Arrived",
+        "is_critical": true
       }
     ],
     "created_at": "2026-08-15T08:30:00.000Z",
     "updated_at": "2026-08-15T09:00:00.000Z",
     "tug5_number": "TUG5-2026-388",
-    "tug_type": "TUG6",
+    "tug_type": "TUG5",
     "spk_number": "0352.SPK/BA.101/BA010102/2025",
     "spk_id": "spk-crit-388",
     "tug_number": "TUG5-2026-388",
@@ -94995,7 +94996,7 @@ export const demoMaterialRequestsTUG6: MaterialRequest[] = [
     "work_order_ref": "1550.SPK.BA.302/BA010102/2025",
     "account_code": "BPP",
     "function_code": "ARMADA",
-    "remarks": "Permintaan Material Umum TUG 5 untuk Martha Baruna",
+    "remarks": "Permintaan Material Umum TUG 5 untuk Martha Baruna (Material Kritis TUG 6 - Sheet CRITICAL FIKRI.xlsx)",
     "status": "Approved",
     "items": [
       {
@@ -95006,14 +95007,15 @@ export const demoMaterialRequestsTUG6: MaterialRequest[] = [
         "avg_monthly_usage": 1,
         "remaining_stock": 10,
         "requested_qty": 20,
-        "notes": "Permintaan SPK 1550.SPK.BA.302/BA010102/2025",
-        "item_status": "Arrived"
+        "notes": "[ITEM CRITICAL] Permintaan SPK 1550.SPK.BA.302/BA010102/2025",
+        "item_status": "Arrived",
+        "is_critical": true
       }
     ],
     "created_at": "2025-07-03T08:30:00.000Z",
     "updated_at": "2025-07-03T09:00:00.000Z",
     "tug5_number": "TUG5-2026-389",
-    "tug_type": "TUG6",
+    "tug_type": "TUG5",
     "spk_number": "1550.SPK.BA.302/BA010102/2025",
     "spk_id": "spk-crit-389",
     "tug_number": "TUG5-2026-389",
@@ -95033,7 +95035,7 @@ export const demoMaterialRequestsTUG6: MaterialRequest[] = [
     "work_order_ref": "1597.SPK/BA.302/BA010102/2025",
     "account_code": "BPP",
     "function_code": "ARMADA",
-    "remarks": "Permintaan Material Umum TUG 5 untuk Martha Baruna",
+    "remarks": "Permintaan Material Umum TUG 5 untuk Martha Baruna (Material Kritis TUG 6 - Sheet CRITICAL FIKRI.xlsx)",
     "status": "Approved",
     "items": [
       {
@@ -95044,14 +95046,15 @@ export const demoMaterialRequestsTUG6: MaterialRequest[] = [
         "avg_monthly_usage": 1,
         "remaining_stock": 10,
         "requested_qty": 12,
-        "notes": "Permintaan SPK 1597.SPK/BA.302/BA010102/2025",
-        "item_status": "Arrived"
+        "notes": "[ITEM CRITICAL] Permintaan SPK 1597.SPK/BA.302/BA010102/2025",
+        "item_status": "Arrived",
+        "is_critical": true
       }
     ],
     "created_at": "2025-07-11T08:30:00.000Z",
     "updated_at": "2025-07-11T09:00:00.000Z",
     "tug5_number": "TUG5-2026-390",
-    "tug_type": "TUG6",
+    "tug_type": "TUG5",
     "spk_number": "1597.SPK/BA.302/BA010102/2025",
     "spk_id": "spk-crit-390",
     "tug_number": "TUG5-2026-390",
@@ -95071,7 +95074,7 @@ export const demoMaterialRequestsTUG6: MaterialRequest[] = [
     "work_order_ref": "1596.SPK/BA.302/BA010102/2025",
     "account_code": "BPP",
     "function_code": "ARMADA",
-    "remarks": "Permintaan Material Umum TUG 5 untuk Martha Baruna",
+    "remarks": "Permintaan Material Umum TUG 5 untuk Martha Baruna (Material Kritis TUG 6 - Sheet CRITICAL FIKRI.xlsx)",
     "status": "Approved",
     "items": [
       {
@@ -95082,14 +95085,15 @@ export const demoMaterialRequestsTUG6: MaterialRequest[] = [
         "avg_monthly_usage": 1,
         "remaining_stock": 10,
         "requested_qty": 1,
-        "notes": "Permintaan SPK 1596.SPK/BA.302/BA010102/2025",
-        "item_status": "Arrived"
+        "notes": "[ITEM CRITICAL] Permintaan SPK 1596.SPK/BA.302/BA010102/2025",
+        "item_status": "Arrived",
+        "is_critical": true
       }
     ],
     "created_at": "2025-08-30T08:30:00.000Z",
     "updated_at": "2025-08-30T09:00:00.000Z",
     "tug5_number": "TUG5-2026-391",
-    "tug_type": "TUG6",
+    "tug_type": "TUG5",
     "spk_number": "1596.SPK/BA.302/BA010102/2025",
     "spk_id": "spk-crit-391",
     "tug_number": "TUG5-2026-391",
@@ -95109,7 +95113,7 @@ export const demoMaterialRequestsTUG6: MaterialRequest[] = [
     "work_order_ref": "1869.SPK/BA.302/BA010102/2025",
     "account_code": "BPP",
     "function_code": "ARMADA",
-    "remarks": "Permintaan Material Umum TUG 5 untuk Martha Baruna",
+    "remarks": "Permintaan Material Umum TUG 5 untuk Martha Baruna (Material Kritis TUG 6 - Sheet CRITICAL FIKRI.xlsx)",
     "status": "Approved",
     "items": [
       {
@@ -95120,14 +95124,15 @@ export const demoMaterialRequestsTUG6: MaterialRequest[] = [
         "avg_monthly_usage": 1,
         "remaining_stock": 10,
         "requested_qty": 6,
-        "notes": "Permintaan SPK 1869.SPK/BA.302/BA010102/2025",
-        "item_status": "Arrived"
+        "notes": "[ITEM CRITICAL] Permintaan SPK 1869.SPK/BA.302/BA010102/2025",
+        "item_status": "Arrived",
+        "is_critical": true
       }
     ],
     "created_at": "2025-08-30T08:30:00.000Z",
     "updated_at": "2025-08-30T09:00:00.000Z",
     "tug5_number": "TUG5-2026-392",
-    "tug_type": "TUG6",
+    "tug_type": "TUG5",
     "spk_number": "1869.SPK/BA.302/BA010102/2025",
     "spk_id": "spk-crit-392",
     "tug_number": "TUG5-2026-392",
@@ -95147,7 +95152,7 @@ export const demoMaterialRequestsTUG6: MaterialRequest[] = [
     "work_order_ref": "0053.SPBJ/BA.301/BA010400/2025",
     "account_code": "BPP",
     "function_code": "ARMADA",
-    "remarks": "Permintaan Material Umum TUG 5 untuk Kartini Baruna",
+    "remarks": "Permintaan Material Umum TUG 5 untuk Kartini Baruna (Material Kritis TUG 6 - Sheet CRITICAL FIKRI.xlsx)",
     "status": "Approved",
     "items": [
       {
@@ -95158,14 +95163,15 @@ export const demoMaterialRequestsTUG6: MaterialRequest[] = [
         "avg_monthly_usage": 1,
         "remaining_stock": 10,
         "requested_qty": 10,
-        "notes": "Permintaan SPK 0053.SPBJ/BA.301/BA010400/2025",
-        "item_status": "Arrived"
+        "notes": "[ITEM CRITICAL] Permintaan SPK 0053.SPBJ/BA.301/BA010400/2025",
+        "item_status": "Arrived",
+        "is_critical": true
       }
     ],
     "created_at": "2025-06-18T08:30:00.000Z",
     "updated_at": "2025-06-18T09:00:00.000Z",
     "tug5_number": "TUG5-2026-393",
-    "tug_type": "TUG6",
+    "tug_type": "TUG5",
     "spk_number": "0053.SPBJ/BA.301/BA010400/2025",
     "spk_id": "spk-crit-393",
     "tug_number": "TUG5-2026-393",
@@ -95185,7 +95191,7 @@ export const demoMaterialRequestsTUG6: MaterialRequest[] = [
     "work_order_ref": "0084.SPBJ/PR.103/BA010400/2025",
     "account_code": "BPP",
     "function_code": "ARMADA",
-    "remarks": "Permintaan Material Umum TUG 5 untuk Zalecha Baruna",
+    "remarks": "Permintaan Material Umum TUG 5 untuk Zalecha Baruna (Material Kritis TUG 6 - Sheet CRITICAL FIKRI.xlsx)",
     "status": "Approved",
     "items": [
       {
@@ -95196,14 +95202,15 @@ export const demoMaterialRequestsTUG6: MaterialRequest[] = [
         "avg_monthly_usage": 1,
         "remaining_stock": 10,
         "requested_qty": 1,
-        "notes": "Permintaan SPK 0084.SPBJ/PR.103/BA010400/2025",
-        "item_status": "Arrived"
+        "notes": "[ITEM CRITICAL] Permintaan SPK 0084.SPBJ/PR.103/BA010400/2025",
+        "item_status": "Arrived",
+        "is_critical": true
       }
     ],
     "created_at": "2025-07-29T08:30:00.000Z",
     "updated_at": "2025-07-29T09:00:00.000Z",
     "tug5_number": "TUG5-2026-394",
-    "tug_type": "TUG6",
+    "tug_type": "TUG5",
     "spk_number": "0084.SPBJ/PR.103/BA010400/2025",
     "spk_id": "spk-crit-394",
     "tug_number": "TUG5-2026-394",
@@ -95223,7 +95230,7 @@ export const demoMaterialRequestsTUG6: MaterialRequest[] = [
     "work_order_ref": "0002.SPBJ/PR.103/BA010400/2025",
     "account_code": "BPP",
     "function_code": "ARMADA",
-    "remarks": "Permintaan Material Umum TUG 5 untuk Latifah Baruna",
+    "remarks": "Permintaan Material Umum TUG 5 untuk Latifah Baruna (Material Kritis TUG 6 - Sheet CRITICAL FIKRI.xlsx)",
     "status": "Approved",
     "items": [
       {
@@ -95234,14 +95241,15 @@ export const demoMaterialRequestsTUG6: MaterialRequest[] = [
         "avg_monthly_usage": 1,
         "remaining_stock": 10,
         "requested_qty": 6,
-        "notes": "Permintaan SPK 0002.SPBJ/PR.103/BA010400/2025",
-        "item_status": "Arrived"
+        "notes": "[ITEM CRITICAL] Permintaan SPK 0002.SPBJ/PR.103/BA010400/2025",
+        "item_status": "Arrived",
+        "is_critical": true
       }
     ],
     "created_at": "2026-08-15T08:30:00.000Z",
     "updated_at": "2026-08-15T09:00:00.000Z",
     "tug5_number": "TUG5-2026-395",
-    "tug_type": "TUG6",
+    "tug_type": "TUG5",
     "spk_number": "0002.SPBJ/PR.103/BA010400/2025",
     "spk_id": "spk-crit-395",
     "tug_number": "TUG5-2026-395",
@@ -95261,7 +95269,7 @@ export const demoMaterialRequestsTUG6: MaterialRequest[] = [
     "work_order_ref": "0283.SPK/BA.302/BA010102/2026",
     "account_code": "BPP",
     "function_code": "ARMADA",
-    "remarks": "Permintaan Material Umum TUG 5 untuk Sartika Baruna",
+    "remarks": "Permintaan Material Umum TUG 5 untuk Sartika Baruna (Material Kritis TUG 6 - Sheet CRITICAL FIKRI.xlsx)",
     "status": "Approved",
     "items": [
       {
@@ -95272,14 +95280,15 @@ export const demoMaterialRequestsTUG6: MaterialRequest[] = [
         "avg_monthly_usage": 1,
         "remaining_stock": 10,
         "requested_qty": 10,
-        "notes": "Permintaan SPK 0283.SPK/BA.302/BA010102/2026",
-        "item_status": "Arrived"
+        "notes": "[ITEM CRITICAL] Permintaan SPK 0283.SPK/BA.302/BA010102/2026",
+        "item_status": "Arrived",
+        "is_critical": true
       }
     ],
     "created_at": "2026-08-15T08:30:00.000Z",
     "updated_at": "2026-08-15T09:00:00.000Z",
     "tug5_number": "TUG5-2026-396",
-    "tug_type": "TUG6",
+    "tug_type": "TUG5",
     "spk_number": "0283.SPK/BA.302/BA010102/2026",
     "spk_id": "spk-crit-396",
     "tug_number": "TUG5-2026-396",
@@ -95299,7 +95308,7 @@ export const demoMaterialRequestsTUG6: MaterialRequest[] = [
     "work_order_ref": "0320.SPK/BA.302/BA010102/2026",
     "account_code": "BPP",
     "function_code": "ARMADA",
-    "remarks": "Permintaan Material Umum TUG 5 untuk Adhiguna Tarahan",
+    "remarks": "Permintaan Material Umum TUG 5 untuk Adhiguna Tarahan (Material Kritis TUG 6 - Sheet CRITICAL FIKRI.xlsx)",
     "status": "Approved",
     "items": [
       {
@@ -95310,14 +95319,15 @@ export const demoMaterialRequestsTUG6: MaterialRequest[] = [
         "avg_monthly_usage": 1,
         "remaining_stock": 10,
         "requested_qty": 3,
-        "notes": "Permintaan SPK 0320.SPK/BA.302/BA010102/2026",
-        "item_status": "Arrived"
+        "notes": "[ITEM CRITICAL] Permintaan SPK 0320.SPK/BA.302/BA010102/2026",
+        "item_status": "Arrived",
+        "is_critical": true
       }
     ],
     "created_at": "2026-08-15T08:30:00.000Z",
     "updated_at": "2026-08-15T09:00:00.000Z",
     "tug5_number": "TUG5-2026-397",
-    "tug_type": "TUG6",
+    "tug_type": "TUG5",
     "spk_number": "0320.SPK/BA.302/BA010102/2026",
     "spk_id": "spk-crit-397",
     "tug_number": "TUG5-2026-397",
@@ -95337,7 +95347,7 @@ export const demoMaterialRequestsTUG6: MaterialRequest[] = [
     "work_order_ref": "0327.SPK/BA.302/BA010102/2026",
     "account_code": "BPP",
     "function_code": "ARMADA",
-    "remarks": "Permintaan Material Umum TUG 5 untuk Kartini Baruna",
+    "remarks": "Permintaan Material Umum TUG 5 untuk Kartini Baruna (Material Kritis TUG 6 - Sheet CRITICAL FIKRI.xlsx)",
     "status": "Approved",
     "items": [
       {
@@ -95348,14 +95358,15 @@ export const demoMaterialRequestsTUG6: MaterialRequest[] = [
         "avg_monthly_usage": 1,
         "remaining_stock": 10,
         "requested_qty": 10,
-        "notes": "Permintaan SPK 0327.SPK/BA.302/BA010102/2026",
-        "item_status": "Arrived"
+        "notes": "[ITEM CRITICAL] Permintaan SPK 0327.SPK/BA.302/BA010102/2026",
+        "item_status": "Arrived",
+        "is_critical": true
       }
     ],
     "created_at": "2026-08-15T08:30:00.000Z",
     "updated_at": "2026-08-15T09:00:00.000Z",
     "tug5_number": "TUG5-2026-398",
-    "tug_type": "TUG6",
+    "tug_type": "TUG5",
     "spk_number": "0327.SPK/BA.302/BA010102/2026",
     "spk_id": "spk-crit-398",
     "tug_number": "TUG5-2026-398",
@@ -95375,7 +95386,7 @@ export const demoMaterialRequestsTUG6: MaterialRequest[] = [
     "work_order_ref": "0517.SPK/BA.302/BA010102/2026",
     "account_code": "BPP",
     "function_code": "ARMADA",
-    "remarks": "Permintaan Material Umum TUG 5 untuk Adhiguna Tarahan",
+    "remarks": "Permintaan Material Umum TUG 5 untuk Adhiguna Tarahan (Material Kritis TUG 6 - Sheet CRITICAL FIKRI.xlsx)",
     "status": "Approved",
     "items": [
       {
@@ -95386,14 +95397,15 @@ export const demoMaterialRequestsTUG6: MaterialRequest[] = [
         "avg_monthly_usage": 1,
         "remaining_stock": 10,
         "requested_qty": 3,
-        "notes": "Permintaan SPK 0517.SPK/BA.302/BA010102/2026",
-        "item_status": "Arrived"
+        "notes": "[ITEM CRITICAL] Permintaan SPK 0517.SPK/BA.302/BA010102/2026",
+        "item_status": "Arrived",
+        "is_critical": true
       }
     ],
     "created_at": "2026-08-15T08:30:00.000Z",
     "updated_at": "2026-08-15T09:00:00.000Z",
     "tug5_number": "TUG5-2026-399",
-    "tug_type": "TUG6",
+    "tug_type": "TUG5",
     "spk_number": "0517.SPK/BA.302/BA010102/2026",
     "spk_id": "spk-crit-399",
     "tug_number": "TUG5-2026-399",
@@ -95413,7 +95425,7 @@ export const demoMaterialRequestsTUG6: MaterialRequest[] = [
     "work_order_ref": "0694.SPK/BA.302/BA010102/2026",
     "account_code": "BPP",
     "function_code": "ARMADA",
-    "remarks": "Permintaan Material Umum TUG 5 untuk Adhiguna Tarahan",
+    "remarks": "Permintaan Material Umum TUG 5 untuk Adhiguna Tarahan (Material Kritis TUG 6 - Sheet CRITICAL FIKRI.xlsx)",
     "status": "Approved",
     "items": [
       {
@@ -95424,14 +95436,15 @@ export const demoMaterialRequestsTUG6: MaterialRequest[] = [
         "avg_monthly_usage": 1,
         "remaining_stock": 10,
         "requested_qty": 1,
-        "notes": "Permintaan SPK 0694.SPK/BA.302/BA010102/2026",
-        "item_status": "Arrived"
+        "notes": "[ITEM CRITICAL] Permintaan SPK 0694.SPK/BA.302/BA010102/2026",
+        "item_status": "Arrived",
+        "is_critical": true
       }
     ],
     "created_at": "2026-06-11T08:30:00.000Z",
     "updated_at": "2026-06-11T09:00:00.000Z",
     "tug5_number": "TUG5-2026-400",
-    "tug_type": "TUG6",
+    "tug_type": "TUG5",
     "spk_number": "0694.SPK/BA.302/BA010102/2026",
     "spk_id": "spk-crit-400",
     "tug_number": "TUG5-2026-400",

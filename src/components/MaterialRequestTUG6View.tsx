@@ -748,8 +748,9 @@ export default function MaterialRequestTUG6View({
                       <td className="py-4.5 px-6 text-slate-900 font-bold font-sans">{mr.vessel_name}</td>
                       <td className="py-4.5 px-6 text-slate-700 font-semibold">{mr.requester_name}</td>
                       <td className="py-4.5 px-6 text-center font-mono font-bold">
-                        <span className="bg-slate-50 px-3 py-1.5 rounded border border-slate-205 text-slate-700 text-[10px]">
-                          {(mr.items || []).length} Suku Cadang
+                        <span className="inline-flex items-center gap-1.5 bg-rose-50 px-3 py-1.5 rounded-full border border-rose-200 text-rose-700 text-[10px] font-bold">
+                          <span className="w-1.5 h-1.5 rounded-full bg-rose-500 animate-pulse"></span>
+                          {(mr.items || []).length} Item Kritis
                         </span>
                       </td>
                       <td className="py-4.5 px-6 font-mono text-rose-600 font-bold text-[11.5px]">{mr.work_order_ref || "-"}</td>
@@ -1461,10 +1462,22 @@ export default function MaterialRequestTUG6View({
 
               {/* Items List inside Modal */}
               <div className="space-y-2">
+                <div className="p-3 bg-rose-50/70 border border-rose-200/80 rounded-xl flex items-center justify-between gap-3 text-xs">
+                  <div className="flex items-center gap-2">
+                    <span className="w-2.5 h-2.5 rounded-full bg-rose-500 animate-ping"></span>
+                    <span className="font-bold text-rose-900">
+                      FILTER DATA: Sesuai Sheet CRITICAL data/FIKRI.xlsx (Exact Match PART_NAME + PART_NO)
+                    </span>
+                  </div>
+                  <span className="bg-rose-200/80 text-rose-900 font-mono font-bold text-[10px] px-2 py-0.5 rounded">
+                    {(activeMR.items || []).length} ITEM CRITICAL
+                  </span>
+                </div>
+
                 <h4 className="text-[10px] font-black font-mono uppercase tracking-widest text-slate-500 flex items-center justify-between">
                   <span>RINCIAN DAFTAR MATERIAL SUKU CADANG (TUG 6 CODES)</span>
                   <span className="bg-indigo-50 border border-indigo-200 px-2.5 py-0.5 rounded-full font-bold text-indigo-800 text-[9.5px]">
-                    Daftar {(activeMR.items || []).length} Barang
+                    Daftar {(activeMR.items || []).length} Barang Kritis
                   </span>
                 </h4>
 
@@ -1480,15 +1493,22 @@ export default function MaterialRequestTUG6View({
                         <th className="py-2.5 px-3 w-32 text-center font-semibold text-slate-500">Sisa Stok Sedia</th>
                         <th className="py-2.5 px-3 w-32 text-center font-bold text-blue-800 bg-blue-50/30">Requested Qty</th>
                         <th className="py-2.5 px-3 w-36 text-center font-semibold">Status Barang</th>
-                        <th className="py-2.5 px-3 font-semibold">Keterangan</th>
+                        <th className="py-2.5 px-3 font-semibold">Keterangan / Notes</th>
                       </tr>
                     </thead>
                     <tbody className="divide-y divide-slate-100 text-xs text-slate-800">
                       {(activeMR.items || []).map((itm, idx) => (
                         <tr key={idx} className="hover:bg-slate-50/50">
                           <td className="py-2.5 px-4 text-center font-mono text-slate-400 font-bold">{idx + 1}</td>
-                          <td className="py-2.5 px-3 text-slate-900 font-bold">{itm.spare_part_name}</td>
-                          <td className="py-2.5 px-3 font-mono text-slate-650">{itm.part_number}</td>
+                          <td className="py-2.5 px-3 text-slate-900 font-bold">
+                            <div className="flex items-center gap-1.5 flex-wrap">
+                              <span>{itm.spare_part_name}</span>
+                              <span className="inline-flex items-center gap-0.5 px-1.5 py-0.5 rounded text-[8.5px] font-black bg-rose-100 text-rose-700 border border-rose-200">
+                                🔴 ITEM CRITICAL
+                              </span>
+                            </div>
+                          </td>
+                          <td className="py-2.5 px-3 font-mono text-slate-650 font-bold">{itm.part_number}</td>
                           <td className="py-2.5 px-3 text-center uppercase font-mono">{itm.unit}</td>
                           <td className="py-2.5 px-3 text-center font-mono">{itm.avg_monthly_usage !== undefined ? itm.avg_monthly_usage : 1}</td>
                           <td className="py-2.5 px-3 text-center font-mono">{itm.remaining_stock !== undefined ? itm.remaining_stock : 0}</td>
@@ -1504,7 +1524,11 @@ export default function MaterialRequestTUG6View({
                               {itm.item_status === "Pending" ? "Belum Datang" : itm.item_status === "Returned" ? "Diretur" : "Sudah Datang"}
                             </span>
                           </td>
-                          <td className="py-2.5 px-3 font-sans italic text-slate-500">{itm.notes || "-"}</td>
+                          <td className="py-2.5 px-3">
+                            <span className="inline-block bg-amber-50 text-amber-900 border border-amber-200/80 px-2 py-1 rounded text-[11px] font-medium leading-snug">
+                              {itm.notes || "[ITEM CRITICAL]"}
+                            </span>
+                          </td>
                         </tr>
                       ))}
                     </tbody>

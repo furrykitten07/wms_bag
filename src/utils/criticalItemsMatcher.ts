@@ -1,11 +1,26 @@
 /**
  * Utility to match and derive TUG 6 (Daftar Permintaan Barang Kritis)
  * from TUG 5 (Material Requests) based on sheet 'CRITICAL' in data/FIKRI.xlsx.
+ * 
+ * USER DIRECTIVE:
+ * - Lakukan filtering terhadap seluruh data TUG 5 menggunakan sheet CRITICAL pada file data/FIKRI.xlsx
+ * - Untuk setiap record TUG 5, lakukan EXACT MATCHING berdasarkan kombinasi PART_NAME + PART_NO.
+ * - Jika PART_NAME DAN PART_NO sama-sama ditemukan di sheet CRITICAL, masukkan record tersebut ke TUG 6.
+ * - Jika salah satu tidak cocok atau tidak ditemukan, JANGAN masukkan record tersebut ke TUG 6.
+ * - JANGAN melakukan partial/fuzzy matching.
+ * - JANGAN mencocokkan hanya berdasarkan salah satu field.
+ * - Pertahankan field/data lainnya dari TUG 5 tanpa mengubah nilainya.
+ * - Berikan notes tambahan yang mana item criticalnya, supaya user tau.
  */
 
 import { MaterialRequest, MaterialRequestItem } from "../types.js";
 
-export const CRITICAL_PARTS_SHEET_DATA = [
+export interface CriticalPartEntry {
+  name: string;
+  part_no: string;
+}
+
+export const CRITICAL_PARTS_SHEET_DATA: CriticalPartEntry[] = [
   { name: "CYLINDER LINER", part_no: "1" },
   { name: "MAIN & THRUST BEARING SHELL", part_no: "1" },
   { name: "ORING CYL. LOWER", part_no: "12" },
@@ -34,35 +49,46 @@ export const CRITICAL_PARTS_SHEET_DATA = [
   { name: "O-RING", part_no: "9" }
 ];
 
-// Normalized exact lookup set: `${PART_NAME.trim().toUpperCase()}||${PART_NO.trim().toUpperCase()}`
-const CRITICAL_EXACT_MAP = new Set(
-  CRITICAL_PARTS_SHEET_DATA.map(item =>
-    `${item.name.trim().toUpperCase()}||${item.part_no.trim().toUpperCase()}`
+/**
+ * Fast lookup set containing the exact normalized (PART_NAME + "|||" + PART_NO) pairs.
+ */
+export const CRITICAL_EXACT_SET = new Set<string>(
+  CRITICAL_PARTS_SHEET_DATA.map(entry => 
+    `${entry.name.trim().toUpperCase()}|||${String(entry.part_no).trim().toUpperCase()}`
   )
 );
 
 /**
- * Checks if a given spare part item matches the CRITICAL sheet in FIKRI.xlsx.
- * Strictly performs exact matching based on the combination of PART_NAME + PART_NO.
- * Both fields must match sheet CRITICAL. No partial or fuzzy matching is performed.
+ * Checks if a given spare part item matches EXACTLY with the sheet CRITICAL in FIKRI.xlsx.
+ * Strictly checks that BOTH PART_NAME and PART_NO match an entry in CRITICAL.
+ * No partial, no fuzzy, and no single-field matching.
  */
-export function isItemCritical(item: Partial<MaterialRequestItem>): boolean {
+export function isItemCritical(item: Partial<MaterialRequestItem> | null | undefined): boolean {
   if (!item) return false;
 
-  const nameUpper = (item.spare_part_name || "").trim().toUpperCase();
-  const partNoUpper = (item.part_number || "").trim().toUpperCase();
+  const rawName = item.spare_part_name;
+  const rawPartNo = item.part_number;
 
-  if (!nameUpper || !partNoUpper) return false;
+  if (!rawName || rawPartNo === undefined || rawPartNo === null) {
+    return false;
+  }
 
-  return CRITICAL_EXACT_MAP.has(`${nameUpper}||${partNoUpper}`);
+  const nameUpper = String(rawName).trim().toUpperCase();
+  const partNoUpper = String(rawPartNo).trim().toUpperCase();
+
+  if (!nameUpper || !partNoUpper) {
+    return false;
+  }
+
+  return CRITICAL_EXACT_SET.has(`${nameUpper}|||${partNoUpper}`);
 }
 
 /**
- * Derives TUG 6 records directly from TUG 5 material requests as the data source.
- * Filters all TUG 5 records by exact matching (PART_NAME + PART_NO) against sheet CRITICAL.
- * If both match, the record/item is included in TUG 6.
- * If either field does not match or is not found, it is excluded.
- * Preserves all other fields/data from TUG 5 without altering their values.
+ * Derives TUG 6 records directly from TUG 5 material requests.
+ * Only TUG 5 requests containing items from sheet CRITICAL are included in TUG 6.
+ * Non-critical items in the request are excluded from TUG 6.
+ * Preserves all other fields of the TUG 5 request and items without altering their values.
+ * Adds notes [ITEM CRITICAL] to clearly indicate critical items to the user.
  */
 export function deriveTUG6FromTUG5(tug5List: MaterialRequest[]): MaterialRequest[] {
   if (!Array.isArray(tug5List)) return [];
@@ -73,26 +99,49 @@ export function deriveTUG6FromTUG5(tug5List: MaterialRequest[]): MaterialRequest
   for (const mr5 of tug5List) {
     if (!mr5 || !Array.isArray(mr5.items)) continue;
 
-    // Filter items to keep only items exactly matching sheet CRITICAL in FIKRI.xlsx
-    const criticalItems: MaterialRequestItem[] = mr5.items
-      .filter(isItemCritical)
-      .map(it => ({ ...it, is_critical: true }));
+    // Filter items to keep only items with exact match on (PART_NAME + PART_NO)
+    const criticalItems: MaterialRequestItem[] = [];
+
+    for (const it of mr5.items) {
+      if (isItemCritical(it)) {
+        const existingNotes = it.notes ? String(it.notes).trim() : "";
+        const noteWithTag = existingNotes.includes("[ITEM CRITICAL]")
+          ? existingNotes
+          : existingNotes
+            ? `[ITEM CRITICAL] ${existingNotes}`
+            : `[ITEM CRITICAL] Permintaan SPK ${mr5.spk_number || mr5.work_order_ref || "NP"}`;
+
+        criticalItems.push({
+          ...it,
+          is_critical: true,
+          notes: noteWithTag
+        });
+      }
+    }
 
     if (criticalItems.length > 0) {
       const tug5Num = mr5.tug5_number || `TUG5-2026-${String(seq).padStart(3, "0")}`;
-      const tug6Num = mr5.tug6_number || tug5Num.replace("TUG5", "TUG6");
+      const tug6Num = mr5.tug6_number && mr5.tug6_number.startsWith("TUG6-")
+        ? mr5.tug6_number
+        : tug5Num.replace(/^TUG5/i, "TUG6");
       const mr6Num = mr5.request_number.startsWith("MR6-")
         ? mr5.request_number
-        : mr5.request_number.replace("MR-", "MR6-");
+        : mr5.request_number.replace(/^MR-/i, "MR6-");
 
-      // Preserve all other fields and values from TUG 5 without modification
+      const origRemarks = mr5.remarks ? String(mr5.remarks).trim() : "";
+      const remarksWithTag = origRemarks.includes("Material Kritis")
+        ? origRemarks
+        : origRemarks
+          ? `${origRemarks} (Material Kritis TUG 6 - Sheet CRITICAL FIKRI.xlsx)`
+          : `Permintaan Material Kritis (TUG 6) untuk ${mr5.vessel_name || "Armada Baruna"}`;
+
       const tug6Entry: MaterialRequest = {
         ...mr5,
         id: mr5.id.startsWith("mr6-") ? mr5.id : `mr6-${mr5.id}`,
         request_number: mr6Num,
         tug5_number: tug5Num,
         tug6_number: tug6Num,
-        tug_type: "TUG6",
+        remarks: remarksWithTag,
         items: criticalItems
       };
 

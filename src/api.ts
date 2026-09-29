@@ -652,7 +652,7 @@ function getLocalFallbackData<T>(url: string, options: RequestInit = {}): T {
   if (path.startsWith("/api/approvals")) return [] as any;
   if (path.startsWith("/api/ledger")) return localLedger as any;
   if (path.startsWith("/api/audit")) return [] as any;
-  if (path.startsWith("/api/material-requests-tug6")) return localMaterialRequestsTUG6 as any;
+  if (path.startsWith("/api/material-requests-tug6")) return deriveTUG6FromTUG5(localMaterialRequests) as any;
   if (path.startsWith("/api/material-requests")) return localMaterialRequests as any;
   if (path === "/api/material-returns" && options.method === "POST") {
     const currentYear = new Date().getFullYear();
@@ -722,7 +722,7 @@ function getLocalFallbackData<T>(url: string, options: RequestInit = {}): T {
     localSpareParts = [...demoSpareParts];
     localSPKs = [...demoSPKs];
     localMaterialRequests = [...demoMaterialRequests];
-    localMaterialRequestsTUG6 = deriveTUG6FromTUG5(localMaterialRequests);
+    localMaterialRequestsTUG6 = [...demoMaterialRequestsTUG6];
     localDispatches = [];
     saveLocalDispatches(localDispatches);
     localReceiving = [...demoReceiving];
@@ -912,11 +912,12 @@ async function fetcher<T>(url: string, options: RequestInit = {}): Promise<T> {
       // --- 2. MATERIAL REQUESTS (TUG 6) ---
       if (path === "/api/material-requests-tug6" && method === "GET") {
         const { data, error } = await supabase.from("material_requests").select("*").order("request_date", { ascending: false }).order("request_number", { ascending: false });
-        if (!error && data) {
-          const tug6Only = data.filter((d: any) => d.tug6_number);
-          localMaterialRequestsTUG6 = (tug6Only.length > 0 ? tug6Only : data) as any;
+        if (!error && data && data.length > 0) {
+          const derived = deriveTUG6FromTUG5(data as MaterialRequest[]);
+          localMaterialRequestsTUG6 = derived.length > 0 ? derived : deriveTUG6FromTUG5(localMaterialRequests);
           return localMaterialRequestsTUG6 as any;
         }
+        localMaterialRequestsTUG6 = deriveTUG6FromTUG5(localMaterialRequests);
         return localMaterialRequestsTUG6 as any;
       }
       if (path === "/api/material-requests-tug6" && method === "POST") {
