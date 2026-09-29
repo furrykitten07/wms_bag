@@ -23,7 +23,7 @@ export const createSVGSignatureDataUrl = (name: string): string => {
   
   const base64Svg = typeof window !== "undefined" && window.btoa 
     ? window.btoa(unescape(encodeURIComponent(svg)))
-    : Buffer.from(svg).toString("base64");
+    : Buffer.from(svg, "utf-8").toString("base64");
 
   return `data:image/svg+xml;base64,${base64Svg}`;
 };
@@ -32,5 +32,28 @@ export const sanitizeSignatureUrl = (url?: string | null, fallbackName: string =
   if (!url || url.includes("dicebear.com/7.x/initials") || url.includes("dicebear.com")) {
     return createSVGSignatureDataUrl(fallbackName);
   }
+
+  // Convert unencoded SVG data URLs containing raw quotes to clean base64
+  // so they will NEVER break HTML <img src="..." /> attributes
+  if (url.startsWith("data:image/svg+xml;utf8,") || (url.startsWith("data:image/svg+xml,") && !url.includes(";base64,"))) {
+    const rawSvg = url.substring(url.indexOf(",") + 1);
+    try {
+      const decodedSvg = decodeURIComponent(rawSvg);
+      const base64 = typeof window !== "undefined" && window.btoa
+        ? window.btoa(unescape(encodeURIComponent(decodedSvg)))
+        : Buffer.from(decodedSvg, "utf-8").toString("base64");
+      return `data:image/svg+xml;base64,${base64}`;
+    } catch (e) {
+      try {
+        const base64 = typeof window !== "undefined" && window.btoa
+          ? window.btoa(unescape(encodeURIComponent(rawSvg)))
+          : Buffer.from(rawSvg, "utf-8").toString("base64");
+        return `data:image/svg+xml;base64,${base64}`;
+      } catch (err) {
+        return url.replace(/"/g, "'");
+      }
+    }
+  }
+
   return url;
 };
