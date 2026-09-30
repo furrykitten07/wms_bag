@@ -50,6 +50,7 @@ import {
 } from "../types.js";
 import { FLEET_VESSELS } from "./ReceivingView.js";
 import BatchPrintZipModal from "./BatchPrintZipModal.js";
+import { createEmptyTUGReportRequest } from "../utils/zipDocumentGenerator.js";
 
 const ALDI_SIGNATURE_URL = `data:image/svg+xml;utf8,<svg xmlns="http://www.w3.org/2000/svg" width="220" height="70" viewBox="0 0 220 70"><path d="M 20 42 C 45 15, 60 55, 90 28 C 110 15, 130 52, 160 32 C 180 22, 190 48, 200 40" stroke="%230f2b5c" stroke-width="2.5" fill="none" stroke-linecap="round"/><path d="M 35 52 L 185 48" stroke="%231e293b" stroke-width="1.8" fill="none" stroke-linecap="round"/><text x="75" y="62" font-family="cursive" font-size="11" font-weight="bold" fill="%230f2b5c">Aldi Hidayat</text></svg>`;
 const ALFIN_SIGNATURE_URL = `data:image/svg+xml;utf8,<svg xmlns="http://www.w3.org/2000/svg" width="220" height="70" viewBox="0 0 220 70"><path d="M 15 42 C 35 15, 50 58, 80 25 C 100 12, 120 52, 150 30 C 170 20, 185 45, 205 35" stroke="%230f2b5c" stroke-width="2.5" fill="none" stroke-linecap="round"/><path d="M 30 50 L 180 46" stroke="%231e293b" stroke-width="1.8" fill="none" stroke-linecap="round"/><text x="45" y="62" font-family="cursive" font-size="11" font-weight="bold" fill="%230f2b5c">Maghfur M. Alfin</text></svg>`;
@@ -710,8 +711,18 @@ export default function MaterialRequestTUG6View({
             <tbody className="divide-y divide-slate-100 text-xs">
               {filteredRequests.length === 0 ? (
                 <tr>
-                  <td colSpan={10} className="py-16 text-center text-slate-400 font-mono text-[11px]">
-                    Tidak ada dokumen permintaan barang TUG 6 yang terekam.
+                  <td colSpan={10} className="py-14 text-center text-slate-400 font-mono text-[11px]">
+                    <div className="flex flex-col items-center justify-center gap-3">
+                      <span>Tidak ada dokumen permintaan barang TUG 6 yang terekam pada filter ini.</span>
+                      <button
+                        type="button"
+                        onClick={() => onPreviewTUG6(createEmptyTUGReportRequest("tug6"))}
+                        className="px-4 py-2 bg-slate-800 hover:bg-slate-900 text-white text-xs font-sans font-bold rounded-lg shadow-xs flex items-center gap-2 transition-all cursor-pointer"
+                      >
+                        <Printer className="w-3.5 h-3.5" />
+                        <span>Cetak Dokumen Laporan Kosong / Nihil (A4)</span>
+                      </button>
+                    </div>
                   </td>
                 </tr>
               ) : (
@@ -2158,6 +2169,7 @@ export default function MaterialRequestTUG6View({
         requests={requests}
         signatures={signatures}
         onClose={() => setIsBatchZipModalOpen(false)}
+        onPrintEmptyReport={(emptyReq) => onPreviewTUG6(emptyReq)}
       />
 
     </div>

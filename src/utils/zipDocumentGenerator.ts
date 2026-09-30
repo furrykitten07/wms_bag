@@ -840,6 +840,34 @@ export async function convertHtmlToPdfArrayBuffer(htmlString: string): Promise<A
   }
 }
 
+export function createEmptyTUGReportRequest(
+  type: "tug5" | "tug6",
+  startDate?: string,
+  endDate?: string
+): MaterialRequest {
+  const yearStr = (startDate || endDate || new Date().toISOString()).slice(0, 4) || "2026";
+  const periodLabel = startDate || endDate ? `${startDate || "Awal"} s/d ${endDate || "Akhir"}` : "Semua Periode";
+  const docCode = `${type.toUpperCase()}-${yearStr}-NIHIL`;
+  return {
+    id: `nihil-${type}-${startDate || "awal"}-${endDate || "akhir"}`,
+    request_number: docCode,
+    tug5_number: type === "tug5" ? docCode : undefined,
+    tug6_number: type === "tug6" ? docCode : undefined,
+    vessel_name: "(-)",
+    requester_name: "(-)",
+    requested_by: "(-)",
+    request_date: endDate || startDate || new Date().toISOString().slice(0, 10),
+    delivery_address: "Pelabuhan Merak, Cilegon, Banten",
+    work_order_ref: "(-)",
+    spk_number: "(-)",
+    account_code: "BPP",
+    function_code: "ARMADA",
+    status: "Approved" as any,
+    remarks: `LAPORAN NIHIL / TIDAK ADA DATA PERMINTAAN BARANG ${type.toUpperCase()} PADA PERIODE ${periodLabel.toUpperCase()} (-)`,
+    items: [],
+  } as any;
+}
+
 export async function downloadTUGZipArchive(
   requests: MaterialRequest[],
   type: "tug5" | "tug6",
@@ -858,18 +886,19 @@ export async function downloadTUGZipArchive(
     return itemTime >= start && itemTime <= end;
   });
 
-  if (filtered.length === 0) {
-    throw new Error("Tidak ada dokumen yang ditemukan pada rentang waktu yang dipilih");
-  }
+  // Jika data 0 pada periode tersebut, tetap buat 1 dokumen PDF laporan kosong (Nihil) untuk keperluan report
+  const listToExport = filtered.length > 0
+    ? filtered
+    : [createEmptyTUGReportRequest(type, startDate, endDate)];
 
   const zip = new JSZip();
   const folderName = `${type.toUpperCase()}_Dokumen_PDF_Batch`;
   const folder = zip.folder(folderName) || zip;
 
-  for (let idx = 0; idx < filtered.length; idx++) {
-    const req = filtered[idx];
+  for (let idx = 0; idx < listToExport.length; idx++) {
+    const req = listToExport[idx];
     if (onProgress) {
-      onProgress(idx + 1, filtered.length);
+      onProgress(idx + 1, listToExport.length);
     }
 
     const fileName = getCleanTUGFilename(req, type, idx);
@@ -890,5 +919,5 @@ export async function downloadTUGZipArchive(
   link.click();
   document.body.removeChild(link);
 
-  return { count: filtered.length, filename: zipFileName };
+  return { count: listToExport.length, filename: zipFileName };
 }

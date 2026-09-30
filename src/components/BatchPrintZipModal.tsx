@@ -16,7 +16,7 @@ import {
   Loader2
 } from "lucide-react";
 import { MaterialRequest, DigitalSignature } from "../types.js";
-import { downloadTUGZipArchive } from "../utils/zipDocumentGenerator.js";
+import { downloadTUGZipArchive, createEmptyTUGReportRequest } from "../utils/zipDocumentGenerator.js";
 
 interface BatchPrintZipModalProps {
   isOpen: boolean;
@@ -25,6 +25,7 @@ interface BatchPrintZipModalProps {
   signatures: DigitalSignature[];
   onClose: () => void;
   onBatchPrintBrowse?: (filteredRequests: MaterialRequest[]) => void;
+  onPrintEmptyReport?: (emptyRequest: MaterialRequest) => void;
 }
 
 export default function BatchPrintZipModal({
@@ -33,10 +34,11 @@ export default function BatchPrintZipModal({
   requests,
   signatures,
   onClose,
-  onBatchPrintBrowse
+  onBatchPrintBrowse,
+  onPrintEmptyReport
 }: BatchPrintZipModalProps) {
   const [startDate, setStartDate] = useState<string>("2026-07-01");
-  const [endDate, setEndDate] = useState<string>("2026-07-31");
+  const [endDate, setEndDate] = useState<string>("2026-09-30");
   const [isExporting, setIsExporting] = useState<boolean>(false);
   const [exportMessage, setExportMessage] = useState<string | null>(null);
   const [progressStatus, setProgressStatus] = useState<string>("");
@@ -54,11 +56,6 @@ export default function BatchPrintZipModal({
   });
 
   const handleExportZip = async () => {
-    if (filteredRequests.length === 0) {
-      alert("Tidak ada dokumen yang ditemukan pada rentang waktu yang dipilih.");
-      return;
-    }
-
     setIsExporting(true);
     setExportMessage(null);
     setProgressStatus("Menyiapkan dokumen...");
@@ -72,7 +69,11 @@ export default function BatchPrintZipModal({
         signatures,
         (current, total) => setProgressStatus(`Membuat PDF ${current} dari ${total}...`)
       );
-      setExportMessage(`Berhasil membuat file ${res.filename} berisi ${res.count} dokumen PDF (1 file PDF per No. Request)!`);
+      if (filteredRequests.length === 0) {
+        setExportMessage(`Berhasil membuat file ${res.filename} berisi 1 dokumen PDF Laporan Kosong / Nihil!`);
+      } else {
+        setExportMessage(`Berhasil membuat file ${res.filename} berisi ${res.count} dokumen PDF (1 file PDF per No. Request)!`);
+      }
     } catch (err: any) {
       alert(err.message || "Gagal membuat file ZIP archive PDF");
     } finally {
@@ -151,6 +152,11 @@ export default function BatchPrintZipModal({
                 <span className="text-xs text-blue-800">
                   <strong className="text-sm text-blue-900 font-black">{filteredRequests.length}</strong> Dokumen PDF per No. Request (Periode {startDate || "Awal"} s/d {endDate || "Akhir"})
                 </span>
+                {filteredRequests.length === 0 && (
+                  <span className="text-[11px] text-amber-700 font-semibold block mt-1">
+                    Data 0 pada periode ini — tetap dapat dicetak / diunduh sebagai Dokumen Laporan Kosong (Nihil).
+                  </span>
+                )}
               </div>
             </div>
           </div>
@@ -164,7 +170,7 @@ export default function BatchPrintZipModal({
 
           {/* Info note */}
           <div className="p-3 bg-slate-100 rounded-lg text-[11px] text-slate-600 leading-relaxed border border-slate-200">
-            💡 <strong>Format output ZIP:</strong> Di dalam file ZIP akan berisi file <strong>PDF</strong> resmi masing-masing per No. Request (misal: <code>{type.toUpperCase()}-2026-001.pdf</code>). Setiap file PDF terformat A4 presisi lengkap dengan kop surat resmi, rincian barang, dan tanda tangan digital.
+            💡 <strong>Format output ZIP:</strong> Di dalam file ZIP akan berisi file <strong>PDF</strong> resmi masing-masing per No. Request (misal: <code>{type.toUpperCase()}-2026-001.pdf</code>). Jika data 0, sistem tetap menghasilkan 1 file PDF Laporan Kosong (Nihil) untuk keperluan report.
           </div>
 
         </div>
@@ -174,12 +180,27 @@ export default function BatchPrintZipModal({
           <button
             type="button"
             onClick={onClose}
-            className="px-4 py-2 border border-slate-300 text-slate-700 text-xs font-semibold rounded-lg hover:bg-slate-200 transition-colors"
+            className="px-4 py-2 border border-slate-300 text-slate-700 text-xs font-semibold rounded-lg hover:bg-slate-200 transition-colors cursor-pointer"
           >
             Batal
           </button>
 
           <div className="flex items-center gap-2">
+            {filteredRequests.length === 0 && onPrintEmptyReport && (
+              <button
+                type="button"
+                onClick={() => {
+                  const emptyReq = createEmptyTUGReportRequest(type, startDate, endDate);
+                  onPrintEmptyReport(emptyReq);
+                  onClose();
+                }}
+                className="px-3.5 py-2 bg-slate-800 text-white text-xs font-semibold rounded-lg hover:bg-slate-900 transition-colors flex items-center gap-1.5 cursor-pointer"
+              >
+                <Printer className="w-4 h-4" />
+                <span>Cetak Laporan Kosong (A4)</span>
+              </button>
+            )}
+
             {onBatchPrintBrowse && filteredRequests.length > 0 && (
               <button
                 type="button"
@@ -187,7 +208,7 @@ export default function BatchPrintZipModal({
                   onBatchPrintBrowse(filteredRequests);
                   onClose();
                 }}
-                className="px-3.5 py-2 bg-slate-800 text-white text-xs font-semibold rounded-lg hover:bg-slate-900 transition-colors flex items-center gap-1.5"
+                className="px-3.5 py-2 bg-slate-800 text-white text-xs font-semibold rounded-lg hover:bg-slate-900 transition-colors flex items-center gap-1.5 cursor-pointer"
               >
                 <Printer className="w-4 h-4" />
                 <span>Cetak Browser ({filteredRequests.length})</span>
@@ -197,8 +218,8 @@ export default function BatchPrintZipModal({
             <button
               type="button"
               onClick={handleExportZip}
-              disabled={isExporting || filteredRequests.length === 0}
-              className="px-5 py-2 bg-blue-600 text-white text-xs font-semibold rounded-lg hover:bg-blue-700 transition-colors disabled:opacity-50 shadow-xs flex items-center gap-2"
+              disabled={isExporting}
+              className="px-5 py-2 bg-blue-600 text-white text-xs font-semibold rounded-lg hover:bg-blue-700 transition-colors disabled:opacity-50 shadow-xs flex items-center gap-2 cursor-pointer"
             >
               {isExporting ? (
                 <>
@@ -208,7 +229,9 @@ export default function BatchPrintZipModal({
               ) : (
                 <>
                   <Download className="w-4 h-4" />
-                  <span>Download Archive ZIP PDF ({filteredRequests.length} File)</span>
+                  <span>
+                    Download Archive ZIP PDF ({filteredRequests.length > 0 ? `${filteredRequests.length} File` : "Laporan Kosong"})
+                  </span>
                 </>
               )}
             </button>
