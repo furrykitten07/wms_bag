@@ -4,6 +4,7 @@
  */
 
 import React, { useState, useMemo, useEffect } from "react";
+import { createPortal } from "react-dom";
 import QRCode from "react-qr-code";
 import { 
   Search, 
@@ -65,43 +66,64 @@ interface SparePartCatalogViewProps {
 export function BarcodeGraphic({ code, height = 32, width = 140 }: { code: string; height?: number; width?: number }) {
   const bars = useMemo(() => {
     const clean = String(code || "BC-00000000").replace(/[^a-zA-Z0-9]/g, "");
-    const pattern: number[] = [];
+    const pattern: number[] = [2, 1, 1, 2]; // Start guard
     for (let i = 0; i < clean.length; i++) {
       const charCode = clean.charCodeAt(i);
       pattern.push((charCode % 3) + 1);
       pattern.push(((charCode >> 1) % 2) + 1);
       pattern.push(((charCode >> 2) % 3) + 1);
+      pattern.push(((charCode >> 3) % 2) + 1);
+      pattern.push(((charCode >> 4) % 3) + 1);
+      pattern.push(1);
     }
-    while (pattern.length < 32) {
-      pattern.push(1, 2, 1, 3);
+    while (pattern.length < 58) {
+      pattern.push(2, 1, 1, 2, 3, 1);
     }
-    return pattern.slice(0, 38);
+    const sliced = pattern.slice(0, 58);
+    sliced.push(2, 1, 2, 1, 2); // Stop guard
+    return sliced;
   }, [code]);
 
-  let currentX = 8;
+  const totalUnits = bars.reduce((acc, v) => acc + v, 0);
+  const paddingX = 10;
+  const usableWidth = Math.max(60, width - paddingX * 2);
+  const unitWidth = usableWidth / totalUnits;
+
+  let currentX = paddingX;
   return (
-    <div className="flex flex-col items-center bg-white px-2 py-1 rounded border border-slate-200 shadow-xs select-none">
-      <svg width={width} height={height} viewBox={`0 0 ${width} ${height}`} className="overflow-hidden">
+    <div
+      className="flex flex-col items-center bg-white px-3 py-1.5 rounded border border-slate-200 print:border-slate-400 shadow-xs select-none"
+      style={{ WebkitPrintColorAdjust: "exact", printColorAdjust: "exact" }}
+    >
+      <svg
+        width={width}
+        height={height}
+        viewBox={`0 0 ${width} ${height}`}
+        className="overflow-visible block"
+        style={{ width: `${width}px`, height: `${height}px`, WebkitPrintColorAdjust: "exact", printColorAdjust: "exact" }}
+      >
         <rect width={width} height={height} fill="#ffffff" />
-        {bars.map((barWidth, idx) => {
+        {bars.map((barUnits, idx) => {
+          const w = barUnits * unitWidth;
           const x = currentX;
-          currentX += barWidth + 1.2;
-          if (idx % 2 === 0 && x + barWidth <= width - 8) {
+          currentX += w;
+          if (idx % 2 === 0) {
             return (
               <rect
                 key={idx}
-                x={x}
+                x={Number(x.toFixed(2))}
                 y={2}
-                width={barWidth}
+                width={Number(Math.max(0.8, w).toFixed(2))}
                 height={height - 4}
                 fill="#0f172a"
+                stroke="none"
               />
             );
           }
           return null;
         })}
       </svg>
-      <span className="text-[9px] font-mono font-bold tracking-widest text-slate-800 mt-0.5">
+      <span className="text-[9.5px] font-mono font-bold tracking-[0.22em] text-slate-900 mt-1">
         {code}
       </span>
     </div>
@@ -1082,9 +1104,9 @@ export default function SparePartCatalogView({
         </div>
       )}
 
-      {/* DETAIL & PRINT MODAL */}
-      {isPrintModalOpen && selectedItem && (
-        <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-xs flex items-center justify-center z-50 p-4 animate-fade-in">
+      {/* DETAIL & PRINT MODAL (Rendered via Portal outside .no-print wrapper so window.print() prints the label cleanly) */}
+      {isPrintModalOpen && selectedItem && typeof document !== "undefined" && createPortal(
+        <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-xs flex items-center justify-center z-50 p-4 animate-fade-in print-document-overlay">
           <div className="bg-white rounded-xl shadow-2xl border border-slate-200 w-full max-w-2xl overflow-hidden flex flex-col max-h-[92vh]">
             
             {/* Modal Header */}
@@ -1092,7 +1114,7 @@ export default function SparePartCatalogView({
               <div className="flex items-center gap-2">
                 <Barcode className="w-5 h-5 text-blue-400" />
                 <span className="text-xs font-black font-sans uppercase tracking-wider">
-                  {isEditingItem ? "Edit Data Suku Cadang Master" : "Label Barcode &amp; QR Code Suku Cadang"}
+                  {isEditingItem ? "Edit Data Suku Cadang Master" : "Label Barcode & QR Code Suku Cadang"}
                 </span>
               </div>
               <button
@@ -1104,7 +1126,8 @@ export default function SparePartCatalogView({
             </div>
 
             {/* Modal Body */}
-            <div className="overflow-y-auto p-6 space-y-5">
+            <div id="printable-area" className="overflow-y-auto p-6 space-y-5">
+              <div className="space-y-5">
               {isEditingItem && editItemForm ? (
                 /* EDIT FORM */
                 <form onSubmit={handleSaveEdit} className="space-y-4">
@@ -1251,23 +1274,28 @@ export default function SparePartCatalogView({
               ) : (
                 /* STATIC PREVIEW & PRINTABLE LABEL */
                 <>
-                  <div className="border-2 border-dashed border-slate-300 rounded-xl p-5 bg-white shadow-inner flex flex-col md:flex-row gap-6 print:border-solid print:border-2 print:border-slate-900 print:rounded-none">
+                  <div
+                    className="border-2 border-dashed border-slate-300 rounded-xl p-5 bg-white shadow-inner flex flex-col md:flex-row print:flex-row gap-6 print:border-solid print:border-2 print:border-slate-900 print:rounded-xl print:p-6"
+                    style={{ WebkitPrintColorAdjust: "exact", printColorAdjust: "exact" }}
+                  >
                     
                     {/* Left: QR Code side */}
-                    <div className="flex flex-col items-center justify-center shrink-0 border-b md:border-b-0 md:border-r border-slate-100 pb-4 md:pb-0 md:pr-6">
-                      <div className="p-3 bg-white border border-slate-300 rounded-xl shadow-xs">
+                    <div className="flex flex-col items-center justify-center shrink-0 border-b md:border-b-0 md:border-r print:border-b-0 print:border-r border-slate-200 pb-4 md:pb-0 md:pr-6 print:pb-0 print:pr-6">
+                      <div className="p-3 bg-white border border-slate-300 print:border-slate-400 rounded-xl shadow-xs flex items-center justify-center">
                         <QRCode
                           value={getPublicSparePartUrl(selectedItem.id)}
                           size={135}
-                          style={{ height: "auto", maxWidth: "100%", width: "100%" }}
+                          bgColor="#ffffff"
+                          fgColor="#0f172a"
+                          style={{ height: "135px", width: "135px", maxWidth: "135px" }}
                           viewBox={`0 0 256 256`}
                         />
                       </div>
                       <div className="text-center mt-3 font-mono space-y-1">
-                        <span className="text-[10px] font-black text-blue-700 uppercase bg-blue-50 border border-blue-100 px-2 py-0.5 rounded block">
+                        <span className="text-[10px] font-black text-blue-700 uppercase bg-blue-50 border border-blue-200 px-2 py-0.5 rounded block">
                           TOKEN: #{selectedItem.barcode}
                         </span>
-                        <span className="text-[8px] text-slate-400 block uppercase tracking-widest font-bold">
+                        <span className="text-[8px] text-slate-500 block uppercase tracking-widest font-bold">
                           Scan HP Terbuka Tanpa Login
                         </span>
 
@@ -1301,10 +1329,10 @@ export default function SparePartCatalogView({
                     <div className="flex-1 space-y-3">
                       <div>
                         {/* Catalog Hierarchy Display */}
-                        <div className="flex flex-wrap items-center gap-1 text-[9px] font-mono text-slate-400 font-bold uppercase tracking-wider mb-1">
+                        <div className="flex flex-wrap items-center gap-1 text-[9px] font-mono text-slate-500 font-bold uppercase tracking-wider mb-1">
                           {selectedItem.hierarchy.map((node, i) => (
                             <React.Fragment key={i}>
-                              {i > 0 && <span className="text-slate-300">&gt;</span>}
+                              {i > 0 && <span className="text-slate-400">&gt;</span>}
                               <span>{node}</span>
                             </React.Fragment>
                           ))}
@@ -1323,7 +1351,7 @@ export default function SparePartCatalogView({
 
                       {/* Visual Barcode Graphic */}
                       <div className="py-1">
-                        <BarcodeGraphic code={selectedItem.barcode} width={200} height={38} />
+                        <BarcodeGraphic code={selectedItem.barcode} width={240} height={42} />
                       </div>
 
                       <div className="border-t border-slate-150 pt-2 space-y-1.5 text-xs">
@@ -1372,6 +1400,7 @@ export default function SparePartCatalogView({
                   </div>
                 </>
               )}
+              </div>
             </div>
 
             {/* Modal Footer */}
@@ -1426,7 +1455,8 @@ export default function SparePartCatalogView({
             </div>
 
           </div>
-        </div>
+        </div>,
+        document.body
       )}
 
     </div>
