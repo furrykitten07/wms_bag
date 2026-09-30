@@ -1457,259 +1457,264 @@ export default function PrintDocument({
                 </p>
 
                 {type === "tug10" ? (
-                  <div className="grid grid-cols-4 gap-6 text-center uppercase tracking-wider text-[8px] font-bold text-slate-700">
-                    <div className="flex flex-col justify-between h-24">
-                      <span>Setuju (<span className="normal-case">Manager Logistik</span>) :</span>
-                      <div className="border-t border-slate-400 pt-1 flex flex-col items-center relative">
-                        {getSignatureForSlot("Manager Logistik", "Mohamat Emir Ferdian", signatures) && (
-                          <div className="absolute bottom-full mb-0.5 left-0 right-0 flex items-center justify-center pointer-events-none h-12">
+                  <div
+                    className="grid grid-cols-4 gap-4 text-center uppercase tracking-wider text-[8px] font-bold text-slate-700"
+                    style={{ display: "grid", gridTemplateColumns: "repeat(4, minmax(0, 1fr))", gap: "16px", alignItems: "start" }}
+                  >
+                    {[
+                      {
+                        label: <>Setuju (<span className="normal-case">Manager Logistik</span>) :</>,
+                        sigUrl: getSignatureForSlot("Manager Logistik", "Mohamat Emir Ferdian", signatures),
+                        alt: "Tanda Tangan Manager Logistik",
+                        name: "Mohamat Emir Ferdian",
+                        role: "Manager Logistik",
+                        roleNormalCase: true,
+                      },
+                      {
+                        label: <>Kepala Gudang :</>,
+                        sigUrl: getSignatureForSlot("Kepala Gudang", "MAGHFUR MUHAMMAD ALFIN", signatures, data),
+                        alt: "Tanda Tangan Kepala Gudang",
+                        name: "MAGHFUR MUHAMMAD ALFIN",
+                        role: "Kepala Gudang",
+                        roleNormalCase: true,
+                      },
+                      {
+                        label: <>MENGETAHUI :</>,
+                        sigUrl: getSignatureForSlot("VP RENDALHAR", "Sumbono", signatures),
+                        alt: "Tanda Tangan VP RENDALHAR",
+                        name: "Sumbono",
+                        role: "VP RENDALHAR",
+                        roleNormalCase: false,
+                      },
+                      {
+                        label: <>Penerima / Pembuat (Petugas Gudang) :</>,
+                        sigUrl: getSignatureForSlot("Petugas Gudang", "Aldi Hidayat", signatures, data) || getSignatureForSlot("Penerima", undefined, signatures),
+                        alt: "Tanda Tangan Petugas Gudang",
+                        name: "Aldi Hidayat",
+                        role: "Petugas Gudang",
+                        roleNormalCase: true,
+                      },
+                    ].map((col, idx) => (
+                      <div key={idx} style={{ display: "flex", flexDirection: "column", alignItems: "center", width: "100%" }}>
+                        <div style={{ height: "24px", display: "flex", alignItems: "flex-start", justifyContent: "center", width: "100%", lineHeight: 1.2 }}>
+                          <span>{col.label}</span>
+                        </div>
+                        <div style={{ height: "56px", width: "100%", display: "flex", alignItems: "flex-end", justifyContent: "center", paddingBottom: "3px" }}>
+                          {col.sigUrl && (
                             <img
-                              src={getSignatureForSlot("Manager Logistik", "Mohamat Emir Ferdian", signatures)!}
-                              alt="Tanda Tangan Manager Logistik"
-                              className="max-h-12 max-w-[140px] object-contain mix-blend-multiply select-none"
+                              src={col.sigUrl}
+                              alt={col.alt}
+                              style={{ maxHeight: "48px", maxWidth: "130px", objectFit: "contain" }}
+                              className="mix-blend-multiply select-none pointer-events-none"
                             />
-                          </div>
-                        )}
-                        <span className="text-slate-955 font-black whitespace-nowrap">Mohamat Emir Ferdian</span>
-                        <span className="text-slate-500 text-[7px] font-mono font-normal leading-tight italic mt-0.5 normal-case whitespace-nowrap">Manager Logistik</span>
+                          )}
+                        </div>
+                        <div style={{ width: "100%", borderTop: "1.5px solid #334155", paddingTop: "5px", display: "flex", flexDirection: "column", alignItems: "center" }}>
+                          <span className="text-slate-955 font-black whitespace-nowrap" style={{ fontSize: "8.5px", lineHeight: 1.2, fontWeight: 900, whiteSpace: "nowrap" }}>
+                            {col.name}
+                          </span>
+                          <span
+                            className={`text-slate-500 text-[7px] font-mono font-normal leading-tight italic mt-0.5 whitespace-nowrap ${col.roleNormalCase ? "normal-case" : ""}`}
+                            style={{ fontSize: "7.5px", lineHeight: 1.2, marginTop: "2px", whiteSpace: "nowrap" }}
+                          >
+                            {col.role}
+                          </span>
+                        </div>
                       </div>
-                    </div>
-
-                    <div className="flex flex-col justify-between h-24">
-                      <span>Kepala Gudang :</span>
-                      <div className="border-t border-slate-400 pt-1 flex flex-col items-center relative">
-                        {getSignatureForSlot("Kepala Gudang", "MAGHFUR MUHAMMAD ALFIN", signatures, data) && (
-                          <div className="absolute bottom-full mb-0.5 left-0 right-0 flex items-center justify-center pointer-events-none h-12">
-                            <img
-                              src={getSignatureForSlot("Kepala Gudang", "MAGHFUR MUHAMMAD ALFIN", signatures, data)!}
-                              alt="Tanda Tangan Kepala Gudang"
-                              className="max-h-12 max-w-[140px] object-contain mix-blend-multiply select-none"
-                            />
-                          </div>
-                        )}
-                        <span className="text-slate-955 font-black whitespace-nowrap">MAGHFUR MUHAMMAD ALFIN</span>
-                        <span className="text-slate-500 text-[7px] font-mono font-normal leading-tight normal-case italic mt-0.5 whitespace-nowrap">Kepala Gudang</span>
-                      </div>
-                    </div>
-
-                    <div className="flex flex-col justify-between h-24">
-                      <span>MENGETAHUI :</span>
-                      <div className="border-t border-slate-400 pt-1 flex flex-col items-center relative">
-                        {getSignatureForSlot("VP RENDALHAR", "Sumbono", signatures) && (
-                          <div className="absolute bottom-full mb-0.5 left-0 right-0 flex items-center justify-center pointer-events-none h-12">
-                            <img
-                              src={getSignatureForSlot("VP RENDALHAR", "Sumbono", signatures)!}
-                              alt="Tanda Tangan VP RENDALHAR"
-                              className="max-h-12 max-w-[140px] object-contain mix-blend-multiply select-none"
-                            />
-                          </div>
-                        )}
-                        <span className="text-slate-955 font-black whitespace-nowrap">Sumbono</span>
-                        <span className="text-slate-500 text-[7px] font-mono font-normal leading-tight italic mt-0.5 whitespace-nowrap">VP RENDALHAR</span>
-                      </div>
-                    </div>
-
-                    <div className="flex flex-col justify-between h-24">
-                      <span>Penerima / Pembuat (Petugas Gudang) :</span>
-                      <div className="border-t border-slate-400 pt-1 flex flex-col items-center relative">
-                        {(getSignatureForSlot("Petugas Gudang", "Aldi Hidayat", signatures, data) || getSignatureForSlot("Penerima", undefined, signatures)) && (
-                          <div className="absolute bottom-full mb-0.5 left-0 right-0 flex items-center justify-center pointer-events-none h-12">
-                            <img
-                              src={(getSignatureForSlot("Petugas Gudang", "Aldi Hidayat", signatures, data) || getSignatureForSlot("Penerima", undefined, signatures))!}
-                              alt="Tanda Tangan Petugas Gudang"
-                              className="max-h-12 max-w-[140px] object-contain mix-blend-multiply select-none"
-                            />
-                          </div>
-                        )}
-                        <span className="text-slate-955 font-black whitespace-nowrap">Aldi Hidayat</span>
-                        <span className="text-slate-500 text-[7px] font-mono font-normal leading-tight italic mt-0.5 normal-case whitespace-nowrap">Petugas Gudang</span>
-                      </div>
-                    </div>
+                    ))}
                   </div>
                 ) : (type === "tug5" || type === "tug6" || type === "mutation_report") ? (
-                  <div className="grid grid-cols-4 gap-6 text-center uppercase tracking-wider text-[8px] font-bold text-slate-700">
-                    <div className="flex flex-col justify-between h-24">
-                      <span>MENGETAHUI :</span>
-                      <div className="border-t border-slate-400 pt-1 flex flex-col items-center relative">
-                        {getSignatureForSlot("VP RENDALHAR", "Sumbono", signatures, data) && (
-                          <div className="absolute bottom-full mb-0.5 left-0 right-0 flex items-center justify-center pointer-events-none h-12">
+                  <div
+                    className="grid grid-cols-4 gap-4 text-center uppercase tracking-wider text-[8px] font-bold text-slate-700"
+                    style={{ display: "grid", gridTemplateColumns: "repeat(4, minmax(0, 1fr))", gap: "16px", alignItems: "start" }}
+                  >
+                    {[
+                      {
+                        label: "MENGETAHUI :",
+                        sigUrl: getSignatureForSlot("VP RENDALHAR", "Sumbono", signatures, data),
+                        alt: "Tanda Tangan VP RENDALHAR",
+                        name: "Sumbono",
+                        role: "VP RENDALHAR",
+                        roleNormalCase: false,
+                      },
+                      {
+                        label: "Disetujui oleh :",
+                        sigUrl: getSignatureForSlot("Manager Logistik", "Mohamat Emir Ferdian", signatures, data),
+                        alt: "Tanda Tangan Manager Logistik",
+                        name: "Mohamat Emir Ferdian",
+                        role: "Manager Logistik",
+                        roleNormalCase: true,
+                      },
+                      {
+                        label: "Kepala Gudang :",
+                        sigUrl: getSignatureForSlot("Kepala Gudang", "MAGHFUR MUHAMMAD ALFIN", signatures, data),
+                        alt: "Tanda Tangan Kepala Gudang",
+                        name: "MAGHFUR MUHAMMAD ALFIN",
+                        role: "Kepala Gudang",
+                        roleNormalCase: true,
+                      },
+                      {
+                        label: "Petugas Gudang :",
+                        sigUrl: getSignatureForSlot("Petugas Gudang", "Aldi Hidayat", signatures, data),
+                        alt: "Tanda Tangan Petugas Gudang",
+                        name: "Aldi Hidayat",
+                        role: "Petugas Gudang",
+                        roleNormalCase: true,
+                      },
+                    ].map((col, idx) => (
+                      <div key={idx} style={{ display: "flex", flexDirection: "column", alignItems: "center", width: "100%" }}>
+                        <div style={{ height: "24px", display: "flex", alignItems: "flex-start", justifyContent: "center", width: "100%", lineHeight: 1.2 }}>
+                          <span>{col.label}</span>
+                        </div>
+                        <div style={{ height: "56px", width: "100%", display: "flex", alignItems: "flex-end", justifyContent: "center", paddingBottom: "3px" }}>
+                          {col.sigUrl && (
                             <img
-                              src={getSignatureForSlot("VP RENDALHAR", "Sumbono", signatures, data)!}
-                              alt="Tanda Tangan VP RENDALHAR"
-                              className="max-h-12 max-w-[140px] object-contain mix-blend-multiply select-none"
+                              src={col.sigUrl}
+                              alt={col.alt}
+                              style={{ maxHeight: "48px", maxWidth: "130px", objectFit: "contain" }}
+                              className="mix-blend-multiply select-none pointer-events-none"
                             />
-                          </div>
-                        )}
-                        <span className="text-slate-955 font-black whitespace-nowrap">Sumbono</span>
-                        <span className="text-slate-500 text-[7px] font-mono font-normal leading-tight italic mt-0.5 whitespace-nowrap">VP RENDALHAR</span>
+                          )}
+                        </div>
+                        <div style={{ width: "100%", borderTop: "1.5px solid #334155", paddingTop: "5px", display: "flex", flexDirection: "column", alignItems: "center" }}>
+                          <span className="text-slate-955 font-black whitespace-nowrap" style={{ fontSize: "8.5px", lineHeight: 1.2, fontWeight: 900, whiteSpace: "nowrap" }}>
+                            {col.name}
+                          </span>
+                          <span
+                            className={`text-slate-500 text-[7px] font-mono font-normal leading-tight italic mt-0.5 whitespace-nowrap ${col.roleNormalCase ? "normal-case" : ""}`}
+                            style={{ fontSize: "7.5px", lineHeight: 1.2, marginTop: "2px", whiteSpace: "nowrap" }}
+                          >
+                            {col.role}
+                          </span>
+                        </div>
                       </div>
-                    </div>
-
-                    <div className="flex flex-col justify-between h-24">
-                      <span>Disetujui oleh :</span>
-                      <div className="border-t border-slate-400 pt-1 flex flex-col items-center relative">
-                        {getSignatureForSlot("Manager Logistik", "Mohamat Emir Ferdian", signatures, data) && (
-                          <div className="absolute bottom-full mb-0.5 left-0 right-0 flex items-center justify-center pointer-events-none h-12">
-                            <img
-                              src={getSignatureForSlot("Manager Logistik", "Mohamat Emir Ferdian", signatures, data)!}
-                              alt="Tanda Tangan Manager Logistik"
-                              className="max-h-12 max-w-[140px] object-contain mix-blend-multiply select-none"
-                            />
-                          </div>
-                        )}
-                        <span className="text-slate-955 font-black whitespace-nowrap">Mohamat Emir Ferdian</span>
-                        <span className="text-slate-500 text-[7px] font-mono font-normal leading-tight italic mt-0.5 normal-case whitespace-nowrap">Manager Logistik</span>
-                      </div>
-                    </div>
-
-                    <div className="flex flex-col justify-between h-24">
-                      <span>Kepala Gudang :</span>
-                      <div className="border-t border-slate-400 pt-1 flex flex-col items-center relative">
-                        {getSignatureForSlot("Kepala Gudang", "MAGHFUR MUHAMMAD ALFIN", signatures, data) && (
-                          <div className="absolute bottom-full mb-0.5 left-0 right-0 flex items-center justify-center pointer-events-none h-12">
-                            <img
-                              src={getSignatureForSlot("Kepala Gudang", "MAGHFUR MUHAMMAD ALFIN", signatures, data)!}
-                              alt="Tanda Tangan Kepala Gudang"
-                              className="max-h-12 max-w-[140px] object-contain mix-blend-multiply select-none"
-                            />
-                          </div>
-                        )}
-                        <span className="text-slate-955 font-black whitespace-nowrap">MAGHFUR MUHAMMAD ALFIN</span>
-                        <span className="text-slate-500 text-[7px] font-mono font-normal leading-tight normal-case italic mt-0.5 whitespace-nowrap">Kepala Gudang</span>
-                      </div>
-                    </div>
-
-                    <div className="flex flex-col justify-between h-24">
-                      <span>Petugas Gudang :</span>
-                      <div className="border-t border-slate-400 pt-1 flex flex-col items-center relative">
-                        {getSignatureForSlot("Petugas Gudang", "Aldi Hidayat", signatures, data) && (
-                          <div className="absolute bottom-full mb-0.5 left-0 right-0 flex items-center justify-center pointer-events-none h-12">
-                            <img
-                              src={getSignatureForSlot("Petugas Gudang", "Aldi Hidayat", signatures, data)!}
-                              alt="Tanda Tangan Petugas Gudang"
-                              className="max-h-12 max-w-[140px] object-contain mix-blend-multiply select-none"
-                            />
-                          </div>
-                        )}
-                        <span className="text-slate-955 font-black whitespace-nowrap">Aldi Hidayat</span>
-                        <span className="text-slate-500 text-[7px] font-mono font-normal leading-tight normal-case italic mt-0.5 whitespace-nowrap">Petugas Gudang</span>
-                      </div>
-                    </div>
+                    ))}
                   </div>
                 ) : type === "bon" ? (
-                  <div className="grid grid-cols-4 gap-6 text-center uppercase tracking-wider text-[8px] font-bold text-slate-700">
-                    <div className="flex flex-col justify-between h-24">
-                      <span>Disetujui oleh :</span>
-                      <div className="border-t border-slate-400 pt-1 flex flex-col items-center relative">
-                        {getSignatureForSlot("Manager Logistik", "Mohamat Emir Ferdian", signatures) && (
-                          <div className="absolute bottom-full mb-0.5 left-0 right-0 flex items-center justify-center pointer-events-none h-12">
+                  <div
+                    className="grid grid-cols-4 gap-4 text-center uppercase tracking-wider text-[8px] font-bold text-slate-700"
+                    style={{ display: "grid", gridTemplateColumns: "repeat(4, minmax(0, 1fr))", gap: "16px", alignItems: "start" }}
+                  >
+                    {[
+                      {
+                        label: "Disetujui oleh :",
+                        sigUrl: getSignatureForSlot("Manager Logistik", "Mohamat Emir Ferdian", signatures),
+                        alt: "Tanda Tangan Manager Logistik",
+                        name: "Mohamat Emir Ferdian",
+                        role: "Manager Logistik",
+                        roleNormalCase: true,
+                      },
+                      {
+                        label: "Kepala Gudang :",
+                        sigUrl: getSignatureForSlot("Kepala Gudang", "MAGHFUR MUHAMMAD ALFIN", signatures, data),
+                        alt: "Tanda Tangan Kepala Gudang",
+                        name: "MAGHFUR MUHAMMAD ALFIN",
+                        role: "Kepala Gudang",
+                        roleNormalCase: true,
+                      },
+                      {
+                        label: "Petugas Gudang :",
+                        sigUrl: getSignatureForSlot("Petugas Gudang", "Aldi Hidayat", signatures, data),
+                        alt: "Tanda Tangan Petugas Gudang",
+                        name: "Aldi Hidayat",
+                        role: "Petugas Gudang",
+                        roleNormalCase: true,
+                      },
+                      {
+                        label: "Penerima :",
+                        sigUrl: null,
+                        alt: "Tanda Tangan Penerima",
+                        name: docData.driver_pic || docData.courier_name || ".......................................",
+                        role: "Authorized Carrier",
+                        roleNormalCase: true,
+                      },
+                    ].map((col, idx) => (
+                      <div key={idx} style={{ display: "flex", flexDirection: "column", alignItems: "center", width: "100%" }}>
+                        <div style={{ height: "24px", display: "flex", alignItems: "flex-start", justifyContent: "center", width: "100%", lineHeight: 1.2 }}>
+                          <span>{col.label}</span>
+                        </div>
+                        <div style={{ height: "56px", width: "100%", display: "flex", alignItems: "flex-end", justifyContent: "center", paddingBottom: "3px" }}>
+                          {col.sigUrl && (
                             <img
-                              src={getSignatureForSlot("Manager Logistik", "Mohamat Emir Ferdian", signatures)!}
-                              alt="Tanda Tangan Manager Logistik"
-                              className="max-h-12 max-w-[140px] object-contain mix-blend-multiply select-none"
+                              src={col.sigUrl}
+                              alt={col.alt}
+                              style={{ maxHeight: "48px", maxWidth: "130px", objectFit: "contain" }}
+                              className="mix-blend-multiply select-none pointer-events-none"
                             />
-                          </div>
-                        )}
-                        <span className="text-slate-955 font-black whitespace-nowrap">Mohamat Emir Ferdian</span>
-                        <span className="text-slate-500 text-[7px] font-mono font-normal leading-tight italic mt-0.5 normal-case whitespace-nowrap">Manager Logistik</span>
+                          )}
+                        </div>
+                        <div style={{ width: "100%", borderTop: "1.5px solid #334155", paddingTop: "5px", display: "flex", flexDirection: "column", alignItems: "center" }}>
+                          <span className="text-slate-955 font-black whitespace-nowrap" style={{ fontSize: "8.5px", lineHeight: 1.2, fontWeight: 900, whiteSpace: "nowrap" }}>
+                            {col.name}
+                          </span>
+                          <span
+                            className={`text-slate-500 text-[7px] font-mono font-normal leading-tight italic mt-0.5 whitespace-nowrap ${col.roleNormalCase ? "normal-case" : ""}`}
+                            style={{ fontSize: "7.5px", lineHeight: 1.2, marginTop: "2px", whiteSpace: "nowrap" }}
+                          >
+                            {col.role}
+                          </span>
+                        </div>
                       </div>
-                    </div>
-
-                    <div className="flex flex-col justify-between h-24">
-                      <span>Kepala Gudang :</span>
-                      <div className="border-t border-slate-400 pt-1 flex flex-col items-center relative">
-                        {getSignatureForSlot("Kepala Gudang", "MAGHFUR MUHAMMAD ALFIN", signatures, data) && (
-                          <div className="absolute bottom-full mb-0.5 left-0 right-0 flex items-center justify-center pointer-events-none h-12">
-                            <img
-                              src={getSignatureForSlot("Kepala Gudang", "MAGHFUR MUHAMMAD ALFIN", signatures, data)!}
-                              alt="Tanda Tangan Kepala Gudang"
-                              className="max-h-12 max-w-[140px] object-contain mix-blend-multiply select-none"
-                            />
-                          </div>
-                        )}
-                        <span className="text-slate-955 font-black whitespace-nowrap">MAGHFUR MUHAMMAD ALFIN</span>
-                        <span className="text-slate-500 text-[7px] font-mono font-normal leading-tight normal-case italic mt-0.5 whitespace-nowrap">Kepala Gudang</span>
-                      </div>
-                    </div>
-
-                    <div className="flex flex-col justify-between h-24">
-                      <span>Petugas Gudang :</span>
-                      <div className="border-t border-slate-400 pt-1 flex flex-col items-center relative">
-                        {getSignatureForSlot("Petugas Gudang", "Aldi Hidayat", signatures, data) && (
-                          <div className="absolute bottom-full mb-0.5 left-0 right-0 flex items-center justify-center pointer-events-none h-12">
-                            <img
-                              src={getSignatureForSlot("Petugas Gudang", "Aldi Hidayat", signatures, data)!}
-                              alt="Tanda Tangan Petugas Gudang"
-                              className="max-h-12 max-w-[140px] object-contain mix-blend-multiply select-none"
-                            />
-                          </div>
-                        )}
-                        <span className="text-slate-955 font-black whitespace-nowrap">Aldi Hidayat</span>
-                        <span className="text-slate-500 text-[7px] font-mono font-normal leading-tight normal-case italic mt-0.5 whitespace-nowrap">Petugas Gudang</span>
-                      </div>
-                    </div>
-
-                    <div className="flex flex-col justify-between h-24">
-                      <span>Penerima :</span>
-                      <div className="border-t border-slate-400 pt-1 flex flex-col items-center relative">
-                        {/* Tanda tangan penerima dikosongkan untuk TUG 8 agar ditandatangani manual saat serah terima */}
-                        <span className="text-slate-955 font-black whitespace-nowrap">{docData.driver_pic || docData.courier_name || "......................................."}</span>
-                        <span className="text-slate-500 text-[7px] font-mono font-normal leading-tight normal-case italic mt-0.5 whitespace-nowrap">Authorized Carrier</span>
-                      </div>
-                    </div>
+                    ))}
                   </div>
                 ) : type === "spk_report" ? (
-                  <div className="grid grid-cols-3 gap-6 text-center uppercase tracking-wider text-[9px] font-bold text-slate-800">
-                    <div className="flex flex-col justify-between h-24">
-                      <span>Dibuat Oleh (Petugas Gudang):</span>
-                      <div className="border-t border-slate-900 pt-1 flex flex-col items-center relative">
-                        {getSignatureForSlot("Petugas Gudang", "Aldi Hidayat", signatures) && (
-                          <div className="absolute bottom-full mb-0.5 left-0 right-0 flex items-center justify-center pointer-events-none h-12">
+                  <div
+                    className="grid grid-cols-3 gap-6 text-center uppercase tracking-wider text-[9px] font-bold text-slate-800"
+                    style={{ display: "grid", gridTemplateColumns: "repeat(3, minmax(0, 1fr))", gap: "24px", alignItems: "start" }}
+                  >
+                    {[
+                      {
+                        label: "Dibuat Oleh (Petugas Gudang):",
+                        sigUrl: getSignatureForSlot("Petugas Gudang", "Aldi Hidayat", signatures),
+                        alt: "Tanda Tangan Petugas Gudang",
+                        name: "Aldi Hidayat",
+                        role: "Petugas Gudang WMS",
+                        roleNormalCase: false,
+                      },
+                      {
+                        label: "Diperiksa & Diverifikasi Oleh:",
+                        sigUrl: getSignatureForSlot("Manager Logistik", "Mohamat Emir Ferdian", signatures),
+                        alt: "Tanda Tangan Manager Logistik",
+                        name: "Mohamat Emir Ferdian",
+                        role: "Manager Logistik",
+                        roleNormalCase: true,
+                      },
+                      {
+                        label: "Disetujui Oleh:",
+                        sigUrl: getSignatureForSlot("VP RENDALHAR", "Sumbono", signatures),
+                        alt: "Tanda Tangan VP RENDALHAR",
+                        name: "Sumbono",
+                        role: "VP RENDALHAR",
+                        roleNormalCase: false,
+                      },
+                    ].map((col, idx) => (
+                      <div key={idx} style={{ display: "flex", flexDirection: "column", alignItems: "center", width: "100%" }}>
+                        <div style={{ height: "24px", display: "flex", alignItems: "flex-start", justifyContent: "center", width: "100%", lineHeight: 1.2 }}>
+                          <span>{col.label}</span>
+                        </div>
+                        <div style={{ height: "56px", width: "100%", display: "flex", alignItems: "flex-end", justifyContent: "center", paddingBottom: "3px" }}>
+                          {col.sigUrl && (
                             <img
-                              src={getSignatureForSlot("Petugas Gudang", "Aldi Hidayat", signatures)!}
-                              alt="Tanda Tangan Petugas Gudang"
-                              className="max-h-12 max-w-[140px] object-contain mix-blend-multiply select-none"
+                              src={col.sigUrl}
+                              alt={col.alt}
+                              style={{ maxHeight: "48px", maxWidth: "130px", objectFit: "contain" }}
+                              className="mix-blend-multiply select-none pointer-events-none"
                             />
-                          </div>
-                        )}
-                        <span className="text-slate-900 font-black whitespace-nowrap">Aldi Hidayat</span>
-                        <span className="text-slate-500 text-[8px] font-mono font-normal whitespace-nowrap">Petugas Gudang WMS</span>
+                          )}
+                        </div>
+                        <div style={{ width: "100%", borderTop: "1.5px solid #0f172a", paddingTop: "5px", display: "flex", flexDirection: "column", alignItems: "center" }}>
+                          <span className="text-slate-900 font-black whitespace-nowrap" style={{ fontSize: "9px", lineHeight: 1.2, fontWeight: 900, whiteSpace: "nowrap" }}>
+                            {col.name}
+                          </span>
+                          <span
+                            className={`text-slate-500 text-[8px] font-mono font-normal whitespace-nowrap ${col.roleNormalCase ? "normal-case" : ""}`}
+                            style={{ fontSize: "8px", lineHeight: 1.2, marginTop: "2px", whiteSpace: "nowrap" }}
+                          >
+                            {col.role}
+                          </span>
+                        </div>
                       </div>
-                    </div>
-
-                    <div className="flex flex-col justify-between h-24">
-                      <span>Diperiksa & Diverifikasi Oleh:</span>
-                      <div className="border-t border-slate-900 pt-1 flex flex-col items-center relative">
-                        {getSignatureForSlot("Manager Logistik", "Mohamat Emir Ferdian", signatures) && (
-                          <div className="absolute bottom-full mb-0.5 left-0 right-0 flex items-center justify-center pointer-events-none h-12">
-                            <img
-                              src={getSignatureForSlot("Manager Logistik", "Mohamat Emir Ferdian", signatures)!}
-                              alt="Tanda Tangan Manager Logistik"
-                              className="max-h-12 max-w-[140px] object-contain mix-blend-multiply select-none"
-                            />
-                          </div>
-                        )}
-                        <span className="text-slate-900 font-black whitespace-nowrap">Mohamat Emir Ferdian</span>
-                        <span className="text-slate-500 text-[8px] font-mono font-normal normal-case whitespace-nowrap">Manager Logistik</span>
-                      </div>
-                    </div>
-
-                    <div className="flex flex-col justify-between h-24">
-                      <span>Disetujui Oleh:</span>
-                      <div className="border-t border-slate-900 pt-1 flex flex-col items-center relative">
-                        {getSignatureForSlot("VP RENDALHAR", "Sumbono", signatures) && (
-                          <div className="absolute bottom-full mb-0.5 left-0 right-0 flex items-center justify-center pointer-events-none h-12">
-                            <img
-                              src={getSignatureForSlot("VP RENDALHAR", "Sumbono", signatures)!}
-                              alt="Tanda Tangan VP RENDALHAR"
-                              className="max-h-12 max-w-[140px] object-contain mix-blend-multiply select-none"
-                            />
-                          </div>
-                        )}
-                        <span className="text-slate-900 font-black whitespace-nowrap">Sumbono</span>
-                        <span className="text-slate-500 text-[8px] font-mono font-normal whitespace-nowrap">VP RENDALHAR</span>
-                      </div>
-                    </div>
+                    ))}
                   </div>
                 ) : (
                   <div className="grid grid-cols-3 gap-8 text-center uppercase tracking-wider text-[9px] font-bold text-slate-700">
