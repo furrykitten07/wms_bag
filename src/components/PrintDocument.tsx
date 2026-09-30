@@ -1462,7 +1462,7 @@ export default function PrintDocument({
                       <span>Setuju (<span className="normal-case">Manager Logistik</span>) :</span>
                       <div className="border-t border-slate-400 pt-1 flex flex-col items-center relative">
                         {getSignatureForSlot("Manager Logistik", "Mohamat Emir Ferdian", signatures) && (
-                          <div className="absolute bottom-5 left-0 right-0 flex items-center justify-center pointer-events-none h-12">
+                          <div className="absolute bottom-full mb-0.5 left-0 right-0 flex items-center justify-center pointer-events-none h-12">
                             <img
                               src={getSignatureForSlot("Manager Logistik", "Mohamat Emir Ferdian", signatures)!}
                               alt="Tanda Tangan Manager Logistik"
@@ -1470,8 +1470,8 @@ export default function PrintDocument({
                             />
                           </div>
                         )}
-                        <span className="text-slate-955 font-black">Mohamat Emir Ferdian</span>
-                        <span className="text-slate-500 text-[7px] font-mono font-normal leading-tight italic mt-0.5 normal-case">Manager Logistik</span>
+                        <span className="text-slate-955 font-black whitespace-nowrap">Mohamat Emir Ferdian</span>
+                        <span className="text-slate-500 text-[7px] font-mono font-normal leading-tight italic mt-0.5 normal-case whitespace-nowrap">Manager Logistik</span>
                       </div>
                     </div>
 
@@ -1479,7 +1479,7 @@ export default function PrintDocument({
                       <span>Kepala Gudang :</span>
                       <div className="border-t border-slate-400 pt-1 flex flex-col items-center relative">
                         {getSignatureForSlot("Kepala Gudang", "MAGHFUR MUHAMMAD ALFIN", signatures, data) && (
-                          <div className="absolute bottom-5 left-0 right-0 flex items-center justify-center pointer-events-none h-12">
+                          <div className="absolute bottom-full mb-0.5 left-0 right-0 flex items-center justify-center pointer-events-none h-12">
                             <img
                               src={getSignatureForSlot("Kepala Gudang", "MAGHFUR MUHAMMAD ALFIN", signatures, data)!}
                               alt="Tanda Tangan Kepala Gudang"
@@ -1487,8 +1487,8 @@ export default function PrintDocument({
                             />
                           </div>
                         )}
-                        <span className="text-slate-955 font-black">MAGHFUR MUHAMMAD ALFIN</span>
-                        <span className="text-slate-500 text-[7px] font-mono font-normal leading-tight normal-case italic mt-0.5">Kepala Gudang</span>
+                        <span className="text-slate-955 font-black whitespace-nowrap">MAGHFUR MUHAMMAD ALFIN</span>
+                        <span className="text-slate-500 text-[7px] font-mono font-normal leading-tight normal-case italic mt-0.5 whitespace-nowrap">Kepala Gudang</span>
                       </div>
                     </div>
 
@@ -1496,7 +1496,7 @@ export default function PrintDocument({
                       <span>MENGETAHUI :</span>
                       <div className="border-t border-slate-400 pt-1 flex flex-col items-center relative">
                         {getSignatureForSlot("VP RENDALHAR", "Sumbono", signatures) && (
-                          <div className="absolute bottom-5 left-0 right-0 flex items-center justify-center pointer-events-none h-12">
+                          <div className="absolute bottom-full mb-0.5 left-0 right-0 flex items-center justify-center pointer-events-none h-12">
                             <img
                               src={getSignatureForSlot("VP RENDALHAR", "Sumbono", signatures)!}
                               alt="Tanda Tangan VP RENDALHAR"
@@ -1504,8 +1504,8 @@ export default function PrintDocument({
                             />
                           </div>
                         )}
-                        <span className="text-slate-955 font-black">Sumbono</span>
-                        <span className="text-slate-500 text-[7px] font-mono font-normal leading-tight italic mt-0.5">VP RENDALHAR</span>
+                        <span className="text-slate-955 font-black whitespace-nowrap">Sumbono</span>
+                        <span className="text-slate-500 text-[7px] font-mono font-normal leading-tight italic mt-0.5 whitespace-nowrap">VP RENDALHAR</span>
                       </div>
                     </div>
 
@@ -1513,7 +1513,7 @@ export default function PrintDocument({
                       <span>Penerima / Pembuat (Petugas Gudang) :</span>
                       <div className="border-t border-slate-400 pt-1 flex flex-col items-center relative">
                         {(getSignatureForSlot("Petugas Gudang", "Aldi Hidayat", signatures, data) || getSignatureForSlot("Penerima", undefined, signatures)) && (
-                          <div className="absolute bottom-5 left-0 right-0 flex items-center justify-center pointer-events-none h-12">
+                          <div className="absolute bottom-full mb-0.5 left-0 right-0 flex items-center justify-center pointer-events-none h-12">
                             <img
                               src={(getSignatureForSlot("Petugas Gudang", "Aldi Hidayat", signatures, data) || getSignatureForSlot("Penerima", undefined, signatures))!}
                               alt="Tanda Tangan Petugas Gudang"
@@ -1521,78 +1521,78 @@ export default function PrintDocument({
                             />
                           </div>
                         )}
-                        <span className="text-slate-955 font-black">Aldi Hidayat</span>
-                        <span className="text-slate-500 text-[7px] font-mono font-normal leading-tight italic mt-0.5 normal-case">Petugas Gudang</span>
+                        <span className="text-slate-955 font-black whitespace-nowrap">Aldi Hidayat</span>
+                        <span className="text-slate-500 text-[7px] font-mono font-normal leading-tight italic mt-0.5 normal-case whitespace-nowrap">Petugas Gudang</span>
                       </div>
                     </div>
                   </div>
                 ) : (type === "tug5" || type === "tug6" || type === "mutation_report") ? (
-                  <div className="grid grid-cols-4 gap-4 text-center uppercase tracking-wider text-[9px] font-bold text-slate-700">
-                    <div className="flex flex-col justify-between h-28">
+                  <div className="grid grid-cols-4 gap-6 text-center uppercase tracking-wider text-[8px] font-bold text-slate-700">
+                    <div className="flex flex-col justify-between h-24">
                       <span>MENGETAHUI :</span>
-                      <div className="border-t-2 border-slate-600 pt-1.5 flex flex-col items-center relative">
+                      <div className="border-t border-slate-400 pt-1 flex flex-col items-center relative">
                         {getSignatureForSlot("VP RENDALHAR", "Sumbono", signatures, data) && (
-                          <div className="absolute bottom-6 left-0 right-0 flex items-center justify-center pointer-events-none h-14">
+                          <div className="absolute bottom-full mb-0.5 left-0 right-0 flex items-center justify-center pointer-events-none h-12">
                             <img
                               src={getSignatureForSlot("VP RENDALHAR", "Sumbono", signatures, data)!}
                               alt="Tanda Tangan VP RENDALHAR"
-                              className="max-h-14 max-w-[140px] object-contain mix-blend-multiply select-none"
+                              className="max-h-12 max-w-[140px] object-contain mix-blend-multiply select-none"
                             />
                           </div>
                         )}
-                        <span className="text-slate-950 font-black text-[11px]">SUMBONO</span>
-                        <span className="text-slate-500 text-[8px] font-mono font-normal leading-tight italic mt-0.5">VP RENDALHAR</span>
+                        <span className="text-slate-955 font-black whitespace-nowrap">Sumbono</span>
+                        <span className="text-slate-500 text-[7px] font-mono font-normal leading-tight italic mt-0.5 whitespace-nowrap">VP RENDALHAR</span>
                       </div>
                     </div>
 
-                    <div className="flex flex-col justify-between h-28">
+                    <div className="flex flex-col justify-between h-24">
                       <span>Disetujui oleh :</span>
-                      <div className="border-t-2 border-slate-600 pt-1.5 flex flex-col items-center relative">
+                      <div className="border-t border-slate-400 pt-1 flex flex-col items-center relative">
                         {getSignatureForSlot("Manager Logistik", "Mohamat Emir Ferdian", signatures, data) && (
-                          <div className="absolute bottom-6 left-0 right-0 flex items-center justify-center pointer-events-none h-14">
+                          <div className="absolute bottom-full mb-0.5 left-0 right-0 flex items-center justify-center pointer-events-none h-12">
                             <img
                               src={getSignatureForSlot("Manager Logistik", "Mohamat Emir Ferdian", signatures, data)!}
                               alt="Tanda Tangan Manager Logistik"
-                              className="max-h-14 max-w-[140px] object-contain mix-blend-multiply select-none"
+                              className="max-h-12 max-w-[140px] object-contain mix-blend-multiply select-none"
                             />
                           </div>
                         )}
-                        <span className="text-slate-950 font-black text-[11px]">MOHAMAT EMIR FERDIAN</span>
-                        <span className="text-slate-500 text-[8px] font-mono font-normal leading-tight italic mt-0.5 normal-case">Manager Logistik</span>
+                        <span className="text-slate-955 font-black whitespace-nowrap">Mohamat Emir Ferdian</span>
+                        <span className="text-slate-500 text-[7px] font-mono font-normal leading-tight italic mt-0.5 normal-case whitespace-nowrap">Manager Logistik</span>
                       </div>
                     </div>
 
-                    <div className="flex flex-col justify-between h-28">
+                    <div className="flex flex-col justify-between h-24">
                       <span>Kepala Gudang :</span>
-                      <div className="border-t-2 border-slate-600 pt-1.5 flex flex-col items-center relative">
+                      <div className="border-t border-slate-400 pt-1 flex flex-col items-center relative">
                         {getSignatureForSlot("Kepala Gudang", "MAGHFUR MUHAMMAD ALFIN", signatures, data) && (
-                          <div className="absolute bottom-6 left-0 right-0 flex items-center justify-center pointer-events-none h-14">
+                          <div className="absolute bottom-full mb-0.5 left-0 right-0 flex items-center justify-center pointer-events-none h-12">
                             <img
                               src={getSignatureForSlot("Kepala Gudang", "MAGHFUR MUHAMMAD ALFIN", signatures, data)!}
                               alt="Tanda Tangan Kepala Gudang"
-                              className="max-h-14 max-w-[140px] object-contain mix-blend-multiply select-none"
+                              className="max-h-12 max-w-[140px] object-contain mix-blend-multiply select-none"
                             />
                           </div>
                         )}
-                        <span className="text-slate-950 font-black text-[11px]">MAGHFUR MUHAMMAD ALFIN</span>
-                        <span className="text-slate-500 text-[8px] font-mono font-normal leading-tight normal-case italic mt-0.5">Kepala Gudang</span>
+                        <span className="text-slate-955 font-black whitespace-nowrap">MAGHFUR MUHAMMAD ALFIN</span>
+                        <span className="text-slate-500 text-[7px] font-mono font-normal leading-tight normal-case italic mt-0.5 whitespace-nowrap">Kepala Gudang</span>
                       </div>
                     </div>
 
-                    <div className="flex flex-col justify-between h-28">
+                    <div className="flex flex-col justify-between h-24">
                       <span>Petugas Gudang :</span>
-                      <div className="border-t-2 border-slate-600 pt-1.5 flex flex-col items-center relative">
+                      <div className="border-t border-slate-400 pt-1 flex flex-col items-center relative">
                         {getSignatureForSlot("Petugas Gudang", "Aldi Hidayat", signatures, data) && (
-                          <div className="absolute bottom-6 left-0 right-0 flex items-center justify-center pointer-events-none h-14">
+                          <div className="absolute bottom-full mb-0.5 left-0 right-0 flex items-center justify-center pointer-events-none h-12">
                             <img
                               src={getSignatureForSlot("Petugas Gudang", "Aldi Hidayat", signatures, data)!}
                               alt="Tanda Tangan Petugas Gudang"
-                              className="max-h-14 max-w-[140px] object-contain mix-blend-multiply select-none"
+                              className="max-h-12 max-w-[140px] object-contain mix-blend-multiply select-none"
                             />
                           </div>
                         )}
-                        <span className="text-slate-950 font-black text-[11px]">ALDI HIDAYAT</span>
-                        <span className="text-slate-500 text-[8px] font-mono font-normal leading-tight normal-case italic mt-0.5 font-sans">Petugas Gudang</span>
+                        <span className="text-slate-955 font-black whitespace-nowrap">Aldi Hidayat</span>
+                        <span className="text-slate-500 text-[7px] font-mono font-normal leading-tight normal-case italic mt-0.5 whitespace-nowrap">Petugas Gudang</span>
                       </div>
                     </div>
                   </div>
@@ -1602,7 +1602,7 @@ export default function PrintDocument({
                       <span>Disetujui oleh :</span>
                       <div className="border-t border-slate-400 pt-1 flex flex-col items-center relative">
                         {getSignatureForSlot("Manager Logistik", "Mohamat Emir Ferdian", signatures) && (
-                          <div className="absolute bottom-5 left-0 right-0 flex items-center justify-center pointer-events-none h-12">
+                          <div className="absolute bottom-full mb-0.5 left-0 right-0 flex items-center justify-center pointer-events-none h-12">
                             <img
                               src={getSignatureForSlot("Manager Logistik", "Mohamat Emir Ferdian", signatures)!}
                               alt="Tanda Tangan Manager Logistik"
@@ -1610,8 +1610,8 @@ export default function PrintDocument({
                             />
                           </div>
                         )}
-                        <span className="text-slate-955 font-black">Mohamat Emir Ferdian</span>
-                        <span className="text-slate-500 text-[7px] font-mono font-normal leading-tight italic mt-0.5 normal-case">Manager Logistik</span>
+                        <span className="text-slate-955 font-black whitespace-nowrap">Mohamat Emir Ferdian</span>
+                        <span className="text-slate-500 text-[7px] font-mono font-normal leading-tight italic mt-0.5 normal-case whitespace-nowrap">Manager Logistik</span>
                       </div>
                     </div>
 
@@ -1619,7 +1619,7 @@ export default function PrintDocument({
                       <span>Kepala Gudang :</span>
                       <div className="border-t border-slate-400 pt-1 flex flex-col items-center relative">
                         {getSignatureForSlot("Kepala Gudang", "MAGHFUR MUHAMMAD ALFIN", signatures, data) && (
-                          <div className="absolute bottom-5 left-0 right-0 flex items-center justify-center pointer-events-none h-12">
+                          <div className="absolute bottom-full mb-0.5 left-0 right-0 flex items-center justify-center pointer-events-none h-12">
                             <img
                               src={getSignatureForSlot("Kepala Gudang", "MAGHFUR MUHAMMAD ALFIN", signatures, data)!}
                               alt="Tanda Tangan Kepala Gudang"
@@ -1627,8 +1627,8 @@ export default function PrintDocument({
                             />
                           </div>
                         )}
-                        <span className="text-slate-955 font-black">MAGHFUR MUHAMMAD ALFIN</span>
-                        <span className="text-slate-500 text-[7px] font-mono font-normal leading-tight normal-case italic mt-0.5">Kepala Gudang</span>
+                        <span className="text-slate-955 font-black whitespace-nowrap">MAGHFUR MUHAMMAD ALFIN</span>
+                        <span className="text-slate-500 text-[7px] font-mono font-normal leading-tight normal-case italic mt-0.5 whitespace-nowrap">Kepala Gudang</span>
                       </div>
                     </div>
 
@@ -1636,7 +1636,7 @@ export default function PrintDocument({
                       <span>Petugas Gudang :</span>
                       <div className="border-t border-slate-400 pt-1 flex flex-col items-center relative">
                         {getSignatureForSlot("Petugas Gudang", "Aldi Hidayat", signatures, data) && (
-                          <div className="absolute bottom-5 left-0 right-0 flex items-center justify-center pointer-events-none h-12">
+                          <div className="absolute bottom-full mb-0.5 left-0 right-0 flex items-center justify-center pointer-events-none h-12">
                             <img
                               src={getSignatureForSlot("Petugas Gudang", "Aldi Hidayat", signatures, data)!}
                               alt="Tanda Tangan Petugas Gudang"
@@ -1644,8 +1644,8 @@ export default function PrintDocument({
                             />
                           </div>
                         )}
-                        <span className="text-slate-955 font-black">Aldi Hidayat</span>
-                        <span className="text-slate-500 text-[7px] font-mono font-normal leading-tight normal-case italic mt-0.5">Petugas Gudang</span>
+                        <span className="text-slate-955 font-black whitespace-nowrap">Aldi Hidayat</span>
+                        <span className="text-slate-500 text-[7px] font-mono font-normal leading-tight normal-case italic mt-0.5 whitespace-nowrap">Petugas Gudang</span>
                       </div>
                     </div>
 
@@ -1653,8 +1653,8 @@ export default function PrintDocument({
                       <span>Penerima :</span>
                       <div className="border-t border-slate-400 pt-1 flex flex-col items-center relative">
                         {/* Tanda tangan penerima dikosongkan untuk TUG 8 agar ditandatangani manual saat serah terima */}
-                        <span className="text-slate-955 font-black">{docData.driver_pic || docData.courier_name || "......................................."}</span>
-                        <span className="text-slate-500 text-[7px] font-mono font-normal leading-tight normal-case italic mt-0.5">Authorized Carrier</span>
+                        <span className="text-slate-955 font-black whitespace-nowrap">{docData.driver_pic || docData.courier_name || "......................................."}</span>
+                        <span className="text-slate-500 text-[7px] font-mono font-normal leading-tight normal-case italic mt-0.5 whitespace-nowrap">Authorized Carrier</span>
                       </div>
                     </div>
                   </div>
@@ -1664,7 +1664,7 @@ export default function PrintDocument({
                       <span>Dibuat Oleh (Petugas Gudang):</span>
                       <div className="border-t border-slate-900 pt-1 flex flex-col items-center relative">
                         {getSignatureForSlot("Petugas Gudang", "Aldi Hidayat", signatures) && (
-                          <div className="absolute bottom-5 left-0 right-0 flex items-center justify-center pointer-events-none h-12">
+                          <div className="absolute bottom-full mb-0.5 left-0 right-0 flex items-center justify-center pointer-events-none h-12">
                             <img
                               src={getSignatureForSlot("Petugas Gudang", "Aldi Hidayat", signatures)!}
                               alt="Tanda Tangan Petugas Gudang"
@@ -1672,8 +1672,8 @@ export default function PrintDocument({
                             />
                           </div>
                         )}
-                        <span className="text-slate-900 font-black min-h-[14px]">Aldi Hidayat</span>
-                        <span className="text-slate-500 text-[8px] font-mono font-normal">Petugas Gudang WMS</span>
+                        <span className="text-slate-900 font-black whitespace-nowrap">Aldi Hidayat</span>
+                        <span className="text-slate-500 text-[8px] font-mono font-normal whitespace-nowrap">Petugas Gudang WMS</span>
                       </div>
                     </div>
 
@@ -1681,7 +1681,7 @@ export default function PrintDocument({
                       <span>Diperiksa & Diverifikasi Oleh:</span>
                       <div className="border-t border-slate-900 pt-1 flex flex-col items-center relative">
                         {getSignatureForSlot("Manager Logistik", "Mohamat Emir Ferdian", signatures) && (
-                          <div className="absolute bottom-5 left-0 right-0 flex items-center justify-center pointer-events-none h-12">
+                          <div className="absolute bottom-full mb-0.5 left-0 right-0 flex items-center justify-center pointer-events-none h-12">
                             <img
                               src={getSignatureForSlot("Manager Logistik", "Mohamat Emir Ferdian", signatures)!}
                               alt="Tanda Tangan Manager Logistik"
@@ -1689,8 +1689,8 @@ export default function PrintDocument({
                             />
                           </div>
                         )}
-                        <span className="text-slate-900 font-black">Mohamat Emir Ferdian</span>
-                        <span className="text-slate-500 text-[8px] font-mono font-normal normal-case">Manager Logistik</span>
+                        <span className="text-slate-900 font-black whitespace-nowrap">Mohamat Emir Ferdian</span>
+                        <span className="text-slate-500 text-[8px] font-mono font-normal normal-case whitespace-nowrap">Manager Logistik</span>
                       </div>
                     </div>
 
@@ -1698,7 +1698,7 @@ export default function PrintDocument({
                       <span>Disetujui Oleh:</span>
                       <div className="border-t border-slate-900 pt-1 flex flex-col items-center relative">
                         {getSignatureForSlot("VP RENDALHAR", "Sumbono", signatures) && (
-                          <div className="absolute bottom-5 left-0 right-0 flex items-center justify-center pointer-events-none h-12">
+                          <div className="absolute bottom-full mb-0.5 left-0 right-0 flex items-center justify-center pointer-events-none h-12">
                             <img
                               src={getSignatureForSlot("VP RENDALHAR", "Sumbono", signatures)!}
                               alt="Tanda Tangan VP RENDALHAR"
@@ -1706,8 +1706,8 @@ export default function PrintDocument({
                             />
                           </div>
                         )}
-                        <span className="text-slate-900 font-black">Sumbono</span>
-                        <span className="text-slate-500 text-[8px] font-mono font-normal">VP RENDALHAR</span>
+                        <span className="text-slate-900 font-black whitespace-nowrap">Sumbono</span>
+                        <span className="text-slate-500 text-[8px] font-mono font-normal whitespace-nowrap">VP RENDALHAR</span>
                       </div>
                     </div>
                   </div>

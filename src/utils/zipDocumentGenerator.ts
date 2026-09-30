@@ -186,8 +186,8 @@ export function generateSingleTUGHTML(
 
   const sigVP = getSignatureForSlot("VP RENDALHAR", "Sumbono", signatures, req);
   const sigManager = getSignatureForSlot("Manager Logistik", "Mohamat Emir Ferdian", signatures, req);
-  const sigGudang = null;
-  const sigPetugasGudang = getSignatureForSlot("Petugas Gudang", "MAGHFUR MUHAMMAD ALFIN", signatures, req) || getSignatureForSlot("Petugas Gudang", "Aldi Hidayat", signatures, req) || createSVGSignatureDataUrl("MAGHFUR MUHAMMAD ALFIN");
+  const sigGudang = getSignatureForSlot("Kepala Gudang", "MAGHFUR MUHAMMAD ALFIN", signatures, req);
+  const sigPetugasGudang = getSignatureForSlot("Petugas Gudang", "Aldi Hidayat", signatures, req);
 
   const cleanAddress = (req.delivery_address || "Pelabuhan Merak, Cilegon, Banten")
     .replace(/,\s*SPK\s+[^,]+/gi, "")
@@ -376,48 +376,48 @@ export function generateSingleTUGHTML(
             </p>
 
             <!-- 4 Signatures Grid -->
-            <div style="display: flex; width: 100%; justify-content: space-between; gap: 12px; text-align: center; margin-bottom: 12px;">
-                <div style="flex: 1; width: 25%; display: flex; flex-direction: column; justify-content: space-between; height: 118px; box-sizing: border-box;">
-                    <span style="font-size: 9.5px; color: #1e293b; font-family: Consolas, 'Courier New', monospace; font-weight: bold;">MENGETAHUI :</span>
-                    <div style="height: 60px; display: flex; align-items: flex-end; justify-content: center;">
-                        ${sigVP ? `<img src="${sigVP}" style="max-height: 56px; max-width: 125px; object-fit: contain;" />` : `<div style="height: 56px;"></div>`}
+            <div style="display: flex; width: 100%; justify-content: space-between; gap: 12px; text-align: center; margin-bottom: 12px; box-sizing: border-box;">
+                <div style="flex: 1; width: 25%; display: flex; flex-direction: column; box-sizing: border-box;">
+                    <div style="height: 16px; font-size: 9px; color: #1e293b; font-family: Consolas, 'Courier New', monospace; font-weight: bold; white-space: nowrap;">MENGETAHUI :</div>
+                    <div style="height: 58px; display: flex; align-items: flex-end; justify-content: center; padding-bottom: 2px; box-sizing: border-box;">
+                        ${sigVP ? `<img src="${sigVP}" style="max-height: 52px; max-width: 130px; object-fit: contain;" />` : `<div style="height: 52px;"></div>`}
                     </div>
-                    <div style="border-top: 1.5px solid #475569; padding-top: 4px; width: 100%;">
-                        <div style="font-weight: 900; color: #020617; font-size: 11px; font-family: Consolas, 'Courier New', monospace;">SUMBONO</div>
-                        <div style="font-size: 8.5px; font-family: Consolas, 'Courier New', monospace; font-style: italic; color: #64748b; text-transform: none; margin-top: 1px;">VP RENDALHAR</div>
-                    </div>
-                </div>
-
-                <div style="flex: 1; width: 25%; display: flex; flex-direction: column; justify-content: space-between; height: 118px; box-sizing: border-box;">
-                    <span style="font-size: 9.5px; color: #1e293b; font-family: Consolas, 'Courier New', monospace; font-weight: bold;">DISETUJUI OLEH :</span>
-                    <div style="height: 60px; display: flex; align-items: flex-end; justify-content: center;">
-                        ${sigManager ? `<img src="${sigManager}" style="max-height: 56px; max-width: 125px; object-fit: contain;" />` : `<div style="height: 56px;"></div>`}
-                    </div>
-                    <div style="border-top: 1.5px solid #475569; padding-top: 4px; width: 100%;">
-                        <div style="font-weight: 900; color: #020617; font-size: 11px; font-family: Consolas, 'Courier New', monospace;">MOHAMAT EMIR FERDIAN</div>
-                        <div style="font-size: 8.5px; font-family: Consolas, 'Courier New', monospace; font-style: italic; color: #64748b; text-transform: none; margin-top: 1px;">Manager Logistik</div>
+                    <div style="border-top: 1.5px solid #475569; padding-top: 4px; width: 100%; box-sizing: border-box;">
+                        <div style="font-weight: 900; color: #020617; font-size: 9.5px; font-family: Consolas, 'Courier New', monospace; white-space: nowrap;">SUMBONO</div>
+                        <div style="font-size: 8px; font-family: Consolas, 'Courier New', monospace; font-style: italic; color: #64748b; text-transform: none; margin-top: 1px; white-space: nowrap;">VP RENDALHAR</div>
                     </div>
                 </div>
 
-                <div style="flex: 1; width: 25%; display: flex; flex-direction: column; justify-content: space-between; height: 118px; box-sizing: border-box;">
-                    <span style="font-size: 9.5px; color: #1e293b; font-family: Consolas, 'Courier New', monospace; font-weight: bold;">KEPALA GUDANG :</span>
-                    <div style="height: 60px; display: flex; align-items: flex-end; justify-content: center;">
-                        ${sigGudang ? `<img src="${sigGudang}" style="max-height: 56px; max-width: 125px; object-fit: contain;" />` : `<div style="height: 56px;"></div>`}
+                <div style="flex: 1; width: 25%; display: flex; flex-direction: column; box-sizing: border-box;">
+                    <div style="height: 16px; font-size: 9px; color: #1e293b; font-family: Consolas, 'Courier New', monospace; font-weight: bold; white-space: nowrap;">DISETUJUI OLEH :</div>
+                    <div style="height: 58px; display: flex; align-items: flex-end; justify-content: center; padding-bottom: 2px; box-sizing: border-box;">
+                        ${sigManager ? `<img src="${sigManager}" style="max-height: 52px; max-width: 130px; object-fit: contain;" />` : `<div style="height: 52px;"></div>`}
                     </div>
-                    <div style="border-top: 1.5px solid #475569; padding-top: 4px; width: 100%;">
-                        <div style="font-weight: 900; color: #020617; font-size: 11px; font-family: Consolas, 'Courier New', monospace;">&nbsp;</div>
-                        <div style="font-size: 8.5px; font-family: Consolas, 'Courier New', monospace; font-style: italic; color: #64748b; text-transform: none; margin-top: 1px;">Gudang Merak</div>
+                    <div style="border-top: 1.5px solid #475569; padding-top: 4px; width: 100%; box-sizing: border-box;">
+                        <div style="font-weight: 900; color: #020617; font-size: 9.5px; font-family: Consolas, 'Courier New', monospace; white-space: nowrap;">MOHAMAT EMIR FERDIAN</div>
+                        <div style="font-size: 8px; font-family: Consolas, 'Courier New', monospace; font-style: italic; color: #64748b; text-transform: none; margin-top: 1px; white-space: nowrap;">Manager Logistik</div>
                     </div>
                 </div>
 
-                <div style="flex: 1; width: 25%; display: flex; flex-direction: column; justify-content: space-between; height: 118px; box-sizing: border-box;">
-                    <span style="font-size: 9.5px; color: #1e293b; font-family: Consolas, 'Courier New', monospace; font-weight: bold;">PETUGAS GUDANG :</span>
-                    <div style="height: 60px; display: flex; align-items: flex-end; justify-content: center;">
-                        ${sigPetugasGudang ? `<img src="${sigPetugasGudang}" style="max-height: 56px; max-width: 125px; object-fit: contain;" />` : `<div style="height: 56px;"></div>`}
+                <div style="flex: 1; width: 25%; display: flex; flex-direction: column; box-sizing: border-box;">
+                    <div style="height: 16px; font-size: 9px; color: #1e293b; font-family: Consolas, 'Courier New', monospace; font-weight: bold; white-space: nowrap;">KEPALA GUDANG :</div>
+                    <div style="height: 58px; display: flex; align-items: flex-end; justify-content: center; padding-bottom: 2px; box-sizing: border-box;">
+                        ${sigGudang ? `<img src="${sigGudang}" style="max-height: 52px; max-width: 130px; object-fit: contain;" />` : `<div style="height: 52px;"></div>`}
                     </div>
-                    <div style="border-top: 1.5px solid #475569; padding-top: 4px; width: 100%;">
-                        <div style="font-weight: 900; color: #020617; font-size: 11px; font-family: Consolas, 'Courier New', monospace;">MAGHFUR MUHAMMAD ALFIN</div>
-                        <div style="font-size: 8.5px; font-family: Consolas, 'Courier New', monospace; font-style: italic; color: #64748b; text-transform: none; margin-top: 1px;">Petugas Gudang</div>
+                    <div style="border-top: 1.5px solid #475569; padding-top: 4px; width: 100%; box-sizing: border-box;">
+                        <div style="font-weight: 900; color: #020617; font-size: 9.5px; font-family: Consolas, 'Courier New', monospace; white-space: nowrap;">MAGHFUR MUHAMMAD ALFIN</div>
+                        <div style="font-size: 8px; font-family: Consolas, 'Courier New', monospace; font-style: italic; color: #64748b; text-transform: none; margin-top: 1px; white-space: nowrap;">Kepala Gudang</div>
+                    </div>
+                </div>
+
+                <div style="flex: 1; width: 25%; display: flex; flex-direction: column; box-sizing: border-box;">
+                    <div style="height: 16px; font-size: 9px; color: #1e293b; font-family: Consolas, 'Courier New', monospace; font-weight: bold; white-space: nowrap;">PETUGAS GUDANG :</div>
+                    <div style="height: 58px; display: flex; align-items: flex-end; justify-content: center; padding-bottom: 2px; box-sizing: border-box;">
+                        ${sigPetugasGudang ? `<img src="${sigPetugasGudang}" style="max-height: 52px; max-width: 130px; object-fit: contain;" />` : `<div style="height: 52px;"></div>`}
+                    </div>
+                    <div style="border-top: 1.5px solid #475569; padding-top: 4px; width: 100%; box-sizing: border-box;">
+                        <div style="font-weight: 900; color: #020617; font-size: 9.5px; font-family: Consolas, 'Courier New', monospace; white-space: nowrap;">ALDI HIDAYAT</div>
+                        <div style="font-size: 8px; font-family: Consolas, 'Courier New', monospace; font-style: italic; color: #64748b; text-transform: none; margin-top: 1px; white-space: nowrap;">Petugas Gudang</div>
                     </div>
                 </div>
             </div>
@@ -436,18 +436,6 @@ export function generateSingleTUGHTML(
     </div>
 </body>
 </html>`;
-}
-
-async function waitForImagesToLoad(container: HTMLElement): Promise<void> {
-  const images = Array.from(container.querySelectorAll("img"));
-  const promises = images.map(img => {
-    if (img.complete && img.naturalHeight !== 0) return Promise.resolve();
-    return new Promise<void>(resolve => {
-      img.onload = () => resolve();
-      img.onerror = () => resolve();
-    });
-  });
-  await Promise.all(promises);
 }
 
 /**
@@ -472,8 +460,8 @@ export async function generateTUGPDFArrayBuffer(
 
   const sigVP = getSignatureForSlot("VP RENDALHAR", "Sumbono", signatures, req);
   const sigManager = getSignatureForSlot("Manager Logistik", "Mohamat Emir Ferdian", signatures, req);
-  const sigGudang = null;
-  const sigPetugasGudang = getSignatureForSlot("Petugas Gudang", "MAGHFUR MUHAMMAD ALFIN", signatures, req) || getSignatureForSlot("Petugas Gudang", "Aldi Hidayat", signatures, req) || createSVGSignatureDataUrl("MAGHFUR MUHAMMAD ALFIN");
+  const sigGudang = getSignatureForSlot("Kepala Gudang", "MAGHFUR MUHAMMAD ALFIN", signatures, req);
+  const sigPetugasGudang = getSignatureForSlot("Petugas Gudang", "Aldi Hidayat", signatures, req);
 
   const cleanAddress = (req.delivery_address || "Pelabuhan Merak, Cilegon, Banten")
     .replace(/,\s*SPK\s+[^,]+/gi, "")
@@ -689,47 +677,47 @@ export async function generateTUGPDFArrayBuffer(
 
           <!-- 4 Signatures Grid -->
           <div style="display: flex; width: 100%; justify-content: space-between; gap: 12px; text-align: center; margin-bottom: 12px; box-sizing: border-box;">
-              <div style="flex: 1; width: 25%; display: flex; flex-direction: column; justify-content: space-between; height: 118px; box-sizing: border-box;">
-                  <span style="font-size: 9.5px; color: #1e293b; font-family: Consolas, 'Courier New', monospace; font-weight: bold;">MENGETAHUI :</span>
-                  <div style="height: 60px; display: flex; align-items: flex-end; justify-content: center;">
-                      ${sigVP ? `<img src="${sigVP}" style="max-height: 56px; max-width: 125px; object-fit: contain;" />` : `<div style="height: 56px;"></div>`}
+              <div style="flex: 1; width: 25%; display: flex; flex-direction: column; box-sizing: border-box;">
+                  <div style="height: 16px; font-size: 9px; color: #1e293b; font-family: Consolas, 'Courier New', monospace; font-weight: bold; white-space: nowrap;">MENGETAHUI :</div>
+                  <div style="height: 58px; display: flex; align-items: flex-end; justify-content: center; padding-bottom: 2px; box-sizing: border-box;">
+                      ${sigVP ? `<img src="${sigVP}" style="max-height: 52px; max-width: 130px; object-fit: contain;" />` : `<div style="height: 52px;"></div>`}
                   </div>
-                  <div style="border-top: 1.5px solid #475569; padding-top: 4px; width: 100%;">
-                      <div style="font-weight: 900; color: #020617; font-size: 11px; font-family: Consolas, 'Courier New', monospace;">SUMBONO</div>
-                      <div style="font-size: 8.5px; font-family: Consolas, 'Courier New', monospace; font-style: italic; color: #64748b; text-transform: none; margin-top: 1px;">VP RENDALHAR</div>
-                  </div>
-              </div>
-
-              <div style="flex: 1; width: 25%; display: flex; flex-direction: column; justify-content: space-between; height: 118px; box-sizing: border-box;">
-                  <span style="font-size: 9.5px; color: #1e293b; font-family: Consolas, 'Courier New', monospace; font-weight: bold;">DISETUJUI OLEH :</span>
-                  <div style="height: 60px; display: flex; align-items: flex-end; justify-content: center;">
-                      ${sigManager ? `<img src="${sigManager}" style="max-height: 56px; max-width: 125px; object-fit: contain;" />` : `<div style="height: 56px;"></div>`}
-                  </div>
-                  <div style="border-top: 1.5px solid #475569; padding-top: 4px; width: 100%;">
-                      <div style="font-weight: 900; color: #020617; font-size: 11px; font-family: Consolas, 'Courier New', monospace;">MOHAMAT EMIR FERDIAN</div>
-                      <div style="font-size: 8.5px; font-family: Consolas, 'Courier New', monospace; font-style: italic; color: #64748b; text-transform: none; margin-top: 1px;">Manager Logistik</div>
+                  <div style="border-top: 1.5px solid #475569; padding-top: 4px; width: 100%; box-sizing: border-box;">
+                      <div style="font-weight: 900; color: #020617; font-size: 9.5px; font-family: Consolas, 'Courier New', monospace; white-space: nowrap;">SUMBONO</div>
+                      <div style="font-size: 8px; font-family: Consolas, 'Courier New', monospace; font-style: italic; color: #64748b; text-transform: none; margin-top: 1px; white-space: nowrap;">VP RENDALHAR</div>
                   </div>
               </div>
 
-              <div style="flex: 1; width: 25%; display: flex; flex-direction: column; justify-content: space-between; height: 118px; box-sizing: border-box;">
-                  <span style="font-size: 9.5px; color: #1e293b; font-family: Consolas, 'Courier New', monospace; font-weight: bold;">KEPALA GUDANG :</span>
-                  <div style="height: 60px; display: flex; align-items: flex-end; justify-content: center;">
-                      ${sigGudang ? `<img src="${sigGudang}" style="max-height: 56px; max-width: 125px; object-fit: contain;" />` : `<div style="height: 56px;"></div>`}
+              <div style="flex: 1; width: 25%; display: flex; flex-direction: column; box-sizing: border-box;">
+                  <div style="height: 16px; font-size: 9px; color: #1e293b; font-family: Consolas, 'Courier New', monospace; font-weight: bold; white-space: nowrap;">DISETUJUI OLEH :</div>
+                  <div style="height: 58px; display: flex; align-items: flex-end; justify-content: center; padding-bottom: 2px; box-sizing: border-box;">
+                      ${sigManager ? `<img src="${sigManager}" style="max-height: 52px; max-width: 130px; object-fit: contain;" />` : `<div style="height: 52px;"></div>`}
                   </div>
-                  <div style="border-top: 1.5px solid #475569; padding-top: 4px; width: 100%;">
-                      <div style="font-weight: 900; color: #020617; font-size: 11px; font-family: Consolas, 'Courier New', monospace;">&nbsp;</div>
-                      <div style="font-size: 8.5px; font-family: Consolas, 'Courier New', monospace; font-style: italic; color: #64748b; text-transform: none; margin-top: 1px;">Gudang Merak</div>
+                  <div style="border-top: 1.5px solid #475569; padding-top: 4px; width: 100%; box-sizing: border-box;">
+                      <div style="font-weight: 900; color: #020617; font-size: 9.5px; font-family: Consolas, 'Courier New', monospace; white-space: nowrap;">MOHAMAT EMIR FERDIAN</div>
+                      <div style="font-size: 8px; font-family: Consolas, 'Courier New', monospace; font-style: italic; color: #64748b; text-transform: none; margin-top: 1px; white-space: nowrap;">Manager Logistik</div>
                   </div>
               </div>
 
-              <div style="flex: 1; width: 25%; display: flex; flex-direction: column; justify-content: space-between; height: 118px; box-sizing: border-box;">
-                  <span style="font-size: 9.5px; color: #1e293b; font-family: Consolas, 'Courier New', monospace; font-weight: bold;">PETUGAS GUDANG :</span>
-                  <div style="height: 60px; display: flex; align-items: flex-end; justify-content: center;">
-                      ${sigPetugasGudang ? `<img src="${sigPetugasGudang}" style="max-height: 56px; max-width: 125px; object-fit: contain;" />` : `<div style="height: 56px;"></div>`}
+              <div style="flex: 1; width: 25%; display: flex; flex-direction: column; box-sizing: border-box;">
+                  <div style="height: 16px; font-size: 9px; color: #1e293b; font-family: Consolas, 'Courier New', monospace; font-weight: bold; white-space: nowrap;">KEPALA GUDANG :</div>
+                  <div style="height: 58px; display: flex; align-items: flex-end; justify-content: center; padding-bottom: 2px; box-sizing: border-box;">
+                      ${sigGudang ? `<img src="${sigGudang}" style="max-height: 52px; max-width: 130px; object-fit: contain;" />` : `<div style="height: 52px;"></div>`}
                   </div>
-                  <div style="border-top: 1.5px solid #475569; padding-top: 4px; width: 100%;">
-                      <div style="font-weight: 900; color: #020617; font-size: 11px; font-family: Consolas, 'Courier New', monospace;">MAGHFUR MUHAMMAD ALFIN</div>
-                      <div style="font-size: 8.5px; font-family: Consolas, 'Courier New', monospace; font-style: italic; color: #64748b; text-transform: none; margin-top: 1px;">Petugas Gudang</div>
+                  <div style="border-top: 1.5px solid #475569; padding-top: 4px; width: 100%; box-sizing: border-box;">
+                      <div style="font-weight: 900; color: #020617; font-size: 9.5px; font-family: Consolas, 'Courier New', monospace; white-space: nowrap;">MAGHFUR MUHAMMAD ALFIN</div>
+                      <div style="font-size: 8px; font-family: Consolas, 'Courier New', monospace; font-style: italic; color: #64748b; text-transform: none; margin-top: 1px; white-space: nowrap;">Kepala Gudang</div>
+                  </div>
+              </div>
+
+              <div style="flex: 1; width: 25%; display: flex; flex-direction: column; box-sizing: border-box;">
+                  <div style="height: 16px; font-size: 9px; color: #1e293b; font-family: Consolas, 'Courier New', monospace; font-weight: bold; white-space: nowrap;">PETUGAS GUDANG :</div>
+                  <div style="height: 58px; display: flex; align-items: flex-end; justify-content: center; padding-bottom: 2px; box-sizing: border-box;">
+                      ${sigPetugasGudang ? `<img src="${sigPetugasGudang}" style="max-height: 52px; max-width: 130px; object-fit: contain;" />` : `<div style="height: 52px;"></div>`}
+                  </div>
+                  <div style="border-top: 1.5px solid #475569; padding-top: 4px; width: 100%; box-sizing: border-box;">
+                      <div style="font-weight: 900; color: #020617; font-size: 9.5px; font-family: Consolas, 'Courier New', monospace; white-space: nowrap;">ALDI HIDAYAT</div>
+                      <div style="font-size: 8px; font-family: Consolas, 'Courier New', monospace; font-style: italic; color: #64748b; text-transform: none; margin-top: 1px; white-space: nowrap;">Petugas Gudang</div>
                   </div>
               </div>
           </div>
