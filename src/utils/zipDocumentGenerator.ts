@@ -169,6 +169,19 @@ function resolveCleanDocNum(req: MaterialRequest, type: "tug5" | "tug6"): string
   return docNum;
 }
 
+async function waitForImagesToLoad(container: HTMLElement): Promise<void> {
+  const images = Array.from(container.querySelectorAll("img"));
+  await Promise.all(
+    images.map(img => {
+      if (img.complete && img.naturalHeight !== 0) return Promise.resolve();
+      return new Promise<void>(resolve => {
+        img.onload = () => resolve();
+        img.onerror = () => resolve();
+      });
+    })
+  );
+}
+
 export function generateSingleTUGHTML(
   req: MaterialRequest,
   type: "tug5" | "tug6",
