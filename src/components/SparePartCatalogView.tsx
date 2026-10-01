@@ -187,9 +187,10 @@ function generateRandomBarcode(): string {
 }
 
 // Generate full public URL for mobile QR code scan without requiring login
-export function getPublicSparePartUrl(id: string): string {
+export function getPublicSparePartUrl(id: string, barcode?: string): string {
   const origin = typeof window !== "undefined" ? window.location.origin : "";
-  return `${origin}/sparepart/${encodeURIComponent(id)}`;
+  const identifier = barcode || id;
+  return `${origin}/sparepart/${encodeURIComponent(identifier)}`;
 }
 
 export default function SparePartCatalogView({ 
@@ -600,10 +601,12 @@ export default function SparePartCatalogView({
       vessel_compatibility: newVesselCompatibility.trim() || "Semua Armada Kapal",
       specification: newSpecification.trim() || `Lokasi: ${newLocationChoice}, Terdaftar via Catalog`,
       location_id: finalLocationId,
+      location_name: newLocationChoice,
       current_stock: initialStockNum,
       reorder_point: 5,
       minimum_stock: 2,
-      maximum_stock: 100
+      maximum_stock: 100,
+      remarks: `[BC:${newBarcode.trim()}] [LOC:${newLocationChoice}] ${newDescription.trim() || newPartName.trim()}`
     };
 
     setIsSubmitting(true);
@@ -852,7 +855,7 @@ export default function SparePartCatalogView({
                 <div className="w-full md:w-44 flex flex-col items-center justify-center border-t md:border-t-0 md:border-l border-slate-100 pt-4 md:pt-0 md:pl-5 shrink-0 select-none bg-slate-50/70 rounded-r-xl p-3">
                   <div className="p-2 bg-white border border-slate-200 rounded-lg shadow-xs max-w-[95px] flex items-center justify-center">
                     <QRCode
-                      value={getPublicSparePartUrl(item.id)}
+                      value={getPublicSparePartUrl(item.id, item.barcode)}
                       size={80}
                       style={{ height: "auto", maxWidth: "100%", width: "100%" }}
                       viewBox={`0 0 256 256`}
@@ -1444,7 +1447,7 @@ export default function SparePartCatalogView({
                     <div className="flex flex-col items-center justify-center shrink-0 border-b md:border-b-0 md:border-r print:border-b-0 print:border-r border-slate-200 pb-4 md:pb-0 md:pr-6 print:pb-0 print:pr-6">
                       <div className="p-3 bg-white border border-slate-300 print:border-slate-400 rounded-xl shadow-xs flex items-center justify-center">
                         <QRCode
-                          value={getPublicSparePartUrl(selectedItem.id)}
+                          value={getPublicSparePartUrl(selectedItem.id, selectedItem.barcode)}
                           size={135}
                           bgColor="#ffffff"
                           fgColor="#0f172a"
@@ -1466,7 +1469,7 @@ export default function SparePartCatalogView({
                         {/* Public Link Testing Buttons */}
                         <div className="pt-2 no-print flex flex-col gap-1.5 w-full">
                           <a
-                            href={getPublicSparePartUrl(selectedItem.id)}
+                            href={getPublicSparePartUrl(selectedItem.id, selectedItem.barcode)}
                             target="_blank"
                             rel="noopener noreferrer"
                             className="px-2 py-1.5 bg-blue-50 hover:bg-blue-100 text-blue-700 border border-blue-200 rounded text-[9.5px] font-bold flex items-center justify-center gap-1 transition-colors"
@@ -1477,7 +1480,7 @@ export default function SparePartCatalogView({
                             type="button"
                             onClick={() => {
                               if (navigator.clipboard) {
-                                navigator.clipboard.writeText(getPublicSparePartUrl(selectedItem.id));
+                                navigator.clipboard.writeText(getPublicSparePartUrl(selectedItem.id, selectedItem.barcode));
                                 alert("Tautan scan HP berhasil disalin ke clipboard!");
                               }
                             }}

@@ -51,17 +51,32 @@ export default function PublicSparePartView({ partId, onBackToApp }: PublicSpare
       setLoading(true);
       setErrorMsg(null);
       try {
+        const rawQuery = decodeURIComponent(partId || "").trim();
+        const cleanQuery = rawQuery.replace(/^(?:token:?\s*|#\s*)+/i, "").trim();
+
+        // 1. Try fast direct lookup first (checks Supabase and local cache by barcode, id, PN, SKU, remarks)
+        const directFound = await api.getSparePartByIdOrBarcode(cleanQuery);
+        if (!isMounted) return;
+
+        if (directFound) {
+          setPart(directFound);
+          return;
+        }
+
+        // 2. Fallback: Search in full inventory
         const inventory = await api.getInventory();
         if (!isMounted) return;
 
-        const cleanSearch = decodeURIComponent(partId).trim().toLowerCase();
+        const cleanSearch = cleanQuery.toLowerCase();
         
-        // Find matching part by ID, Barcode, Part Number, or SKU
+        // Find matching part by ID, Barcode, Part Number, SKU, or Remarks
         const matched = inventory.find(p => 
           (p.id && p.id.toLowerCase() === cleanSearch) ||
           (p.barcode && p.barcode.toLowerCase() === cleanSearch) ||
           (p.part_number && p.part_number.toLowerCase() === cleanSearch) ||
-          (p.sku && p.sku.toLowerCase() === cleanSearch)
+          (p.sku && p.sku.toLowerCase() === cleanSearch) ||
+          (p.remarks && p.remarks.toLowerCase().includes(cleanSearch)) ||
+          (p.part_name && p.part_name.toLowerCase() === cleanSearch)
         );
 
         if (matched) {
@@ -74,12 +89,59 @@ export default function PublicSparePartView({ partId, onBackToApp }: PublicSpare
             } catch (e) {}
           }
           if (!finalBarcode) {
-            finalBarcode = `BC-${Math.floor(10000000 + Math.random() * 90000000)}`;
+            finalBarcode = cleanSearch.startsWith("bc-") ? cleanSearch.toUpperCase() : `BC-${Math.floor(10000000 + Math.random() * 90000000)}`;
           }
 
           setPart({ ...matched, barcode: finalBarcode });
         } else {
-          setErrorMsg(`Suku cadang dengan identifikasi "${partId}" tidak ditemukan dalam database WMS.`);
+          // 3. Fallback: Search in Inbound Receiving items
+          const recList = await api.getReceiving();
+          let recFound: SparePart | null = null;
+          if (recList && Array.isArray(recList)) {
+            for (const rec of recList) {
+              const items = rec.items || [];
+              for (let i = 0; i < items.length; i++) {
+                const itm = items[i];
+                if (!itm) continue;
+                const matches = 
+                  (itm.barcode && itm.barcode.toLowerCase() === cleanSearch) ||
+                  (itm.spare_part_id && itm.spare_part_id.toLowerCase() === cleanSearch) ||
+                  (itm.part_number && itm.part_number.toLowerCase() === cleanSearch) ||
+                  (itm.sku && itm.sku.toLowerCase() === cleanSearch) ||
+                  (itm.spare_part_name && itm.spare_part_name.toLowerCase() === cleanSearch) ||
+                  (itm.part_name && itm.part_name.toLowerCase() === cleanSearch);
+
+                if (matches) {
+                  recFound = {
+                    id: itm.spare_part_id || `sp-rec-${rec.id}-${i}`,
+                    part_name: itm.spare_part_name || itm.part_name || "Suku Cadang Inbound",
+                    part_number: itm.part_number || "-",
+                    sku: itm.sku || "-",
+                    barcode: itm.barcode || (cleanSearch.startsWith("bc-") ? cleanSearch.toUpperCase() : `BC-${cleanSearch}`),
+                    unit: itm.unit || "PCS",
+                    category: itm.category || "General Spares",
+                    maker: rec.vendor_name || "OEM / Supplier",
+                    brand: "OEM",
+                    current_stock: Number(itm.qty_received || itm.qty || itm.qty_ordered || 1),
+                    reorder_point: 5,
+                    location_id: "loc-wh-merak",
+                    location_name: "WAREHOUSE MERAK",
+                    vessel_compatibility: rec.vessel_name ? `Kapal ${rec.vessel_name}` : "Semua Armada Kapal",
+                    description: itm.keeper_notes || itm.description || `Suku cadang otomatis dari Penerimaan Inbound PO ${rec.purchase_order_num || ""}`,
+                    remarks: `[BC:${itm.barcode || cleanSearch}] [LOC:WAREHOUSE MERAK]`
+                  };
+                  break;
+                }
+              }
+              if (recFound) break;
+            }
+          }
+
+          if (recFound) {
+            setPart(recFound);
+          } else {
+            setErrorMsg(`Suku cadang dengan identifikasi "${cleanQuery || partId}" tidak ditemukan dalam database WMS.`);
+          }
         }
       } catch (err: any) {
         if (!isMounted) return;
@@ -307,7 +369,12 @@ export default function PublicSparePartView({ partId, onBackToApp }: PublicSpare
                   {/* Visual Barcode Graphic */}
                   <div className="pt-2">
                     <div className="bg-white p-2.5 rounded-xl border border-slate-300 inline-block shadow-inner select-none print:border-slate-800">
-                      <BarcodeGraphic code={part.barcode} width={220} height={42} />
+                      <BarcodeGraphic 
+                        code={part.barcode} 
+                        locationName={part.location_name || (part.location_id?.includes("pusat") ? "KANTOR PUSAT BAG" : "WAREHOUSE MERAK")}
+                        width={220} 
+                        height={42} 
+                      />
                     </div>
                   </div>
 
@@ -332,6 +399,9 @@ export default function PublicSparePartView({ partId, onBackToApp }: PublicSpare
                     <span className="text-[11px] font-black text-blue-400 uppercase bg-blue-950/80 border border-blue-800 px-2.5 py-0.5 rounded block print:text-blue-700 print:bg-blue-50">
                       TOKEN #{part.barcode}
                     </span>
+                    <span className="text-[9px] font-black text-amber-400 uppercase bg-amber-950/80 border border-amber-800 px-2 py-0.5 rounded block mt-1 print:text-amber-800 print:bg-amber-50">
+                      📍 {part.location_name || (part.location_id?.includes("pusat") ? "KANTOR PUSAT BAG" : "WAREHOUSE MERAK")}
+                    </span>
                     <span className="text-[9px] text-slate-400 block mt-1 uppercase tracking-widest font-bold">
                       Scan untuk verifikasi langsung
                     </span>
@@ -354,8 +424,11 @@ export default function PublicSparePartView({ partId, onBackToApp }: PublicSpare
                 
                 <div className="space-y-2.5 text-xs font-sans">
                   <div className="flex justify-between py-1 border-b border-slate-700/40">
-                    <span className="text-slate-400 font-medium">Lokasi Rak / Bin:</span>
-                    <strong className="text-white font-mono font-bold print:text-slate-900">{part.location_id || "Depot Utama (A1)"}</strong>
+                    <span className="text-slate-400 font-medium">Lokasi Gudang / Rak:</span>
+                    <strong className="text-amber-400 font-sans font-bold flex items-center gap-1 print:text-slate-900">
+                      <MapPin className="w-3.5 h-3.5 text-amber-400" />
+                      {part.location_name || (part.location_id?.includes("pusat") ? "KANTOR PUSAT BAG" : "WAREHOUSE MERAK")}
+                    </strong>
                   </div>
                   <div className="flex justify-between py-1 border-b border-slate-700/40">
                     <span className="text-slate-400 font-medium">Satuan (Unit):</span>

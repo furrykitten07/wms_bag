@@ -791,13 +791,13 @@ export default function App() {
   const getPublicPartId = () => {
     if (typeof window === "undefined") return null;
     const path = window.location.pathname;
-    const match = path.match(/^\/(?:sparepart|part|catalog)\/([^\/?#]+)/i);
+    const match = path.match(/^\/(?:sparepart|part|catalog|barcode|scan)\/([^\/?#]+)/i);
     if (match && match[1]) return decodeURIComponent(match[1]);
     const searchParams = new URLSearchParams(window.location.search);
-    const qPart = searchParams.get("partId") || searchParams.get("id");
+    const qPart = searchParams.get("partId") || searchParams.get("id") || searchParams.get("barcode") || searchParams.get("code") || searchParams.get("token") || searchParams.get("q");
     if (qPart) return decodeURIComponent(qPart);
     const hash = window.location.hash;
-    const hashMatch = hash.match(/#(?:(?:\/)?(?:sparepart|part)\/|.*[?&]partId=)([^&?]+)/i);
+    const hashMatch = hash.match(/#(?:(?:\/)?(?:sparepart|part|barcode|scan)\/|.*[?&](?:partId|id|barcode|code)=)([^&?]+)/i);
     if (hashMatch && hashMatch[1]) return decodeURIComponent(hashMatch[1]);
     return null;
   };

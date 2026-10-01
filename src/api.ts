@@ -973,6 +973,29 @@ function sanitizeRecord(data: any, validCols: Set<string>): any {
   return clean;
 }
 
+export function normalizeSparePartRecord(p: any): SparePart {
+  let bc = p.barcode;
+  if (!bc && p.remarks && p.remarks.includes("[BC:")) {
+    const match = p.remarks.match(/\[BC:([^\]]+)\]/);
+    if (match) bc = match[1].trim();
+  }
+
+  let locName = "WAREHOUSE MERAK";
+  if (p.remarks && p.remarks.includes("[LOC:")) {
+    const matchLoc = p.remarks.match(/\[LOC:([^\]]+)\]/);
+    if (matchLoc) locName = matchLoc[1].trim();
+  } else if (p.location_id === "loc-kantor-pusat" || String(p.location_id).toLowerCase().includes("pusat")) {
+    locName = "KANTOR PUSAT BAG";
+  }
+
+  return {
+    ...p,
+    barcode: bc || `BC-${Math.floor(10000000 + Math.random() * 90000000)}`,
+    location_id: locName === "KANTOR PUSAT BAG" ? "loc-kantor-pusat" : "loc-wh-merak",
+    location_name: locName
+  };
+}
+
 async function fetcher<T>(url: string, options: RequestInit = {}): Promise<T> {
   const method = (options.method || "GET").toUpperCase();
   const body = options.body ? JSON.parse(options.body as string) : {};
@@ -1515,33 +1538,20 @@ async function fetcher<T>(url: string, options: RequestInit = {}): Promise<T> {
         }
 
         if (allParts.length > 0) {
-          const mapped = allParts.map((p: any) => {
-            let bc = p.barcode;
-            if (!bc && p.remarks && p.remarks.includes("[BC:")) {
-              const match = p.remarks.match(/\[BC:([^\]]+)\]/);
-              if (match) bc = match[1].trim();
-            }
-
-            let locName = "WAREHOUSE MERAK";
-            if (p.remarks && p.remarks.includes("[LOC:")) {
-              const matchLoc = p.remarks.match(/\[LOC:([^\]]+)\]/);
-              if (matchLoc) locName = matchLoc[1].trim();
-            } else if (p.location_id === "loc-kantor-pusat" || String(p.location_id).toLowerCase().includes("pusat")) {
-              locName = "KANTOR PUSAT BAG";
-            }
-
-            return {
-              ...p,
-              barcode: bc || `BC-${Math.floor(10000000 + Math.random() * 90000000)}`,
-              location_id: locName === "KANTOR PUSAT BAG" ? "loc-kantor-pusat" : "loc-wh-merak",
-              location_name: locName
-            };
-          });
+          const mapped = allParts.map(normalizeSparePartRecord);
 
           // Merge with any newly created local spare parts that might not yet be in Supabase
           const localSaved = loadLocalSpareParts();
           const supabaseIds = new Set(mapped.map(m => m.id));
           const missingLocals = localSaved.filter(lp => lp && lp.id && !supabaseIds.has(lp.id));
+
+          if (missingLocals.length > 0) {
+            const toInsert = missingLocals.map(lp => sanitizeRecord(lp, VALID_PART_COLUMNS));
+            supabase.from("spare_parts").upsert(toInsert).then(({ error }) => {
+              if (error) console.warn("Auto-sync missing local spare parts to Supabase error:", error);
+              else console.log(`Auto-synced ${missingLocals.length} local spare parts to Supabase successfully.`);
+            });
+          }
 
           localSpareParts = [...missingLocals, ...mapped] as any;
           saveLocalSpareParts(localSpareParts);
@@ -2092,6 +2102,95 @@ export const api = {
     if (filters?.category) params.append("category", filters.category);
     if (filters?.alerts) params.append("alerts", filters.alerts);
     return fetcher<SparePart[]>(`/api/inventory?${params.toString()}`);
+  },
+
+  async getSparePartByIdOrBarcode(query: string): Promise<SparePart | null> {
+    const raw = decodeURIComponent(query || "").trim();
+    if (!raw) return null;
+    const clean = raw.replace(/^(?:token:?\s*|#\s*)+/i, "").trim();
+    const cleanLower = clean.toLowerCase();
+
+    // 1. Try local cache / localStorage
+    const localList = loadLocalSpareParts();
+    const localMatch = localList.find(p => 
+      (p.id && p.id.toLowerCase() === cleanLower) ||
+      (p.barcode && p.barcode.toLowerCase() === cleanLower) ||
+      (p.part_number && p.part_number.toLowerCase() === cleanLower) ||
+      (p.sku && p.sku.toLowerCase() === cleanLower) ||
+      (p.remarks && p.remarks.toLowerCase().includes(cleanLower))
+    );
+    if (localMatch) {
+      return normalizeSparePartRecord(localMatch);
+    }
+
+    // 2. Query Supabase directly
+    if (isSupabaseConfigured) {
+      try {
+        // Query spare_parts by id
+        const { data: byId } = await supabase.from("spare_parts").select("*").eq("id", clean).maybeSingle();
+        if (byId) return normalizeSparePartRecord(byId);
+
+        // Query spare_parts by remarks ilike (barcodes are encoded as [BC:...])
+        const { data: byRemarks } = await supabase.from("spare_parts").select("*").ilike("remarks", `%${clean}%`).limit(1);
+        if (byRemarks && byRemarks[0]) return normalizeSparePartRecord(byRemarks[0]);
+
+        // Query spare_parts by part_number
+        const { data: byPn } = await supabase.from("spare_parts").select("*").eq("part_number", clean).limit(1);
+        if (byPn && byPn[0]) return normalizeSparePartRecord(byPn[0]);
+
+        // Query spare_parts by sku
+        const { data: bySku } = await supabase.from("spare_parts").select("*").eq("sku", clean).limit(1);
+        if (bySku && bySku[0]) return normalizeSparePartRecord(bySku[0]);
+
+        // Query spare_parts by part_name
+        const { data: byName } = await supabase.from("spare_parts").select("*").ilike("part_name", `%${clean}%`).limit(1);
+        if (byName && byName[0]) return normalizeSparePartRecord(byName[0]);
+
+        // 3. Query inbound_receivings items
+        const { data: recs } = await supabase.from("inbound_receivings").select("*");
+        if (recs && Array.isArray(recs)) {
+          for (const rec of recs) {
+            const items = typeof rec.items === "string" ? JSON.parse(rec.items) : (rec.items || []);
+            for (let idx = 0; idx < items.length; idx++) {
+              const itm = items[idx];
+              if (!itm) continue;
+              const matches = 
+                (itm.barcode && itm.barcode.toLowerCase() === cleanLower) ||
+                (itm.spare_part_id && itm.spare_part_id.toLowerCase() === cleanLower) ||
+                (itm.part_number && itm.part_number.toLowerCase() === cleanLower) ||
+                (itm.sku && itm.sku.toLowerCase() === cleanLower) ||
+                (itm.spare_part_name && itm.spare_part_name.toLowerCase() === cleanLower);
+              
+              if (matches) {
+                const synthetic: SparePart = {
+                  id: itm.spare_part_id || `sp-rec-${rec.id}-${idx}`,
+                  part_name: itm.spare_part_name || itm.part_name || "Suku Cadang Inbound",
+                  part_number: itm.part_number || "-",
+                  sku: itm.sku || "-",
+                  barcode: itm.barcode || (clean.toUpperCase().startsWith("BC-") ? clean.toUpperCase() : `BC-${clean}`),
+                  unit: itm.unit || "PCS",
+                  category: itm.category || "General Spares",
+                  maker: rec.vendor_name || "OEM / Supplier",
+                  brand: "OEM",
+                  current_stock: Number(itm.qty_received || itm.qty || itm.qty_ordered || 1),
+                  reorder_point: 5,
+                  location_id: "loc-wh-merak",
+                  location_name: "WAREHOUSE MERAK",
+                  vessel_compatibility: rec.vessel_name ? `Kapal ${rec.vessel_name}` : "Semua Armada Kapal",
+                  description: itm.keeper_notes || itm.description || `Suku cadang otomatis dari Penerimaan Inbound PO ${rec.purchase_order_num || ""}`,
+                  remarks: `[BC:${itm.barcode || clean}] [LOC:WAREHOUSE MERAK]`
+                };
+                return synthetic;
+              }
+            }
+          }
+        }
+      } catch (err) {
+        console.warn("Direct lookup in Supabase error:", err);
+      }
+    }
+
+    return null;
   },
 
   async createSparePart(data: Partial<SparePart>): Promise<SparePart> {
