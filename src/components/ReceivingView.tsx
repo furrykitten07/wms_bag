@@ -3,7 +3,7 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
-import React, { useState, useRef, useEffect } from "react";
+import React, { useState, useRef, useEffect, useMemo } from "react";
 import { 
   FileText, 
   Search, 
@@ -46,7 +46,7 @@ import {
   Save,
   Ship
 } from "lucide-react";
-import { InboundReceiving, ReceivingStatus, SparePart, UserRole, SPKWorkOrder, WarehouseLocation, Vessel } from "../types.js";
+import { InboundReceiving, ReceivingStatus, SparePart, UserRole, SPKWorkOrder, WarehouseLocation, Vessel, User, normalizeUserRole } from "../types.js";
 import { demoSPKs } from "../demoSeedData.js";
 import { api } from "../api.js";
 import { supabase } from "../supabaseClient.js";
@@ -77,6 +77,7 @@ interface ReceivingViewProps {
   locations?: WarehouseLocation[];
   vessels?: Vessel[];
   role: UserRole;
+  currentUser?: User | null;
   onAddReceiving: (rec: Partial<InboundReceiving>) => Promise<any>;
   onAddPart?: (partData: Partial<SparePart>) => Promise<any>;
   onUpdatePart?: (id: string, partData: Partial<SparePart>) => Promise<any>;
@@ -92,6 +93,7 @@ export default function ReceivingView({
   locations = [],
   vessels,
   role,
+  currentUser,
   onAddReceiving,
   onAddPart,
   onUpdatePart,
@@ -427,11 +429,134 @@ export default function ReceivingView({
   };
 
   // State for tracking active Push action per receiving record
+  // Robust check for Superadmin / Admin authority to push items to Master & Catalog
+  const isSuperAdmin = useMemo(() => {
+    const r = String(currentUser?.role || role || "").toLowerCase().trim();
+    const u = String(currentUser?.username || "").toLowerCase().trim();
+    const storageUser = typeof window !== "undefined" ? (localStorage.getItem("wms_username") || "").toLowerCase().trim() : "";
+
+    const isSuper = (
+      u === "superadmin" ||
+      u.includes("superadmin") ||
+      storageUser === "superadmin" ||
+      storageUser.includes("superadmin") ||
+      r.includes("super") ||
+      r.includes("admin") ||
+      role === UserRole.SUPER_ADMIN ||
+      role === UserRole.WAREHOUSE_ADMIN ||
+      role === ("Super Admin" as any) ||
+      role === ("SUPER_ADMIN" as any) ||
+      role === ("superadmin" as any) ||
+      normalizeUserRole(role) === UserRole.SUPER_ADMIN ||
+      (currentUser ? normalizeUserRole(currentUser.role) === UserRole.SUPER_ADMIN : false)
+    );
+
+    const isCrew = r.includes("crew") || r.includes("vessel") || role === UserRole.VESSEL_CREW;
+    return isSuper || !isCrew;
+  }, [role, currentUser]);
+
   const [pushingRecId, setPushingRecId] = useState<string | null>(null);
+
+  // Superadmin action to push ALL items across all receiving batches into Master & Catalog
+  const handlePushAllReceivingToMasterAndCatalog = async () => {
+    if (!isSuperAdmin) {
+      alert("Aksi Push ini hanya diperuntukkan bagi akun Superadmin.");
+      return;
+    }
+
+    if (!receivingList || receivingList.length === 0) {
+      alert("Tidak ada data penerimaan untuk dipush.");
+      return;
+    }
+
+    setPushingRecId("ALL");
+    try {
+      let count = 0;
+      for (const rec of receivingList) {
+        if (!rec.items || rec.items.length === 0) continue;
+        for (const itm of rec.items) {
+          const pName = (itm.spare_part_name || (itm as any).part_name || "").trim();
+          const pNum = (itm.part_number || "").trim();
+          const pId = itm.spare_part_id || (itm as any).id || "";
+          if (!pName && !pNum) continue;
+
+          let match = parts.find(p => (pId && p.id === pId) || (pNum && pNum !== "-" && pNum !== "PN-GENERIC" && p.part_number?.toLowerCase() === pNum.toLowerCase()) || (pName && p.part_name?.toLowerCase() === pName.toLowerCase()));
+          
+          let barcode = (match?.barcode || (itm as any).barcode || "").trim();
+          if (!barcode || !barcode.startsWith("BC-")) {
+            barcode = `BC-${Math.floor(10000000 + Math.random() * 90000000)}`;
+          }
+
+          const qtyIn = Number(itm.qty_received || itm.qty_ordered || (itm as any).qty || 10);
+          const finalPn = pNum || `PN-${Date.now().toString().slice(-4)}${count + 1}`;
+          const finalSku = (itm as any).sku || `SKU-${finalPn.replace(/[^a-zA-Z0-9]/g, "").slice(0, 10) || Date.now().toString().slice(-4)}`;
+          const finalUnit = itm.unit || "PCS";
+          const finalCat = (itm as any).category || "General Spares";
+          const finalLoc = (itm as any).location_id || "loc-1";
+          const finalMaker = rec.vendor_name || "OEM / Supplier";
+          const finalVessel = rec.vessel_name ? `Kapal ${rec.vessel_name}` : "Semua Armada Kapal";
+
+          if (match) {
+            const updatedPayload: Partial<SparePart> = {
+              barcode,
+              current_stock: Math.max(0, (match.current_stock || 0) + (qtyIn > 0 ? qtyIn : 0))
+            };
+            if (onUpdatePart) await onUpdatePart(match.id, updatedPayload);
+            else await api.updateSparePart(match.id, updatedPayload);
+          } else {
+            const newPartId = (pId && !pId.startsWith("temp-") && !pId.startsWith("item-")) ? pId : `sp-${Date.now()}-${count}-${Math.floor(Math.random() * 1000)}`;
+            const newPartPayload: Partial<SparePart> = {
+              id: newPartId,
+              part_name: pName || "Suku Cadang Inbound",
+              part_number: finalPn,
+              sku: finalSku,
+              barcode: barcode,
+              unit: finalUnit,
+              category: finalCat,
+              maker: finalMaker,
+              brand: "OEM",
+              minimum_stock: 2,
+              maximum_stock: 100,
+              reorder_point: 5,
+              current_stock: qtyIn > 0 ? qtyIn : 10,
+              reserved_stock: 0,
+              location_id: finalLoc,
+              vessel_compatibility: finalVessel,
+              description: itm.keeper_notes || (itm as any).description || `Suku cadang dipush dari Inbound [PO/SPK: ${rec.spk_number || rec.purchase_order_num || ''}]`
+            };
+            if (onAddPart) await onAddPart(newPartPayload);
+            else await api.createSparePart(newPartPayload);
+          }
+
+          syncNewPartToCatalog({
+            id: match?.id || pId,
+            part_name: pName || "Suku Cadang",
+            part_number: finalPn,
+            sku: finalSku,
+            barcode,
+            unit: finalUnit,
+            category: finalCat,
+            location_id: finalLoc
+          });
+          count++;
+        }
+      }
+
+      window.dispatchEvent(new Event("storage"));
+      window.dispatchEvent(new CustomEvent("catalog_updated"));
+
+      alert(`🚀 PUSH BERHASIL!\n\nSebanyak ${count} barang dari seluruh penerimaan masuk telah resmi disinkronkan & terdaftar pada:\n1. Menu "Spare Part Master"\n2. Menu "Catalog Sparepart" (Barcode & QR Code siap scan/cetak)`);
+    } catch (err: any) {
+      console.error(err);
+      alert(`Gagal push semua barang: ${err.message || "Terjadi kesalahan"}`);
+    } finally {
+      setPushingRecId(null);
+    }
+  };
 
   // Superadmin action to push all items in a receiving record directly to Spare Part Master & Catalog Sparepart
   const handlePushReceivingToMasterAndCatalog = async (rec: InboundReceiving) => {
-    if (role !== UserRole.SUPER_ADMIN) {
+    if (!isSuperAdmin) {
       alert("Aksi Push ini hanya diperuntukkan bagi akun Superadmin.");
       return;
     }
@@ -566,7 +691,7 @@ export default function ReceivingView({
 
   // Superadmin action to push a single item directly to Spare Part Master & Catalog Sparepart
   const handlePushSingleItemToMasterAndCatalog = async (itm: any, rec: InboundReceiving) => {
-    if (role !== UserRole.SUPER_ADMIN) {
+    if (!isSuperAdmin) {
       alert("Aksi Push ini hanya diperuntukkan bagi akun Superadmin.");
       return;
     }
@@ -1443,19 +1568,42 @@ export default function ReceivingView({
           </p>
         </div>
 
-        {/* Penerimaan Goods Trigger */}
-        {role !== UserRole.VESSEL_CREW && (
-          <button
-            onClick={() => {
-              setReceivingSourceMode("spk");
-              setIsNewRecOpen(true);
-            }}
-            className="flex items-center justify-center gap-2 bg-blue-600 hover:bg-blue-500 text-white font-mono text-xs uppercase font-extrabold px-5 py-3 rounded-lg shadow-md hover:shadow-blue-500/20 transition-all cursor-pointer"
-          >
-            <ClipboardCheck className="w-4.5 h-4.5 text-blue-200" />
-            Terima Barang Datang (List SPK)
-          </button>
-        )}
+        {/* Action Buttons */}
+        <div className="flex items-center gap-2.5 flex-wrap">
+          {isSuperAdmin && (
+            <button
+              type="button"
+              disabled={pushingRecId === "ALL"}
+              onClick={() => {
+                if (receivingList.length === 0) {
+                  alert("Tidak ada data penerimaan barang masuk.");
+                  return;
+                }
+                if (confirm(`Push semua barang dari ${receivingList.length} penerimaan ke Spare Part Master & Catalog Sparepart?`)) {
+                  handlePushAllReceivingToMasterAndCatalog();
+                }
+              }}
+              className="flex items-center justify-center gap-2 bg-gradient-to-r from-indigo-700 via-indigo-600 to-blue-600 hover:from-indigo-600 hover:to-blue-500 text-white font-mono text-xs uppercase font-extrabold px-4 py-3 rounded-lg shadow-md hover:shadow-indigo-500/25 transition-all cursor-pointer border border-indigo-400/40 disabled:opacity-50"
+              title="Push semua item dari seluruh penerimaan masuk ke Master & Catalog"
+            >
+              <UploadCloud className="w-4.5 h-4.5 text-white" />
+              <span>{pushingRecId === "ALL" ? "Pushing Semua..." : "Push Semua ke Master & Catalog"}</span>
+            </button>
+          )}
+
+          {role !== UserRole.VESSEL_CREW && (
+            <button
+              onClick={() => {
+                setReceivingSourceMode("spk");
+                setIsNewRecOpen(true);
+              }}
+              className="flex items-center justify-center gap-2 bg-blue-600 hover:bg-blue-500 text-white font-mono text-xs uppercase font-extrabold px-5 py-3 rounded-lg shadow-md hover:shadow-blue-500/20 transition-all cursor-pointer"
+            >
+              <ClipboardCheck className="w-4.5 h-4.5 text-blue-200" />
+              Terima Barang Datang (List SPK)
+            </button>
+          )}
+        </div>
       </div>
 
       {/* Advanced Search & Filter Bar */}
@@ -1749,12 +1897,12 @@ export default function ReceivingView({
                       <td className="p-3.5 text-right no-print relative">
                         <div className="flex items-center justify-end gap-2 flex-wrap">
                           {/* Push to Master & Catalog button for Superadmin */}
-                          {role === UserRole.SUPER_ADMIN && (
+                          {isSuperAdmin && (
                             <button
                               type="button"
                               disabled={pushingRecId === item.id}
                               onClick={() => handlePushReceivingToMasterAndCatalog(item)}
-                              className="px-2.5 py-1.5 bg-gradient-to-r from-indigo-600 to-blue-600 hover:from-indigo-500 hover:to-blue-500 disabled:opacity-50 text-white rounded-lg text-[11px] font-extrabold flex items-center gap-1.5 transition-all cursor-pointer shadow-xs hover:shadow active:scale-95 tracking-wide shrink-0"
+                              className="px-3 py-1.5 bg-gradient-to-r from-indigo-600 via-indigo-600 to-blue-600 hover:from-indigo-500 hover:to-blue-500 disabled:opacity-50 text-white rounded-lg text-[11px] font-extrabold flex items-center gap-1.5 transition-all cursor-pointer shadow-md hover:shadow-lg active:scale-95 tracking-wide shrink-0 border border-indigo-400/40"
                               title="Push semua barang masuk ini ke Catalog Sparepart & Spare Part Master (Superadmin)"
                             >
                               <UploadCloud className="w-3.5 h-3.5 text-white" />
@@ -2131,7 +2279,7 @@ export default function ReceivingView({
                         <ClipboardCheck className="w-4 h-4 text-blue-600" />
                         Daftar Barang SPK &amp; Pengecekan Fisik Gudang
                       </h4>
-                      {role === UserRole.SUPER_ADMIN && (
+                      {isSuperAdmin && (
                         <button
                           type="button"
                           disabled={pushingRecId === activeReceiving.id}
@@ -2257,7 +2405,7 @@ export default function ReceivingView({
                               </div>
 
                               {/* Single Item Push for Superadmin */}
-                              {role === UserRole.SUPER_ADMIN && (
+                              {isSuperAdmin && (
                                 <div className="flex flex-col justify-end">
                                   <button
                                     type="button"

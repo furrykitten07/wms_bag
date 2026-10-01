@@ -1102,6 +1102,7 @@ export default function App() {
               locations={locations}
               vessels={vessels}
               role={currentUser!.role}
+              currentUser={currentUser}
               onAddReceiving={handleAddReceiving}
               onAddPart={handleAddPart}
               onUpdatePart={handleUpdatePart}
