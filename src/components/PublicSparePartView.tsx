@@ -211,7 +211,7 @@ export default function PublicSparePartView({ partId, onBackToApp }: PublicSpare
             </div>
             <div>
               <h1 className="text-xs font-black tracking-wider uppercase text-white font-mono flex items-center gap-1.5">
-                PT. BARUNA ADI GUNA
+                PT Pelayaran Bahtera Adhiguna
                 <span className="hidden sm:inline-block text-[9px] bg-blue-500/20 text-blue-400 border border-blue-500/30 px-1.5 py-0.2 rounded font-mono">
                   WMS LIVE
                 </span>
@@ -261,7 +261,7 @@ export default function PublicSparePartView({ partId, onBackToApp }: PublicSpare
               Memuat Informasi Suku Cadang...
             </p>
             <p className="text-xs text-slate-500">
-              Menghubungkan ke database WMS PT. Baruna Adi Guna...
+              Menghubungkan ke database WMS PT Pelayaran Bahtera Adhiguna...
             </p>
           </div>
         ) : errorMsg || !part ? (
@@ -294,7 +294,7 @@ export default function PublicSparePartView({ partId, onBackToApp }: PublicSpare
                     Suku Cadang Terverifikasi Resmi
                   </span>
                   <span className="text-[10px] text-emerald-400/80 font-medium print:text-emerald-800">
-                    Tercatat resmi dalam Master Database WMS PT. Baruna Adi Guna
+                    Tercatat resmi dalam Master Database WMS PT Pelayaran Bahtera Adhiguna
                   </span>
                 </div>
               </div>
@@ -380,7 +380,7 @@ export default function PublicSparePartView({ partId, onBackToApp }: PublicSpare
 
                   {/* Description Box */}
                   <div className="bg-slate-900/80 border border-slate-750 rounded-xl p-3.5 text-xs text-slate-300 leading-relaxed font-sans italic print:bg-slate-50 print:border-slate-200 print:text-slate-700">
-                    "{part.description || `${part.part_name} terdaftar dalam database persediaan suku cadang PT. Baruna Adi Guna.`}"
+                    "{part.description || `${part.part_name} terdaftar dalam database persediaan suku cadang PT Pelayaran Bahtera Adhiguna.`}"
                   </div>
 
                 </div>
@@ -518,7 +518,7 @@ export default function PublicSparePartView({ partId, onBackToApp }: PublicSpare
 
       {/* Page Footer */}
       <footer className="border-t border-slate-800 bg-slate-950/80 py-4 px-6 text-center text-[11px] text-slate-500 font-mono mt-8 no-print">
-        &copy; {new Date().getFullYear()} PT. BARUNA ADI GUNA &bull; Warehouse Management System (WMS)
+        &copy; {new Date().getFullYear()} PT Pelayaran Bahtera Adhiguna &bull; Warehouse Management System (WMS)
       </footer>
 
     </div>
