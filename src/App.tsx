@@ -410,6 +410,65 @@ export default function App() {
 
   // RECEIVING ACTION: SIMULATE NEW ARRIVAL DELIVERY
   const handleAddReceiving = async (recData: Partial<InboundReceiving>) => {
+    // 1. Proactively ensure every item in the inbound receiving is registered in Spare Part Master
+    if (recData.items && Array.isArray(recData.items)) {
+      for (let i = 0; i < recData.items.length; i++) {
+        const itm = recData.items[i];
+        if (!itm) continue;
+        const pName = (itm.spare_part_name || itm.part_name || "").trim();
+        const pNum = (itm.part_number || "").trim();
+        const pId = itm.spare_part_id || "";
+
+        let match = parts.find(p => pId && p.id === pId);
+        if (!match && pNum && pNum !== "-" && pNum !== "PN-GENERIC") {
+          match = parts.find(p => p.part_number?.toLowerCase() === pNum.toLowerCase());
+        }
+        if (!match && pName) {
+          match = parts.find(p => p.part_name?.toLowerCase() === pName.toLowerCase());
+        }
+
+        if (!match && (pName || pNum)) {
+          const generatedBc = itm.barcode || `BC-${Math.floor(10000000 + Math.random() * 90000000)}`;
+          const cleanPn = pNum || `PN-${Date.now().toString().slice(-5)}${i + 1}`;
+          const newPartPayload: Partial<SparePart> = {
+            id: pId && !pId.startsWith("temp-") && !pId.startsWith("item-") ? pId : `sp-${Date.now()}-${i}-${Math.floor(Math.random() * 1000)}`,
+            part_name: pName || "Suku Cadang Inbound",
+            part_number: cleanPn,
+            sku: itm.sku || `SKU-${cleanPn.replace(/[^a-zA-Z0-9]/g, "").slice(0, 10) || Date.now().toString().slice(-4)}`,
+            barcode: generatedBc,
+            unit: itm.unit || "PCS",
+            category: itm.category || "General Spares",
+            maker: recData.vendor_name || "OEM / Supplier",
+            brand: "OEM",
+            minimum_stock: 2,
+            maximum_stock: 100,
+            reorder_point: 5,
+            current_stock: Number(itm.qty_received || itm.qty || itm.qty_ordered || 0),
+            location_id: itm.location_id || "loc-1",
+            vessel_compatibility: recData.vessel_name ? `Kapal ${recData.vessel_name}` : "Semua Armada Kapal",
+            description: itm.description || itm.keeper_notes || `Suku cadang otomatis dari penerimaan Inbound PO ${recData.purchase_order_num || ""}`
+          };
+          try {
+            await handleAddPart(newPartPayload);
+            itm.spare_part_id = newPartPayload.id;
+            itm.barcode = generatedBc;
+          } catch (pErr) {
+            console.warn("Failed to auto-create spare part for inbound item:", pErr);
+          }
+        } else if (match && !match.barcode) {
+          const generatedBc = `BC-${Math.floor(10000000 + Math.random() * 90000000)}`;
+          try {
+            await handleUpdatePart(match.id, { barcode: generatedBc });
+            itm.barcode = generatedBc;
+          } catch (uErr) {
+            console.warn("Failed to update barcode for existing spare part:", uErr);
+          }
+        } else if (match && match.barcode) {
+          itm.barcode = match.barcode;
+        }
+      }
+    }
+
     const created = await api.createReceiving(recData);
     if (created && created.id) {
       setReceivingList(prev => [created, ...prev.filter(r => r && r.id !== created.id)]);
@@ -1028,6 +1087,7 @@ export default function App() {
           {currentTab === "sparepart-catalog" && (
             <SparePartCatalogView 
               parts={parts} 
+              receivingList={receivingList}
               onAddPart={handleAddPart}
               onUpdatePart={handleUpdatePart}
             />

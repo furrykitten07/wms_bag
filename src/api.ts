@@ -314,7 +314,163 @@ function saveLocalDispatches(data: OutboundDispatch[]) {
   } catch (e) {}
 }
 
-let localSpareParts: SparePart[] = [...demoSpareParts];
+function loadLocalSpareParts(): SparePart[] {
+  try {
+    const saved = localStorage.getItem("wms_local_spare_parts");
+    if (saved) {
+      const parsed = JSON.parse(saved);
+      if (Array.isArray(parsed) && parsed.length > 0) return parsed;
+    }
+  } catch (e) {}
+  return [...demoSpareParts];
+}
+
+function saveLocalSpareParts(data: SparePart[]) {
+  try {
+    localStorage.setItem("wms_local_spare_parts", JSON.stringify(data));
+  } catch (e) {}
+}
+
+let localSpareParts: SparePart[] = loadLocalSpareParts();
+
+// Helper to auto-create and auto-assign unique barcodes for items received in Inbound
+function ensureSparePartsFromInboundItems(
+  items: any[],
+  vendorName?: string,
+  poNum?: string
+): { syncedParts: SparePart[]; updatedItems: any[] } {
+  if (!items || !Array.isArray(items) || items.length === 0) {
+    return { syncedParts: [], updatedItems: items || [] };
+  }
+
+  const barcodeCache = (() => {
+    try {
+      const s = localStorage.getItem("wms_part_barcode_cache");
+      return s ? JSON.parse(s) : {};
+    } catch {
+      return {};
+    }
+  })();
+
+  let cacheChanged = false;
+  let partsChanged = false;
+  const createdOrUpdatedParts: SparePart[] = [];
+
+  const updatedItems = items.map((itm: any, idx: number) => {
+    if (!itm) return itm;
+    const pName = (itm.spare_part_name || itm.part_name || "").trim();
+    const pNum = (itm.part_number || "").trim();
+    const pId = itm.spare_part_id || itm.id || "";
+
+    // Match existing part in localSpareParts
+    let part = localSpareParts.find(p => pId && p.id === pId);
+    if (!part && pNum && pNum !== "-" && pNum !== "PN-GENERIC") {
+      part = localSpareParts.find(p => p.part_number?.toLowerCase() === pNum.toLowerCase());
+    }
+    if (!part && pName) {
+      part = localSpareParts.find(p => p.part_name?.toLowerCase() === pName.toLowerCase());
+    }
+
+    const qtyIn = Number(itm.qty_received || itm.qty || itm.qty_ordered || 0);
+
+    if (part) {
+      let barcode = (part.barcode || barcodeCache[part.id] || "").trim();
+      if (!barcode) {
+        barcode = `BC-${Math.floor(10000000 + Math.random() * 90000000)}`;
+        barcodeCache[part.id] = barcode;
+        cacheChanged = true;
+      }
+      const updatedPart: SparePart = {
+        ...part,
+        barcode: barcode,
+        current_stock: Math.max(0, (part.current_stock || 0) + (qtyIn > 0 ? qtyIn : 0)),
+        updated_at: new Date().toISOString()
+      };
+      localSpareParts = localSpareParts.map(p => p.id === part!.id ? updatedPart : p);
+      partsChanged = true;
+      createdOrUpdatedParts.push(updatedPart);
+
+      return {
+        ...itm,
+        spare_part_id: updatedPart.id,
+        spare_part_name: updatedPart.part_name,
+        part_number: updatedPart.part_number,
+        barcode: updatedPart.barcode
+      };
+    } else if (pName || pNum) {
+      const newPartId = (pId && !pId.startsWith("temp-") && !pId.startsWith("item-")) ? pId : `sp-${Date.now()}-${idx}-${Math.floor(Math.random() * 1000)}`;
+      const generatedBarcode = itm.barcode || barcodeCache[newPartId] || `BC-${Math.floor(10000000 + Math.random() * 90000000)}`;
+      barcodeCache[newPartId] = generatedBarcode;
+      cacheChanged = true;
+
+      const cleanPn = pNum || `PN-${Date.now().toString().slice(-5)}${idx + 1}`;
+      const cleanSku = itm.sku || `SKU-${cleanPn.replace(/[^a-zA-Z0-9]/g, "").slice(0, 10) || Date.now().toString().slice(-4)}`;
+
+      const newPart: SparePart = {
+        id: newPartId,
+        part_name: pName || "Suku Cadang Inbound",
+        part_number: cleanPn,
+        sku: cleanSku,
+        barcode: generatedBarcode,
+        unit: itm.unit || "PCS",
+        category: itm.category || "General Spares",
+        maker: itm.maker || itm.brand || vendorName || "OEM / Supplier",
+        brand: itm.brand || "OEM",
+        minimum_stock: 2,
+        maximum_stock: 100,
+        reorder_point: 5,
+        current_stock: qtyIn > 0 ? qtyIn : 10,
+        reserved_stock: 0,
+        location_id: itm.location_id || "loc-1",
+        vessel_compatibility: itm.vessel_name ? `Kapal ${itm.vessel_name}` : "Semua Armada Kapal",
+        description: itm.description || itm.keeper_notes || `Suku cadang otomatis terdaftar dari Inbound PO ${poNum || ""}`,
+        created_at: new Date().toISOString(),
+        updated_at: new Date().toISOString()
+      };
+
+      localSpareParts = [newPart, ...localSpareParts];
+      partsChanged = true;
+      createdOrUpdatedParts.push(newPart);
+
+      return {
+        ...itm,
+        spare_part_id: newPart.id,
+        spare_part_name: newPart.part_name,
+        part_number: newPart.part_number,
+        barcode: newPart.barcode
+      };
+    }
+
+    return itm;
+  });
+
+  if (partsChanged) {
+    saveLocalSpareParts(localSpareParts);
+    if (typeof window !== "undefined") {
+      window.dispatchEvent(new Event("storage"));
+      window.dispatchEvent(new Event("catalog_updated"));
+    }
+  }
+  if (cacheChanged) {
+    try {
+      localStorage.setItem("wms_part_barcode_cache", JSON.stringify(barcodeCache));
+    } catch {}
+  }
+
+  // Also sync to Supabase if connected
+  if (isSupabaseConfigured() && createdOrUpdatedParts.length > 0) {
+    (async () => {
+      try {
+        const rows = createdOrUpdatedParts.map(p => sanitizeRecord(p, VALID_PART_COLUMNS));
+        await supabase.from("spare_parts").upsert(rows);
+      } catch (err) {
+        console.warn("Background sync of inbound parts to Supabase failed:", err);
+      }
+    })();
+  }
+
+  return { syncedParts: createdOrUpdatedParts, updatedItems };
+}
 let localSPKs: SPKWorkOrder[] = [...demoSPKs];
 let localMaterialRequests: MaterialRequest[] = [...demoMaterialRequests];
 let localMaterialRequestsTUG6: MaterialRequest[] = deriveTUG6FromTUG5(localMaterialRequests);
@@ -497,25 +653,35 @@ function getLocalFallbackData<T>(url: string, options: RequestInit = {}): T {
       updated_at: new Date().toISOString(),
       ...body
     };
-    localSpareParts = [newPart, ...localSpareParts];
+    localSpareParts = [newPart, ...localSpareParts.filter(p => p.id !== newPart.id)];
+    saveLocalSpareParts(localSpareParts);
     return newPart as any;
   }
   if (path.startsWith("/api/inventory/") && options.method === "PUT") {
     const id = path.split("/").pop();
     localSpareParts = localSpareParts.map(p => p.id === id ? { ...p, ...body, updated_at: new Date().toISOString() } : p);
+    saveLocalSpareParts(localSpareParts);
     const updated = localSpareParts.find(p => p.id === id);
     return updated as any;
   }
   if (path.startsWith("/api/inventory/") && options.method === "DELETE") {
     const id = path.split("/").pop();
     localSpareParts = localSpareParts.filter(p => p.id !== id);
+    saveLocalSpareParts(localSpareParts);
     return { success: true, message: "Deleted" } as any;
   }
-  if (path.startsWith("/api/inventory")) return localSpareParts as any;
+  if (path.startsWith("/api/inventory")) return loadLocalSpareParts() as any;
   if (path.startsWith("/api/warehouse/locations")) return localLocations as any;
   if (path.startsWith("/api/vendors")) return localVendors as any;
   if (path.startsWith("/api/spk")) return localSPKs as any;
   if (path === "/api/receiving" && options.method === "POST") {
+    // Automatically ensure all items in inbound receiving are registered in spare_parts and have unique barcodes
+    const { updatedItems } = ensureSparePartsFromInboundItems(
+      body.items || [],
+      body.vendor_name,
+      body.purchase_order_num || body.spk_number
+    );
+
     const newRec: InboundReceiving = {
       id: `rec-${Date.now()}`,
       purchase_order_num: body.purchase_order_num || `PO-2026-${Math.floor(10000 + Math.random() * 90000)}`,
@@ -525,7 +691,7 @@ function getLocalFallbackData<T>(url: string, options: RequestInit = {}): T {
       vendor_id: body.vendor_id || "vnd-1",
       vendor_name: body.vendor_name || "Vendor Logistik BAG",
       vessel_name: body.vessel_name || "",
-      items: (body.items || []).map((itm: any) => ({
+      items: updatedItems.map((itm: any) => ({
         ...itm,
         vessel_name: itm.vessel_name || body.vessel_name || ""
       })),
@@ -1164,7 +1330,15 @@ async function fetcher<T>(url: string, options: RequestInit = {}): Promise<T> {
         const photoUrl = body.photo_evidence_url || "";
         const vesselName = body.vessel_name || "";
         const rawItems = Array.isArray(body.items) ? body.items : [];
-        const itemsWithMeta = rawItems.map((itm: any, idx: number) => {
+        
+        // Auto ensure all items in inbound receiving are registered in spare_parts and have unique barcodes
+        const { updatedItems: verifiedItems } = ensureSparePartsFromInboundItems(
+          rawItems,
+          body.vendor_name,
+          body.purchase_order_num || body.spk_number
+        );
+
+        const itemsWithMeta = verifiedItems.map((itm: any, idx: number) => {
           return {
             ...itm,
             vessel_name: itm.vessel_name || vesselName,
@@ -1368,6 +1542,7 @@ async function fetcher<T>(url: string, options: RequestInit = {}): Promise<T> {
         }
         const savedPart = { ...newPart, ...data, barcode: generatedBarcode };
         localSpareParts = [savedPart, ...localSpareParts.filter(p => p.id !== savedPart.id)];
+        saveLocalSpareParts(localSpareParts);
         return savedPart as any;
       }
       if (path.startsWith("/api/inventory/") && method === "PUT") {
@@ -1390,10 +1565,12 @@ async function fetcher<T>(url: string, options: RequestInit = {}): Promise<T> {
         if (error) {
           console.warn("Supabase spare_parts update error, updating local only:", error);
           localSpareParts = localSpareParts.map(p => p.id === id ? { ...p, ...payload } : p);
+          saveLocalSpareParts(localSpareParts);
           return { ...existing, ...payload } as any;
         }
         const updatedPart = { ...payload, ...data, barcode: finalBarcode };
         localSpareParts = localSpareParts.map(p => p.id === id ? updatedPart : p);
+        saveLocalSpareParts(localSpareParts);
         return updatedPart as any;
       }
       if (path.startsWith("/api/inventory/") && method === "DELETE") {
@@ -1404,6 +1581,7 @@ async function fetcher<T>(url: string, options: RequestInit = {}): Promise<T> {
           throw new Error(error.message);
         }
         localSpareParts = localSpareParts.filter(p => p.id !== id);
+        saveLocalSpareParts(localSpareParts);
         return { success: true, message: "Deleted" } as any;
       }
 

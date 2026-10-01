@@ -323,7 +323,7 @@ export default function ReceivingView({
     setSignatureDataUrl("");
   };
 
-  // Sync newly typed part to Catalog Sparepart (localStorage and storage events)
+  // Sync newly typed part to Catalog Sparepart & Local Master (localStorage and storage events)
   const syncNewPartToCatalog = (part: {
     id: string;
     part_name: string;
@@ -338,12 +338,45 @@ export default function ReceivingView({
     try {
       const generatedBarcode = part.barcode || `BC-${Math.floor(10000000 + Math.random() * 90000000)}`;
       
-      // Save barcode in cache
+      // 1. Save barcode in barcode cache
       try {
         const cacheSaved = localStorage.getItem("wms_part_barcode_cache");
         const cache = cacheSaved ? JSON.parse(cacheSaved) : {};
         cache[part.id] = generatedBarcode;
         localStorage.setItem("wms_part_barcode_cache", JSON.stringify(cache));
+      } catch (e) {}
+
+      // 2. Also ensure saved into wms_local_spare_parts
+      try {
+        const partsSaved = localStorage.getItem("wms_local_spare_parts");
+        let localList = partsSaved ? JSON.parse(partsSaved) : [];
+        if (!Array.isArray(localList)) localList = [];
+        const matchIdx = localList.findIndex((p: any) => p && (p.id === part.id || p.part_number === part.part_number));
+        const newPartObj = {
+          id: part.id,
+          part_name: part.part_name,
+          part_number: part.part_number,
+          sku: part.sku || `SKU-${part.part_number}`,
+          barcode: generatedBarcode,
+          unit: part.unit || "PCS",
+          category: part.category || "General Spares",
+          location_id: part.location_id || "loc-1",
+          description: part.description || `${part.part_name} — Suku cadang terdaftar dari Inbound Gudang.`,
+          maker: "OEM / Supplier",
+          current_stock: 10,
+          minimum_stock: 2,
+          maximum_stock: 100,
+          reorder_point: 5,
+          vessel_compatibility: "Semua Armada Kapal",
+          created_at: new Date().toISOString(),
+          updated_at: new Date().toISOString()
+        };
+        if (matchIdx !== -1) {
+          localList[matchIdx] = { ...localList[matchIdx], ...newPartObj };
+        } else {
+          localList.unshift(newPartObj);
+        }
+        localStorage.setItem("wms_local_spare_parts", JSON.stringify(localList));
       } catch (e) {}
 
       const saved = localStorage.getItem("spare_part_catalog_data");
@@ -382,9 +415,10 @@ export default function ReceivingView({
 
         const updated = [newCatItem, ...currentCatalog];
         localStorage.setItem("spare_part_catalog_data", JSON.stringify(updated));
-        window.dispatchEvent(new Event("storage"));
-        window.dispatchEvent(new CustomEvent("catalog_updated", { detail: newCatItem }));
       }
+
+      window.dispatchEvent(new Event("storage"));
+      window.dispatchEvent(new CustomEvent("catalog_updated"));
     } catch (err) {
       console.error("Failed to sync new part to catalog:", err);
     }
@@ -832,7 +866,7 @@ export default function ReceivingView({
       let hasDiscrepancy = false;
       let allRejected = true;
 
-      const itemsToSave = spkItemsCheck.map(item => {
+      const itemsToSave = spkItemsCheck.map((item, idx) => {
         const qtyOrdered = Number(item.qty_spk) || 0;
         const qtyReceived = Number(item.qty_received) || 0;
         const qtyRejected = Math.max(0, qtyOrdered - qtyReceived);
@@ -853,10 +887,33 @@ export default function ReceivingView({
           ? `Terdapat selisih QTY fisik (-${qtyRejected})` 
           : "Pemeriksaan fisik barang oleh penjaga gudang sesuai";
 
+        const pNum = (item.part_number || "").trim();
+        const pName = (item.spare_part_name || "").trim();
+        const existingPart = parts.find(p => (item.spare_part_id && p.id === item.spare_part_id) || (pNum && pNum !== "-" && p.part_number?.toLowerCase() === pNum.toLowerCase()) || (pName && p.part_name?.toLowerCase() === pName.toLowerCase()));
+
+        let resolvedBarcode = existingPart?.barcode || (item as any).barcode;
+        if (!resolvedBarcode) {
+          resolvedBarcode = `BC-${Math.floor(10000000 + Math.random() * 90000000)}`;
+        }
+
+        // Auto-register to catalog if new
+        if (!existingPart && (pName || pNum)) {
+          const newPartId = (item.spare_part_id && !item.spare_part_id.startsWith("temp-") && !item.spare_part_id.startsWith("item-")) ? item.spare_part_id : `sp-${Date.now()}-${idx}-${Math.floor(Math.random() * 1000)}`;
+          syncNewPartToCatalog({
+            id: newPartId,
+            part_name: pName || "Suku Cadang SPK",
+            part_number: pNum || `PN-${Date.now().toString().slice(-4)}`,
+            barcode: resolvedBarcode,
+            category: "Main Engine Parts",
+            description: `Suku cadang dari penerimaan SPK ${selectedSpkNumber}`
+          });
+        }
+
         return {
-          spare_part_id: item.spare_part_id,
+          spare_part_id: existingPart?.id || item.spare_part_id,
           spare_part_name: item.spare_part_name,
           part_number: item.part_number,
+          barcode: resolvedBarcode,
           qty_ordered: qtyOrdered,
           qty_received: qtyReceived,
           qty_rejected: qtyRejected,

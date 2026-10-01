@@ -58,6 +58,7 @@ export interface CatalogItem {
 
 interface SparePartCatalogViewProps {
   parts?: SparePart[];
+  receivingList?: any[];
   onAddPart?: (part: Partial<SparePart>) => Promise<any>;
   onUpdatePart?: (id: string, part: Partial<SparePart>) => Promise<any>;
 }
@@ -176,6 +177,7 @@ export function getPublicSparePartUrl(id: string): string {
 
 export default function SparePartCatalogView({ 
   parts = [],
+  receivingList = [],
   onAddPart,
   onUpdatePart 
 }: SparePartCatalogViewProps) {
@@ -195,15 +197,63 @@ export default function SparePartCatalogView({
     };
   }, []);
 
-  // Construct allCatalogItems directly from Spare Part Master (`parts`), ensuring 100% unique barcodes
+  // Construct allCatalogItems directly from Spare Part Master (`parts`) & Inbound Receiving items
   const allCatalogItems = useMemo<CatalogItem[]>(() => {
-    if (!parts || parts.length === 0) return [];
+    // 1. Combine master parts and any items from Inbound Receiving
+    const combinedParts: SparePart[] = [...(parts || [])];
+    const existingIds = new Set(combinedParts.map(p => p.id));
+    const existingPns = new Set(combinedParts.map(p => (p.part_number || "").toLowerCase().trim()).filter(Boolean));
+    const existingNames = new Set(combinedParts.map(p => (p.part_name || "").toLowerCase().trim()).filter(Boolean));
 
     const barcodeCache = getBarcodeCache();
     const usedBarcodes = new Set<string>();
     let cacheChanged = false;
 
-    const items: CatalogItem[] = parts.map((p, idx) => {
+    if (receivingList && Array.isArray(receivingList)) {
+      receivingList.forEach(rec => {
+        if (!rec || !rec.items) return;
+        rec.items.forEach((itm: any, idx: number) => {
+          if (!itm) return;
+          const pId = itm.spare_part_id || "";
+          const pNum = (itm.part_number || "").trim();
+          const pName = (itm.spare_part_name || itm.part_name || "").trim();
+
+          const alreadyIn = (pId && existingIds.has(pId)) ||
+            (pNum && pNum !== "-" && existingPns.has(pNum.toLowerCase())) ||
+            (pName && existingNames.has(pName.toLowerCase()));
+
+          if (!alreadyIn && (pName || pNum)) {
+            const fallbackId = (pId && !pId.startsWith("temp-") && !pId.startsWith("item-")) ? pId : `sp-rec-${rec.id || 'inbound'}-${idx}`;
+            const cleanPn = pNum || `PN-${Date.now().toString().slice(-4)}`;
+            const cleanBarcode = itm.barcode || barcodeCache[fallbackId] || `BC-${Math.floor(10000000 + Math.random() * 90000000)}`;
+
+            const syntheticPart: SparePart = {
+              id: fallbackId,
+              part_name: pName || "Suku Cadang Inbound",
+              part_number: cleanPn,
+              sku: itm.sku || `SKU-${cleanPn.replace(/[^a-zA-Z0-9]/g, "").slice(0, 8)}`,
+              barcode: cleanBarcode,
+              unit: itm.unit || "PCS",
+              category: itm.category || "General Spares",
+              maker: rec.vendor_name || "OEM / Supplier",
+              current_stock: Number(itm.qty_received || itm.qty || itm.qty_ordered || 0),
+              location_id: itm.location_id || "loc-1",
+              vessel_compatibility: rec.vessel_name ? `Kapal ${rec.vessel_name}` : "Semua Armada Kapal",
+              description: itm.keeper_notes || itm.description || `Suku cadang otomatis dari Penerimaan Inbound PO ${rec.purchase_order_num || ""}`
+            };
+
+            combinedParts.push(syntheticPart);
+            existingIds.add(fallbackId);
+            if (cleanPn) existingPns.add(cleanPn.toLowerCase());
+            if (pName) existingNames.add(pName.toLowerCase());
+          }
+        });
+      });
+    }
+
+    if (combinedParts.length === 0) return [];
+
+    const items: CatalogItem[] = combinedParts.map((p, idx) => {
       // 1. Resolve distinct barcode
       let bc = (p.barcode || "").trim();
       
@@ -278,7 +328,7 @@ export default function SparePartCatalogView({
     }
 
     return items;
-  }, [parts, customMeta]);
+  }, [parts, receivingList, customMeta]);
 
   // Filters state
   const [searchQuery, setSearchQuery] = useState("");
