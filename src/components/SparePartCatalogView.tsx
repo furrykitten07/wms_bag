@@ -31,7 +31,8 @@ import {
   MapPin, 
   ShieldCheck,
   Copy,
-  ExternalLink
+  ExternalLink,
+  Building2
 } from "lucide-react";
 
 import { SparePart } from "../types.js";
@@ -53,6 +54,7 @@ export interface CatalogItem {
   weight_kg: number;
   current_stock: number;
   location_id?: string;
+  location_name?: string;
   reorder_point?: number;
 }
 
@@ -63,8 +65,18 @@ interface SparePartCatalogViewProps {
   onUpdatePart?: (id: string, part: Partial<SparePart>) => Promise<any>;
 }
 
-// Clean SVG Barcode Graphic Component
-export function BarcodeGraphic({ code, height = 32, width = 140 }: { code: string; height?: number; width?: number }) {
+// Clean SVG Barcode Graphic Component with embedded Location
+export function BarcodeGraphic({ 
+  code, 
+  locationName,
+  height = 32, 
+  width = 140 
+}: { 
+  code: string; 
+  locationName?: string;
+  height?: number; 
+  width?: number 
+}) {
   const bars = useMemo(() => {
     const clean = String(code || "BC-00000000").replace(/[^a-zA-Z0-9]/g, "");
     const pattern: number[] = [2, 1, 1, 2]; // Start guard
@@ -127,6 +139,11 @@ export function BarcodeGraphic({ code, height = 32, width = 140 }: { code: strin
       <span className="text-[9.5px] font-mono font-bold tracking-[0.22em] text-slate-900 mt-1">
         {code}
       </span>
+      {locationName && (
+        <span className="text-[8.5px] font-sans font-black uppercase tracking-wider px-2 py-0.5 mt-1 rounded bg-slate-900 text-amber-300 shadow-2xs">
+          📍 {locationName}
+        </span>
+      )}
     </div>
   );
 }
@@ -304,6 +321,18 @@ export default function SparePartCatalogView({
         "Engine Parts"
       ];
 
+      let locName = "WAREHOUSE MERAK";
+      if (meta.location_name) {
+        locName = meta.location_name;
+      } else if (p.remarks && p.remarks.includes("[LOC:")) {
+        const matchLoc = p.remarks.match(/\[LOC:([^\]]+)\]/);
+        if (matchLoc) locName = matchLoc[1].trim();
+      } else if ((p as any).location_name) {
+        locName = (p as any).location_name;
+      } else if (p.location_id === "loc-kantor-pusat" || String(p.location_id).toLowerCase().includes("pusat")) {
+        locName = "KANTOR PUSAT BAG";
+      }
+
       return {
         id: p.id,
         part_name: p.part_name || "Suku Cadang",
@@ -313,12 +342,13 @@ export default function SparePartCatalogView({
         description: p.description || p.remarks || `${p.part_name} — Suku cadang terdaftar dalam Spare Part Master.`,
         unit: p.unit || "PCS",
         hierarchy: hierarchy,
-        specification: meta.specification || p.specification || `Rak Penyimpanan: ${p.location_id || 'Depot Utama'}, Limit RP: ${p.reorder_point || 0}`,
+        specification: meta.specification || p.specification || `Lokasi: ${locName}, Limit RP: ${p.reorder_point || 0}`,
         manufacturer: meta.manufacturer || p.maker || p.brand || p.vendor_id || "Vendor Maritim BAg",
         vessel_compatibility: meta.vessel_compatibility || p.vessel_compatibility || "Semua Armada Kapal",
         weight_kg: meta.weight_kg !== undefined ? meta.weight_kg : (Number((p as any).weight_kg) || 1.0),
         current_stock: p.current_stock ?? 0,
-        location_id: p.location_id,
+        location_id: locName === "KANTOR PUSAT BAG" ? "loc-kantor-pusat" : "loc-wh-merak",
+        location_name: locName,
         reorder_point: p.reorder_point
       };
     });
@@ -359,7 +389,7 @@ export default function SparePartCatalogView({
   const [newVesselCompatibility, setNewVesselCompatibility] = useState("Semua Armada Kapal");
   const [newWeight, setNewWeight] = useState("1.0");
   const [newInitialStock, setNewInitialStock] = useState("10");
-  const [newLocationId, setNewLocationId] = useState("loc-1");
+  const [newLocationChoice, setNewLocationChoice] = useState<"WAREHOUSE MERAK" | "KANTOR PUSAT BAG">("WAREHOUSE MERAK");
 
   const [validationError, setValidationError] = useState("");
   const [editValidationError, setEditValidationError] = useState("");
@@ -430,7 +460,7 @@ export default function SparePartCatalogView({
     setNewVesselCompatibility("Semua Armada Kapal");
     setNewWeight("1.0");
     setNewInitialStock("10");
-    setNewLocationId("loc-1");
+    setNewLocationChoice("WAREHOUSE MERAK");
     setValidationError("");
     setIsCreateModalOpen(true);
   };
@@ -460,6 +490,11 @@ export default function SparePartCatalogView({
       cleanHierarchy.push(editItemForm.hierarchy[2].trim());
     }
 
+    const finalLocationId = editItemForm.location_name === "KANTOR PUSAT BAG" || (editItemForm.location_id && editItemForm.location_id.includes("pusat"))
+      ? "loc-kantor-pusat"
+      : "loc-wh-merak";
+    const finalLocationName = finalLocationId === "loc-kantor-pusat" ? "KANTOR PUSAT BAG" : "WAREHOUSE MERAK";
+
     const updatedItem: CatalogItem = {
       ...editItemForm,
       part_name: editItemForm.part_name.trim(),
@@ -467,8 +502,10 @@ export default function SparePartCatalogView({
       sku: editItemForm.sku.trim(),
       barcode: editItemForm.barcode.trim(),
       description: editItemForm.description.trim(),
+      location_id: finalLocationId,
+      location_name: finalLocationName,
       hierarchy: cleanHierarchy,
-      specification: editItemForm.specification ? editItemForm.specification.trim() : "N/A",
+      specification: editItemForm.specification ? editItemForm.specification.trim() : `Lokasi: ${finalLocationName}`,
       manufacturer: editItemForm.manufacturer ? editItemForm.manufacturer.trim() : "N/A",
       vessel_compatibility: editItemForm.vessel_compatibility ? editItemForm.vessel_compatibility.trim() : "Semua Armada Kapal",
       weight_kg: Number(String(editItemForm.weight_kg || '0').replace(',', '.')) || 0
@@ -487,7 +524,8 @@ export default function SparePartCatalogView({
         maker: updatedItem.manufacturer,
         description: updatedItem.description,
         vessel_compatibility: updatedItem.vessel_compatibility,
-        specification: updatedItem.specification
+        specification: updatedItem.specification,
+        location_id: finalLocationId
       };
 
       if (onUpdatePart) {
@@ -503,7 +541,9 @@ export default function SparePartCatalogView({
         specification: updatedItem.specification,
         manufacturer: updatedItem.manufacturer,
         vessel_compatibility: updatedItem.vessel_compatibility,
-        weight_kg: updatedItem.weight_kg
+        weight_kg: updatedItem.weight_kg,
+        location_id: finalLocationId,
+        location_name: finalLocationName
       };
       saveCatalogMetadata(meta);
       setCustomMeta(meta);
@@ -544,6 +584,7 @@ export default function SparePartCatalogView({
     const generatedId = `part-${Date.now()}`;
     const initialStockNum = Math.max(0, Number(newInitialStock) || 0);
     const cleanWeight = Number(String(newWeight || "1.0").replace(",", ".")) || 1.0;
+    const finalLocationId = newLocationChoice === "KANTOR PUSAT BAG" ? "loc-kantor-pusat" : "loc-wh-merak";
 
     const masterPayload: Partial<SparePart> = {
       id: generatedId,
@@ -557,8 +598,8 @@ export default function SparePartCatalogView({
       brand: newManufacturer.trim() || "OEM / Supplier",
       description: newDescription.trim() || `${newPartName.trim()} — Terdaftar via Catalog Sparepart.`,
       vessel_compatibility: newVesselCompatibility.trim() || "Semua Armada Kapal",
-      specification: newSpecification.trim() || `Rak: ${newLocationId}, Terdaftar via Catalog`,
-      location_id: newLocationId,
+      specification: newSpecification.trim() || `Lokasi: ${newLocationChoice}, Terdaftar via Catalog`,
+      location_id: finalLocationId,
       current_stock: initialStockNum,
       reorder_point: 5,
       minimum_stock: 2,
@@ -578,10 +619,12 @@ export default function SparePartCatalogView({
       const meta = getCatalogMetadata();
       meta[generatedId] = {
         hierarchy: hierarchy,
-        specification: newSpecification.trim() || `Rak: ${newLocationId}, Terdaftar via Catalog`,
+        specification: newSpecification.trim() || `Lokasi: ${newLocationChoice}, Terdaftar via Catalog`,
         manufacturer: newManufacturer.trim() || "OEM / Supplier",
         vessel_compatibility: newVesselCompatibility.trim() || "Semua Armada Kapal",
-        weight_kg: cleanWeight
+        weight_kg: cleanWeight,
+        location_id: finalLocationId,
+        location_name: newLocationChoice
       };
       saveCatalogMetadata(meta);
       setCustomMeta(meta);
@@ -604,9 +647,10 @@ export default function SparePartCatalogView({
         unit: newUnit,
         category: newSystem.trim(),
         current_stock: initialStockNum,
-        location_id: newLocationId,
+        location_id: finalLocationId,
+        location_name: newLocationChoice,
         hierarchy,
-        specification: newSpecification.trim() || `Rak: ${newLocationId}, Terdaftar via Catalog`,
+        specification: newSpecification.trim() || `Lokasi: ${newLocationChoice}, Terdaftar via Catalog`,
         manufacturer: newManufacturer.trim() || "OEM / Supplier",
         vessel_compatibility: newVesselCompatibility.trim() || "Semua Armada Kapal",
         weight_kg: cleanWeight
@@ -616,7 +660,7 @@ export default function SparePartCatalogView({
       setSearchQuery(newBarcode.trim());
       setSelectedItem(createdItem);
 
-      alert(`🚀 REGISTRASI BERHASIL!\n\nSuku cadang "${newPartName.trim()}" telah resmi tersimpan & terbuat Barcode uniknya:\n• Barcode: ${newBarcode.trim()}\n• SKU: ${newSku.trim()}\n• Part Number: ${newPartNumber.trim()}\n\nData telah otomatis tersinkronkan ke Spare Part Master & Catalog Sparepart.`);
+      alert(`🚀 REGISTRASI BERHASIL!\n\nSuku cadang "${newPartName.trim()}" telah resmi tersimpan & terbuat Barcode uniknya:\n• Barcode: ${newBarcode.trim()}\n• Lokasi: ${newLocationChoice}\n• SKU: ${newSku.trim()}\n• Part Number: ${newPartNumber.trim()}\n\nData telah otomatis tersinkronkan ke Spare Part Master & Catalog Sparepart.`);
     } catch (err: any) {
       setValidationError(err.message || "Gagal mendaftarkan suku cadang ke Master.");
     } finally {
@@ -763,6 +807,11 @@ export default function SparePartCatalogView({
                         <Barcode className="w-3.5 h-3.5 text-blue-600" />
                         {item.barcode}
                       </span>
+                      <span className="text-slate-300">&bull;</span>
+                      <span className="inline-flex items-center gap-1 bg-amber-50 border border-amber-250 text-amber-900 px-2 py-0.5 rounded font-extrabold shadow-2xs text-[10px]">
+                        <MapPin className="w-3 h-3 text-amber-600" />
+                        {item.location_name || (item.location_id?.includes("pusat") ? "KANTOR PUSAT BAG" : "WAREHOUSE MERAK")}
+                      </span>
                     </div>
                   </div>
 
@@ -810,10 +859,13 @@ export default function SparePartCatalogView({
                     />
                   </div>
                   
-                  {/* Visual Barcode & Unique Token */}
+                  {/* Visual Barcode & Unique Token & Location */}
                   <div className="mt-2 text-center w-full">
                     <span className="text-[8.5px] font-mono font-bold text-slate-600 uppercase tracking-widest block">
                       TOKEN: #{item.barcode}
+                    </span>
+                    <span className="text-[8px] font-sans font-black text-amber-900 uppercase tracking-wider block bg-amber-50/90 rounded px-1.5 py-0.5 mt-0.5 border border-amber-200 truncate">
+                      📍 {item.location_name || (item.location_id?.includes("pusat") ? "KANTOR PUSAT BAG" : "WAREHOUSE MERAK")}
                     </span>
                   </div>
                   
@@ -1013,6 +1065,22 @@ export default function SparePartCatalogView({
                     <option value="KIT">KIT</option>
                     <option value="CAN">CAN</option>
                     <option value="PAIL">PAIL</option>
+                  </select>
+                </div>
+
+                {/* Warehouse Location Choice */}
+                <div className="space-y-1">
+                  <label className="block text-[11px] font-bold uppercase text-blue-700 tracking-wide flex items-center gap-1.5">
+                    <Building2 className="w-3.5 h-3.5 text-blue-600" />
+                    Pilih Lokasi Gudang / Penyimpanan <span className="text-red-500">*</span>
+                  </label>
+                  <select
+                    value={newLocationChoice}
+                    onChange={(e) => setNewLocationChoice(e.target.value as any)}
+                    className="w-full bg-blue-50/60 border border-blue-250 rounded-lg text-xs px-3 py-2 font-bold text-slate-800 focus:outline-none focus:ring-1 focus:ring-blue-500 cursor-pointer"
+                  >
+                    <option value="WAREHOUSE MERAK">WAREHOUSE MERAK</option>
+                    <option value="KANTOR PUSAT BAG">KANTOR PUSAT BAG</option>
                   </select>
                 </div>
 
@@ -1274,6 +1342,28 @@ export default function SparePartCatalogView({
                     </div>
 
                     <div className="space-y-1">
+                      <label className="block text-[11px] font-bold uppercase text-blue-700 tracking-wide flex items-center gap-1.5">
+                        <Building2 className="w-3.5 h-3.5 text-blue-600" />
+                        Lokasi Gudang / Penyimpanan <span className="text-red-500">*</span>
+                      </label>
+                      <select
+                        value={editItemForm.location_name || (editItemForm.location_id?.includes("pusat") ? "KANTOR PUSAT BAG" : "WAREHOUSE MERAK")}
+                        onChange={(e) => {
+                          const val = e.target.value as "WAREHOUSE MERAK" | "KANTOR PUSAT BAG";
+                          setEditItemForm({
+                            ...editItemForm,
+                            location_name: val,
+                            location_id: val === "KANTOR PUSAT BAG" ? "loc-kantor-pusat" : "loc-wh-merak"
+                          });
+                        }}
+                        className="w-full bg-blue-50/60 border border-blue-250 rounded-lg text-xs px-3 py-2 font-bold text-slate-800 focus:outline-none focus:ring-1 focus:ring-blue-500 cursor-pointer"
+                      >
+                        <option value="WAREHOUSE MERAK">WAREHOUSE MERAK</option>
+                        <option value="KANTOR PUSAT BAG">KANTOR PUSAT BAG</option>
+                      </select>
+                    </div>
+
+                    <div className="space-y-1">
                       <label className="block text-[11px] font-bold uppercase text-slate-500 tracking-wide">
                         Sistem Root (Hierarchy 1)
                       </label>
@@ -1366,6 +1456,9 @@ export default function SparePartCatalogView({
                         <span className="text-[10px] font-black text-blue-700 uppercase bg-blue-50 border border-blue-200 px-2 py-0.5 rounded block">
                           TOKEN: #{selectedItem.barcode}
                         </span>
+                        <span className="text-[9px] font-black text-amber-900 uppercase bg-amber-50 border border-amber-250 px-2 py-0.5 rounded block">
+                          📍 {selectedItem.location_name || (selectedItem.location_id?.includes("pusat") ? "KANTOR PUSAT BAG" : "WAREHOUSE MERAK")}
+                        </span>
                         <span className="text-[8px] text-slate-500 block uppercase tracking-widest font-bold">
                           Scan HP Terbuka Tanpa Login
                         </span>
@@ -1422,10 +1515,24 @@ export default function SparePartCatalogView({
 
                       {/* Visual Barcode Graphic */}
                       <div className="py-1">
-                        <BarcodeGraphic code={selectedItem.barcode} width={240} height={42} />
+                        <BarcodeGraphic 
+                          code={selectedItem.barcode} 
+                          locationName={selectedItem.location_name || (selectedItem.location_id?.includes("pusat") ? "KANTOR PUSAT BAG" : "WAREHOUSE MERAK")}
+                          width={240} 
+                          height={42} 
+                        />
                       </div>
 
                       <div className="border-t border-slate-150 pt-2 space-y-1.5 text-xs">
+                        <div className="grid grid-cols-3 bg-amber-50/90 p-2 rounded-lg border border-amber-250 my-1">
+                          <span className="text-amber-900 font-bold font-mono text-[10px] uppercase flex items-center gap-1">
+                            <MapPin className="w-3.5 h-3.5 text-amber-600" />
+                            Lokasi Gudang:
+                          </span>
+                          <span className="col-span-2 font-black text-xs text-amber-950 uppercase tracking-wide">
+                            {selectedItem.location_name || (selectedItem.location_id?.includes("pusat") ? "KANTOR PUSAT BAG" : "WAREHOUSE MERAK")}
+                          </span>
+                        </div>
                         <div className="grid grid-cols-3 bg-emerald-50/80 p-2 rounded-lg border border-emerald-200/80 my-1">
                           <span className="text-emerald-800 font-bold font-mono text-[10px] uppercase flex items-center gap-1">
                             <Boxes className="w-3.5 h-3.5 text-emerald-600" />

@@ -262,15 +262,13 @@ let localVendors: Vendor[] = [
 ];
 
 let localLocations: WarehouseLocation[] = [
-  { id: "loc-1", code: "A1", warehouse: "Jakarta HQ Warehouse", zone: "Zone A (Ground level, Max 1m)", rack: "Rack A", shelf: "Level 1 (Low)", bin: "A1-G" },
-  { id: "loc-2", code: "A2", warehouse: "Jakarta HQ Warehouse", zone: "Zone A (Mid level, 1m - 2m)", rack: "Rack A", shelf: "Level 2 (Mid)", bin: "A2-M" },
-  { id: "loc-3", code: "A3", warehouse: "Jakarta HQ Warehouse", zone: "Zone A (High level, 2m+, Use Ladder!)", rack: "Rack A", shelf: "Level 3 (High)", bin: "A3-H" },
-  { id: "loc-4", code: "B1", warehouse: "Jakarta HQ Warehouse", zone: "Zone B (Ground level, Max 1m)", rack: "Rack B", shelf: "Level 1 (Low)", bin: "B1-G" },
-  { id: "loc-5", code: "B2", warehouse: "Jakarta HQ Warehouse", zone: "Zone B (Mid level, 1m - 2m)", rack: "Rack B", shelf: "Level 2 (Mid)", bin: "B2-M" },
-  { id: "loc-6", code: "B3", warehouse: "Jakarta HQ Warehouse", zone: "Zone B (High level, 2m+, Use Ladder!)", rack: "Rack B", shelf: "Level 3 (High)", bin: "B3-H" },
-  { id: "loc-7", code: "C1", warehouse: "Jakarta HQ Warehouse", zone: "Zone C (Ground level, Max 1m)", rack: "Rack C", shelf: "Level 1 (Low)", bin: "C1-G" },
-  { id: "loc-8", code: "C2", warehouse: "Jakarta HQ Warehouse", zone: "Zone C (Mid level, 1m - 2m)", rack: "Rack C", shelf: "Level 2 (Mid)", bin: "C2-M" },
-  { id: "loc-9", code: "C3", warehouse: "Jakarta HQ Warehouse", zone: "Zone C (High level, 2m+, Use Ladder!)", rack: "Rack C", shelf: "Level 3 (High)", bin: "C3-H" }
+  { id: "loc-wh-merak", code: "WH-MERAK", warehouse: "WAREHOUSE MERAK", zone: "Gudang Utama Pelabuhan Merak", rack: "Merak Rack A", shelf: "Level 1", bin: "MRK-01" },
+  { id: "loc-kantor-pusat", code: "KP-BAG", warehouse: "KANTOR PUSAT BAG", zone: "Logistik Kantor Pusat Jakarta", rack: "HQ Rack A", shelf: "Level 1", bin: "HQ-01" },
+  { id: "loc-1", code: "A1", warehouse: "WAREHOUSE MERAK", zone: "Zone A (Ground level)", rack: "Rack A", shelf: "Level 1 (Low)", bin: "A1-G" },
+  { id: "loc-2", code: "A2", warehouse: "WAREHOUSE MERAK", zone: "Zone A (Mid level)", rack: "Rack A", shelf: "Level 2 (Mid)", bin: "A2-M" },
+  { id: "loc-3", code: "B1", warehouse: "WAREHOUSE MERAK", zone: "Zone B (Ground level)", rack: "Rack B", shelf: "Level 1 (Low)", bin: "B1-G" },
+  { id: "loc-4", code: "B2", warehouse: "WAREHOUSE MERAK", zone: "Zone B (Mid level)", rack: "Rack B", shelf: "Level 2 (Mid)", bin: "B2-M" },
+  { id: "loc-5", code: "C1", warehouse: "WAREHOUSE MERAK", zone: "Zone C (Ground level)", rack: "Rack C", shelf: "Level 1 (Low)", bin: "C1-G" }
 ];
 
 function loadLocalReceiving(): InboundReceiving[] {
@@ -421,9 +419,10 @@ function ensureSparePartsFromInboundItems(
         reorder_point: 5,
         current_stock: qtyIn > 0 ? qtyIn : 10,
         reserved_stock: 0,
-        location_id: itm.location_id || "loc-1",
+        location_id: "loc-wh-merak",
         vessel_compatibility: itm.vessel_name ? `Kapal ${itm.vessel_name}` : "Semua Armada Kapal",
         description: itm.description || itm.keeper_notes || `Suku cadang otomatis terdaftar dari Inbound PO ${poNum || ""}`,
+        remarks: `[BC:${generatedBarcode}] [LOC:WAREHOUSE MERAK] ${itm.description || itm.keeper_notes || ''}`.trim(),
         created_at: new Date().toISOString(),
         updated_at: new Date().toISOString()
       };
@@ -1522,9 +1521,20 @@ async function fetcher<T>(url: string, options: RequestInit = {}): Promise<T> {
               const match = p.remarks.match(/\[BC:([^\]]+)\]/);
               if (match) bc = match[1].trim();
             }
+
+            let locName = "WAREHOUSE MERAK";
+            if (p.remarks && p.remarks.includes("[LOC:")) {
+              const matchLoc = p.remarks.match(/\[LOC:([^\]]+)\]/);
+              if (matchLoc) locName = matchLoc[1].trim();
+            } else if (p.location_id === "loc-kantor-pusat" || String(p.location_id).toLowerCase().includes("pusat")) {
+              locName = "KANTOR PUSAT BAG";
+            }
+
             return {
               ...p,
-              barcode: bc || `BC-${Math.floor(10000000 + Math.random() * 90000000)}`
+              barcode: bc || `BC-${Math.floor(10000000 + Math.random() * 90000000)}`,
+              location_id: locName === "KANTOR PUSAT BAG" ? "loc-kantor-pusat" : "loc-wh-merak",
+              location_name: locName
             };
           });
 
@@ -1540,10 +1550,15 @@ async function fetcher<T>(url: string, options: RequestInit = {}): Promise<T> {
         return loadLocalSpareParts() as any;
       }
       if (path.startsWith("/api/inventory") && method === "POST") {
-        const validLocId = body.location_id && ["loc-1", "loc-2", "loc-3", "loc-4", "loc-5"].includes(body.location_id)
-          ? body.location_id
-          : "loc-1";
+        const isHq = String(body.location_id || body.location_name || body.remarks || "").toLowerCase().includes("pusat") || String(body.location_id || "").includes("kantor");
+        const validLocId = isHq ? "loc-kantor-pusat" : "loc-wh-merak";
+        const locName = isHq ? "KANTOR PUSAT BAG" : "WAREHOUSE MERAK";
         const generatedBarcode = body.barcode || `BC-${Math.floor(10000000 + Math.random() * 90000000)}`;
+
+        let cleanRemarks = body.remarks || body.description || "";
+        cleanRemarks = cleanRemarks.replace(/\[BC:[^\]]+\]/g, "").replace(/\[LOC:[^\]]+\]/g, "").trim();
+        const finalRemarks = `[BC:${generatedBarcode}] [LOC:${locName}] ${cleanRemarks}`.trim();
+
         const newPart = {
           ...body,
           id: body.id || `part-${Date.now()}`,
@@ -1554,12 +1569,11 @@ async function fetcher<T>(url: string, options: RequestInit = {}): Promise<T> {
           unit: body.unit || "PCS",
           category: body.category || "General Spares",
           location_id: validLocId,
+          location_name: locName,
           barcode: generatedBarcode,
           current_stock: Number(body.current_stock || 0),
           reorder_point: Number(body.reorder_point || 0),
-          remarks: body.remarks && body.remarks.includes("[BC:")
-            ? body.remarks
-            : `[BC:${generatedBarcode}] ${body.remarks || body.description || ""}`.trim(),
+          remarks: finalRemarks,
           created_at: now,
           updated_at: now
         };
@@ -1571,7 +1585,7 @@ async function fetcher<T>(url: string, options: RequestInit = {}): Promise<T> {
           saveLocalSpareParts(localSpareParts);
           return newPart as any;
         }
-        const savedPart = { ...newPart, ...data, barcode: generatedBarcode };
+        const savedPart = { ...newPart, ...data, barcode: generatedBarcode, location_id: validLocId, location_name: locName };
         localSpareParts = [savedPart, ...localSpareParts.filter(p => p.id !== savedPart.id)];
         saveLocalSpareParts(localSpareParts);
         return savedPart as any;
@@ -1580,17 +1594,23 @@ async function fetcher<T>(url: string, options: RequestInit = {}): Promise<T> {
         const id = path.split("/").pop();
         const existing = localSpareParts.find(p => p.id === id);
         const finalBarcode = body.barcode || existing?.barcode || `BC-${Math.floor(10000000 + Math.random() * 90000000)}`;
+
+        const isHq = String(body.location_id || body.location_name || body.remarks || existing?.location_id || "").toLowerCase().includes("pusat");
+        const validLocId = isHq ? "loc-kantor-pusat" : "loc-wh-merak";
+        const locName = isHq ? "KANTOR PUSAT BAG" : "WAREHOUSE MERAK";
+
+        let cleanRemarks = body.remarks || body.description || existing?.remarks || "";
+        cleanRemarks = cleanRemarks.replace(/\[BC:[^\]]+\]/g, "").replace(/\[LOC:[^\]]+\]/g, "").trim();
+        const finalRemarks = `[BC:${finalBarcode}] [LOC:${locName}] ${cleanRemarks}`.trim();
+
         const payload = { 
           ...body, 
+          location_id: validLocId,
+          location_name: locName,
           barcode: finalBarcode,
-          remarks: body.remarks && body.remarks.includes("[BC:")
-            ? body.remarks
-            : `[BC:${finalBarcode}] ${body.remarks || body.description || existing?.remarks || ""}`.trim(),
+          remarks: finalRemarks,
           updated_at: now 
         };
-        if (payload.location_id && !["loc-1", "loc-2", "loc-3", "loc-4", "loc-5"].includes(payload.location_id)) {
-          payload.location_id = "loc-1";
-        }
         const cleanUpdate = sanitizeRecord(payload, VALID_PART_COLUMNS);
         const { data, error } = await supabase.from("spare_parts").update(cleanUpdate).eq("id", id).select().single();
         if (error) {
@@ -1599,7 +1619,7 @@ async function fetcher<T>(url: string, options: RequestInit = {}): Promise<T> {
           saveLocalSpareParts(localSpareParts);
           return { ...existing, ...payload } as any;
         }
-        const updatedPart = { ...payload, ...data, barcode: finalBarcode };
+        const updatedPart = { ...payload, ...data, barcode: finalBarcode, location_id: validLocId, location_name: locName };
         localSpareParts = localSpareParts.map(p => p.id === id ? updatedPart : p);
         saveLocalSpareParts(localSpareParts);
         return updatedPart as any;

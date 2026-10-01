@@ -492,13 +492,14 @@ export default function ReceivingView({
           const finalSku = (itm as any).sku || `SKU-${finalPn.replace(/[^a-zA-Z0-9]/g, "").slice(0, 10) || Date.now().toString().slice(-4)}`;
           const finalUnit = itm.unit || "PCS";
           const finalCat = (itm as any).category || "General Spares";
-          const finalLoc = (itm as any).location_id || "loc-1";
+          const finalLoc = "loc-wh-merak";
           const finalMaker = rec.vendor_name || "OEM / Supplier";
           const finalVessel = rec.vessel_name ? `Kapal ${rec.vessel_name}` : "Semua Armada Kapal";
 
           if (match) {
             const updatedPayload: Partial<SparePart> = {
               barcode,
+              location_id: "loc-wh-merak",
               current_stock: Math.max(0, (match.current_stock || 0) + (qtyIn > 0 ? qtyIn : 0))
             };
             if (onUpdatePart) await onUpdatePart(match.id, updatedPayload);
@@ -520,9 +521,9 @@ export default function ReceivingView({
               reorder_point: 5,
               current_stock: qtyIn > 0 ? qtyIn : 10,
               reserved_stock: 0,
-              location_id: finalLoc,
+              location_id: "loc-wh-merak",
               vessel_compatibility: finalVessel,
-              description: itm.keeper_notes || (itm as any).description || `Suku cadang dipush dari Inbound [PO/SPK: ${rec.spk_number || rec.purchase_order_num || ''}]`
+              description: itm.keeper_notes || (itm as any).description || `Suku cadang dipush dari Inbound [PO/SPK: ${rec.spk_number || rec.purchase_order_num || ''}] (Lokasi: WAREHOUSE MERAK)`
             };
             if (onAddPart) await onAddPart(newPartPayload);
             else await api.createSparePart(newPartPayload);
@@ -604,7 +605,7 @@ export default function ReceivingView({
         const finalSku = (itm as any).sku || `SKU-${finalPn.replace(/[^a-zA-Z0-9]/g, "").slice(0, 10) || Date.now().toString().slice(-4)}`;
         const finalUnit = itm.unit || "PCS";
         const finalCat = (itm as any).category || "General Spares";
-        const finalLoc = (itm as any).location_id || "loc-1";
+        const finalLoc = "loc-wh-merak";
         const finalMaker = rec.vendor_name || "OEM / Supplier";
         const finalVessel = rec.vessel_name ? `Kapal ${rec.vessel_name}` : "Semua Armada Kapal";
 
@@ -615,7 +616,7 @@ export default function ReceivingView({
           const updatedPayload: Partial<SparePart> = {
             barcode: barcode,
             current_stock: Math.max(0, (match.current_stock || 0) + (qtyIn > 0 ? qtyIn : 0)),
-            location_id: match.location_id || finalLoc,
+            location_id: "loc-wh-merak",
             unit: match.unit || finalUnit
           };
 
@@ -624,7 +625,7 @@ export default function ReceivingView({
           } else {
             await api.updateSparePart(match.id, updatedPayload);
           }
-          pushedNames.push(`${match.part_name} (Diperbarui Stok: ${match.current_stock + qtyIn}, Barcode: ${barcode})`);
+          pushedNames.push(`${match.part_name} (Diperbarui Stok: ${match.current_stock + qtyIn}, Lokasi: WAREHOUSE MERAK, Barcode: ${barcode})`);
         } else {
           const newPartId = (pId && !pId.startsWith("temp-") && !pId.startsWith("item-")) ? pId : `sp-${Date.now()}-${idx}-${Math.floor(Math.random() * 1000)}`;
           barcodeCache[newPartId] = barcode;
@@ -645,9 +646,9 @@ export default function ReceivingView({
             reorder_point: 5,
             current_stock: qtyIn > 0 ? qtyIn : 10,
             reserved_stock: 0,
-            location_id: finalLoc,
+            location_id: "loc-wh-merak",
             vessel_compatibility: finalVessel,
-            description: itm.keeper_notes || (itm as any).description || `Suku cadang dipush dari Inbound [PO/SPK: ${rec.spk_number || rec.purchase_order_num || ''}]`
+            description: itm.keeper_notes || (itm as any).description || `Suku cadang dipush dari Inbound [PO/SPK: ${rec.spk_number || rec.purchase_order_num || ''}] (Lokasi: WAREHOUSE MERAK)`
           };
 
           if (onAddPart) {
@@ -655,7 +656,7 @@ export default function ReceivingView({
           } else {
             await api.createSparePart(newPartPayload);
           }
-          pushedNames.push(`${newPartPayload.part_name} (Baru dibuat, Barcode: ${barcode})`);
+          pushedNames.push(`${newPartPayload.part_name} (Lokasi: WAREHOUSE MERAK, Barcode: ${barcode})`);
         }
 
         // Also sync to catalog metadata
@@ -749,9 +750,9 @@ export default function ReceivingView({
           minimum_stock: 2,
           maximum_stock: 100,
           reorder_point: 5,
-          location_id: itm.location_id || "loc-1",
+          location_id: "loc-wh-merak",
           vessel_compatibility: rec.vessel_name ? `Kapal ${rec.vessel_name}` : "Semua Armada Kapal",
-          description: itm.keeper_notes || `Suku cadang dipush dari Inbound [PO/SPK: ${rec.spk_number || rec.purchase_order_num || ''}]`
+          description: itm.keeper_notes || `Suku cadang dipush dari Inbound [PO/SPK: ${rec.spk_number || rec.purchase_order_num || ''}] (Lokasi: WAREHOUSE MERAK)`
         };
         if (onAddPart) await onAddPart(newPartPayload);
         else await api.createSparePart(newPartPayload);
