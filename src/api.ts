@@ -1491,9 +1491,32 @@ async function fetcher<T>(url: string, options: RequestInit = {}): Promise<T> {
 
       // --- 6. INVENTORY / SPARE PARTS ---
       if (path.startsWith("/api/inventory") && method === "GET") {
-        const { data, error } = await supabase.from("spare_parts").select("*");
-        if (!error && data) {
-          const mapped = data.map((p: any, idx: number) => {
+        let allParts: any[] = [];
+        let from = 0;
+        const step = 1000;
+        let hasMore = true;
+
+        while (hasMore) {
+          const { data, error } = await supabase
+            .from("spare_parts")
+            .select("*")
+            .order("created_at", { ascending: false })
+            .range(from, from + step - 1);
+
+          if (error || !data || data.length === 0) {
+            hasMore = false;
+            break;
+          }
+          allParts.push(...data);
+          if (data.length < step || allParts.length >= 10000) {
+            hasMore = false;
+          } else {
+            from += step;
+          }
+        }
+
+        if (allParts.length > 0) {
+          const mapped = allParts.map((p: any) => {
             let bc = p.barcode;
             if (!bc && p.remarks && p.remarks.includes("[BC:")) {
               const match = p.remarks.match(/\[BC:([^\]]+)\]/);
@@ -1504,10 +1527,17 @@ async function fetcher<T>(url: string, options: RequestInit = {}): Promise<T> {
               barcode: bc || `BC-${Math.floor(10000000 + Math.random() * 90000000)}`
             };
           });
-          localSpareParts = mapped as any;
-          return mapped as any;
+
+          // Merge with any newly created local spare parts that might not yet be in Supabase
+          const localSaved = loadLocalSpareParts();
+          const supabaseIds = new Set(mapped.map(m => m.id));
+          const missingLocals = localSaved.filter(lp => lp && lp.id && !supabaseIds.has(lp.id));
+
+          localSpareParts = [...missingLocals, ...mapped] as any;
+          saveLocalSpareParts(localSpareParts);
+          return localSpareParts as any;
         }
-        return localSpareParts as any;
+        return loadLocalSpareParts() as any;
       }
       if (path.startsWith("/api/inventory") && method === "POST") {
         const validLocId = body.location_id && ["loc-1", "loc-2", "loc-3", "loc-4", "loc-5"].includes(body.location_id)
@@ -1538,6 +1568,7 @@ async function fetcher<T>(url: string, options: RequestInit = {}): Promise<T> {
         if (error) {
           console.warn("Supabase spare_parts insert error, falling back locally:", error);
           localSpareParts = [newPart, ...localSpareParts.filter(p => p.id !== newPart.id)];
+          saveLocalSpareParts(localSpareParts);
           return newPart as any;
         }
         const savedPart = { ...newPart, ...data, barcode: generatedBarcode };

@@ -471,7 +471,7 @@ export default function SparePartCatalogView({
       specification: editItemForm.specification ? editItemForm.specification.trim() : "N/A",
       manufacturer: editItemForm.manufacturer ? editItemForm.manufacturer.trim() : "N/A",
       vessel_compatibility: editItemForm.vessel_compatibility ? editItemForm.vessel_compatibility.trim() : "Semua Armada Kapal",
-      weight_kg: Number(editItemForm.weight_kg) || 0
+      weight_kg: Number(String(editItemForm.weight_kg || '0').replace(',', '.')) || 0
     };
 
     setIsSubmitting(true);
@@ -543,6 +543,7 @@ export default function SparePartCatalogView({
 
     const generatedId = `part-${Date.now()}`;
     const initialStockNum = Math.max(0, Number(newInitialStock) || 0);
+    const cleanWeight = Number(String(newWeight || "1.0").replace(",", ".")) || 1.0;
 
     const masterPayload: Partial<SparePart> = {
       id: generatedId,
@@ -580,7 +581,7 @@ export default function SparePartCatalogView({
         specification: newSpecification.trim() || `Rak: ${newLocationId}, Terdaftar via Catalog`,
         manufacturer: newManufacturer.trim() || "OEM / Supplier",
         vessel_compatibility: newVesselCompatibility.trim() || "Semua Armada Kapal",
-        weight_kg: Number(newWeight) || 1.0
+        weight_kg: cleanWeight
       };
       saveCatalogMetadata(meta);
       setCustomMeta(meta);
@@ -591,9 +592,31 @@ export default function SparePartCatalogView({
       saveBarcodeCache(bcCache);
 
       // Broadcast update
+      window.dispatchEvent(new Event("storage"));
       window.dispatchEvent(new Event("catalog_updated"));
 
+      const createdItem: CatalogItem = {
+        id: generatedId,
+        part_name: newPartName.trim(),
+        part_number: newPartNumber.trim(),
+        sku: newSku.trim(),
+        barcode: newBarcode.trim(),
+        unit: newUnit,
+        category: newSystem.trim(),
+        current_stock: initialStockNum,
+        location_id: newLocationId,
+        hierarchy,
+        specification: newSpecification.trim() || `Rak: ${newLocationId}, Terdaftar via Catalog`,
+        manufacturer: newManufacturer.trim() || "OEM / Supplier",
+        vessel_compatibility: newVesselCompatibility.trim() || "Semua Armada Kapal",
+        weight_kg: cleanWeight
+      };
+
       setIsCreateModalOpen(false);
+      setSearchQuery(newBarcode.trim());
+      setSelectedItem(createdItem);
+
+      alert(`🚀 REGISTRASI BERHASIL!\n\nSuku cadang "${newPartName.trim()}" telah resmi tersimpan & terbuat Barcode uniknya:\n• Barcode: ${newBarcode.trim()}\n• SKU: ${newSku.trim()}\n• Part Number: ${newPartNumber.trim()}\n\nData telah otomatis tersinkronkan ke Spare Part Master & Catalog Sparepart.`);
     } catch (err: any) {
       setValidationError(err.message || "Gagal mendaftarkan suku cadang ke Master.");
     } finally {
@@ -1090,12 +1113,11 @@ export default function SparePartCatalogView({
                     Bobot / Berat (Kg)
                   </label>
                   <input
-                    type="number"
-                    step="0.01"
-                    placeholder="0.0"
+                    type="text"
+                    placeholder="Contoh: 1.0 atau 1,5"
                     value={newWeight}
                     onChange={(e) => setNewWeight(e.target.value)}
-                    className="w-full bg-slate-50 border border-slate-250 rounded-lg text-xs px-3 py-2 font-medium text-slate-800 focus:outline-none focus:ring-1 focus:ring-blue-500"
+                    className="w-full bg-slate-50 border border-slate-250 rounded-lg text-xs px-3 py-2 font-medium text-slate-800 focus:outline-none focus:ring-1 focus:ring-blue-500 font-mono"
                   />
                 </div>
 
@@ -1104,12 +1126,11 @@ export default function SparePartCatalogView({
               {/* Description */}
               <div className="space-y-1">
                 <label className="block text-[11px] font-bold uppercase text-slate-500 tracking-wide">
-                  Deskripsi / Keterangan Suku Cadang <span className="text-red-500">*</span>
+                  Deskripsi / Keterangan Suku Cadang
                 </label>
                 <textarea
-                  required
                   rows={2}
-                  placeholder="Masukkan fungsi, spesifikasi umum, atau keterangan part..."
+                  placeholder="Masukkan fungsi, spesifikasi umum, atau keterangan part (opsional)..."
                   value={newDescription}
                   onChange={(e) => setNewDescription(e.target.value)}
                   className="w-full bg-slate-50 border border-slate-250 rounded-lg text-xs px-3 py-2 font-medium text-slate-800 focus:outline-none focus:ring-1 focus:ring-blue-500"
