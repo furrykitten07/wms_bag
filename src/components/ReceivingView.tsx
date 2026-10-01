@@ -79,6 +79,7 @@ interface ReceivingViewProps {
   role: UserRole;
   onAddReceiving: (rec: Partial<InboundReceiving>) => Promise<any>;
   onAddPart?: (partData: Partial<SparePart>) => Promise<any>;
+  onUpdatePart?: (id: string, partData: Partial<SparePart>) => Promise<any>;
   onVerifyReceiving: (id: string, update: Partial<InboundReceiving> | any) => Promise<any>;
   onPreviewDocument: (rec: InboundReceiving) => void;
   onDeleteReceiving?: (id: string) => Promise<any>;
@@ -93,6 +94,7 @@ export default function ReceivingView({
   role,
   onAddReceiving,
   onAddPart,
+  onUpdatePart,
   onVerifyReceiving,
   onPreviewDocument,
   onDeleteReceiving
@@ -421,6 +423,230 @@ export default function ReceivingView({
       window.dispatchEvent(new CustomEvent("catalog_updated"));
     } catch (err) {
       console.error("Failed to sync new part to catalog:", err);
+    }
+  };
+
+  // State for tracking active Push action per receiving record
+  const [pushingRecId, setPushingRecId] = useState<string | null>(null);
+
+  // Superadmin action to push all items in a receiving record directly to Spare Part Master & Catalog Sparepart
+  const handlePushReceivingToMasterAndCatalog = async (rec: InboundReceiving) => {
+    if (role !== UserRole.SUPER_ADMIN) {
+      alert("Aksi Push ini hanya diperuntukkan bagi akun Superadmin.");
+      return;
+    }
+
+    if (!rec.items || rec.items.length === 0) {
+      alert("Tidak ada item barang dalam penerimaan ini untuk dipush.");
+      return;
+    }
+
+    const confirmMsg = `Konfirmasi Push ke Master & Catalog:\n\nApakah Anda yakin ingin mem-push ${rec.items.length} item dari penerimaan "${rec.spk_number || rec.purchase_order_num}" ke:\n• Menu "Spare Part Master"\n• Menu "Catalog Sparepart" (lengkap dengan Barcode unik & QR Code)?`;
+    if (!confirm(confirmMsg)) return;
+
+    setPushingRecId(rec.id);
+    try {
+      const barcodeCache = (() => {
+        try {
+          const s = localStorage.getItem("wms_part_barcode_cache");
+          return s ? JSON.parse(s) : {};
+        } catch {
+          return {};
+        }
+      })();
+
+      let cacheChanged = false;
+      const pushedNames: string[] = [];
+
+      for (let idx = 0; idx < rec.items.length; idx++) {
+        const itm = rec.items[idx];
+        if (!itm) continue;
+
+        const pName = (itm.spare_part_name || (itm as any).part_name || "").trim();
+        const pNum = (itm.part_number || "").trim();
+        const pId = itm.spare_part_id || (itm as any).id || "";
+
+        let match = parts.find(p => (pId && p.id === pId) || (pNum && pNum !== "-" && pNum !== "PN-GENERIC" && p.part_number?.toLowerCase() === pNum.toLowerCase()) || (pName && p.part_name?.toLowerCase() === pName.toLowerCase()));
+
+        let barcode = (match?.barcode || (itm as any).barcode || barcodeCache[pId] || "").trim();
+        if (!barcode || !barcode.startsWith("BC-")) {
+          barcode = `BC-${Math.floor(10000000 + Math.random() * 90000000)}`;
+          cacheChanged = true;
+        }
+
+        const qtyIn = Number(itm.qty_received || itm.qty_ordered || (itm as any).qty || 10);
+        const finalPn = pNum || `PN-${Date.now().toString().slice(-4)}${idx + 1}`;
+        const finalSku = (itm as any).sku || `SKU-${finalPn.replace(/[^a-zA-Z0-9]/g, "").slice(0, 10) || Date.now().toString().slice(-4)}`;
+        const finalUnit = itm.unit || "PCS";
+        const finalCat = (itm as any).category || "General Spares";
+        const finalLoc = (itm as any).location_id || "loc-1";
+        const finalMaker = rec.vendor_name || "OEM / Supplier";
+        const finalVessel = rec.vessel_name ? `Kapal ${rec.vessel_name}` : "Semua Armada Kapal";
+
+        if (match) {
+          barcodeCache[match.id] = barcode;
+          cacheChanged = true;
+
+          const updatedPayload: Partial<SparePart> = {
+            barcode: barcode,
+            current_stock: Math.max(0, (match.current_stock || 0) + (qtyIn > 0 ? qtyIn : 0)),
+            location_id: match.location_id || finalLoc,
+            unit: match.unit || finalUnit
+          };
+
+          if (onUpdatePart) {
+            await onUpdatePart(match.id, updatedPayload);
+          } else {
+            await api.updateSparePart(match.id, updatedPayload);
+          }
+          pushedNames.push(`${match.part_name} (Diperbarui Stok: ${match.current_stock + qtyIn}, Barcode: ${barcode})`);
+        } else {
+          const newPartId = (pId && !pId.startsWith("temp-") && !pId.startsWith("item-")) ? pId : `sp-${Date.now()}-${idx}-${Math.floor(Math.random() * 1000)}`;
+          barcodeCache[newPartId] = barcode;
+          cacheChanged = true;
+
+          const newPartPayload: Partial<SparePart> = {
+            id: newPartId,
+            part_name: pName || "Suku Cadang Inbound",
+            part_number: finalPn,
+            sku: finalSku,
+            barcode: barcode,
+            unit: finalUnit,
+            category: finalCat,
+            maker: finalMaker,
+            brand: "OEM",
+            minimum_stock: 2,
+            maximum_stock: 100,
+            reorder_point: 5,
+            current_stock: qtyIn > 0 ? qtyIn : 10,
+            reserved_stock: 0,
+            location_id: finalLoc,
+            vessel_compatibility: finalVessel,
+            description: itm.keeper_notes || (itm as any).description || `Suku cadang dipush dari Inbound [PO/SPK: ${rec.spk_number || rec.purchase_order_num || ''}]`
+          };
+
+          if (onAddPart) {
+            await onAddPart(newPartPayload);
+          } else {
+            await api.createSparePart(newPartPayload);
+          }
+          pushedNames.push(`${newPartPayload.part_name} (Baru dibuat, Barcode: ${barcode})`);
+        }
+
+        // Also sync to catalog metadata
+        syncNewPartToCatalog({
+          id: match?.id || pId,
+          part_name: pName || "Suku Cadang",
+          part_number: finalPn,
+          sku: finalSku,
+          barcode: barcode,
+          unit: finalUnit,
+          category: finalCat,
+          location_id: finalLoc
+        });
+      }
+
+      if (cacheChanged) {
+        try {
+          localStorage.setItem("wms_part_barcode_cache", JSON.stringify(barcodeCache));
+        } catch {}
+      }
+
+      window.dispatchEvent(new Event("storage"));
+      window.dispatchEvent(new CustomEvent("catalog_updated"));
+
+      alert(`🚀 PUSH BERHASIL!\n\nSebanyak ${pushedNames.length} barang masuk telah resmi tersimpan & terdaftar pada:\n1. Menu "Spare Part Master"\n2. Menu "Catalog Sparepart" (Barcode & QR Code siap scan/cetak)\n\nRincian:\n• ${pushedNames.join("\n• ")}`);
+    } catch (err: any) {
+      console.error("Push to master & catalog failed:", err);
+      alert(`Gagal melakukan Push: ${err.message || "Terjadi kesalahan sistem"}`);
+    } finally {
+      setPushingRecId(null);
+    }
+  };
+
+  // Superadmin action to push a single item directly to Spare Part Master & Catalog Sparepart
+  const handlePushSingleItemToMasterAndCatalog = async (itm: any, rec: InboundReceiving) => {
+    if (role !== UserRole.SUPER_ADMIN) {
+      alert("Aksi Push ini hanya diperuntukkan bagi akun Superadmin.");
+      return;
+    }
+
+    const pName = (itm.spare_part_name || (itm as any).part_name || "").trim();
+    const pNum = (itm.part_number || "").trim();
+    if (!pName && !pNum) {
+      alert("Nama atau Part Number barang tidak valid.");
+      return;
+    }
+
+    const pId = itm.spare_part_id || (itm as any).id || "";
+    let match = parts.find(p => (pId && p.id === pId) || (pNum && pNum !== "-" && p.part_number?.toLowerCase() === pNum.toLowerCase()) || (pName && p.part_name?.toLowerCase() === pName.toLowerCase()));
+
+    const barcodeCache = (() => {
+      try {
+        const s = localStorage.getItem("wms_part_barcode_cache");
+        return s ? JSON.parse(s) : {};
+      } catch {
+        return {};
+      }
+    })();
+
+    let barcode = (match?.barcode || itm.barcode || barcodeCache[pId] || "").trim();
+    if (!barcode || !barcode.startsWith("BC-")) {
+      barcode = `BC-${Math.floor(10000000 + Math.random() * 90000000)}`;
+    }
+
+    const qtyIn = Number(itm.qty_received || itm.qty_ordered || itm.qty || 10);
+    const finalPn = pNum || `PN-${Date.now().toString().slice(-4)}`;
+    const finalSku = (itm as any).sku || `SKU-${finalPn.replace(/[^a-zA-Z0-9]/g, "").slice(0, 10) || Date.now().toString().slice(-4)}`;
+
+    try {
+      if (match) {
+        barcodeCache[match.id] = barcode;
+        const updatedPayload: Partial<SparePart> = {
+          barcode,
+          current_stock: Math.max(0, (match.current_stock || 0) + (qtyIn > 0 ? qtyIn : 0))
+        };
+        if (onUpdatePart) await onUpdatePart(match.id, updatedPayload);
+        else await api.updateSparePart(match.id, updatedPayload);
+      } else {
+        const newPartId = (pId && !pId.startsWith("temp-") && !pId.startsWith("item-")) ? pId : `sp-${Date.now()}-${Math.floor(Math.random() * 1000)}`;
+        barcodeCache[newPartId] = barcode;
+        const newPartPayload: Partial<SparePart> = {
+          id: newPartId,
+          part_name: pName || "Suku Cadang Inbound",
+          part_number: finalPn,
+          sku: finalSku,
+          barcode: barcode,
+          unit: itm.unit || "PCS",
+          category: itm.category || "General Spares",
+          maker: rec.vendor_name || "OEM / Supplier",
+          current_stock: qtyIn > 0 ? qtyIn : 10,
+          minimum_stock: 2,
+          maximum_stock: 100,
+          reorder_point: 5,
+          location_id: itm.location_id || "loc-1",
+          vessel_compatibility: rec.vessel_name ? `Kapal ${rec.vessel_name}` : "Semua Armada Kapal",
+          description: itm.keeper_notes || `Suku cadang dipush dari Inbound [PO/SPK: ${rec.spk_number || rec.purchase_order_num || ''}]`
+        };
+        if (onAddPart) await onAddPart(newPartPayload);
+        else await api.createSparePart(newPartPayload);
+      }
+
+      localStorage.setItem("wms_part_barcode_cache", JSON.stringify(barcodeCache));
+      syncNewPartToCatalog({
+        id: match?.id || pId,
+        part_name: pName,
+        part_number: finalPn,
+        sku: finalSku,
+        barcode
+      });
+
+      window.dispatchEvent(new Event("storage"));
+      window.dispatchEvent(new CustomEvent("catalog_updated"));
+
+      alert(`🚀 PUSH BERHASIL!\n\nBarang "${pName}" telah resmi tersimpan & terdaftar pada:\n1. Menu "Spare Part Master"\n2. Menu "Catalog Sparepart" (Barcode: ${barcode})`);
+    } catch (err: any) {
+      alert(`Gagal melakukan Push: ${err.message || "Terjadi kesalahan"}`);
     }
   };
 
@@ -1521,7 +1747,21 @@ export default function ReceivingView({
                         </span>
                       </td>
                       <td className="p-3.5 text-right no-print relative">
-                        <div className="flex items-center justify-end gap-2">
+                        <div className="flex items-center justify-end gap-2 flex-wrap">
+                          {/* Push to Master & Catalog button for Superadmin */}
+                          {role === UserRole.SUPER_ADMIN && (
+                            <button
+                              type="button"
+                              disabled={pushingRecId === item.id}
+                              onClick={() => handlePushReceivingToMasterAndCatalog(item)}
+                              className="px-2.5 py-1.5 bg-gradient-to-r from-indigo-600 to-blue-600 hover:from-indigo-500 hover:to-blue-500 disabled:opacity-50 text-white rounded-lg text-[11px] font-extrabold flex items-center gap-1.5 transition-all cursor-pointer shadow-xs hover:shadow active:scale-95 tracking-wide shrink-0"
+                              title="Push semua barang masuk ini ke Catalog Sparepart & Spare Part Master (Superadmin)"
+                            >
+                              <UploadCloud className="w-3.5 h-3.5 text-white" />
+                              <span>{pushingRecId === item.id ? "Pushing..." : "Push"}</span>
+                            </button>
+                          )}
+
                           <button
                             type="button"
                             onClick={() => handleOpenVerifyModal(item)}
@@ -1886,10 +2126,24 @@ export default function ReceivingView({
                   })()}
 
                   <div className="space-y-3">
-                    <h4 className="text-[10px] font-bold text-slate-600 uppercase tracking-widest font-mono flex items-center gap-1.5">
-                      <ClipboardCheck className="w-4 h-4 text-blue-600" />
-                      Daftar Barang SPK &amp; Pengecekan Fisik Gudang
-                    </h4>
+                    <div className="flex items-center justify-between flex-wrap gap-2">
+                      <h4 className="text-[10px] font-bold text-slate-600 uppercase tracking-widest font-mono flex items-center gap-1.5">
+                        <ClipboardCheck className="w-4 h-4 text-blue-600" />
+                        Daftar Barang SPK &amp; Pengecekan Fisik Gudang
+                      </h4>
+                      {role === UserRole.SUPER_ADMIN && (
+                        <button
+                          type="button"
+                          disabled={pushingRecId === activeReceiving.id}
+                          onClick={() => handlePushReceivingToMasterAndCatalog(activeReceiving)}
+                          className="px-3 py-1 bg-gradient-to-r from-indigo-600 to-blue-600 hover:from-indigo-500 hover:to-blue-500 disabled:opacity-50 text-white rounded-lg text-[11px] font-bold flex items-center gap-1.5 cursor-pointer shadow-2xs transition-all active:scale-95"
+                          title="Push seluruh barang ini ke Catalog Sparepart & Spare Part Master"
+                        >
+                          <UploadCloud className="w-3.5 h-3.5" />
+                          <span>{pushingRecId === activeReceiving.id ? "Pushing..." : "Push Semua ke Catalog & Master"}</span>
+                        </button>
+                      )}
+                    </div>
 
                     <div className="border border-slate-200 rounded-lg divide-y divide-slate-100 overflow-hidden">
                       {verificationItems.map((vItem, idx) => (
@@ -2001,6 +2255,21 @@ export default function ReceivingView({
                                     : `ℹ️ Lebih (+${vItem.qty_received - vItem.qty_ordered})`}
                                 </span>
                               </div>
+
+                              {/* Single Item Push for Superadmin */}
+                              {role === UserRole.SUPER_ADMIN && (
+                                <div className="flex flex-col justify-end">
+                                  <button
+                                    type="button"
+                                    onClick={() => handlePushSingleItemToMasterAndCatalog(vItem, activeReceiving)}
+                                    className="px-2.5 py-1 bg-indigo-50 hover:bg-indigo-100 text-indigo-700 border border-indigo-200 rounded-lg text-[10.5px] font-bold flex items-center gap-1 cursor-pointer transition-colors shadow-2xs hover:shadow-xs active:scale-95"
+                                    title="Push item ini ke Catalog Sparepart & Spare Part Master"
+                                  >
+                                    <UploadCloud className="w-3 h-3 text-indigo-600" />
+                                    <span>Push</span>
+                                  </button>
+                                </div>
+                              )}
                             </div>
                           </div>
 

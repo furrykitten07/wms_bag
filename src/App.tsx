@@ -1104,6 +1104,7 @@ export default function App() {
               role={currentUser!.role}
               onAddReceiving={handleAddReceiving}
               onAddPart={handleAddPart}
+              onUpdatePart={handleUpdatePart}
               onVerifyReceiving={handleVerifyReceiving}
               onDeleteReceiving={handleDeleteReceiving}
               onPreviewDocument={(rec) => {
