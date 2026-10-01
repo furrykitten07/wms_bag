@@ -32,10 +32,11 @@ import {
   ShieldCheck,
   Copy,
   ExternalLink,
-  Building2
+  Building2,
+  Trash2
 } from "lucide-react";
 
-import { SparePart } from "../types.js";
+import { SparePart, UserRole } from "../types.js";
 import { api } from "../api.js";
 
 // Catalog item interface linked 100% to Spare Part Master
@@ -63,6 +64,9 @@ interface SparePartCatalogViewProps {
   receivingList?: any[];
   onAddPart?: (part: Partial<SparePart>) => Promise<any>;
   onUpdatePart?: (id: string, part: Partial<SparePart>) => Promise<any>;
+  onDeletePart?: (id: string) => Promise<any>;
+  role?: UserRole;
+  currentUser?: any;
 }
 
 // Clean SVG Barcode Graphic Component with embedded Location
@@ -180,6 +184,24 @@ function saveCatalogMetadata(meta: Record<string, Partial<CatalogItem>>) {
   } catch (e) {}
 }
 
+// Helper to track deleted parts locally
+function getDeletedPartIds(): Set<string> {
+  try {
+    const raw = localStorage.getItem("wms_deleted_spare_parts");
+    return new Set(raw ? JSON.parse(raw) : []);
+  } catch (e) {
+    return new Set();
+  }
+}
+
+function saveDeletedPartId(id: string) {
+  try {
+    const current = getDeletedPartIds();
+    current.add(id);
+    localStorage.setItem("wms_deleted_spare_parts", JSON.stringify([...current]));
+  } catch (e) {}
+}
+
 // Generate unique barcode generator with format BC-XXXXXXXX
 function generateRandomBarcode(): string {
   const num = Math.floor(10000000 + Math.random() * 90000000);
@@ -197,15 +219,31 @@ export default function SparePartCatalogView({
   parts = [],
   receivingList = [],
   onAddPart,
-  onUpdatePart 
+  onUpdatePart,
+  onDeletePart,
+  role,
+  currentUser
 }: SparePartCatalogViewProps) {
   // Local state for catalog metadata overrides
   const [customMeta, setCustomMeta] = useState<Record<string, Partial<CatalogItem>>>(() => getCatalogMetadata());
+  const [deletedIds, setDeletedIds] = useState<Set<string>>(() => getDeletedPartIds());
+
+  // Role detection: Only Super Admin has delete authorization
+  const isSuperAdmin = useMemo(() => {
+    if (role === UserRole.SUPER_ADMIN) return true;
+    if (String(role || "").toLowerCase().includes("super")) return true;
+    if (currentUser?.role === UserRole.SUPER_ADMIN) return true;
+    if (String(currentUser?.role || "").toLowerCase().includes("super")) return true;
+    const localUser = typeof window !== "undefined" ? (localStorage.getItem("wms_username") || "") : "";
+    if (localUser.toLowerCase().includes("super") || localUser.toLowerCase() === "admin") return true;
+    return false;
+  }, [role, currentUser]);
 
   // Listen to catalog updates from receiving or other tabs
   useEffect(() => {
     const handleUpdate = () => {
       setCustomMeta(getCatalogMetadata());
+      setDeletedIds(getDeletedPartIds());
     };
     window.addEventListener("storage", handleUpdate);
     window.addEventListener("catalog_updated", handleUpdate);
@@ -215,10 +253,62 @@ export default function SparePartCatalogView({
     };
   }, []);
 
+  // Action: Delete Spare Part (Super Admin Only)
+  const handleDeleteItem = async (item: CatalogItem) => {
+    if (!isSuperAdmin) {
+      alert("Akses Ditolak: Hanya akun Super Admin yang memiliki hak akses untuk menghapus suku cadang.");
+      return;
+    }
+
+    const confirmed = window.confirm(
+      `⚠️ KONFIRMASI HAPUS SUKU CADANG (SUPER ADMIN)\n\nApakah Anda yakin ingin menghapus suku cadang berikut secara permanen?\n\n• Nama: ${item.part_name}\n• Barcode: ${item.barcode}\n• Part Number: ${item.part_number}\n• Lokasi: ${item.location_name || item.location_id || "Gudang"}\n\nData akan dihapus dari database Spare Part Master dan WMS secara permanen.`
+    );
+    if (!confirmed) return;
+
+    setIsSubmitting(true);
+    try {
+      if (onDeletePart) {
+        await onDeletePart(item.id);
+      } else {
+        await api.deleteSparePart(item.id);
+      }
+
+      // Add to deleted IDs set
+      saveDeletedPartId(item.id);
+      setDeletedIds(prev => new Set([...prev, item.id]));
+
+      // Clean local metadata overrides & barcode cache
+      const meta = getCatalogMetadata();
+      delete meta[item.id];
+      saveCatalogMetadata(meta);
+      setCustomMeta(meta);
+
+      const bcCache = getBarcodeCache();
+      delete bcCache[item.id];
+      saveBarcodeCache(bcCache);
+
+      window.dispatchEvent(new Event("storage"));
+      window.dispatchEvent(new Event("catalog_updated"));
+
+      if (selectedItem?.id === item.id) {
+        setIsPrintModalOpen(false);
+        setIsEditingItem(false);
+        setSelectedItem(null);
+      }
+
+      alert(`✅ Suku cadang "${item.part_name}" (Barcode: ${item.barcode}) berhasil dihapus secara permanen.`);
+    } catch (err: any) {
+      alert(`Gagal menghapus suku cadang: ${err.message || "Terjadi kesalahan sistem."}`);
+    } finally {
+      setIsSubmitting(false);
+    }
+  };
+
   // Construct allCatalogItems directly from Spare Part Master (`parts`) & Inbound Receiving items
   const allCatalogItems = useMemo<CatalogItem[]>(() => {
     // 1. Combine master parts and any items from Inbound Receiving
-    const combinedParts: SparePart[] = [...(parts || [])];
+    const currentDeleted = deletedIds;
+    const combinedParts: SparePart[] = (parts || []).filter(p => p && !currentDeleted.has(p.id));
     const existingIds = new Set(combinedParts.map(p => p.id));
     const existingPns = new Set(combinedParts.map(p => (p.part_number || "").toLowerCase().trim()).filter(Boolean));
     const existingNames = new Set(combinedParts.map(p => (p.part_name || "").toLowerCase().trim()).filter(Boolean));
@@ -231,8 +321,11 @@ export default function SparePartCatalogView({
       receivingList.forEach(rec => {
         if (!rec || !rec.items) return;
         rec.items.forEach((itm: any, idx: number) => {
-          if (!itm) return;
           const pId = itm.spare_part_id || "";
+          if (pId && currentDeleted.has(pId)) return;
+          const fallbackId = (pId && !pId.startsWith("temp-") && !pId.startsWith("item-")) ? pId : `sp-rec-${rec.id || 'inbound'}-${idx}`;
+          if (currentDeleted.has(fallbackId)) return;
+
           const pNum = (itm.part_number || "").trim();
           const pName = (itm.spare_part_name || itm.part_name || "").trim();
 
@@ -241,7 +334,6 @@ export default function SparePartCatalogView({
             (pName && existingNames.has(pName.toLowerCase()));
 
           if (!alreadyIn && (pName || pNum)) {
-            const fallbackId = (pId && !pId.startsWith("temp-") && !pId.startsWith("item-")) ? pId : `sp-rec-${rec.id || 'inbound'}-${idx}`;
             const cleanPn = pNum || `PN-${Date.now().toString().slice(-4)}`;
             const cleanBarcode = itm.barcode || barcodeCache[fallbackId] || `BC-${Math.floor(10000000 + Math.random() * 90000000)}`;
 
@@ -886,6 +978,16 @@ export default function SparePartCatalogView({
                     >
                       <Printer className="w-3.5 h-3.5" />
                     </button>
+                    {isSuperAdmin && (
+                      <button
+                        type="button"
+                        onClick={() => handleDeleteItem(item)}
+                        className="bg-red-50 hover:bg-red-100 text-red-600 border border-red-200 py-1.5 px-2.5 rounded flex items-center justify-center cursor-pointer transition-colors shadow-2xs"
+                        title="Hapus Suku Cadang (Super Admin Only)"
+                      >
+                        <Trash2 className="w-3.5 h-3.5" />
+                      </button>
+                    )}
                   </div>
                 </div>
               </div>
@@ -1585,52 +1687,82 @@ export default function SparePartCatalogView({
             </div>
 
             {/* Modal Footer */}
-            <div className="bg-slate-50 border-t border-slate-200 px-6 py-4 flex justify-end gap-3 shrink-0 no-print">
+            <div className="bg-slate-50 border-t border-slate-200 px-6 py-4 flex items-center justify-between gap-3 shrink-0 no-print">
               {isEditingItem ? (
                 <>
-                  <button
-                    type="button"
-                    onClick={() => {
-                      setIsEditingItem(false);
-                      setEditValidationError("");
-                    }}
-                    className="px-4 py-2 border border-slate-250 hover:bg-slate-100 text-slate-700 font-bold uppercase rounded text-xs cursor-pointer transition-colors"
-                  >
-                    Batal
-                  </button>
-                  <button
-                    type="button"
-                    disabled={isSubmitting}
-                    onClick={handleSaveEdit}
-                    className="px-5 py-2.5 rounded bg-blue-600 hover:bg-blue-500 border border-blue-700 text-white text-xs font-bold uppercase tracking-wider flex items-center gap-1.5 cursor-pointer shadow-sm transition-all disabled:opacity-50"
-                  >
-                    <Save className="w-4 h-4" /> {isSubmitting ? "Menyimpan..." : "Simpan Perubahan"}
-                  </button>
+                  <div>
+                    {isSuperAdmin && (
+                      <button
+                        type="button"
+                        disabled={isSubmitting}
+                        onClick={() => handleDeleteItem(selectedItem)}
+                        className="px-4 py-2 bg-red-600 hover:bg-red-700 text-white font-bold text-xs uppercase rounded-lg flex items-center gap-1.5 transition-all cursor-pointer shadow-sm disabled:opacity-50"
+                        title="Hapus Suku Cadang dari Database (Super Admin Only)"
+                      >
+                        <Trash2 className="w-3.5 h-3.5" /> Hapus Suku Cadang
+                      </button>
+                    )}
+                  </div>
+                  <div className="flex gap-3">
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setIsEditingItem(false);
+                        setEditValidationError("");
+                      }}
+                      className="px-4 py-2 border border-slate-250 hover:bg-slate-100 text-slate-700 font-bold uppercase rounded text-xs cursor-pointer transition-colors"
+                    >
+                      Batal
+                    </button>
+                    <button
+                      type="button"
+                      disabled={isSubmitting}
+                      onClick={handleSaveEdit}
+                      className="px-5 py-2.5 rounded bg-blue-600 hover:bg-blue-500 border border-blue-700 text-white text-xs font-bold uppercase tracking-wider flex items-center gap-1.5 cursor-pointer shadow-sm transition-all disabled:opacity-50"
+                    >
+                      <Save className="w-4 h-4" /> {isSubmitting ? "Menyimpan..." : "Simpan Perubahan"}
+                    </button>
+                  </div>
                 </>
               ) : (
                 <>
-                  <button
-                    onClick={() => setIsPrintModalOpen(false)}
-                    className="px-4 py-2 border border-slate-250 hover:bg-slate-100 text-slate-700 font-bold uppercase rounded text-xs cursor-pointer transition-colors"
-                  >
-                    Tutup
-                  </button>
-                  <button
-                    onClick={() => {
-                      setEditItemForm(JSON.parse(JSON.stringify(selectedItem)));
-                      setIsEditingItem(true);
-                      setEditValidationError("");
-                    }}
-                    className="px-4 py-2.5 bg-slate-800 hover:bg-slate-700 border border-slate-900 text-white font-bold text-xs uppercase rounded-lg flex items-center gap-1.5 transition-all cursor-pointer"
-                  >
-                    <Edit2 className="w-3.5 h-3.5" /> Edit Suku Cadang
-                  </button>
-                  <button
-                    onClick={executePrint}
-                    className="px-5 py-2.5 rounded bg-blue-600 hover:bg-blue-500 border border-blue-700 text-white text-xs font-bold uppercase tracking-wider flex items-center gap-1.5 cursor-pointer shadow-sm transition-all"
-                  >
-                    <Printer className="w-4 h-4" /> Cetak Label Barcode &amp; QR
-                  </button>
+                  <div>
+                    {isSuperAdmin && (
+                      <button
+                        type="button"
+                        disabled={isSubmitting}
+                        onClick={() => handleDeleteItem(selectedItem)}
+                        className="px-4 py-2.5 bg-red-600 hover:bg-red-700 text-white font-bold text-xs uppercase rounded-lg flex items-center gap-1.5 transition-all cursor-pointer shadow-sm hover:shadow-red-500/20 disabled:opacity-50"
+                        title="Hapus Suku Cadang dari Database (Super Admin Only)"
+                      >
+                        <Trash2 className="w-4 h-4" /> Hapus Suku Cadang
+                      </button>
+                    )}
+                  </div>
+                  <div className="flex gap-3">
+                    <button
+                      onClick={() => setIsPrintModalOpen(false)}
+                      className="px-4 py-2 border border-slate-250 hover:bg-slate-100 text-slate-700 font-bold uppercase rounded text-xs cursor-pointer transition-colors"
+                    >
+                      Tutup
+                    </button>
+                    <button
+                      onClick={() => {
+                        setEditItemForm(JSON.parse(JSON.stringify(selectedItem)));
+                        setIsEditingItem(true);
+                        setEditValidationError("");
+                      }}
+                      className="px-4 py-2.5 bg-slate-800 hover:bg-slate-700 border border-slate-900 text-white font-bold text-xs uppercase rounded-lg flex items-center gap-1.5 transition-all cursor-pointer"
+                    >
+                      <Edit2 className="w-3.5 h-3.5" /> Edit Suku Cadang
+                    </button>
+                    <button
+                      onClick={executePrint}
+                      className="px-5 py-2.5 rounded bg-blue-600 hover:bg-blue-500 border border-blue-700 text-white text-xs font-bold uppercase tracking-wider flex items-center gap-1.5 cursor-pointer shadow-sm transition-all"
+                    >
+                      <Printer className="w-4 h-4" /> Cetak Label Barcode &amp; QR
+                    </button>
+                  </div>
                 </>
               )}
             </div>

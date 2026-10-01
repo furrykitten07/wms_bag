@@ -1090,6 +1090,9 @@ export default function App() {
               receivingList={receivingList}
               onAddPart={handleAddPart}
               onUpdatePart={handleUpdatePart}
+              onDeletePart={handleDeletePart}
+              role={currentUser?.role}
+              currentUser={currentUser}
             />
           )}
 
