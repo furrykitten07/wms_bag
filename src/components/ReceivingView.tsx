@@ -337,6 +337,7 @@ export default function ReceivingView({
     unit?: string;
     category?: string;
     location_id?: string;
+    current_stock?: number;
     description?: string;
   }) => {
     try {
@@ -356,6 +357,7 @@ export default function ReceivingView({
         let localList = partsSaved ? JSON.parse(partsSaved) : [];
         if (!Array.isArray(localList)) localList = [];
         const matchIdx = localList.findIndex((p: any) => p && (p.id === part.id || p.part_number === part.part_number));
+        const finalStock = part.current_stock !== undefined ? Number(part.current_stock) : 10;
         const newPartObj = {
           id: part.id,
           part_name: part.part_name,
@@ -364,10 +366,10 @@ export default function ReceivingView({
           barcode: generatedBarcode,
           unit: part.unit || "PCS",
           category: part.category || "General Spares",
-          location_id: part.location_id || "loc-1",
+          location_id: part.location_id || "loc-wh-merak",
           description: part.description || `${part.part_name} — Suku cadang terdaftar dari Inbound Gudang.`,
           maker: "OEM / Supplier",
-          current_stock: 10,
+          current_stock: finalStock,
           minimum_stock: 2,
           maximum_stock: 100,
           reorder_point: 5,
@@ -376,7 +378,11 @@ export default function ReceivingView({
           updated_at: new Date().toISOString()
         };
         if (matchIdx !== -1) {
-          localList[matchIdx] = { ...localList[matchIdx], ...newPartObj };
+          localList[matchIdx] = { 
+            ...localList[matchIdx], 
+            ...newPartObj,
+            current_stock: part.current_stock !== undefined ? Number(part.current_stock) : localList[matchIdx].current_stock
+          };
         } else {
           localList.unshift(newPartObj);
         }
@@ -487,7 +493,7 @@ export default function ReceivingView({
             barcode = `BC-${Math.floor(10000000 + Math.random() * 90000000)}`;
           }
 
-          const qtyIn = Number(itm.qty_received || itm.qty_ordered || (itm as any).qty || 10);
+          const qtyIn = Number(itm.qty_received !== undefined && itm.qty_received !== null && (itm as any).qty_received !== "" ? itm.qty_received : (itm.qty_ordered || (itm as any).qty || 0));
           const finalPn = pNum || `PN-${Date.now().toString().slice(-4)}${count + 1}`;
           const finalSku = (itm as any).sku || `SKU-${finalPn.replace(/[^a-zA-Z0-9]/g, "").slice(0, 10) || Date.now().toString().slice(-4)}`;
           const finalUnit = itm.unit || "PCS";
@@ -500,7 +506,7 @@ export default function ReceivingView({
             const updatedPayload: Partial<SparePart> = {
               barcode,
               location_id: "loc-wh-merak",
-              current_stock: Math.max(0, (match.current_stock || 0) + (qtyIn > 0 ? qtyIn : 0))
+              current_stock: Math.max(0, qtyIn)
             };
             if (onUpdatePart) await onUpdatePart(match.id, updatedPayload);
             else await api.updateSparePart(match.id, updatedPayload);
@@ -519,7 +525,7 @@ export default function ReceivingView({
               minimum_stock: 2,
               maximum_stock: 100,
               reorder_point: 5,
-              current_stock: qtyIn > 0 ? qtyIn : 10,
+              current_stock: Math.max(0, qtyIn),
               reserved_stock: 0,
               location_id: "loc-wh-merak",
               vessel_compatibility: finalVessel,
@@ -537,7 +543,8 @@ export default function ReceivingView({
             barcode,
             unit: finalUnit,
             category: finalCat,
-            location_id: finalLoc
+            location_id: finalLoc,
+            current_stock: Math.max(0, qtyIn)
           });
           count++;
         }
@@ -562,12 +569,17 @@ export default function ReceivingView({
       return;
     }
 
-    if (!rec.items || rec.items.length === 0) {
+    // Prioritize active verificationItems if user is currently reviewing inside modal
+    const targetItems = (activeReceiving && activeReceiving.id === rec.id && verificationItems && verificationItems.length > 0)
+      ? verificationItems
+      : (rec.items || []);
+
+    if (!targetItems || targetItems.length === 0) {
       alert("Tidak ada item barang dalam penerimaan ini untuk dipush.");
       return;
     }
 
-    const confirmMsg = `Konfirmasi Push ke Master & Catalog:\n\nApakah Anda yakin ingin mem-push ${rec.items.length} item dari penerimaan "${rec.spk_number || rec.purchase_order_num}" ke:\n• Menu "Spare Part Master"\n• Menu "Catalog Sparepart" (lengkap dengan Barcode unik & QR Code)?`;
+    const confirmMsg = `Konfirmasi Push ke Master & Catalog:\n\nApakah Anda yakin ingin mem-push ${targetItems.length} item dari penerimaan "${rec.spk_number || rec.purchase_order_num}" ke:\n• Menu "Spare Part Master" (QTY Stok disamakan sesuai QTY Diterima)\n• Menu "Catalog Sparepart" (lengkap dengan Barcode unik & QR Code)?`;
     if (!confirm(confirmMsg)) return;
 
     setPushingRecId(rec.id);
@@ -584,8 +596,8 @@ export default function ReceivingView({
       let cacheChanged = false;
       const pushedNames: string[] = [];
 
-      for (let idx = 0; idx < rec.items.length; idx++) {
-        const itm = rec.items[idx];
+      for (let idx = 0; idx < targetItems.length; idx++) {
+        const itm = targetItems[idx];
         if (!itm) continue;
 
         const pName = (itm.spare_part_name || (itm as any).part_name || "").trim();
@@ -600,7 +612,12 @@ export default function ReceivingView({
           cacheChanged = true;
         }
 
-        const qtyIn = Number(itm.qty_received || itm.qty_ordered || (itm as any).qty || 10);
+        // QTY Diterima disamakan, bukan ditambahkan
+        const qtyIn = Number(
+          itm.qty_received !== undefined && itm.qty_received !== null && (itm as any).qty_received !== ""
+            ? itm.qty_received
+            : (itm.qty_ordered || (itm as any).qty || 0)
+        );
         const finalPn = pNum || `PN-${Date.now().toString().slice(-4)}${idx + 1}`;
         const finalSku = (itm as any).sku || `SKU-${finalPn.replace(/[^a-zA-Z0-9]/g, "").slice(0, 10) || Date.now().toString().slice(-4)}`;
         const finalUnit = itm.unit || "PCS";
@@ -615,7 +632,7 @@ export default function ReceivingView({
 
           const updatedPayload: Partial<SparePart> = {
             barcode: barcode,
-            current_stock: Math.max(0, (match.current_stock || 0) + (qtyIn > 0 ? qtyIn : 0)),
+            current_stock: Math.max(0, qtyIn), // DISAMAKAN dengan QTY Diterima, bukan ditambahkan
             location_id: "loc-wh-merak",
             unit: match.unit || finalUnit
           };
@@ -625,7 +642,7 @@ export default function ReceivingView({
           } else {
             await api.updateSparePart(match.id, updatedPayload);
           }
-          pushedNames.push(`${match.part_name} (Diperbarui Stok: ${match.current_stock + qtyIn}, Lokasi: WAREHOUSE MERAK, Barcode: ${barcode})`);
+          pushedNames.push(`${match.part_name} (QTY Disamakan: ${qtyIn} ${finalUnit}, Lokasi: WAREHOUSE MERAK, Barcode: ${barcode})`);
         } else {
           const newPartId = (pId && !pId.startsWith("temp-") && !pId.startsWith("item-")) ? pId : `sp-${Date.now()}-${idx}-${Math.floor(Math.random() * 1000)}`;
           barcodeCache[newPartId] = barcode;
@@ -644,7 +661,7 @@ export default function ReceivingView({
             minimum_stock: 2,
             maximum_stock: 100,
             reorder_point: 5,
-            current_stock: qtyIn > 0 ? qtyIn : 10,
+            current_stock: Math.max(0, qtyIn),
             reserved_stock: 0,
             location_id: "loc-wh-merak",
             vessel_compatibility: finalVessel,
@@ -656,7 +673,7 @@ export default function ReceivingView({
           } else {
             await api.createSparePart(newPartPayload);
           }
-          pushedNames.push(`${newPartPayload.part_name} (Lokasi: WAREHOUSE MERAK, Barcode: ${barcode})`);
+          pushedNames.push(`${newPartPayload.part_name} (QTY: ${qtyIn} ${finalUnit}, Lokasi: WAREHOUSE MERAK, Barcode: ${barcode})`);
         }
 
         // Also sync to catalog metadata
@@ -668,7 +685,8 @@ export default function ReceivingView({
           barcode: barcode,
           unit: finalUnit,
           category: finalCat,
-          location_id: finalLoc
+          location_id: finalLoc,
+          current_stock: Math.max(0, qtyIn)
         });
       }
 
@@ -681,7 +699,7 @@ export default function ReceivingView({
       window.dispatchEvent(new Event("storage"));
       window.dispatchEvent(new CustomEvent("catalog_updated"));
 
-      alert(`🚀 PUSH BERHASIL!\n\nSebanyak ${pushedNames.length} barang masuk telah resmi tersimpan & terdaftar pada:\n1. Menu "Spare Part Master"\n2. Menu "Catalog Sparepart" (Barcode & QR Code siap scan/cetak)\n\nRincian:\n• ${pushedNames.join("\n• ")}`);
+      alert(`🚀 PUSH BERHASIL!\n\nSebanyak ${pushedNames.length} barang masuk telah resmi disinkronkan ke Master & Catalog (QTY stok disamakan dengan QTY Diterima):\n\nRincian:\n• ${pushedNames.join("\n• ")}`);
     } catch (err: any) {
       console.error("Push to master & catalog failed:", err);
       alert(`Gagal melakukan Push: ${err.message || "Terjadi kesalahan sistem"}`);
@@ -721,7 +739,12 @@ export default function ReceivingView({
       barcode = `BC-${Math.floor(10000000 + Math.random() * 90000000)}`;
     }
 
-    const qtyIn = Number(itm.qty_received || itm.qty_ordered || itm.qty || 10);
+    // QTY Diterima disamakan, bukan ditambahkan
+    const qtyIn = Number(
+      itm.qty_received !== undefined && itm.qty_received !== null && (itm as any).qty_received !== ""
+        ? itm.qty_received
+        : (itm.qty_ordered || itm.qty || 0)
+    );
     const finalPn = pNum || `PN-${Date.now().toString().slice(-4)}`;
     const finalSku = (itm as any).sku || `SKU-${finalPn.replace(/[^a-zA-Z0-9]/g, "").slice(0, 10) || Date.now().toString().slice(-4)}`;
 
@@ -730,7 +753,9 @@ export default function ReceivingView({
         barcodeCache[match.id] = barcode;
         const updatedPayload: Partial<SparePart> = {
           barcode,
-          current_stock: Math.max(0, (match.current_stock || 0) + (qtyIn > 0 ? qtyIn : 0))
+          current_stock: Math.max(0, qtyIn), // DISAMAKAN dengan QTY Diterima, bukan ditambahkan
+          location_id: "loc-wh-merak",
+          unit: match.unit || itm.unit || "PCS"
         };
         if (onUpdatePart) await onUpdatePart(match.id, updatedPayload);
         else await api.updateSparePart(match.id, updatedPayload);
@@ -746,7 +771,7 @@ export default function ReceivingView({
           unit: itm.unit || "PCS",
           category: itm.category || "General Spares",
           maker: rec.vendor_name || "OEM / Supplier",
-          current_stock: qtyIn > 0 ? qtyIn : 10,
+          current_stock: Math.max(0, qtyIn),
           minimum_stock: 2,
           maximum_stock: 100,
           reorder_point: 5,
@@ -764,13 +789,17 @@ export default function ReceivingView({
         part_name: pName,
         part_number: finalPn,
         sku: finalSku,
-        barcode
+        barcode,
+        unit: itm.unit || "PCS",
+        category: itm.category || "General Spares",
+        location_id: "loc-wh-merak",
+        current_stock: Math.max(0, qtyIn)
       });
 
       window.dispatchEvent(new Event("storage"));
       window.dispatchEvent(new CustomEvent("catalog_updated"));
 
-      alert(`🚀 PUSH BERHASIL!\n\nBarang "${pName}" telah resmi tersimpan & terdaftar pada:\n1. Menu "Spare Part Master"\n2. Menu "Catalog Sparepart" (Barcode: ${barcode})`);
+      alert(`🚀 PUSH BERHASIL!\n\nBarang "${pName}" telah resmi disinkronkan & terdaftar pada:\n1. Menu "Spare Part Master"\n2. Menu "Catalog Sparepart" (Barcode: ${barcode})\n\n• QTY Stok Disamakan: ${qtyIn} ${itm.unit || "PCS"} (Sesuai QTY Diterima)`);
     } catch (err: any) {
       alert(`Gagal melakukan Push: ${err.message || "Terjadi kesalahan"}`);
     }
