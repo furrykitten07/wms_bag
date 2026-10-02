@@ -35,7 +35,9 @@ import {
   ChevronDown,
   Trash2,
   ShieldCheck,
-  CheckCircle
+  CheckCircle,
+  Layers,
+  PackageCheck
 } from "lucide-react";
 import { OutboundDispatch, DispatchStatus, UserRole, SparePart, MaterialRequest, SPKWorkOrder, MaterialReturn, InboundReceiving, ReceivingStatus, Vessel } from "../types.js";
 import { FLEET_VESSELS } from "./ReceivingView.js";
@@ -172,6 +174,7 @@ export default function DispatchView({
 
   const [selectedTug10Id, setSelectedTug10Id] = useState("");
   const [targetVesselName, setTargetVesselName] = useState("");
+  const [partialDetailModalItem, setPartialDetailModalItem] = useState<OutboundDispatch | null>(null);
 
   const vesselOptions = useMemo(() => {
     const list = (vessels && vessels.length > 0)
@@ -187,6 +190,150 @@ export default function DispatchView({
   const [dDest, setDDest] = useState("Port Agent / Vessel Side");
 
   const [dispatchItems, setDispatchItems] = useState<any[]>([]);
+
+  // Detailed multi-shipment fulfillment breakdown per part & per phase
+  const getDetailedFulfillmentForDispatch = (dsp: OutboundDispatch) => {
+    const reqRef = dsp.request_reference;
+    const woRef = dsp.work_order_ref || dsp.spk_number;
+
+    const relatedDispatches = (dispatchList || []).filter(d => 
+      Boolean(d) && (
+        (reqRef && d.request_reference === reqRef) ||
+        (woRef && (d.work_order_ref === woRef || d.spk_number === woRef))
+      )
+    ).sort((a, b) => new Date(a.dispatch_date || a.created_at || 0).getTime() - new Date(b.dispatch_date || b.created_at || 0).getTime());
+
+    const targetMR = requests?.find(r => 
+      Boolean(r) && (
+        (reqRef && r.request_number === reqRef) ||
+        (woRef && r.work_order_ref === woRef)
+      )
+    );
+
+    type PartDetail = {
+      id: string;
+      part_name: string;
+      part_number: string;
+      unit: string;
+      qty_requested: number;
+      phases: { [phaseIndex: number]: number };
+      total_dispatched: number;
+      remaining_qty: number;
+      is_complete: boolean;
+    };
+
+    const partsMap = new Map<string, PartDetail>();
+
+    // 1. Initialize from targetMR items
+    if (targetMR && targetMR.items) {
+      targetMR.items.forEach(itm => {
+        const key = itm.spare_part_id || (itm.part_number && itm.part_number !== "-" ? itm.part_number : itm.spare_part_name);
+        if (!key) return;
+        partsMap.set(key, {
+          id: itm.spare_part_id || key,
+          part_name: itm.spare_part_name || itm.part_number || "Suku Cadang",
+          part_number: itm.part_number || "-",
+          unit: itm.unit || "PCS",
+          qty_requested: itm.requested_qty || 1,
+          phases: {},
+          total_dispatched: 0,
+          remaining_qty: itm.requested_qty || 1,
+          is_complete: false
+        });
+      });
+    }
+
+    // 2. Add any parts from dispatches that might not be in targetMR
+    relatedDispatches.forEach(d => {
+      (d.items || []).forEach(itm => {
+        const key = itm.spare_part_id || (itm.part_number && itm.part_number !== "-" ? itm.part_number : itm.spare_part_name);
+        if (!key) return;
+        if (!partsMap.has(key)) {
+          partsMap.set(key, {
+            id: itm.spare_part_id || key,
+            part_name: itm.spare_part_name || itm.part_number || "Suku Cadang",
+            part_number: itm.part_number || "-",
+            unit: itm.unit || "PCS",
+            qty_requested: itm.qty_requested || itm.qty_dispatched || 1,
+            phases: {},
+            total_dispatched: 0,
+            remaining_qty: itm.qty_requested || itm.qty_dispatched || 1,
+            is_complete: false
+          });
+        }
+      });
+    });
+
+    // 3. Populate per-phase dispatched quantities
+    relatedDispatches.forEach((d, phaseIdx) => {
+      (d.items || []).forEach(di => {
+        for (const [, partData] of partsMap.entries()) {
+          const match = 
+            (di.spare_part_id && partData.id && di.spare_part_id === partData.id) ||
+            (di.part_number && partData.part_number && di.part_number !== "-" && di.part_number.toLowerCase() === partData.part_number.toLowerCase()) ||
+            (di.spare_part_name && partData.part_name && di.spare_part_name.toLowerCase().trim() === partData.part_name.toLowerCase().trim());
+          if (match) {
+            const qtyInThisPhase = Number(di.qty_dispatched || 0);
+            partData.phases[phaseIdx] = (partData.phases[phaseIdx] || 0) + qtyInThisPhase;
+            break;
+          }
+        }
+      });
+    });
+
+    // 4. Calculate totals
+    const partsList: PartDetail[] = Array.from(partsMap.values()).map(p => {
+      const totalDispatched = Object.values(p.phases).reduce((a, b) => a + b, 0);
+      const remaining = Math.max(0, p.qty_requested - totalDispatched);
+      return {
+        ...p,
+        total_dispatched: totalDispatched,
+        remaining_qty: remaining,
+        is_complete: remaining === 0
+      };
+    });
+
+    const totalRequested = partsList.reduce((sum, p) => sum + p.qty_requested, 0);
+    const totalDispatched = partsList.reduce((sum, p) => sum + p.total_dispatched, 0);
+    const totalRemaining = partsList.reduce((sum, p) => sum + p.remaining_qty, 0);
+    const incompletePartsCount = partsList.filter(p => !p.is_complete).length;
+    const allComplete = incompletePartsCount === 0;
+
+    return {
+      relatedDispatches,
+      targetMR,
+      partsList,
+      totalRequested,
+      totalDispatched,
+      totalRemaining,
+      incompletePartsCount,
+      allComplete,
+      nextPhaseNumber: relatedDispatches.length + 1
+    };
+  };
+
+  // Open followup dispatch form automatically prefilled with remaining parts & next phase
+  const handleOpenFollowupDispatch = (dsp: OutboundDispatch) => {
+    const fulfillment = getDetailedFulfillmentForDispatch(dsp);
+    const targetReq = fulfillment.targetMR || requests?.find(r => 
+      Boolean(r) && (
+        (dsp.request_reference && r.request_number === dsp.request_reference) ||
+        (dsp.work_order_ref && r.work_order_ref === dsp.work_order_ref)
+      )
+    );
+
+    if (targetReq) {
+      setDispatchSource("tug5");
+      setSelectedTug5Id(targetReq.id);
+      setTug5SearchQuery(`[${targetReq.request_number}] - ${targetReq.vessel_name}`);
+      setIsTug5DropdownOpen(false);
+      setIsCreateModalOpen(true);
+    } else {
+      setDispatchSource("tug5");
+      setTug5SearchQuery(dsp.request_reference || dsp.work_order_ref || "");
+      setIsCreateModalOpen(true);
+    }
+  };
 
   // Helper to calculate multi-shipment status and history for an SPK / TUG 5
   const getMultiShipmentHistoryForSPK = (spkRef?: string, tug5Ref?: string) => {
@@ -683,7 +830,10 @@ export default function DispatchView({
       tug8Num.toLowerCase().includes(search.toLowerCase()) || 
       reqRef.toLowerCase().includes(search.toLowerCase());
 
-    const matchesStatus = statusFilter === "All" || d.status === statusFilter;
+    const matchesStatus = 
+      statusFilter === "All" || 
+      d.status === statusFilter || 
+      (statusFilter === "DISPATCHED_PARTIAL" && (d.is_partial || d.status === "DISPATCHED_PARTIAL"));
     const matchesVessel = vesselFilter === "All" || vName === vesselFilter;
 
     // Time filter evaluation
@@ -1023,6 +1173,7 @@ export default function DispatchView({
               <option value="All">Semua Status</option>
               {activeTab === "queue" ? (
                 <>
+                  <option value="DISPATCHED_PARTIAL">⚠️ Dispatched Parsial</option>
                   <option value={DispatchStatus.DRAFT}>Draft</option>
                   <option value={DispatchStatus.PICKING}>Picking</option>
                   <option value={DispatchStatus.PACKED}>Packed</option>
@@ -1353,19 +1504,48 @@ export default function DispatchView({
                           
                           if (isPartialDisp) {
                             return (
-                              <span className="bg-amber-100 text-amber-900 border border-amber-300 px-2.5 py-1 rounded text-[9.5px] font-black uppercase tracking-wider shadow-2xs inline-flex items-center gap-1" title={item.incomplete_items_summary}>
-                                <AlertTriangle className="w-3 h-3 text-amber-600 shrink-0" />
-                                ⚠️ Dispatched Parsial{phaseLabel}
-                              </span>
+                              <div className="flex flex-col items-center gap-1">
+                                <span className="bg-amber-100 text-amber-900 border border-amber-300 px-2.5 py-1 rounded text-[9.5px] font-black uppercase tracking-wider shadow-2xs inline-flex items-center gap-1" title={item.incomplete_items_summary}>
+                                  <AlertTriangle className="w-3 h-3 text-amber-600 shrink-0" />
+                                  ⚠️ Dispatched Parsial{phaseLabel}
+                                </span>
+                                <button
+                                  type="button"
+                                  onClick={(e) => {
+                                    e.stopPropagation();
+                                    setPartialDetailModalItem(item);
+                                  }}
+                                  className="text-[9.5px] font-bold text-amber-800 hover:text-amber-950 bg-amber-50 hover:bg-amber-100 border border-amber-300/80 px-2 py-0.5 rounded-full cursor-pointer flex items-center gap-1 transition-colors shadow-2xs"
+                                  title="Lihat riwayat berapa QTY yang dikirim di setiap tahap dan sisa suku cadang yang belum terkirim"
+                                >
+                                  <Eye className="w-3 h-3 text-amber-700" />
+                                  <span>Lihat Sisa &amp; Riwayat</span>
+                                </button>
+                              </div>
                             );
                           }
 
                           if (item.status === DispatchStatus.DISPATCHED || item.status === DispatchStatus.COMPLETED || item.status === DispatchStatus.DELIVERED) {
                             return (
-                              <span className="bg-emerald-100 text-emerald-900 border border-emerald-300 px-2.5 py-1 rounded text-[9.5px] font-black uppercase tracking-wider shadow-2xs inline-flex items-center gap-1">
-                                <CheckCircle className="w-3 h-3 text-emerald-600 shrink-0" />
-                                ✓ Dispatched Lengkap{phaseLabel}
-                              </span>
+                              <div className="flex flex-col items-center gap-1">
+                                <span className="bg-emerald-100 text-emerald-900 border border-emerald-300 px-2.5 py-1 rounded text-[9.5px] font-black uppercase tracking-wider shadow-2xs inline-flex items-center gap-1">
+                                  <CheckCircle className="w-3 h-3 text-emerald-600 shrink-0" />
+                                  ✓ Dispatched Lengkap{phaseLabel}
+                                </span>
+                                {item.shipment_phase && item.shipment_phase > 1 && (
+                                  <button
+                                    type="button"
+                                    onClick={(e) => {
+                                      e.stopPropagation();
+                                      setPartialDetailModalItem(item);
+                                    }}
+                                    className="text-[9px] font-bold text-purple-700 hover:text-purple-900 bg-purple-50 hover:bg-purple-100 border border-purple-200 px-1.5 py-0.5 rounded-full cursor-pointer flex items-center gap-1 transition-colors"
+                                  >
+                                    <History className="w-2.5 h-2.5" />
+                                    <span>Riwayat {item.shipment_phase} Tahap</span>
+                                  </button>
+                                )}
+                              </div>
                             );
                           }
 
@@ -1385,7 +1565,23 @@ export default function DispatchView({
 
                       {/* Actions */}
                       <td className="p-3.5 text-right no-print relative">
-                        <div className="flex items-center justify-end">
+                        <div className="flex items-center justify-end gap-1.5">
+                          {/* Quick Followup Dispatch Button directly in row */}
+                          {(item.is_partial || item.status === "DISPATCHED_PARTIAL") && (
+                            <button
+                              type="button"
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                handleOpenFollowupDispatch(item);
+                              }}
+                              className="px-2.5 py-1.5 bg-gradient-to-r from-amber-500 to-orange-600 hover:from-amber-600 hover:to-orange-700 text-white font-bold text-[10.5px] rounded-xl shadow-xs hover:shadow transition-all flex items-center gap-1 cursor-pointer active:scale-95 shrink-0"
+                              title="Kirim pengiriman susulan berikutnya untuk sisa barang yang belum terkirim"
+                            >
+                              <Truck className="w-3.5 h-3.5" />
+                              <span>Kirim Susulan (Tahap {(item.shipment_phase || 1) + 1})</span>
+                            </button>
+                          )}
+
                           <div className="relative inline-block text-left">
                             <button
                               type="button"
@@ -1591,6 +1787,36 @@ export default function DispatchView({
                                     <div className="px-2 py-1 text-[9px] font-mono font-black uppercase tracking-widest text-slate-400">
                                       Operasional
                                     </div>
+
+                                    {/* Quick Actions for Partial Multi-Shipment */}
+                                    {(item.is_partial || item.status === "DISPATCHED_PARTIAL") && (
+                                      <button
+                                        type="button"
+                                        onClick={(e) => {
+                                          e.stopPropagation();
+                                          setActiveActionId(null);
+                                          handleOpenFollowupDispatch(item);
+                                        }}
+                                        className="w-full px-2.5 py-1.5 text-xs font-bold bg-amber-50 hover:bg-amber-100 text-amber-900 rounded-lg border border-amber-200 flex items-center gap-2 cursor-pointer transition-colors text-left"
+                                      >
+                                        <Truck className="w-3.5 h-3.5 text-amber-600" />
+                                        <span>Kirim Susulan (Tahap {(item.shipment_phase || 1) + 1})</span>
+                                      </button>
+                                    )}
+
+                                    <button
+                                      type="button"
+                                      onClick={(e) => {
+                                        e.stopPropagation();
+                                        setActiveActionId(null);
+                                        setPartialDetailModalItem(item);
+                                      }}
+                                      className="w-full px-2.5 py-1.5 text-xs font-semibold hover:bg-slate-100 text-slate-800 rounded-lg flex items-center gap-2 cursor-pointer transition-colors text-left"
+                                    >
+                                      <History className="w-3.5 h-3.5 text-purple-600" />
+                                      <span>Rincian Parsial &amp; Sisa Barang</span>
+                                    </button>
+
                                     <button
                                       type="button"
                                       onClick={(e) => {
@@ -2857,13 +3083,44 @@ export default function DispatchView({
 
                           {/* Interactive Item Table */}
                           <div className="bg-white p-3.5 rounded-lg border border-slate-200 space-y-2">
-                            <div className="flex items-center justify-between">
-                              <span className="text-[10px] font-bold text-slate-600 uppercase tracking-wider block">
-                                Atur QTY Suku Cadang Yang Dikirim Pada Tahap Ini ({dispatchItems.length} Item)
-                              </span>
-                              <span className="text-[9.5px] font-mono text-slate-400">
-                                Anda dapat mengubah QTY dikirim jika pengiriman dilakukan parsial.
-                              </span>
+                            <div className="flex items-center justify-between flex-wrap gap-2">
+                              <div>
+                                <span className="text-[10px] font-bold text-slate-600 uppercase tracking-wider block">
+                                  Atur QTY Suku Cadang Yang Dikirim Pada Tahap Ini ({dispatchItems.length} Item)
+                                </span>
+                                <span className="text-[9.5px] font-mono text-slate-400">
+                                  Anda dapat mengubah QTY dikirim jika pengiriman dilakukan parsial.
+                                </span>
+                              </div>
+                              <div className="flex items-center gap-1.5">
+                                <button
+                                  type="button"
+                                  onClick={() => {
+                                    setDispatchItems(prevItems => prevItems.map(item => {
+                                      const prev = item.previously_dispatched || 0;
+                                      const req = item.qty_requested || 0;
+                                      const inboundQty = (item as any).qty_inbound_received !== undefined ? (item as any).qty_inbound_received : req;
+                                      const availableInbound = Math.max(0, inboundQty - prev);
+                                      const maxRemaining = Math.max(0, Math.min(req - prev, availableInbound));
+                                      return { ...item, qty_dispatched: maxRemaining };
+                                    }));
+                                  }}
+                                  className="px-2.5 py-1 bg-blue-50 hover:bg-blue-100 text-blue-700 border border-blue-200 rounded text-[10px] font-bold cursor-pointer transition-colors shadow-2xs"
+                                  title="Isi otomatis semua item dengan sisa QTY yang belum terkirim"
+                                >
+                                  ⚡ Isi Semua Sisa
+                                </button>
+                                <button
+                                  type="button"
+                                  onClick={() => {
+                                    setDispatchItems(prevItems => prevItems.map(item => ({ ...item, qty_dispatched: 0 })));
+                                  }}
+                                  className="px-2 py-1 bg-slate-100 hover:bg-slate-200 text-slate-600 rounded text-[10px] font-bold cursor-pointer transition-colors"
+                                  title="Kosongkan nilai QTY kirim menjadi 0"
+                                >
+                                  ✕ Nolkan (0)
+                                </button>
+                              </div>
                             </div>
 
                             <div className="overflow-x-auto max-h-56 overflow-y-auto border border-slate-200 rounded-lg">
@@ -3305,6 +3562,278 @@ export default function DispatchView({
           </div>
         </div>
       )}
+
+      {/* POPUP MODAL: RINCIAN PENGIRIMAN PARSIAL & PELACAKAN SISA SUKU CADANG */}
+      {partialDetailModalItem && (() => {
+        const fulfillment = getDetailedFulfillmentForDispatch(partialDetailModalItem);
+        const { relatedDispatches, partsList, totalRequested, totalDispatched, totalRemaining, incompletePartsCount, allComplete, nextPhaseNumber } = fulfillment;
+        const percentComplete = totalRequested > 0 ? Math.round((totalDispatched / totalRequested) * 100) : 100;
+
+        return (
+          <div className="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-4 bg-slate-900/60 backdrop-blur-xs animate-in fade-in duration-200">
+            <div className="bg-white w-full max-w-5xl max-h-[92vh] rounded-2xl shadow-2xl flex flex-col overflow-hidden border border-slate-200">
+              
+              {/* Modal Header */}
+              <div className="bg-gradient-to-r from-slate-900 via-blue-950 to-indigo-950 text-white px-6 py-4.5 flex items-center justify-between shrink-0 shadow-sm">
+                <div className="flex items-center gap-3">
+                  <div className="w-10 h-10 rounded-xl bg-amber-500/20 border border-amber-400/40 flex items-center justify-center text-amber-300 shrink-0">
+                    <Truck className="w-5 h-5" />
+                  </div>
+                  <div>
+                    <div className="flex items-center gap-2 flex-wrap">
+                      <h3 className="text-sm font-black uppercase tracking-wider font-mono">
+                        Pelacakan Pengiriman Parsial &amp; Sisa Suku Cadang (TUG 8)
+                      </h3>
+                      <span className={`px-2 py-0.5 rounded text-[10px] font-black font-mono uppercase ${
+                        allComplete ? "bg-emerald-500/20 text-emerald-300 border border-emerald-400/40" : "bg-amber-500/20 text-amber-300 border border-amber-400/40"
+                      }`}>
+                        {allComplete ? "✓ Lengkap 100%" : `⚠️ Parsial (${incompletePartsCount} Barang Masih Kurang)`}
+                      </span>
+                    </div>
+                    <p className="text-xs text-slate-300 mt-0.5">
+                      Ref Dokumen TUG 5: <span className="font-mono font-bold text-amber-300">[{partialDetailModalItem.request_reference || "N/A"}]</span> &bull; Kapal: <strong className="text-white">{partialDetailModalItem.vessel_name}</strong> {partialDetailModalItem.work_order_ref ? `• SPK: ${partialDetailModalItem.work_order_ref}` : ""}
+                    </p>
+                  </div>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => setPartialDetailModalItem(null)}
+                  className="text-slate-400 hover:text-white p-1 rounded-lg hover:bg-white/10 transition-colors cursor-pointer"
+                >
+                  <X className="w-5 h-5" />
+                </button>
+              </div>
+
+              {/* Modal Body */}
+              <div className="flex-1 overflow-y-auto p-6 space-y-5 bg-slate-50/50">
+
+                {/* Summary KPI Cards */}
+                <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+                  <div className="bg-white p-3.5 rounded-xl border border-slate-200 shadow-2xs">
+                    <span className="text-[10px] font-mono uppercase text-slate-400 block font-bold">Total Target Diminta (SPK)</span>
+                    <span className="text-lg font-black text-slate-900 font-mono mt-0.5 block">{totalRequested} <span className="text-xs font-normal text-slate-500">Unit</span></span>
+                    <span className="text-[10px] text-slate-500 mt-0.5 block">{partsList.length} jenis suku cadang</span>
+                  </div>
+                  <div className="bg-white p-3.5 rounded-xl border border-blue-200 shadow-2xs bg-blue-50/20">
+                    <span className="text-[10px] font-mono uppercase text-blue-700 block font-bold">Sudah Terkirim (Kumulatif)</span>
+                    <span className="text-lg font-black text-blue-800 font-mono mt-0.5 block">{totalDispatched} <span className="text-xs font-normal text-blue-600">Unit</span></span>
+                    <span className="text-[10px] text-blue-600 font-bold mt-0.5 block">{percentComplete}% terpenuhi</span>
+                  </div>
+                  <div className={`p-3.5 rounded-xl border shadow-2xs ${totalRemaining > 0 ? "bg-rose-50/50 border-rose-200" : "bg-emerald-50/50 border-emerald-200"}`}>
+                    <span className={`text-[10px] font-mono uppercase block font-bold ${totalRemaining > 0 ? "text-rose-700" : "text-emerald-700"}`}>
+                      Sisa Belum Terkirim
+                    </span>
+                    <span className={`text-lg font-black font-mono mt-0.5 block ${totalRemaining > 0 ? "text-rose-800" : "text-emerald-800"}`}>
+                      {totalRemaining} <span className="text-xs font-normal text-slate-500">Unit</span>
+                    </span>
+                    <span className={`text-[10px] font-bold mt-0.5 block ${totalRemaining > 0 ? "text-rose-600" : "text-emerald-600"}`}>
+                      {totalRemaining > 0 ? `⚠️ ${incompletePartsCount} jenis suku cadang kurang` : "✓ Semua item lengkap"}
+                    </span>
+                  </div>
+                  <div className="bg-white p-3.5 rounded-xl border border-slate-200 shadow-2xs">
+                    <span className="text-[10px] font-mono uppercase text-slate-400 block font-bold">Tahapan Pengiriman</span>
+                    <span className="text-lg font-black text-purple-800 font-mono mt-0.5 block">{relatedDispatches.length}x <span className="text-xs font-normal text-slate-500">Pengiriman</span></span>
+                    <span className="text-[10px] text-purple-700 font-bold mt-0.5 block">{allComplete ? "Selesai Penuh" : `Siap Tahap ${nextPhaseNumber}`}</span>
+                  </div>
+                </div>
+
+                {/* Riwayat Pengiriman Tiap Tahap (Tahap 1, Tahap 2, dst) */}
+                <div className="bg-white p-4 rounded-xl border border-slate-200 shadow-2xs space-y-3">
+                  <div className="flex items-center justify-between border-b border-slate-100 pb-2.5">
+                    <div className="flex items-center gap-2">
+                      <History className="w-4 h-4 text-purple-600" />
+                      <h4 className="text-xs font-black uppercase tracking-wider text-slate-900 font-mono">
+                        Riwayat Pengiriman Bertahap ({relatedDispatches.length} Tahap)
+                      </h4>
+                    </div>
+                    <span className="text-[11px] font-mono text-slate-500">
+                      Total Terkirim: <strong className="text-slate-900">{totalDispatched}</strong> dari <strong className="text-slate-900">{totalRequested}</strong>
+                    </span>
+                  </div>
+
+                  <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3">
+                    {relatedDispatches.map((d, idx) => {
+                      const phaseNum = d.shipment_phase || (idx + 1);
+                      const isCurrent = d.id === partialDetailModalItem.id;
+                      const qtyInThis = (d.items || []).reduce((sum, item) => sum + (item.qty_dispatched || 0), 0);
+                      const dDate = d.dispatch_date ? new Date(d.dispatch_date).toLocaleDateString("id-ID") : "-";
+
+                      return (
+                        <div 
+                          key={d.id}
+                          className={`p-3 rounded-xl border transition-all ${
+                            isCurrent 
+                              ? "bg-amber-50/70 border-amber-300 ring-1 ring-amber-300" 
+                              : "bg-slate-50/60 border-slate-200 hover:bg-slate-50"
+                          }`}
+                        >
+                          <div className="flex items-center justify-between gap-1 mb-1.5">
+                            <span className="font-mono font-black text-xs px-2 py-0.5 rounded bg-purple-100 text-purple-900 border border-purple-200">
+                              Tahap {phaseNum}
+                            </span>
+                            <span className={`text-[9.5px] font-mono font-bold px-1.5 py-0.5 rounded ${
+                              d.is_partial || d.status === "DISPATCHED_PARTIAL" 
+                                ? "bg-amber-100 text-amber-800" 
+                                : "bg-emerald-100 text-emerald-800"
+                            }`}>
+                              {d.is_partial || d.status === "DISPATCHED_PARTIAL" ? "Parsial" : "Lengkap"}
+                            </span>
+                          </div>
+                          <div className="text-xs font-mono font-black text-slate-900 truncate">
+                            {d.tug8_number || d.bon_pengeluaran_number || d.dispatch_number || d.id}
+                          </div>
+                          <div className="text-[10.5px] text-slate-500 mt-1 flex flex-col gap-0.5">
+                            <span>Tgl: <strong className="text-slate-700">{dDate}</strong></span>
+                            <span>Kurir: <strong className="text-slate-700">{d.courier_name || "Internal Cargo"}</strong> {d.driver_pic ? `(${d.driver_pic})` : ""}</span>
+                            <span className="text-blue-800 font-bold font-mono mt-0.5">
+                              Dikirim: {qtyInThis} Unit ({d.items?.length || 0} item)
+                            </span>
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
+                </div>
+
+                {/* Tabel Rincian Tiap Suku Cadang & Pelacakan Sisa */}
+                <div className="bg-white rounded-xl border border-slate-200 shadow-2xs overflow-hidden">
+                  <div className="p-3.5 bg-slate-50 border-b border-slate-200 flex items-center justify-between flex-wrap gap-2">
+                    <div className="flex items-center gap-2">
+                      <Box className="w-4 h-4 text-blue-600" />
+                      <h4 className="text-xs font-black uppercase tracking-wider text-slate-900 font-mono">
+                        Rincian Suku Cadang: Kirim Tahap demi Tahap &amp; Sisa yang Belum Terkirim
+                      </h4>
+                    </div>
+                    <div className="flex items-center gap-2 text-xs">
+                      <span className="text-[10.5px] text-slate-500">
+                        Keterangan: <span className="text-rose-600 font-bold">Warna Merah</span> = Suku cadang masih kurang / belum dikirim
+                      </span>
+                    </div>
+                  </div>
+
+                  <div className="overflow-x-auto max-h-96 overflow-y-auto">
+                    <table className="w-full text-left text-xs border-collapse">
+                      <thead className="bg-slate-100/80 text-[10px] font-mono font-extrabold text-slate-600 uppercase border-b border-slate-200 sticky top-0 z-10">
+                        <tr>
+                          <th className="p-2.5 text-center w-10">No</th>
+                          <th className="p-2.5">Suku Cadang / Part Number</th>
+                          <th className="p-2.5 text-center w-16">Unit</th>
+                          <th className="p-2.5 text-center w-24 bg-slate-200/50">Target SPK</th>
+                          {relatedDispatches.map((d, idx) => (
+                            <th key={d.id} className="p-2.5 text-center w-24 text-purple-900 bg-purple-50/80 border-l border-purple-100">
+                              Tahap {d.shipment_phase || (idx + 1)}
+                            </th>
+                          ))}
+                          <th className="p-2.5 text-center w-28 text-blue-900 bg-blue-50/80 border-l border-blue-100">Total Terkirim</th>
+                          <th className="p-2.5 text-center w-28 text-rose-900 bg-rose-50/80 border-l border-rose-100">SISA BELUM KIRIM</th>
+                          <th className="p-2.5 text-center w-28">Status Item</th>
+                        </tr>
+                      </thead>
+                      <tbody className="divide-y divide-slate-100 text-slate-800">
+                        {partsList.map((part, pIdx) => {
+                          const hasRemaining = part.remaining_qty > 0;
+
+                          return (
+                            <tr 
+                              key={pIdx} 
+                              className={`hover:bg-slate-50/80 transition-colors ${
+                                hasRemaining ? "bg-amber-50/20" : ""
+                              }`}
+                            >
+                              <td className="p-2.5 text-center font-mono text-slate-400 font-bold">{pIdx + 1}</td>
+                              <td className="p-2.5">
+                                <div className="font-bold text-slate-900">{part.part_name}</div>
+                                <div className="text-[10px] text-slate-400 font-mono">{part.part_number}</div>
+                              </td>
+                              <td className="p-2.5 text-center font-mono font-bold text-slate-500">{part.unit}</td>
+                              <td className="p-2.5 text-center font-mono font-black bg-slate-50">{part.qty_requested}</td>
+                              {relatedDispatches.map((d, phaseIdx) => {
+                                const sentInPhase = part.phases[phaseIdx] || 0;
+                                return (
+                                  <td key={d.id} className="p-2.5 text-center font-mono font-bold border-l border-slate-100 text-purple-900">
+                                    {sentInPhase > 0 ? (
+                                      <span className="bg-purple-100 text-purple-900 px-1.5 py-0.5 rounded font-black">{sentInPhase}</span>
+                                    ) : (
+                                      <span className="text-slate-300">-</span>
+                                    )}
+                                  </td>
+                                );
+                              })}
+                              <td className="p-2.5 text-center font-mono font-black text-blue-800 bg-blue-50/30 border-l border-blue-100">
+                                {part.total_dispatched}
+                              </td>
+                              <td className="p-2.5 text-center font-mono font-black border-l border-rose-100 bg-rose-50/30">
+                                {hasRemaining ? (
+                                  <span className="bg-rose-100 text-rose-800 px-2 py-0.5 rounded border border-rose-200 font-black">
+                                    Kurang {part.remaining_qty}
+                                  </span>
+                                ) : (
+                                  <span className="text-emerald-700 font-bold">0</span>
+                                )}
+                              </td>
+                              <td className="p-2.5 text-center">
+                                {part.is_complete ? (
+                                  <span className="bg-emerald-100 text-emerald-800 px-2 py-0.5 rounded text-[9.5px] font-bold">✓ Lengkap</span>
+                                ) : (
+                                  <span className="bg-amber-100 text-amber-800 px-2 py-0.5 rounded text-[9.5px] font-bold">⚠️ Kurang</span>
+                                )}
+                              </td>
+                            </tr>
+                          );
+                        })}
+                      </tbody>
+                    </table>
+                  </div>
+                </div>
+
+              </div>
+
+              {/* Modal Footer */}
+              <div className="bg-slate-50 border-t border-slate-200 px-6 py-4 flex items-center justify-between shrink-0">
+                <div>
+                  {!allComplete ? (
+                    <div className="flex items-center gap-1.5 text-xs font-bold text-amber-800">
+                      <AlertTriangle className="w-4 h-4 text-amber-600 shrink-0" />
+                      <span>Masih ada <strong>{incompletePartsCount} jenis suku cadang</strong> (total sisa: <strong>{totalRemaining} unit</strong>) yang belum dikirim.</span>
+                    </div>
+                  ) : (
+                    <div className="flex items-center gap-1.5 text-xs font-bold text-emerald-700">
+                      <CheckCircle className="w-4 h-4 text-emerald-600 shrink-0" />
+                      <span>Seluruh suku cadang telah 100% lengkap dikirim via {relatedDispatches.length} tahapan pengiriman.</span>
+                    </div>
+                  )}
+                </div>
+
+                <div className="flex items-center gap-3">
+                  <button
+                    type="button"
+                    onClick={() => setPartialDetailModalItem(null)}
+                    className="px-4 py-2 border border-slate-300 hover:bg-slate-100 text-slate-700 font-bold uppercase rounded-lg text-xs cursor-pointer transition-colors"
+                  >
+                    Tutup
+                  </button>
+
+                  {!allComplete && (
+                    <button
+                      type="button"
+                      onClick={() => {
+                        const itemToFollowup = partialDetailModalItem;
+                        setPartialDetailModalItem(null);
+                        handleOpenFollowupDispatch(itemToFollowup);
+                      }}
+                      className="px-5 py-2.5 bg-gradient-to-r from-amber-500 to-orange-600 hover:from-amber-600 hover:to-orange-700 text-white font-bold uppercase text-xs rounded-lg shadow-md hover:shadow-lg transition-all flex items-center gap-2 cursor-pointer active:scale-95"
+                    >
+                      <Truck className="w-4 h-4" />
+                      <span>Kirim Susulan Sekarang (Tahap ke-{nextPhaseNumber})</span>
+                    </button>
+                  )}
+                </div>
+              </div>
+
+            </div>
+          </div>
+        );
+      })()}
 
     </div>
   );
