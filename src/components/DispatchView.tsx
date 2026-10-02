@@ -135,11 +135,14 @@ export default function DispatchView({
   const [isTug5DropdownOpen, setIsTug5DropdownOpen] = useState(false);
   const tug5SearchRef = useRef<HTMLDivElement>(null);
 
-  // Close TUG 5 suggestion dropdown on outside click
+  // Close TUG 5 and TUG 10 suggestion dropdowns on outside click
   useEffect(() => {
     const handleClickOutside = (event: MouseEvent) => {
       if (tug5SearchRef.current && !tug5SearchRef.current.contains(event.target as Node)) {
         setIsTug5DropdownOpen(false);
+      }
+      if (tug10SearchRef.current && !tug10SearchRef.current.contains(event.target as Node)) {
+        setIsTug10DropdownOpen(false);
       }
     };
     document.addEventListener("mousedown", handleClickOutside);
@@ -173,6 +176,29 @@ export default function DispatchView({
   }, [requests, tug5SearchQuery]);
 
   const [selectedTug10Id, setSelectedTug10Id] = useState("");
+  const [tug10SearchQuery, setTug10SearchQuery] = useState("");
+  const [isTug10DropdownOpen, setIsTug10DropdownOpen] = useState(false);
+  const tug10SearchRef = useRef<HTMLDivElement>(null);
+
+  // Filter materialReturns based on query typed by user (nomor TUG 10, nama kapal, SPK, nama barang, status)
+  const filteredTug10Returns = useMemo(() => {
+    if (!materialReturns) return [];
+    const q = tug10SearchQuery.trim().toLowerCase();
+
+    return materialReturns.filter(r => {
+      if (!r) return false;
+      if (!q) return true;
+      const matchNumber = (r.return_number || "").toLowerCase().includes(q);
+      const matchVessel = (r.vessel_name || "").toLowerCase().includes(q);
+      const matchSPK = (r.spk_number || (r as any).work_order_number || "").toLowerCase().includes(q);
+      const matchStatus = (r.status || "").toLowerCase().includes(q);
+      const matchItem = (r.items || []).some(itm => 
+        ((itm as any).spare_part_name || itm.part_name || "").toLowerCase().includes(q) ||
+        (itm.part_number || "").toLowerCase().includes(q)
+      );
+      return matchNumber || matchVessel || matchSPK || matchStatus || matchItem;
+    }).sort((a, b) => (b.created_at || "").localeCompare(a.created_at || ""));
+  }, [materialReturns, tug10SearchQuery]);
   const [targetVesselName, setTargetVesselName] = useState("");
   const [partialDetailModalItem, setPartialDetailModalItem] = useState<OutboundDispatch | null>(null);
 
@@ -1107,7 +1133,9 @@ export default function DispatchView({
               setSelectedTug5Id("");
               setSelectedTug10Id("");
               setTug5SearchQuery("");
+              setTug10SearchQuery("");
               setIsTug5DropdownOpen(false);
+              setIsTug10DropdownOpen(false);
               setIsCreateModalOpen(true);
             }}
             className="flex items-center justify-center gap-2 bg-blue-600 hover:bg-blue-500 text-white font-mono text-xs uppercase font-extrabold px-5 py-3 rounded-lg shadow-md hover:shadow-blue-500/20 transition-all cursor-pointer font-sans"
@@ -2761,6 +2789,9 @@ export default function DispatchView({
                     onClick={() => {
                       setDispatchSource("tug10");
                       setSelectedTug5Id("");
+                      setTug5SearchQuery("");
+                      setIsTug5DropdownOpen(false);
+                      setIsTug10DropdownOpen(false);
                     }}
                     className={`py-2.5 text-xs font-black uppercase tracking-wider rounded-lg transition-all cursor-pointer text-center ${
                       dispatchSource === "tug10"
@@ -3212,33 +3243,162 @@ export default function DispatchView({
                     </div>
 
                     <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                      <div>
+                      <div className="relative" ref={tug10SearchRef}>
                         <label className="text-[10px] font-bold text-slate-500 uppercase tracking-wider block mb-1">
-                          Dokumen TUG 10 (Penurunan Suku Cadang)
+                          Cari &amp; Ketik Dokumen TUG 10 (Penurunan Suku Cadang)
                         </label>
-                        <select
-                          value={selectedTug10Id}
-                          onChange={(e) => setSelectedTug10Id(e.target.value)}
-                          className="w-full bg-white border border-slate-300 rounded-lg text-xs px-3 py-2.5 font-bold text-slate-800 focus:outline-none focus:ring-1 focus:ring-emerald-500"
-                        >
-                          <option value="">-- SILAKAN PILIH DOKUMEN TUG 10 --</option>
-                          {materialReturns.length === 0 ? (
-                            <option disabled value="">Tidak ada dokumen TUG 10 tersedia</option>
-                          ) : (
-                            materialReturns.map(r => {
-                              const isManual = !r.spk_number || r.spk_number === "MANUAL";
-                              const modeLabel = isManual ? "MANUAL (TANPA SPK)" : `SPK: ${r.spk_number}`;
-                              return (
-                                <option key={r.id} value={r.id}>
-                                  [{r.return_number}] - Dari Kapal: {r.vessel_name} ({modeLabel} &bull; Status: {r.status} &bull; {r.items.length} item)
-                                </option>
+                        <div className="relative flex items-center">
+                          <Search className="w-4 h-4 text-emerald-600 absolute left-3 pointer-events-none" />
+                          <input
+                            type="text"
+                            value={tug10SearchQuery}
+                            onChange={(e) => {
+                              const val = e.target.value;
+                              setTug10SearchQuery(val);
+                              setIsTug10DropdownOpen(true);
+
+                              // Cocokkan jika user mengetik nomor yang cocok persis
+                              const exactMatch = (materialReturns || []).find(r => 
+                                r.return_number?.toLowerCase() === val.trim().toLowerCase()
                               );
-                            })
+                              if (exactMatch) {
+                                setSelectedTug10Id(exactMatch.id);
+                              }
+                            }}
+                            onFocus={() => setIsTug10DropdownOpen(true)}
+                            onKeyDown={(e) => {
+                              if (e.key === "Enter") {
+                                e.preventDefault();
+                                if (filteredTug10Returns.length > 0) {
+                                  const first = filteredTug10Returns[0];
+                                  setSelectedTug10Id(first.id);
+                                  setTug10SearchQuery(`[${first.return_number}] - Dari Kapal: ${first.vessel_name}`);
+                                  setIsTug10DropdownOpen(false);
+                                }
+                              } else if (e.key === "Escape") {
+                                setIsTug10DropdownOpen(false);
+                              }
+                            }}
+                            placeholder="Ketik Nomor TUG 10 (cth: RET-...), Nama Kapal Asal, No. SPK, atau Suku Cadang..."
+                            className="w-full bg-white border border-slate-300 rounded-lg text-xs pl-9 pr-9 py-2.5 font-bold text-slate-800 placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-emerald-500 focus:border-emerald-500 shadow-2xs transition-all"
+                          />
+                          {tug10SearchQuery && (
+                            <button
+                              type="button"
+                              onClick={() => {
+                                setTug10SearchQuery("");
+                                setSelectedTug10Id("");
+                                setIsTug10DropdownOpen(true);
+                              }}
+                              className="absolute right-2.5 p-1 text-slate-400 hover:text-slate-600 rounded-full hover:bg-slate-100 transition-colors cursor-pointer"
+                              title="Hapus / Cari Ulang"
+                            >
+                              <X className="w-4 h-4" />
+                            </button>
                           )}
-                        </select>
+                        </div>
+
                         <span className="text-[9.5px] text-slate-400 block mt-1.5">
-                          Memuat seluruh dokumen TUG 10 (manual tanpa SPK maupun tersinkron SPK).
+                          💡 Ketik nomor TUG 10, nama kapal asal, atau nama suku cadang. Data transfer akan otomatis muncul dan terintegrasi lengkap saat dokumen dipilih.
                         </span>
+
+                        {/* Floating Autocomplete Suggestion Dropdown for TUG 10 */}
+                        {isTug10DropdownOpen && (
+                          <div className="absolute z-50 left-0 right-0 mt-1 max-h-72 overflow-y-auto bg-white border border-emerald-200 rounded-xl shadow-xl divide-y divide-slate-100">
+                            <div className="p-2 bg-slate-50 border-b border-slate-200 flex items-center justify-between text-[10px] font-mono text-slate-500">
+                              <span>Hasil Pencarian: {filteredTug10Returns.length} Dokumen TUG 10</span>
+                              <span>Tekan ESC untuk tutup</span>
+                            </div>
+                            {filteredTug10Returns.length === 0 ? (
+                              <div className="p-4 text-center text-xs text-slate-500">
+                                Tidak ada dokumen TUG 10 yang cocok dengan &quot;<span className="font-bold text-slate-700">{tug10SearchQuery}</span>&quot;.<br />
+                                <span className="text-[10px] text-slate-400">Silakan periksa nomor TUG 10 atau nama kapal asal yang Anda ketik.</span>
+                              </div>
+                            ) : (
+                              filteredTug10Returns.map((r) => {
+                                const isSelected = r.id === selectedTug10Id;
+                                const isManual = !r.spk_number || r.spk_number === "MANUAL";
+                                const modeLabel = isManual ? "MANUAL" : `SPK: ${r.spk_number}`;
+                                const previewItems = (r.items || []).slice(0, 3).map(i => (i as any).spare_part_name || i.part_name || i.part_number).join(", ");
+                                const moreCount = (r.items || []).length > 3 ? `+${(r.items || []).length - 3} lainnya` : "";
+
+                                return (
+                                  <div
+                                    key={r.id}
+                                    onClick={() => {
+                                      setSelectedTug10Id(r.id);
+                                      setTug10SearchQuery(`[${r.return_number}] - Dari Kapal: ${r.vessel_name}`);
+                                      setIsTug10DropdownOpen(false);
+                                    }}
+                                    className={`p-3 cursor-pointer transition-colors ${
+                                      isSelected 
+                                        ? "bg-emerald-100/70 border-l-4 border-emerald-600" 
+                                        : "hover:bg-emerald-50/70 border-l-4 border-transparent"
+                                    }`}
+                                  >
+                                    <div className="flex items-center justify-between gap-2">
+                                      <div className="flex items-center gap-2 min-w-0 flex-wrap">
+                                        <span className="font-mono font-bold text-xs bg-emerald-100 text-emerald-900 px-2 py-0.5 rounded border border-emerald-200 shrink-0">
+                                          {r.return_number}
+                                        </span>
+                                        <span className="font-bold text-xs text-slate-900 truncate">
+                                          ⚓ {r.vessel_name}
+                                        </span>
+                                        <span className="text-[10px] font-mono text-slate-500 bg-slate-100 px-1.5 py-0.5 rounded shrink-0">
+                                          {modeLabel}
+                                        </span>
+                                      </div>
+                                      <span className="text-[10px] font-bold px-2 py-0.5 rounded-full shrink-0 uppercase font-mono bg-emerald-100 text-emerald-800">
+                                        {r.status || "Approved"}
+                                      </span>
+                                    </div>
+
+                                    <div className="mt-1 flex items-center justify-between text-[10.5px] text-slate-500">
+                                      <span className="truncate max-w-[80%] text-slate-600">
+                                        {previewItems ? `Barang: ${previewItems} ${moreCount}` : "Tidak ada detail barang"}
+                                      </span>
+                                      <span className="font-mono text-[10px] text-emerald-700 font-bold shrink-0">
+                                        {(r.items || []).length} item
+                                      </span>
+                                    </div>
+                                  </div>
+                                );
+                              })
+                            )}
+                          </div>
+                        )}
+
+                        {/* Selected Confirmation Banner for TUG 10 */}
+                        {selectedTug10Id && (() => {
+                          const selReturn = materialReturns?.find(r => r.id === selectedTug10Id);
+                          if (!selReturn) return null;
+                          return (
+                            <div className="mt-2.5 bg-gradient-to-r from-emerald-50 to-teal-50 border border-emerald-200 p-2.5 rounded-lg flex items-center justify-between text-xs animate-in fade-in-50">
+                              <div className="flex items-center gap-2 min-w-0">
+                                <CheckCircle2 className="w-4 h-4 text-emerald-600 shrink-0" />
+                                <div className="min-w-0">
+                                  <span className="font-bold text-slate-900">Dokumen TUG 10 Terpilih: </span>
+                                  <span className="font-mono font-black text-emerald-900">[{selReturn.return_number}]</span>
+                                  <span className="text-slate-700 font-medium"> &bull; Asal Kapal {selReturn.vessel_name}</span>
+                                  {selReturn.spk_number && selReturn.spk_number !== "MANUAL" && (
+                                    <span className="text-slate-500 font-mono text-[10.5px]"> &bull; SPK: {selReturn.spk_number}</span>
+                                  )}
+                                </div>
+                              </div>
+                              <button
+                                type="button"
+                                onClick={() => {
+                                  setSelectedTug10Id("");
+                                  setTug10SearchQuery("");
+                                  setIsTug10DropdownOpen(true);
+                                }}
+                                className="text-[11px] font-bold text-emerald-700 hover:text-emerald-900 underline cursor-pointer ml-2 shrink-0"
+                              >
+                                Ganti Dokumen
+                              </button>
+                            </div>
+                          );
+                        })()}
                       </div>
 
                       <div>
