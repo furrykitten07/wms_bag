@@ -3,7 +3,7 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
-import React, { useState, useMemo } from "react";
+import React, { useState, useMemo, useRef, useEffect } from "react";
 import { 
   FileText, 
   Search, 
@@ -129,6 +129,47 @@ export default function DispatchView({
   const [isCreateModalOpen, setIsCreateModalOpen] = useState(false);
   const [dispatchSource, setDispatchSource] = useState<"tug5" | "tug10">("tug5");
   const [selectedTug5Id, setSelectedTug5Id] = useState("");
+  const [tug5SearchQuery, setTug5SearchQuery] = useState("");
+  const [isTug5DropdownOpen, setIsTug5DropdownOpen] = useState(false);
+  const tug5SearchRef = useRef<HTMLDivElement>(null);
+
+  // Close TUG 5 suggestion dropdown on outside click
+  useEffect(() => {
+    const handleClickOutside = (event: MouseEvent) => {
+      if (tug5SearchRef.current && !tug5SearchRef.current.contains(event.target as Node)) {
+        setIsTug5DropdownOpen(false);
+      }
+    };
+    document.addEventListener("mousedown", handleClickOutside);
+    return () => document.removeEventListener("mousedown", handleClickOutside);
+  }, []);
+
+  // Filter requests based on query typed by user (nomor TUG 5, nama kapal, SPK, nama barang, status)
+  const filteredTug5Requests = useMemo(() => {
+    if (!requests) return [];
+    const q = tug5SearchQuery.trim().toLowerCase();
+
+    return requests.filter(r => {
+      if (!r) return false;
+      if (!q) return true;
+      const matchNumber = (r.request_number || "").toLowerCase().includes(q);
+      const matchVessel = (r.vessel_name || "").toLowerCase().includes(q);
+      const matchWO = (r.work_order_ref || "").toLowerCase().includes(q);
+      const matchDept = (r.department || "").toLowerCase().includes(q);
+      const matchStatus = (r.status || "").toLowerCase().includes(q);
+      const matchItem = (r.items || []).some(itm => 
+        (itm.spare_part_name || "").toLowerCase().includes(q) ||
+        (itm.part_number || "").toLowerCase().includes(q)
+      );
+      return matchNumber || matchVessel || matchWO || matchDept || matchStatus || matchItem;
+    }).sort((a, b) => {
+      const aActive = ["Approved", "Processed", "Submitted"].includes(a.status) ? 0 : 1;
+      const bActive = ["Approved", "Processed", "Submitted"].includes(b.status) ? 0 : 1;
+      if (aActive !== bActive) return aActive - bActive;
+      return (b.created_at || "").localeCompare(a.created_at || "");
+    });
+  }, [requests, tug5SearchQuery]);
+
   const [selectedTug10Id, setSelectedTug10Id] = useState("");
   const [targetVesselName, setTargetVesselName] = useState("");
 
@@ -911,7 +952,14 @@ export default function DispatchView({
           </div>
 
           <button
-            onClick={() => setIsCreateModalOpen(true)}
+            onClick={() => {
+              setDispatchSource("tug5");
+              setSelectedTug5Id("");
+              setSelectedTug10Id("");
+              setTug5SearchQuery("");
+              setIsTug5DropdownOpen(false);
+              setIsCreateModalOpen(true);
+            }}
             className="flex items-center justify-center gap-2 bg-blue-600 hover:bg-blue-500 text-white font-mono text-xs uppercase font-extrabold px-5 py-3 rounded-lg shadow-md hover:shadow-blue-500/20 transition-all cursor-pointer font-sans"
           >
             <Truck className="w-4 h-4" /> Tambah Dispatch (TUG 8)
@@ -2508,40 +2556,165 @@ export default function DispatchView({
                       </span>
                     </div>
 
-                    <div>
+                    <div className="relative" ref={tug5SearchRef}>
                       <label className="text-[10px] font-bold text-slate-500 uppercase tracking-wider block mb-1">
-                        Dokumen TUG 5 (Permintaan Barang) yang Siap Dikirim
+                        Cari &amp; Ketik Dokumen TUG 5 (Permintaan Barang)
                       </label>
-                      <select
-                        value={selectedTug5Id}
-                        onChange={(e) => setSelectedTug5Id(e.target.value)}
-                        required={dispatchSource === "tug5"}
-                        className="w-full bg-white border border-slate-300 rounded-lg text-xs px-3 py-2.5 font-bold text-slate-800 focus:outline-none focus:ring-1 focus:ring-blue-500"
-                      >
-                        <option value="">-- SILAKAN PILIH DOKUMEN TUG 5 --</option>
-                        {requests
-                          .filter(r => r.status === "Approved" || r.status === "Processed" || r.status === "Submitted")
-                          .map(r => (
-                            <option key={r.id} value={r.id}>
-                              [{r.request_number}] - {r.vessel_name} (Status: {r.status} &bull; {r.items.length} item)
-                            </option>
-                          ))}
-                        {/* Fallback showing other statuses if none of above are available, to keep it extremely resilient */}
-                        {requests.filter(r => !["Approved", "Processed", "Submitted"].includes(r.status)).length > 0 && (
-                          <optgroup label="Suku Cadang Lainnya">
-                            {requests
-                              .filter(r => !["Approved", "Processed", "Submitted"].includes(r.status))
-                              .map(r => (
-                                <option key={r.id} value={r.id}>
-                                  [{r.request_number}] - {r.vessel_name} (Status: {r.status} &bull; {r.items.length} item)
-                                </option>
-                              ))}
-                          </optgroup>
+                      <div className="relative flex items-center">
+                        <Search className="w-4 h-4 text-blue-500 absolute left-3 pointer-events-none" />
+                        <input
+                          type="text"
+                          value={tug5SearchQuery}
+                          onChange={(e) => {
+                            const val = e.target.value;
+                            setTug5SearchQuery(val);
+                            setIsTug5DropdownOpen(true);
+
+                            // Jika user mengetik nomor yang cocok persis
+                            const exactMatch = (requests || []).find(r => 
+                              r.request_number?.toLowerCase() === val.trim().toLowerCase()
+                            );
+                            if (exactMatch) {
+                              setSelectedTug5Id(exactMatch.id);
+                            }
+                          }}
+                          onFocus={() => setIsTug5DropdownOpen(true)}
+                          onKeyDown={(e) => {
+                            if (e.key === "Enter") {
+                              e.preventDefault();
+                              if (filteredTug5Requests.length > 0) {
+                                const first = filteredTug5Requests[0];
+                                setSelectedTug5Id(first.id);
+                                setTug5SearchQuery(`[${first.request_number}] - ${first.vessel_name}`);
+                                setIsTug5DropdownOpen(false);
+                              }
+                            } else if (e.key === "Escape") {
+                              setIsTug5DropdownOpen(false);
+                            }
+                          }}
+                          placeholder="Ketik Nomor TUG 5 (cth: REQ-...), Nama Kapal (cth: KARTINI), No. SPK, atau Nama Suku Cadang..."
+                          className="w-full bg-white border border-slate-300 rounded-lg text-xs pl-9 pr-9 py-2.5 font-bold text-slate-800 placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 shadow-2xs transition-all"
+                        />
+                        {tug5SearchQuery && (
+                          <button
+                            type="button"
+                            onClick={() => {
+                              setTug5SearchQuery("");
+                              setSelectedTug5Id("");
+                              setIsTug5DropdownOpen(true);
+                            }}
+                            className="absolute right-2.5 p-1 text-slate-400 hover:text-slate-600 rounded-full hover:bg-slate-100 transition-colors cursor-pointer"
+                            title="Hapus / Cari Ulang"
+                          >
+                            <X className="w-4 h-4" />
+                          </button>
                         )}
-                      </select>
+                      </div>
+
                       <span className="text-[9.5px] text-slate-400 block mt-1.5">
-                        Memilih TUG 5 akan mensinkronisasikan Nama Kapal, Daftar Suku Cadang, Nomor Work Order, Kode Akun ERP, Kode Fungsi, dan Alamat Tujuan secara otomatis.
+                        💡 Anda dapat mengetik nomor TUG 5, nama kapal, atau nama suku cadang. Data pengiriman dan daftar barang akan otomatis muncul di bawah.
                       </span>
+
+                      {/* Floating Autocomplete Suggestion Dropdown */}
+                      {isTug5DropdownOpen && (
+                        <div className="absolute z-50 left-0 right-0 mt-1 max-h-72 overflow-y-auto bg-white border border-blue-200 rounded-xl shadow-xl divide-y divide-slate-100">
+                          <div className="p-2 bg-slate-50 border-b border-slate-200 flex items-center justify-between text-[10px] font-mono text-slate-500">
+                            <span>Hasil Pencarian: {filteredTug5Requests.length} Dokumen TUG 5</span>
+                            <span>Tekan ESC untuk tutup</span>
+                          </div>
+                          {filteredTug5Requests.length === 0 ? (
+                            <div className="p-4 text-center text-xs text-slate-500">
+                              Tidak ada dokumen TUG 5 yang cocok dengan &quot;<span className="font-bold text-slate-700">{tug5SearchQuery}</span>&quot;.<br />
+                              <span className="text-[10px] text-slate-400">Silakan periksa nomor TUG 5 atau nama kapal yang Anda ketik.</span>
+                            </div>
+                          ) : (
+                            filteredTug5Requests.map((r) => {
+                              const isSelected = r.id === selectedTug5Id;
+                              const isApprovedOrActive = ["Approved", "Processed", "Submitted"].includes(r.status);
+                              const previewItems = (r.items || []).slice(0, 3).map(i => i.spare_part_name || i.part_number).join(", ");
+                              const moreCount = (r.items || []).length > 3 ? `+${(r.items || []).length - 3} lainnya` : "";
+
+                              return (
+                                <div
+                                  key={r.id}
+                                  onClick={() => {
+                                    setSelectedTug5Id(r.id);
+                                    setTug5SearchQuery(`[${r.request_number}] - ${r.vessel_name}`);
+                                    setIsTug5DropdownOpen(false);
+                                  }}
+                                  className={`p-3 cursor-pointer transition-colors ${
+                                    isSelected 
+                                      ? "bg-blue-100/70 border-l-4 border-blue-600" 
+                                      : "hover:bg-blue-50/70 border-l-4 border-transparent"
+                                  }`}
+                                >
+                                  <div className="flex items-center justify-between gap-2">
+                                    <div className="flex items-center gap-2 min-w-0 flex-wrap">
+                                      <span className="font-mono font-bold text-xs bg-blue-100 text-blue-900 px-2 py-0.5 rounded border border-blue-200 shrink-0">
+                                        {r.request_number}
+                                      </span>
+                                      <span className="font-bold text-xs text-slate-900 truncate">
+                                        {r.vessel_name}
+                                      </span>
+                                      {r.work_order_ref && (
+                                        <span className="text-[10px] font-mono text-slate-500 bg-slate-100 px-1.5 py-0.5 rounded shrink-0">
+                                          SPK: {r.work_order_ref}
+                                        </span>
+                                      )}
+                                    </div>
+                                    <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full shrink-0 uppercase font-mono ${
+                                      isApprovedOrActive ? "bg-emerald-100 text-emerald-800" : "bg-slate-100 text-slate-600"
+                                    }`}>
+                                      {r.status}
+                                    </span>
+                                  </div>
+
+                                  <div className="mt-1 flex items-center justify-between text-[10.5px] text-slate-500">
+                                    <span className="truncate max-w-[80%] text-slate-600">
+                                      {previewItems ? `Barang: ${previewItems} ${moreCount}` : "Tidak ada detail barang"}
+                                    </span>
+                                    <span className="font-mono text-[10px] text-blue-700 font-bold shrink-0">
+                                      {(r.items || []).length} item
+                                    </span>
+                                  </div>
+                                </div>
+                              );
+                            })
+                          )}
+                        </div>
+                      )}
+
+                      {/* Selected Confirmation Banner */}
+                      {selectedTug5Id && (() => {
+                        const selMR = requests?.find(r => r.id === selectedTug5Id);
+                        if (!selMR) return null;
+                        return (
+                          <div className="mt-2.5 bg-gradient-to-r from-blue-50 to-indigo-50 border border-blue-200 p-2.5 rounded-lg flex items-center justify-between text-xs animate-in fade-in-50">
+                            <div className="flex items-center gap-2 min-w-0">
+                              <CheckCircle2 className="w-4 h-4 text-emerald-600 shrink-0" />
+                              <div className="min-w-0">
+                                <span className="font-bold text-slate-900">Dokumen TUG 5 Terpilih: </span>
+                                <span className="font-mono font-black text-blue-900">[{selMR.request_number}]</span>
+                                <span className="text-slate-700 font-medium"> &bull; Kapal {selMR.vessel_name}</span>
+                                {selMR.work_order_ref && (
+                                  <span className="text-slate-500 font-mono text-[10.5px]"> &bull; SPK: {selMR.work_order_ref}</span>
+                                )}
+                              </div>
+                            </div>
+                            <button
+                              type="button"
+                              onClick={() => {
+                                setSelectedTug5Id("");
+                                setTug5SearchQuery("");
+                                setIsTug5DropdownOpen(true);
+                              }}
+                              className="text-[11px] font-bold text-blue-600 hover:text-blue-800 underline cursor-pointer ml-2 shrink-0"
+                            >
+                              Ganti Dokumen
+                            </button>
+                          </div>
+                        );
+                      })()}
                     </div>
 
                       {selectedTug5Id && (() => {
