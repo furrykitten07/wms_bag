@@ -65,6 +65,69 @@ interface DispatchViewProps {
 const ALDI_SIGNATURE_URL = `data:image/svg+xml;utf8,<svg xmlns="http://www.w3.org/2000/svg" width="220" height="70" viewBox="0 0 220 70"><path d="M 20 42 C 45 15, 60 55, 90 28 C 110 15, 130 52, 160 32 C 180 22, 190 48, 200 40" stroke="%230f2b5c" stroke-width="2.5" fill="none" stroke-linecap="round"/><path d="M 35 52 L 185 48" stroke="%231e293b" stroke-width="1.8" fill="none" stroke-linecap="round"/><text x="75" y="62" font-family="cursive" font-size="11" font-weight="bold" fill="%230f2b5c">Aldi Hidayat</text></svg>`;
 const ALFIN_SIGNATURE_URL = `data:image/svg+xml;utf8,<svg xmlns="http://www.w3.org/2000/svg" width="220" height="70" viewBox="0 0 220 70"><path d="M 15 42 C 35 15, 50 58, 80 25 C 100 12, 120 52, 150 30 C 170 20, 185 45, 205 35" stroke="%230f2b5c" stroke-width="2.5" fill="none" stroke-linecap="round"/><path d="M 30 50 L 180 46" stroke="%231e293b" stroke-width="1.8" fill="none" stroke-linecap="round"/><text x="45" y="62" font-family="cursive" font-size="11" font-weight="bold" fill="%230f2b5c">Maghfur M. Alfin</text></svg>`;
 
+/**
+ * Robust matcher for spare parts across documents (TUG 5, Inbound, TUG 8 Dispatch).
+ * Crucially handles generic/empty part numbers (e.g. "-") by comparing part names,
+ * preventing unrelated items with part_number="-" from incorrectly matching each other.
+ */
+export const matchSparePartItem = (a: any, b: any): boolean => {
+  if (!a || !b) return false;
+
+  // 1. By ID (only if valid non-empty and not dummy/generated ID)
+  const aId = (a.spare_part_id || a.id || "").toString().trim();
+  const bId = (b.spare_part_id || b.id || "").toString().trim();
+  const isDummyId = (id: string) => 
+    !id || id === "-" || id.startsWith("temp-") || id.startsWith("item-") || id === "undefined" || id === "null";
+
+  if (!isDummyId(aId) && !isDummyId(bId)) {
+    if (aId === bId) return true;
+    return false;
+  }
+
+  // 2. By Part Number - ONLY if both have valid, meaningful part numbers (not "-", not empty, not "pn-generic", etc.)
+  const cleanPn = (pn: any) => (pn || "").toString().trim().toLowerCase();
+  const aPn = cleanPn(a.part_number);
+  const bPn = cleanPn(b.part_number);
+  const invalidPns = ["", "-", "--", "---", "none", "null", "undefined", "n/a", "na", "pn-generic", "generic", "0"];
+  const aHasRealPn = Boolean(aPn && !invalidPns.includes(aPn));
+  const bHasRealPn = Boolean(bPn && !invalidPns.includes(bPn));
+
+  if (aHasRealPn && bHasRealPn) {
+    return aPn === bPn;
+  }
+
+  // 3. By Part Name (clean, lowercase, normalized whitespace)
+  const cleanName = (val: any) => 
+    (val || "").toString().trim().toLowerCase().replace(/\s+/g, " ");
+  const aName = cleanName(a.spare_part_name || a.part_name);
+  const bName = cleanName(b.spare_part_name || b.part_name);
+
+  if (aName && bName) {
+    return aName === bName;
+  }
+
+  return false;
+};
+
+export const getPartMatchKey = (itm: any): string => {
+  if (!itm) return "unknown";
+  const pn = (itm.part_number || "").toString().trim().toLowerCase();
+  const invalidPns = ["", "-", "--", "---", "none", "null", "undefined", "n/a", "na", "pn-generic", "generic", "0"];
+  if (pn && !invalidPns.includes(pn)) {
+    return `pn:${pn}`;
+  }
+  const id = (itm.spare_part_id || itm.id || "").toString().trim();
+  const isDummyId = !id || id === "-" || id.startsWith("temp-") || id.startsWith("item-") || id === "undefined" || id === "null";
+  if (!isDummyId) {
+    return `id:${id}`;
+  }
+  const name = (itm.spare_part_name || itm.part_name || "").toString().trim().toLowerCase().replace(/\s+/g, " ");
+  if (name) {
+    return `name:${name}`;
+  }
+  return `fallback:${Math.random()}`;
+};
+
 export default function DispatchView({
   dispatchList,
   parts,
@@ -253,11 +316,11 @@ export default function DispatchView({
     // 1. Initialize from targetMR items
     if (targetMR && targetMR.items) {
       targetMR.items.forEach(itm => {
-        const key = itm.spare_part_id || (itm.part_number && itm.part_number !== "-" ? itm.part_number : itm.spare_part_name);
+        const key = getPartMatchKey(itm);
         if (!key) return;
         partsMap.set(key, {
           id: itm.spare_part_id || key,
-          part_name: itm.spare_part_name || itm.part_number || "Suku Cadang",
+          part_name: itm.spare_part_name || (itm as any).part_name || itm.part_number || "Suku Cadang",
           part_number: itm.part_number || "-",
           unit: itm.unit || "PCS",
           qty_requested: itm.requested_qty || 1,
@@ -272,12 +335,12 @@ export default function DispatchView({
     // 2. Add any parts from dispatches that might not be in targetMR
     relatedDispatches.forEach(d => {
       (d.items || []).forEach(itm => {
-        const key = itm.spare_part_id || (itm.part_number && itm.part_number !== "-" ? itm.part_number : itm.spare_part_name);
+        const key = getPartMatchKey(itm);
         if (!key) return;
         if (!partsMap.has(key)) {
           partsMap.set(key, {
             id: itm.spare_part_id || key,
-            part_name: itm.spare_part_name || itm.part_number || "Suku Cadang",
+            part_name: itm.spare_part_name || (itm as any).part_name || itm.part_number || "Suku Cadang",
             part_number: itm.part_number || "-",
             unit: itm.unit || "PCS",
             qty_requested: itm.qty_requested || itm.qty_dispatched || 1,
@@ -294,11 +357,7 @@ export default function DispatchView({
     relatedDispatches.forEach((d, phaseIdx) => {
       (d.items || []).forEach(di => {
         for (const [, partData] of partsMap.entries()) {
-          const match = 
-            (di.spare_part_id && partData.id && di.spare_part_id === partData.id) ||
-            (di.part_number && partData.part_number && di.part_number !== "-" && di.part_number.toLowerCase() === partData.part_number.toLowerCase()) ||
-            (di.spare_part_name && partData.part_name && di.spare_part_name.toLowerCase().trim() === partData.part_name.toLowerCase().trim());
-          if (match) {
+          if (matchSparePartItem(di, partData)) {
             const qtyInThisPhase = Number(di.qty_dispatched || 0);
             partData.phases[phaseIdx] = (partData.phases[phaseIdx] || 0) + qtyInThisPhase;
             break;
@@ -431,19 +490,21 @@ export default function DispatchView({
           const totalReq = itm.requested_qty || 1;
 
           // Look up Inbound Receiving item matching this spare part
-          const inboundItem = matchedInbound ? (matchedInbound.items || []).find(i => 
-            Boolean(i) && (i.spare_part_id === itm.spare_part_id || i.part_number === itm.part_number)
-          ) : null;
-
-          // Physical QTY received in Warehouse during Inbound Receiving
-          const maxInboundQty = inboundItem ? (inboundItem.qty_received ?? totalReq) : totalReq;
-          const inboundNotes = inboundItem?.keeper_notes || inboundItem?.reject_reason || "";
+          const matchedInboundItems = matchedInbound && matchedInbound.items 
+            ? matchedInbound.items.filter(i => Boolean(i) && matchSparePartItem(i, itm)) 
+            : [];
+          const maxInboundQty = matchedInboundItems.length > 0 
+            ? matchedInboundItems.reduce((acc, i) => acc + (i.qty_received ?? totalReq), 0) 
+            : totalReq;
+          const inboundNotes = matchedInboundItems.map(i => i.keeper_notes || i.reject_reason).filter(Boolean).join("; ");
 
           // Calculate previously dispatched quantity across earlier batches
           const previouslyDispatched = prevDispatches.reduce((sum, d) => {
             if (!d || !d.items) return sum;
-            const found = d.items.find(di => Boolean(di) && (di.spare_part_id === itm.spare_part_id || di.part_number === itm.part_number));
-            return sum + (found?.qty_dispatched || 0);
+            const itemDispatchedSum = d.items
+              .filter(di => Boolean(di) && matchSparePartItem(di, itm))
+              .reduce((subSum, di) => subSum + (Number(di.qty_dispatched) || 0), 0);
+            return sum + itemDispatchedSum;
           }, 0);
 
           // Default initial dispatch quantity for this phase capped by maxInboundQty received in warehouse
@@ -451,16 +512,16 @@ export default function DispatchView({
           const remainingToDispatch = Math.max(0, Math.min(totalReq - previouslyDispatched, availableInboundToDispatch));
 
           return {
-            spare_part_id: itm.spare_part_id,
-            spare_part_name: itm.spare_part_name,
-            part_number: itm.part_number,
+            spare_part_id: itm.spare_part_id || "",
+            spare_part_name: itm.spare_part_name || (itm as any).part_name || "",
+            part_number: itm.part_number || "-",
             qty_requested: totalReq,
             qty_approved: totalReq,
             qty_inbound_received: maxInboundQty,
             inbound_notes: inboundNotes,
             previously_dispatched: previouslyDispatched,
             qty_dispatched: remainingToDispatch,
-            qty_remaining: 0,
+            qty_remaining: Math.max(0, totalReq - previouslyDispatched - remainingToDispatch),
             unit: itm.unit || "PCS",
             unit_price: (itm as any).unit_price !== undefined ? Number((itm as any).unit_price) : 0,
             notes: itm.notes || ""
@@ -606,7 +667,10 @@ export default function DispatchView({
           work_order_ref: selectedMR.work_order_ref || "",
           account_code: selectedMR.account_code || "BPP",
           function_code: selectedMR.function_code || "ARMADA",
-          items: dispatchItems,
+          items: dispatchItems.map(i => ({
+            ...i,
+            qty_remaining: Math.max(0, (i.qty_requested || 0) - (i.previously_dispatched || 0) - (i.qty_dispatched || 0))
+          })),
           is_partial: isPartial,
           shipment_phase: currentPhase,
           incomplete_items_summary: incompleteSummary,
@@ -2389,7 +2453,7 @@ export default function DispatchView({
                 <div className="space-y-3">
                   {selectedDispatch.items.map((itm, idx) => {
                     // Match parts state
-                    const actualPart = parts.find(p => p.id === itm.spare_part_id);
+                    const actualPart = parts.find(p => matchSparePartItem(p, itm));
                     const coords = actualPart ? getShelfCoordinates(actualPart) : {
                       zone: "Zone A (General)",
                       rack: "01",
@@ -3113,14 +3177,14 @@ export default function DispatchView({
                           )}
 
                           {/* Interactive Item Table */}
-                          <div className="bg-white p-3.5 rounded-lg border border-slate-200 space-y-2">
+                          <div className="bg-white p-3.5 rounded-lg border border-slate-200 space-y-3">
                             <div className="flex items-center justify-between flex-wrap gap-2">
                               <div>
-                                <span className="text-[10px] font-bold text-slate-600 uppercase tracking-wider block">
+                                <span className="text-[10px] font-bold text-slate-700 uppercase tracking-wider block">
                                   Atur QTY Suku Cadang Yang Dikirim Pada Tahap Ini ({dispatchItems.length} Item)
                                 </span>
                                 <span className="text-[9.5px] font-mono text-slate-400">
-                                  Anda dapat mengubah QTY dikirim jika pengiriman dilakukan parsial.
+                                  Anda dapat mengubah QTY dikirim jika pengiriman dilakukan bertahap (parsial).
                                 </span>
                               </div>
                               <div className="flex items-center gap-1.5">
@@ -3154,18 +3218,50 @@ export default function DispatchView({
                               </div>
                             </div>
 
-                            <div className="overflow-x-auto max-h-56 overflow-y-auto border border-slate-200 rounded-lg">
-                              <table className="w-full text-left text-[11px] border-collapse">
-                                <thead>
-                                  <tr className="bg-slate-50 text-slate-700 border-b border-slate-200 font-mono text-[10px] uppercase">
-                                    <th className="p-2.5">Suku Cadang / Part Number</th>
-                                    <th className="p-2.5 text-center w-16">Unit</th>
-                                    <th className="p-2.5 text-center w-20 text-slate-600">Target SPK</th>
-                                    <th className="p-2.5 text-center w-24 text-amber-800 bg-amber-50/50">Diterima Inbound</th>
-                                    <th className="p-2.5 text-center w-24 text-slate-500">Pernah Dikirim</th>
-                                    <th className="p-2.5 text-center w-28 font-bold text-blue-800 bg-blue-50/50">QTY Kirim Tahap Ini</th>
-                                    <th className="p-2.5 text-center w-20 text-rose-700">Sisa Belum Kirim</th>
-                                    <th className="p-2.5 text-center w-28">Status Item</th>
+                            {/* Summary KPI Badges */}
+                            <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 pt-1 font-mono text-xs">
+                              <div className="bg-slate-50 border border-slate-200 rounded-lg p-2 flex flex-col">
+                                <span className="text-[9px] uppercase text-slate-400 font-bold">Total Suku Cadang</span>
+                                <span className="text-sm font-black text-slate-800">{dispatchItems.length} Item</span>
+                              </div>
+                              <div className="bg-emerald-50/70 border border-emerald-200 rounded-lg p-2 flex flex-col">
+                                <span className="text-[9px] uppercase text-emerald-600 font-bold">Sudah Selesai (100%)</span>
+                                <span className="text-sm font-black text-emerald-800">
+                                  {dispatchItems.filter(i => (i.previously_dispatched || 0) >= (i.qty_requested || 0)).length} Item
+                                </span>
+                              </div>
+                              <div className="bg-blue-50/70 border border-blue-200 rounded-lg p-2 flex flex-col">
+                                <span className="text-[9px] uppercase text-blue-600 font-bold">Dikirim Tahap Ini</span>
+                                <span className="text-sm font-black text-blue-800">
+                                  {dispatchItems.filter(i => (i.qty_dispatched || 0) > 0).length} Item ({dispatchItems.reduce((acc, i) => acc + (i.qty_dispatched || 0), 0)} Qty)
+                                </span>
+                              </div>
+                              <div className="bg-rose-50/70 border border-rose-200 rounded-lg p-2 flex flex-col">
+                                <span className="text-[9px] uppercase text-rose-600 font-bold">Sisa Belum Terkirim</span>
+                                <span className="text-sm font-black text-rose-800">
+                                  {dispatchItems.filter(i => {
+                                    const req = i.qty_requested || 0;
+                                    const prev = i.previously_dispatched || 0;
+                                    const curr = i.qty_dispatched || 0;
+                                    return (req - prev - curr) > 0;
+                                  }).length} Item
+                                </span>
+                              </div>
+                            </div>
+
+                            {/* Table with Sticky Header */}
+                            <div className="overflow-x-auto max-h-[460px] overflow-y-auto border border-slate-200 rounded-lg shadow-inner">
+                              <table className="w-full text-left text-[11px] border-collapse relative">
+                                <thead className="sticky top-0 z-10 bg-slate-100/95 backdrop-blur-xs border-b-2 border-slate-300 shadow-xs">
+                                  <tr className="text-slate-700 font-mono text-[10px] uppercase tracking-wider">
+                                    <th className="p-2.5 font-black">Suku Cadang / Part No.</th>
+                                    <th className="p-2.5 text-center w-14 font-black">Satuan</th>
+                                    <th className="p-2.5 text-center w-20 font-black text-slate-700">Target SPK</th>
+                                    <th className="p-2.5 text-center w-24 font-black text-amber-900 bg-amber-100/50">Diterima Inbound</th>
+                                    <th className="p-2.5 text-center w-24 font-black text-slate-700 bg-slate-200/50">Pernah Dikirim</th>
+                                    <th className="p-2.5 text-center w-36 font-black text-blue-900 bg-blue-100/60">QTY Kirim Tahap Ini</th>
+                                    <th className="p-2.5 text-center w-24 font-black text-rose-900 bg-rose-50/50">Sisa Belum Kirim</th>
+                                    <th className="p-2.5 text-center w-28 font-black">Status Item</th>
                                   </tr>
                                 </thead>
                                 <tbody className="divide-y divide-slate-100 text-slate-800 font-sans">
@@ -3174,49 +3270,139 @@ export default function DispatchView({
                                     const req = itm.qty_requested || 0;
                                     const curr = itm.qty_dispatched || 0;
                                     const inboundQty = (itm as any).qty_inbound_received !== undefined ? (itm as any).qty_inbound_received : req;
+                                    const maxAvailable = Math.max(0, req - prev);
                                     const remaining = Math.max(0, req - prev - curr);
-                                    const isItemComplete = (prev + curr) >= req;
+                                    const isAlreadyFinished = prev >= req;
+                                    const isItemCompleteAfterThis = (prev + curr) >= req;
                                     const isInboundShort = inboundQty < req;
 
                                     return (
-                                      <tr key={index} className="hover:bg-slate-50">
+                                      <tr 
+                                        key={index} 
+                                        className={`transition-colors ${
+                                          isAlreadyFinished 
+                                            ? "bg-slate-50/70 text-slate-500 hover:bg-slate-100/50" 
+                                            : remaining === 0 
+                                              ? "bg-emerald-50/20 hover:bg-emerald-50/40" 
+                                              : "hover:bg-blue-50/30"
+                                        }`}
+                                      >
                                         <td className="p-2.5">
-                                          <div className="font-bold text-slate-900">{itm.spare_part_name}</div>
-                                          <div className="text-[10px] text-slate-400 font-mono">{itm.part_number}</div>
+                                          <div className="flex items-center gap-1.5">
+                                            <span className="font-bold text-slate-900">{itm.spare_part_name}</span>
+                                            {isAlreadyFinished && (
+                                              <span className="text-[9px] bg-slate-200 text-slate-600 px-1.5 py-0.2 rounded font-bold uppercase font-mono">
+                                                Selesai
+                                              </span>
+                                            )}
+                                          </div>
+                                          <div className="text-[10px] text-slate-400 font-mono">
+                                            {itm.part_number && itm.part_number !== "-" ? itm.part_number : "-"}
+                                          </div>
                                           {itm.inbound_notes && (
-                                            <div className="text-[9.5px] text-amber-700 italic font-mono mt-0.5">Catatan Inbound: {itm.inbound_notes}</div>
+                                            <div className="text-[9.5px] text-amber-700 italic font-mono mt-0.5">
+                                              Catatan Inbound: {itm.inbound_notes}
+                                            </div>
                                           )}
                                         </td>
                                         <td className="p-2.5 text-center font-mono font-bold text-slate-600">{itm.unit}</td>
-                                        <td className="p-2.5 text-center font-mono font-bold">{req}</td>
+                                        <td className="p-2.5 text-center font-mono font-bold text-slate-800">{req}</td>
                                         <td className="p-2.5 text-center font-mono font-bold bg-amber-50/30">
-                                          <span className={isInboundShort ? "text-amber-900 font-black" : "text-slate-800"}>{inboundQty}</span>
+                                          <span className={isInboundShort ? "text-amber-900 font-black" : "text-slate-800"}>
+                                            {inboundQty}
+                                          </span>
                                           {isInboundShort && (
-                                            <span className="text-[9px] text-rose-600 block font-normal">Kurang {req - inboundQty}</span>
+                                            <span className="text-[9px] text-rose-600 block font-normal font-sans">
+                                              Kurang {req - inboundQty}
+                                            </span>
                                           )}
                                         </td>
-                                        <td className="p-2.5 text-center font-mono text-slate-500">{prev}</td>
-                                        <td className="p-2.5 text-center bg-blue-50/30">
-                                          <input
-                                            type="number"
-                                            min="0"
-                                            max={req - prev}
-                                            value={itm.qty_dispatched}
-                                            onChange={(e) => {
-                                              const val = Math.max(0, parseInt(e.target.value) || 0);
-                                              setDispatchItems(prevItems => prevItems.map((item, i) => i === index ? { ...item, qty_dispatched: val } : item));
-                                            }}
-                                            className="w-20 bg-white border border-blue-300 rounded p-1 text-center font-mono font-black text-blue-900 focus:outline-none focus:ring-1 focus:ring-blue-500"
-                                          />
+                                        <td className="p-2.5 text-center font-mono font-bold text-slate-600 bg-slate-50/50">
+                                          {prev > 0 ? (
+                                            <span className="text-blue-700 bg-blue-50 border border-blue-200 px-2 py-0.5 rounded font-black text-xs">
+                                              {prev}
+                                            </span>
+                                          ) : (
+                                            <span className="text-slate-400">0</span>
+                                          )}
                                         </td>
-                                        <td className="p-2.5 text-center font-mono font-bold text-rose-700">
-                                          {remaining > 0 ? remaining : 0}
+                                        <td className="p-2.5 text-center bg-blue-50/30">
+                                          {isAlreadyFinished ? (
+                                            <div className="flex items-center justify-center gap-1">
+                                              <span className="text-xs font-mono font-bold text-slate-400">0</span>
+                                              <span className="text-[9px] text-emerald-700 font-bold bg-emerald-100 px-1.5 py-0.5 rounded font-mono">
+                                                Lengkap
+                                              </span>
+                                            </div>
+                                          ) : (
+                                            <div className="flex items-center justify-center gap-1">
+                                              <input
+                                                type="number"
+                                                min="0"
+                                                max={maxAvailable}
+                                                value={itm.qty_dispatched}
+                                                onChange={(e) => {
+                                                  const rawVal = parseInt(e.target.value);
+                                                  const parsedVal = isNaN(rawVal) ? 0 : rawVal;
+                                                  const clampedVal = Math.min(maxAvailable, Math.max(0, parsedVal));
+                                                  setDispatchItems(prevItems => prevItems.map((item, i) => i === index ? { ...item, qty_dispatched: clampedVal } : item));
+                                                }}
+                                                className={`w-16 bg-white border rounded p-1 text-center font-mono font-black text-xs focus:outline-none focus:ring-2 focus:ring-blue-500 shadow-2xs ${
+                                                  curr > 0 ? "border-blue-500 text-blue-900 bg-blue-50/40" : "border-slate-300 text-slate-400"
+                                                }`}
+                                              />
+                                              <div className="flex flex-col gap-0.5">
+                                                <button
+                                                  type="button"
+                                                  onClick={() => {
+                                                    setDispatchItems(prevItems => prevItems.map((item, i) => i === index ? { ...item, qty_dispatched: maxAvailable } : item));
+                                                  }}
+                                                  className="px-1 py-0.2 bg-blue-100 hover:bg-blue-200 text-blue-800 rounded text-[8.5px] font-bold cursor-pointer font-mono"
+                                                  title={`Isi maksimal sisa (${maxAvailable})`}
+                                                >
+                                                  Max
+                                                </button>
+                                                <button
+                                                  type="button"
+                                                  onClick={() => {
+                                                    setDispatchItems(prevItems => prevItems.map((item, i) => i === index ? { ...item, qty_dispatched: 0 } : item));
+                                                  }}
+                                                  className="px-1 py-0.2 bg-slate-100 hover:bg-slate-200 text-slate-600 rounded text-[8.5px] font-bold cursor-pointer font-mono"
+                                                  title="Nolkan QTY kirim"
+                                                >
+                                                  0
+                                                </button>
+                                              </div>
+                                            </div>
+                                          )}
+                                          {!isAlreadyFinished && (
+                                            <span className="text-[9px] text-slate-400 font-mono block mt-0.5">
+                                              Maks sisa: {maxAvailable}
+                                            </span>
+                                          )}
+                                        </td>
+                                        <td className="p-2.5 text-center font-mono font-bold bg-rose-50/20">
+                                          {remaining > 0 ? (
+                                            <span className="text-rose-700 bg-rose-100/80 px-2 py-0.5 rounded font-black text-xs">
+                                              {remaining}
+                                            </span>
+                                          ) : (
+                                            <span className="text-emerald-700 font-black text-xs">0</span>
+                                          )}
                                         </td>
                                         <td className="p-2.5 text-center">
-                                          {isItemComplete ? (
-                                            <span className="bg-emerald-100 text-emerald-800 px-2 py-0.5 rounded text-[9.5px] font-bold">✓ Lengkap</span>
+                                          {isAlreadyFinished ? (
+                                            <span className="bg-slate-100 text-slate-700 border border-slate-200 px-2 py-0.5 rounded text-[9.5px] font-bold font-mono">
+                                              ✓ Sudah Dikirim
+                                            </span>
+                                          ) : isItemCompleteAfterThis ? (
+                                            <span className="bg-emerald-100 text-emerald-800 border border-emerald-200 px-2 py-0.5 rounded text-[9.5px] font-bold font-mono">
+                                              ✓ Lengkap
+                                            </span>
                                           ) : (
-                                            <span className="bg-amber-100 text-amber-800 px-2 py-0.5 rounded text-[9.5px] font-bold">⚠️ Parsial</span>
+                                            <span className="bg-amber-100 text-amber-800 border border-amber-200 px-2 py-0.5 rounded text-[9.5px] font-bold font-mono">
+                                              ⚠️ Parsial ({remaining} {itm.unit})
+                                            </span>
                                           )}
                                         </td>
                                       </tr>
