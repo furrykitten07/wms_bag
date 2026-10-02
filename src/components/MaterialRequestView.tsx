@@ -43,7 +43,12 @@ import {
   ArrowDownToLine,
   PackageCheck,
   Truck,
-  Info
+  Info,
+  Package,
+  Ship,
+  Layers,
+  Check,
+  ExternalLink
 } from "lucide-react";
 import { 
   User as UserType, 
@@ -222,8 +227,14 @@ export default function MaterialRequestView({
   const [pendingSyncList, setPendingSyncList] = useState<SPKWorkOrder[]>([]);
   const [selectedSyncIds, setSelectedSyncIds] = useState<string[]>([]);
 
-  // Inbound Sync Modal State
+  // Inbound Sync & Import Modal State
   const [isInboundSyncModalOpen, setIsInboundSyncModalOpen] = useState(false);
+  const [inboundModalTab, setInboundModalTab] = useState<"review_inbound" | "batch_sync">("review_inbound");
+  const [selectedInboundId, setSelectedInboundId] = useState<string | null>(null);
+  const [inboundSearchTerm, setInboundSearchTerm] = useState<string>("");
+  const [inboundFilterStatus, setInboundFilterStatus] = useState<"all" | "sesuai" | "partial" | "unlinked">("all");
+  const [targetTUG5Option, setTargetTUG5Option] = useState<"matched" | "existing" | "new">("matched");
+  const [selectedTargetMRId, setSelectedTargetMRId] = useState<string>("");
   const [inboundSyncScope, setInboundSyncScope] = useState<"unlinked" | "selected" | "filtered">("unlinked");
   const [inboundSyncMode, setInboundSyncMode] = useState<"sesuai" | "partial" | "auto">("sesuai");
   const [inboundSyncDate, setInboundSyncDate] = useState<string>(new Date().toISOString().split("T")[0]);
@@ -233,7 +244,39 @@ export default function MaterialRequestView({
 
   const handleOpenSingleInboundSync = (mr: MaterialRequest) => {
     setTargetSingleMR(mr);
+    setInboundModalTab("review_inbound");
+    setTargetTUG5Option("existing");
+    setSelectedTargetMRId(mr.id);
     setInboundSyncDate(mr.request_date || new Date().toISOString().split("T")[0]);
+
+    // Auto-select matching inbound if available
+    const mrSpk = (mr.work_order_ref || mr.spk_number || "").trim().toLowerCase();
+    const mrReqNum = (mr.request_number || "").trim().toLowerCase();
+    const foundInb = receivingList.find(r => {
+      if (mr.receiving_ref_id && r.id === mr.receiving_ref_id) return true;
+      const rSpk = (r.spk_number || "").trim().toLowerCase();
+      if (mrSpk && rSpk && (rSpk === mrSpk || rSpk.includes(mrSpk) || mrSpk.includes(rSpk))) return true;
+      const rPo = (r.purchase_order_num || "").trim().toLowerCase();
+      if (mrReqNum && rPo && (rPo === mrReqNum || rPo.includes(mrReqNum))) return true;
+      return false;
+    });
+
+    if (foundInb) {
+      setSelectedInboundId(foundInb.id);
+    } else if (receivingList.length > 0) {
+      setSelectedInboundId(receivingList[0].id);
+    }
+    setIsInboundSyncModalOpen(true);
+  };
+
+  const handleOpenGeneralInboundModal = () => {
+    setTargetSingleMR(null);
+    setInboundModalTab("review_inbound");
+    setTargetTUG5Option("matched");
+    setSelectedTargetMRId("");
+    if (receivingList.length > 0 && !selectedInboundId) {
+      setSelectedInboundId(receivingList[0].id);
+    }
     setIsInboundSyncModalOpen(true);
   };
 
@@ -318,6 +361,248 @@ export default function MaterialRequestView({
       completionDate: completionDate ? String(completionDate).split("T")[0] : null,
       auditLogs: match.audit_logs || []
     };
+  };
+
+  // Filtered Inbound List for selection modal
+  const filteredInboundList = useMemo(() => {
+    return receivingList.filter(inb => {
+      // 1. Filter Status
+      const isPart = inb.status === ReceivingStatus.PARTIAL_REJECT || 
+                     inb.status === ReceivingStatus.FULL_REJECT ||
+                     (inb.items || []).some(i => {
+                       const targetQty = i.qty_spk ?? i.qty_ordered ?? 0;
+                       const st = i.status || i.qc_status;
+                       return i.qty_received < targetQty || st === "PARTIAL" || st === "REJECTED" || st === "Rejected" || i.item_matched === "Tidak Sesuai";
+                     });
+
+      if (inboundFilterStatus === "sesuai" && isPart) return false;
+      if (inboundFilterStatus === "partial" && !isPart) return false;
+      if (inboundFilterStatus === "unlinked") {
+        const isLinked = requests.some(r => r.receiving_ref_id === inb.id || (r.work_order_ref && inb.spk_number && r.work_order_ref.trim().toLowerCase() === inb.spk_number.trim().toLowerCase()));
+        if (isLinked) return false;
+      }
+
+      // 2. Search Query
+      const q = inboundSearchTerm.trim().toLowerCase();
+      if (!q) return true;
+
+      const poMatch = (inb.purchase_order_num || "").toLowerCase().includes(q);
+      const spkMatch = (inb.spk_number || "").toLowerCase().includes(q);
+      const vesselMatch = (inb.vessel_name || "").toLowerCase().includes(q);
+      const vendorMatch = (inb.vendor_name || "").toLowerCase().includes(q);
+      const dnMatch = (inb.delivery_note_num || "").toLowerCase().includes(q);
+      const itemMatch = (inb.items || []).some(itm => 
+        (itm.spare_part_name && itm.spare_part_name.toLowerCase().includes(q)) ||
+        (itm.part_name && itm.part_name.toLowerCase().includes(q)) ||
+        (itm.part_number && itm.part_number.toLowerCase().includes(q))
+      );
+
+      return poMatch || spkMatch || vesselMatch || vendorMatch || dnMatch || itemMatch;
+    });
+  }, [receivingList, inboundFilterStatus, inboundSearchTerm, requests]);
+
+  // Selected Inbound Record to review
+  const selectedInbound = useMemo(() => {
+    if (selectedInboundId) {
+      const found = receivingList.find(r => r.id === selectedInboundId);
+      if (found) return found;
+    }
+    return filteredInboundList[0] || receivingList[0] || null;
+  }, [receivingList, selectedInboundId, filteredInboundList]);
+
+  // Detect matching TUG 5 for selected Inbound
+  const matchedTUG5ForSelectedInbound = useMemo(() => {
+    if (!selectedInbound) return null;
+    const inbSpk = (selectedInbound.spk_number || "").trim().toLowerCase();
+    const inbPo = (selectedInbound.purchase_order_num || "").trim().toLowerCase();
+    const inbVessel = (selectedInbound.vessel_name || "").trim().toLowerCase();
+
+    // 1. Direct match by receiving_ref_id
+    let match = requests.find(r => r.receiving_ref_id === selectedInbound.id);
+    if (match) return match;
+
+    // 2. Match by SPK number
+    if (inbSpk) {
+      match = requests.find(r => {
+        const spk = (r.work_order_ref || r.spk_number || "").trim().toLowerCase();
+        return spk && (spk === inbSpk || spk.includes(inbSpk) || inbSpk.includes(spk));
+      });
+      if (match) return match;
+    }
+
+    // 3. Match by PO number / Request Number
+    if (inbPo) {
+      match = requests.find(r => {
+        const reqNum = (r.request_number || "").trim().toLowerCase();
+        return reqNum && (reqNum === inbPo || inbPo.includes(reqNum));
+      });
+      if (match) return match;
+    }
+
+    // 4. Match by unique Vessel
+    if (inbVessel) {
+      const vMatches = requests.filter(r => (r.vessel_name || "").trim().toLowerCase() === inbVessel);
+      if (vMatches.length === 1) return vMatches[0];
+    }
+
+    return null;
+  }, [selectedInbound, requests]);
+
+  // Execute Import of Selected Inbound Items into TUG 5
+  const handleApplySelectedInboundToTUG5 = async () => {
+    if (!selectedInbound) {
+      alert("Pilih salah satu data penerimaan Inbound terlebih dahulu.");
+      return;
+    }
+
+    if (!selectedInbound.items || selectedInbound.items.length === 0) {
+      alert("Data Inbound terpilih tidak memiliki daftar item barang.");
+      return;
+    }
+
+    setIsProcessingInboundSync(true);
+
+    try {
+      const now = new Date().toISOString();
+      const completionDate = selectedInbound.received_date 
+        ? `${selectedInbound.received_date}T08:00:00.000Z` 
+        : (inboundSyncDate ? `${inboundSyncDate}T08:00:00.000Z` : now);
+
+      const isPartial = selectedInbound.status === ReceivingStatus.PARTIAL_REJECT || 
+                        selectedInbound.status === ReceivingStatus.FULL_REJECT ||
+                        (selectedInbound.items || []).some(i => {
+                          const targetQty = i.qty_spk ?? i.qty_ordered ?? 0;
+                          const st = i.status || i.qc_status;
+                          return i.qty_received < targetQty || st === "PARTIAL" || st === "REJECTED" || st === "Rejected" || i.item_matched === "Tidak Sesuai";
+                        });
+
+      // Map Inbound items to MaterialRequestItem[]
+      const importedItems: MaterialRequestItem[] = selectedInbound.items.map((itm, idx) => {
+        const targetQty = Number(itm.qty_spk || itm.qty_ordered || itm.qty_received || 1);
+        const recQty = Number(itm.qty_received || 0);
+        const isItemSesuai = itm.item_matched !== "Tidak Sesuai" && itm.qc_status !== "Rejected" && recQty >= targetQty;
+        
+        let itemNote = (itm.keeper_notes || "").trim();
+        if (!itemNote) {
+          itemNote = isItemSesuai 
+            ? "Diterima lengkap & sesuai dari Inbound Receiving" 
+            : `Diterima dengan catatan/selisih fisik: ${recQty}/${targetQty} ${itm.unit || 'PCS'}`;
+        }
+
+        return {
+          spare_part_id: itm.spare_part_id || `sp-${Date.now()}-${idx}`,
+          spare_part_name: itm.spare_part_name || itm.part_name || `Barang Inbound #${idx + 1}`,
+          part_number: itm.part_number || "-",
+          unit: itm.unit || "PCS",
+          remaining_stock: recQty,
+          requested_qty: targetQty,
+          approved_qty: recQty > 0 ? recQty : targetQty,
+          item_status: "Arrived" as const,
+          notes: itemNote
+        };
+      });
+
+      let targetMR: MaterialRequest | null = null;
+      if (targetSingleMR) {
+        targetMR = targetSingleMR;
+      } else if (targetTUG5Option === "matched" && matchedTUG5ForSelectedInbound) {
+        targetMR = matchedTUG5ForSelectedInbound;
+      } else if (targetTUG5Option === "existing" && selectedTargetMRId) {
+        targetMR = requests.find(r => r.id === selectedTargetMRId) || null;
+      }
+
+      if (targetMR && targetTUG5Option !== "new") {
+        // Merge or update existing items
+        const currentItems = [...(targetMR.items || [])];
+        const mergedItems = [...currentItems];
+
+        importedItems.forEach(inbItm => {
+          const foundIdx = mergedItems.findIndex(m => 
+            (m.spare_part_id && inbItm.spare_part_id && m.spare_part_id === inbItm.spare_part_id) ||
+            (m.part_number && inbItm.part_number && inbItm.part_number !== "-" && m.part_number.toLowerCase() === inbItm.part_number.toLowerCase()) ||
+            (m.spare_part_name && inbItm.spare_part_name && m.spare_part_name.toLowerCase() === inbItm.spare_part_name.toLowerCase())
+          );
+
+          if (foundIdx >= 0) {
+            mergedItems[foundIdx] = {
+              ...mergedItems[foundIdx],
+              item_status: "Arrived",
+              approved_qty: inbItm.approved_qty,
+              notes: inbItm.notes || mergedItems[foundIdx].notes
+            };
+          } else {
+            mergedItems.push(inbItm);
+          }
+        });
+
+        const finalItems = mergedItems.length > 0 ? mergedItems : importedItems;
+        const receivingStatus = selectedInbound.status || (isPartial ? ReceivingStatus.PARTIAL_REJECT : ReceivingStatus.ACCEPTED);
+
+        const updatedMR: Partial<MaterialRequest> = {
+          ...targetMR,
+          id: targetMR.id,
+          receiving_ref_id: selectedInbound.id,
+          receiving_status: receivingStatus,
+          is_partial: isPartial,
+          incomplete_items_summary: isPartial 
+            ? (selectedInbound.keeper_notes || "Terdapat catatan fisik / selisih barang saat penerimaan di Inbound.") 
+            : undefined,
+          completion_date: completionDate,
+          items: finalItems,
+          work_order_ref: targetMR.work_order_ref || selectedInbound.spk_number || "",
+          spk_number: targetMR.spk_number || selectedInbound.spk_number || "",
+          status: targetMR.status === "Draft" ? "Submitted" : targetMR.status,
+          remarks: targetMR.remarks 
+            ? `${targetMR.remarks} [INBOUND: ${selectedInbound.purchase_order_num} - ${isPartial ? 'TERPROGRESS DENGAN CATATAN' : 'LENGKAP SESUAI'}]`
+            : `[INBOUND: ${selectedInbound.purchase_order_num} - ${isPartial ? 'TERPROGRESS DENGAN CATATAN' : 'LENGKAP SESUAI'}]`
+        };
+
+        await onUpdateRequest(targetMR.id, updatedMR);
+        alert(`✓ Berhasil! Data dari Inbound PO ${selectedInbound.purchase_order_num} (${importedItems.length} item) telah berhasil dimasukkan ke Dokumen TUG 5 ${targetMR.request_number} (${targetMR.vessel_name})! Status barang telah ditandai Arrived (Tiba).`);
+      } else {
+        // Create brand new TUG 5 document
+        const newMRNumber = `TUG5-${new Date().getFullYear()}-${Date.now().toString().slice(-5)}`;
+        const receivingStatus = selectedInbound.status || (isPartial ? ReceivingStatus.PARTIAL_REJECT : ReceivingStatus.ACCEPTED);
+
+        const newMR: Partial<MaterialRequest> = {
+          id: `mr-${Date.now()}`,
+          request_number: newMRNumber,
+          tug5_number: newMRNumber,
+          vessel_name: selectedInbound.vessel_name || "MV. KARTINI BARUNA",
+          warehouse_name: "Gudang Merak",
+          requester_name: currentUser.name || "Petugas Gudang",
+          request_date: selectedInbound.received_date || now.split("T")[0],
+          completion_date: completionDate,
+          work_order_ref: selectedInbound.spk_number || "",
+          spk_number: selectedInbound.spk_number || "",
+          receiving_ref_id: selectedInbound.id,
+          receiving_status: receivingStatus,
+          is_partial: isPartial,
+          incomplete_items_summary: isPartial 
+            ? (selectedInbound.keeper_notes || "Terdapat catatan fisik / selisih barang saat penerimaan dari Inbound.") 
+            : undefined,
+          account_code: "BPP",
+          function_code: "ARMADA",
+          status: "Approved",
+          items: importedItems,
+          aldi_signed: true,
+          aldi_signed_at: now,
+          aldi_signature_url: ALDI_SIGNATURE_URL,
+          remarks: `Diimpor otomatis dari Inbound Receiving: ${selectedInbound.purchase_order_num} (${selectedInbound.vendor_name || 'Vendor Logistik'})`
+        };
+
+        await onCreateRequest(newMR);
+        alert(`✓ Berhasil! Dokumen TUG 5 baru (${newMRNumber} - ${newMR.vessel_name}) telah berhasil dibuat dan diisi ${importedItems.length} item barang dari Inbound Receiving ${selectedInbound.purchase_order_num}!`);
+      }
+
+      setIsInboundSyncModalOpen(false);
+      setTargetSingleMR(null);
+    } catch (err: any) {
+      console.error("Error applying inbound to TUG 5:", err);
+      alert("Gagal memasukkan data Inbound ke TUG 5: " + (err.message || err));
+    } finally {
+      setIsProcessingInboundSync(false);
+    }
   };
 
   const executeInboundSync = async () => {
@@ -973,12 +1258,9 @@ export default function MaterialRequestView({
         
         <div className="flex flex-col sm:flex-row gap-2.5 shrink-0">
           <button
-            onClick={() => {
-              setTargetSingleMR(null);
-              setIsInboundSyncModalOpen(true);
-            }}
+            onClick={handleOpenGeneralInboundModal}
             className="px-4 py-3 bg-gradient-to-r from-emerald-600 to-teal-700 hover:from-emerald-500 hover:to-teal-600 text-white font-bold text-xs uppercase rounded-lg flex items-center justify-center gap-2 transition-all shadow-sm cursor-pointer"
-            title="Ambil data dari Inbound Receiving untuk mem-progress TUG 5 (Sesuai maupun Tidak Sesuai)"
+            title="Ambil data dari Inbound Receiving untuk direview dan dimasukkan ke TUG 5"
           >
             <ArrowDownToLine className="w-4 h-4 text-emerald-100" />
             <span>📥 Ambil Data Dari Inbound</span>
@@ -2960,21 +3242,21 @@ export default function MaterialRequestView({
 
       {/* 5. MODAL AMBIL DATA DARI INBOUND RECEIVING */}
       {isInboundSyncModalOpen && (
-        <div className="fixed inset-0 z-50 bg-slate-900/70 backdrop-blur-xs flex items-center justify-center p-4 overflow-y-auto no-print">
-          <div className="bg-white border border-slate-200 rounded-2xl shadow-2xl max-w-2xl w-full font-sans overflow-hidden my-6 flex flex-col max-h-[92vh] animate-in fade-in zoom-in-95 duration-150">
+        <div className="fixed inset-0 z-50 bg-slate-900/75 backdrop-blur-xs flex items-center justify-center p-3 sm:p-5 overflow-y-auto no-print">
+          <div className="bg-white border border-slate-200 rounded-2xl shadow-2xl max-w-5xl w-full font-sans overflow-hidden my-4 flex flex-col max-h-[94vh] animate-in fade-in zoom-in-95 duration-150">
             
             {/* Modal Header */}
-            <div className="px-6 py-4 bg-gradient-to-r from-teal-700 via-emerald-700 to-teal-800 border-b border-teal-600 text-white flex items-center justify-between shrink-0">
+            <div className="px-6 py-4 bg-gradient-to-r from-teal-800 via-emerald-800 to-teal-900 border-b border-teal-700 text-white flex items-center justify-between shrink-0">
               <div className="flex items-center gap-3">
                 <div className="w-10 h-10 rounded-xl bg-white/10 flex items-center justify-center border border-white/20">
-                  <ArrowDownToLine className="w-5 h-5 text-white" />
+                  <ArrowDownToLine className="w-5 h-5 text-emerald-300" />
                 </div>
                 <div>
                   <h3 className="text-base font-black font-display tracking-wide uppercase text-white flex items-center gap-2">
-                    <span>Ambil Data Dari Inbound Receiving</span>
+                    <span>Ambil Data Dari Inbound (Receiving)</span>
                   </h3>
                   <p className="text-xs text-teal-100 font-sans mt-0.5">
-                    Progress TUG 5 langsung dari verifikasi Inbound (Sesuai maupun Tidak Sesuai)
+                    Pilih penerimaan dari menu Inbound Receiving, review daftar itemnya, lalu masukkan ke dokumen TUG 5
                   </p>
                 </div>
               </div>
@@ -2990,248 +3272,783 @@ export default function MaterialRequestView({
               </button>
             </div>
 
-            {/* Modal Body */}
-            <div className="p-6 space-y-5 overflow-y-auto text-xs text-slate-700">
-              
-              {/* Highlight / Explanation Box */}
-              <div className="p-3.5 bg-emerald-50/80 border border-emerald-200/80 rounded-xl flex items-start gap-3">
-                <Info className="w-5 h-5 text-emerald-600 shrink-0 mt-0.5" />
-                <div className="text-xs text-emerald-950 space-y-1">
-                  <p className="font-bold">
-                    Otomasi Penerimaan & Progress Dokumen TUG 5
-                  </p>
-                  <p className="text-emerald-800 leading-relaxed font-sans text-[11.5px]">
-                    Dengan fitur ini, item barang pada TUG 5 akan ditandai <span className="font-bold text-emerald-900">Arrived (Tiba)</span> dan dokumen berstatus <span className="font-bold text-emerald-900">Terprogress</span>. Baik status fisik <span className="underline font-semibold">Sesuai</span> ataupun <span className="underline font-semibold">Tidak Sesuai (Selisih)</span>, alur TUG 5 tetap berjalan lancar untuk ditandatangani dan dicetak.
-                  </p>
-                </div>
-              </div>
+            {/* Mode Tabs */}
+            <div className="flex border-b border-slate-200 bg-slate-50 px-6 pt-2.5 shrink-0 gap-2">
+              <button
+                type="button"
+                onClick={() => setInboundModalTab("review_inbound")}
+                className={`pb-2.5 px-4 text-xs font-black uppercase tracking-wider flex items-center gap-2 border-b-2 transition-all cursor-pointer ${
+                  inboundModalTab === "review_inbound"
+                    ? "border-emerald-600 text-emerald-900 bg-white rounded-t-xl border-t border-x border-slate-200 shadow-2xs font-extrabold"
+                    : "border-transparent text-slate-500 hover:text-slate-800"
+                }`}
+              >
+                <PackageCheck className="w-4 h-4 text-emerald-600" />
+                <span>1. Pilih Inbound & Review Item ({receivingList.length})</span>
+              </button>
+              <button
+                type="button"
+                onClick={() => setInboundModalTab("batch_sync")}
+                className={`pb-2.5 px-4 text-xs font-black uppercase tracking-wider flex items-center gap-2 border-b-2 transition-all cursor-pointer ${
+                  inboundModalTab === "batch_sync"
+                    ? "border-emerald-600 text-emerald-900 bg-white rounded-t-xl border-t border-x border-slate-200 shadow-2xs font-extrabold"
+                    : "border-transparent text-slate-500 hover:text-slate-800"
+                }`}
+              >
+                <SlidersHorizontal className="w-4 h-4 text-teal-600" />
+                <span>2. Sinkronisasi Otomatis TUG 5 Massal</span>
+              </button>
+            </div>
 
-              {/* Scope Selection (if not single MR) */}
-              {targetSingleMR ? (
-                <div className="p-3.5 bg-slate-50 border border-slate-200 rounded-xl space-y-1.5">
-                  <div className="text-[10px] font-mono uppercase font-black text-slate-500 tracking-wider">Dokumen TUG 5 Sasaran:</div>
-                  <div className="flex items-center justify-between">
-                    <div>
-                      <span className="font-mono text-sm font-black text-slate-900">{targetSingleMR.request_number}</span>
-                      <span className="text-slate-500 text-xs ml-2 font-medium">({targetSingleMR.vessel_name})</span>
-                    </div>
-                    <span className="font-mono text-[11px] font-bold text-slate-600 bg-white px-2 py-0.5 rounded border border-slate-200">
-                      {(targetSingleMR.items || []).length} Barang SPK
-                    </span>
+            {/* TAB 1: PILIH INBOUND & REVIEW ITEM */}
+            {inboundModalTab === "review_inbound" && (
+              <div className="flex-1 overflow-hidden flex flex-col">
+                {receivingList.length === 0 ? (
+                  <div className="p-12 text-center text-slate-500 space-y-3 my-auto">
+                    <Package className="w-12 h-12 text-slate-300 mx-auto" />
+                    <h4 className="font-bold text-slate-700 text-sm">Belum Ada Data Inbound Receiving</h4>
+                    <p className="text-xs text-slate-500 max-w-md mx-auto">
+                      Data penerimaan barang di menu "INBOUND (RECEIVING)" masih kosong. Tambahkan penerimaan barang terlebih dahulu melalui menu Inbound Receiving agar dapat direview dan dimasukkan ke TUG 5.
+                    </p>
                   </div>
-                  {targetSingleMR.work_order_ref && (
-                    <div className="text-[11px] font-mono text-rose-600 font-bold">
-                      Ref SPK: {targetSingleMR.work_order_ref}
+                ) : (
+                  <div className="grid grid-cols-1 lg:grid-cols-12 flex-1 overflow-hidden divide-y lg:divide-y-0 lg:divide-x divide-slate-200">
+                    
+                    {/* LEFT PANEL: INBOUND RECEIVING LIST (5 Cols) */}
+                    <div className="lg:col-span-5 p-4 flex flex-col gap-3 bg-slate-50/50 overflow-hidden">
+                      {/* Search Bar */}
+                      <div className="relative shrink-0">
+                        <Search className="w-4 h-4 text-slate-400 absolute left-3 top-2.5" />
+                        <input
+                          type="text"
+                          placeholder="Cari PO, SPK, Kapal, Vendor..."
+                          value={inboundSearchTerm}
+                          onChange={(e) => setInboundSearchTerm(e.target.value)}
+                          className="w-full bg-white border border-slate-250 text-slate-800 py-2 pl-9 pr-8 text-xs rounded-lg outline-none focus:border-emerald-600 focus:ring-1 focus:ring-emerald-500"
+                        />
+                        {inboundSearchTerm && (
+                          <button
+                            type="button"
+                            onClick={() => setInboundSearchTerm("")}
+                            className="absolute right-2.5 top-2.5 text-slate-400 hover:text-slate-600 cursor-pointer"
+                          >
+                            <X className="w-3.5 h-3.5" />
+                          </button>
+                        )}
+                      </div>
+
+                      {/* Filter Chips */}
+                      <div className="flex flex-wrap items-center gap-1.5 shrink-0 text-[10px] font-mono font-bold">
+                        <button
+                          type="button"
+                          onClick={() => setInboundFilterStatus("all")}
+                          className={`px-2.5 py-1 rounded-md border transition-all cursor-pointer ${
+                            inboundFilterStatus === "all"
+                              ? "bg-slate-900 text-white border-slate-900"
+                              : "bg-white text-slate-600 border-slate-200 hover:bg-slate-100"
+                          }`}
+                        >
+                          Semua ({receivingList.length})
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => setInboundFilterStatus("sesuai")}
+                          className={`px-2 py-1 rounded-md border transition-all cursor-pointer flex items-center gap-1 ${
+                            inboundFilterStatus === "sesuai"
+                              ? "bg-emerald-600 text-white border-emerald-600"
+                              : "bg-white text-emerald-700 border-emerald-200 hover:bg-emerald-50"
+                          }`}
+                        >
+                          <CheckCircle className="w-3 h-3" />
+                          <span>Sesuai</span>
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => setInboundFilterStatus("partial")}
+                          className={`px-2 py-1 rounded-md border transition-all cursor-pointer flex items-center gap-1 ${
+                            inboundFilterStatus === "partial"
+                              ? "bg-amber-600 text-white border-amber-600"
+                              : "bg-white text-amber-700 border-amber-200 hover:bg-amber-50"
+                          }`}
+                        >
+                          <AlertTriangle className="w-3 h-3" />
+                          <span>Selisih</span>
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => setInboundFilterStatus("unlinked")}
+                          className={`px-2 py-1 rounded-md border transition-all cursor-pointer ${
+                            inboundFilterStatus === "unlinked"
+                              ? "bg-indigo-600 text-white border-indigo-600"
+                              : "bg-white text-slate-600 border-slate-200 hover:bg-slate-100"
+                          }`}
+                        >
+                          Belum Terhubung
+                        </button>
+                      </div>
+
+                      {/* Inbound Cards List */}
+                      <div className="space-y-2.5 overflow-y-auto flex-1 pr-1">
+                        {filteredInboundList.length === 0 ? (
+                          <div className="p-8 text-center text-slate-400 text-xs font-mono">
+                            Tidak ditemukan data Inbound yang sesuai pencarian.
+                          </div>
+                        ) : (
+                          filteredInboundList.map(inb => {
+                            const isSelected = selectedInbound?.id === inb.id;
+                            const isPart = inb.status === ReceivingStatus.PARTIAL_REJECT || 
+                                           inb.status === ReceivingStatus.FULL_REJECT ||
+                                           (inb.items || []).some(i => {
+                                             const targetQty = i.qty_spk ?? i.qty_ordered ?? 0;
+                                             const st = i.status || i.qc_status;
+                                             return i.qty_received < targetQty || st === "PARTIAL" || st === "REJECTED" || st === "Rejected" || i.item_matched === "Tidak Sesuai";
+                                           });
+
+                            const linkedMR = requests.find(r => r.receiving_ref_id === inb.id || (r.work_order_ref && inb.spk_number && r.work_order_ref.trim().toLowerCase() === inb.spk_number.trim().toLowerCase()));
+
+                            return (
+                              <div
+                                key={inb.id}
+                                onClick={() => setSelectedInboundId(inb.id)}
+                                className={`p-3 rounded-xl border transition-all cursor-pointer text-left relative ${
+                                  isSelected
+                                    ? "bg-emerald-50/90 border-emerald-500 ring-2 ring-emerald-500/25 shadow-xs"
+                                    : "bg-white border-slate-200 hover:border-emerald-300 hover:bg-slate-50/70"
+                                }`}
+                              >
+                                {/* Top row: PO & Status Badge */}
+                                <div className="flex items-center justify-between gap-2 mb-1">
+                                  <span className="font-mono text-xs font-black text-slate-900 flex items-center gap-1.5">
+                                    <Truck className="w-3.5 h-3.5 text-emerald-600" />
+                                    <span>{inb.purchase_order_num}</span>
+                                  </span>
+                                  <span className={`text-[9.5px] font-mono font-bold px-2 py-0.5 rounded-full flex items-center gap-1 ${
+                                    !isPart 
+                                      ? "bg-emerald-100 text-emerald-800 border border-emerald-200" 
+                                      : "bg-amber-100 text-amber-800 border border-amber-200"
+                                  }`}>
+                                    {!isPart ? <CheckCircle className="w-3 h-3 text-emerald-600" /> : <AlertTriangle className="w-3 h-3 text-amber-600" />}
+                                    <span>{!isPart ? "Sesuai" : "Selisih"}</span>
+                                  </span>
+                                </div>
+
+                                {/* Vessel & SPK */}
+                                <div className="text-[11px] font-bold text-slate-700 flex items-center gap-1.5 truncate">
+                                  <Anchor className="w-3 h-3 text-slate-400 shrink-0" />
+                                  <span className="truncate">{inb.vessel_name || "Gudang Merak (General)"}</span>
+                                  {inb.spk_number && (
+                                    <span className="text-[9.5px] text-rose-600 font-mono font-bold bg-rose-50 px-1.5 py-0.2 rounded border border-rose-200 shrink-0">
+                                      SPK: {inb.spk_number}
+                                    </span>
+                                  )}
+                                </div>
+
+                                {/* Vendor & Date */}
+                                <div className="flex items-center justify-between text-[10px] text-slate-500 mt-1 font-sans">
+                                  <span className="truncate max-w-[170px]">{inb.vendor_name}</span>
+                                  <span className="font-mono shrink-0">{inb.received_date || "-"}</span>
+                                </div>
+
+                                {/* Footer row: Items Count & Link indicator */}
+                                <div className="flex items-center justify-between mt-2 pt-1.5 border-t border-slate-100 text-[10px] font-mono">
+                                  <span className="font-bold text-slate-600 bg-slate-100 px-2 py-0.5 rounded">
+                                    {(inb.items || []).length} Item Barang
+                                  </span>
+                                  {linkedMR ? (
+                                    <span className="text-emerald-700 font-bold bg-emerald-50 px-1.5 py-0.5 rounded border border-emerald-200">
+                                      ✓ Ada di TUG 5 ({linkedMR.request_number})
+                                    </span>
+                                  ) : (
+                                    <span className="text-slate-400">Belum di TUG 5</span>
+                                  )}
+                                </div>
+                              </div>
+                            );
+                          })
+                        )}
+                      </div>
                     </div>
-                  )}
+
+                    {/* RIGHT PANEL: REVIEW ITEMS & DESTINATION TUG 5 (7 Cols) */}
+                    <div className="lg:col-span-7 p-5 flex flex-col gap-4 overflow-y-auto max-h-[74vh]">
+                      {selectedInbound ? (
+                        <>
+                          {/* Inbound Header Summary */}
+                          <div className="p-3.5 bg-gradient-to-br from-slate-50 to-emerald-50/40 border border-slate-200 rounded-xl space-y-2">
+                            <div className="flex items-center justify-between flex-wrap gap-2">
+                              <div>
+                                <span className="text-[10px] font-mono uppercase font-black text-slate-400">Inbound Dipilih:</span>
+                                <h4 className="font-mono text-sm font-black text-slate-900 flex items-center gap-2">
+                                  <span>{selectedInbound.purchase_order_num}</span>
+                                  {selectedInbound.spk_number && (
+                                    <span className="text-xs text-rose-600 bg-rose-50 border border-rose-200 px-2 py-0.5 rounded font-mono font-bold">
+                                      SPK: {selectedInbound.spk_number}
+                                    </span>
+                                  )}
+                                </h4>
+                              </div>
+                              <span className={`text-xs font-mono font-bold px-2.5 py-1 rounded-full flex items-center gap-1.5 ${
+                                selectedInbound.status === ReceivingStatus.ACCEPTED || selectedInbound.status === ReceivingStatus.VERIFIED
+                                  ? "bg-emerald-100 text-emerald-800 border border-emerald-300"
+                                  : "bg-amber-100 text-amber-900 border border-amber-300"
+                              }`}>
+                                {selectedInbound.status === ReceivingStatus.ACCEPTED || selectedInbound.status === ReceivingStatus.VERIFIED ? (
+                                  <>
+                                    <CheckCircle className="w-3.5 h-3.5 text-emerald-600" />
+                                    <span>Status: Sesuai (Lengkap)</span>
+                                  </>
+                                ) : (
+                                  <>
+                                    <AlertTriangle className="w-3.5 h-3.5 text-amber-600" />
+                                    <span>Status: Catatan Fisik / Selisih</span>
+                                  </>
+                                )}
+                              </span>
+                            </div>
+
+                            <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 pt-2 border-t border-slate-200/80 text-[11px]">
+                              <div>
+                                <span className="text-slate-400 block text-[9.5px] uppercase font-mono">Kapal Penerima</span>
+                                <span className="font-bold text-slate-800 truncate block">{selectedInbound.vessel_name || "Gudang Merak"}</span>
+                              </div>
+                              <div>
+                                <span className="text-slate-400 block text-[9.5px] uppercase font-mono">Vendor Logistik</span>
+                                <span className="font-bold text-slate-800 truncate block">{selectedInbound.vendor_name}</span>
+                              </div>
+                              <div>
+                                <span className="text-slate-400 block text-[9.5px] uppercase font-mono">Tgl Penerimaan</span>
+                                <span className="font-mono font-bold text-slate-800">{selectedInbound.received_date || "-"}</span>
+                              </div>
+                              <div>
+                                <span className="text-slate-400 block text-[9.5px] uppercase font-mono">Penerima Gudang</span>
+                                <span className="font-bold text-slate-800 truncate block">{selectedInbound.received_by || "Petugas Gudang"}</span>
+                              </div>
+                            </div>
+
+                            {selectedInbound.keeper_notes && (
+                              <div className="p-2 bg-amber-50/80 border border-amber-200/80 rounded-lg text-[11px] text-amber-900 mt-1">
+                                <span className="font-bold font-mono text-[9.5px] block uppercase text-amber-700">Catatan Gudang:</span>
+                                <span>{selectedInbound.keeper_notes}</span>
+                              </div>
+                            )}
+                          </div>
+
+                          {/* Items Review Table */}
+                          <div className="space-y-1.5">
+                            <div className="flex items-center justify-between">
+                              <label className="text-xs font-bold text-slate-800 uppercase tracking-wider font-mono flex items-center gap-1.5">
+                                <PackageCheck className="w-4 h-4 text-emerald-600" />
+                                <span>Review Daftar Barang Dari Inbound ({(selectedInbound.items || []).length} Item):</span>
+                              </label>
+                              <span className="text-[10px] text-slate-500 font-sans">
+                                Review barang sebelum masuk ke TUG 5
+                              </span>
+                            </div>
+
+                            <div className="border border-slate-200 rounded-xl overflow-hidden shadow-2xs bg-white">
+                              <div className="overflow-x-auto max-h-[240px] overflow-y-auto">
+                                <table className="w-full text-left text-xs border-collapse">
+                                  <thead className="bg-slate-100 text-slate-600 font-mono text-[10px] uppercase sticky top-0 border-b border-slate-200 z-10">
+                                    <tr>
+                                      <th className="py-2 px-2.5 w-8 text-center">No</th>
+                                      <th className="py-2 px-3">Nama Barang & Part Number</th>
+                                      <th className="py-2 px-2.5 text-center">Qty SPK</th>
+                                      <th className="py-2 px-2.5 text-center">Qty Tiba</th>
+                                      <th className="py-2 px-2 text-center">Satuan</th>
+                                      <th className="py-2 px-3">Kesesuaian</th>
+                                      <th className="py-2 px-3">Catatan Fisik</th>
+                                    </tr>
+                                  </thead>
+                                  <tbody className="divide-y divide-slate-100 font-sans">
+                                    {(selectedInbound.items || []).length === 0 ? (
+                                      <tr>
+                                        <td colSpan={7} className="py-4 text-center text-slate-400 font-mono text-xs">
+                                          Tidak ada item barang dalam dokumen Inbound ini.
+                                        </td>
+                                      </tr>
+                                    ) : (
+                                      (selectedInbound.items || []).map((itm, idx) => {
+                                        const reqQty = Number(itm.qty_spk || itm.qty_ordered || itm.qty_received || 0);
+                                        const recQty = Number(itm.qty_received || 0);
+                                        const isItemSesuai = itm.item_matched !== "Tidak Sesuai" && itm.qc_status !== "Rejected" && recQty >= reqQty;
+
+                                        return (
+                                          <tr key={idx} className="hover:bg-slate-50 transition-colors">
+                                            <td className="py-2 px-2.5 text-center font-mono text-[11px] text-slate-400 font-bold">
+                                              {idx + 1}
+                                            </td>
+                                            <td className="py-2 px-3">
+                                              <div className="font-bold text-slate-900 leading-tight">
+                                                {itm.spare_part_name || itm.part_name || "-"}
+                                              </div>
+                                              <div className="text-[10px] font-mono text-slate-500 mt-0.5">
+                                                PN: {itm.part_number || "-"}
+                                              </div>
+                                            </td>
+                                            <td className="py-2 px-2.5 text-center font-mono font-bold text-slate-700">
+                                              {reqQty}
+                                            </td>
+                                            <td className="py-2 px-2.5 text-center font-mono font-black text-emerald-700 bg-emerald-50/50">
+                                              {recQty}
+                                            </td>
+                                            <td className="py-2 px-2 text-center font-mono text-[10.5px] text-slate-500">
+                                              {itm.unit || "PCS"}
+                                            </td>
+                                            <td className="py-2 px-3">
+                                              {isItemSesuai ? (
+                                                <span className="inline-flex items-center gap-1 text-[9.5px] font-bold text-emerald-800 bg-emerald-100/90 border border-emerald-200 px-2 py-0.5 rounded-full whitespace-nowrap">
+                                                  <CheckCircle className="w-3 h-3 text-emerald-600" /> Sesuai
+                                                </span>
+                                              ) : (
+                                                <span className="inline-flex items-center gap-1 text-[9.5px] font-bold text-amber-800 bg-amber-100/90 border border-amber-200 px-2 py-0.5 rounded-full whitespace-nowrap">
+                                                  <AlertTriangle className="w-3 h-3 text-amber-600" /> Selisih/Catatan
+                                                </span>
+                                              )}
+                                            </td>
+                                            <td className="py-2 px-3 text-[10.5px] text-slate-600 max-w-[150px] truncate" title={itm.keeper_notes || "-"}>
+                                              {itm.keeper_notes || (isItemSesuai ? "Sesuai spesifikasi" : "Catatan fisik")}
+                                            </td>
+                                          </tr>
+                                        );
+                                      })
+                                    )}
+                                  </tbody>
+                                </table>
+                              </div>
+                            </div>
+                          </div>
+
+                          {/* Destination TUG 5 Document Selector */}
+                          <div className="p-3.5 bg-slate-50 border border-slate-200 rounded-xl space-y-2.5">
+                            <label className="block text-xs font-bold text-slate-800 uppercase tracking-wider font-mono">
+                              Tujuan Masuk ke Dokumen TUG 5:
+                            </label>
+
+                            {targetSingleMR ? (
+                              <div className="p-2.5 bg-emerald-50 border border-emerald-200 rounded-lg flex items-center justify-between">
+                                <div>
+                                  <span className="text-[9.5px] font-mono text-emerald-700 font-bold uppercase block">Dokumen Sasaran (Terkunci dari Baris Tabel):</span>
+                                  <span className="font-mono text-xs font-black text-slate-900">{targetSingleMR.request_number}</span>
+                                  <span className="text-xs text-slate-600 ml-2">({targetSingleMR.vessel_name})</span>
+                                </div>
+                                <span className="text-[10px] font-mono font-bold bg-white text-emerald-800 px-2 py-0.5 rounded border border-emerald-200">
+                                  Update TUG 5 ini
+                                </span>
+                              </div>
+                            ) : (
+                              <div className="space-y-2">
+                                {/* Option 1: Matched TUG 5 */}
+                                {matchedTUG5ForSelectedInbound && (
+                                  <label 
+                                    className={`p-2.5 rounded-lg border flex items-start gap-2.5 cursor-pointer transition-all ${
+                                      targetTUG5Option === "matched" 
+                                        ? "bg-emerald-50 border-emerald-500 ring-1 ring-emerald-500 text-emerald-950 font-bold" 
+                                        : "bg-white border-slate-200 hover:bg-slate-50 text-slate-700"
+                                    }`}
+                                    onClick={() => setTargetTUG5Option("matched")}
+                                  >
+                                    <input
+                                      type="radio"
+                                      name="targetTUG5Option"
+                                      checked={targetTUG5Option === "matched"}
+                                      onChange={() => setTargetTUG5Option("matched")}
+                                      className="mt-0.5 text-emerald-600 accent-emerald-600 cursor-pointer"
+                                    />
+                                    <div className="text-xs">
+                                      <div className="font-black text-slate-900 flex items-center gap-1.5 flex-wrap">
+                                        <span>Update TUG 5 Terkait:</span>
+                                        <span className="font-mono text-emerald-700">{matchedTUG5ForSelectedInbound.request_number}</span>
+                                        <span className="text-slate-500 font-normal">({matchedTUG5ForSelectedInbound.vessel_name})</span>
+                                      </div>
+                                      <div className="text-[10.5px] text-slate-500 font-normal mt-0.5">
+                                        Cocok otomatis berdasarkan {selectedInbound.spk_number ? `No. SPK: ${selectedInbound.spk_number}` : `No. PO: ${selectedInbound.purchase_order_num}`}.
+                                      </div>
+                                    </div>
+                                  </label>
+                                )}
+
+                                {/* Option 2: Choose existing manual */}
+                                <div 
+                                  className={`p-2.5 rounded-lg border space-y-1.5 transition-all ${
+                                    targetTUG5Option === "existing" 
+                                      ? "bg-teal-50/60 border-teal-500 ring-1 ring-teal-500" 
+                                      : "bg-white border-slate-200 hover:bg-slate-50"
+                                  }`}
+                                >
+                                  <label className="flex items-center gap-2.5 cursor-pointer" onClick={() => setTargetTUG5Option("existing")}>
+                                    <input
+                                      type="radio"
+                                      name="targetTUG5Option"
+                                      checked={targetTUG5Option === "existing"}
+                                      onChange={() => setTargetTUG5Option("existing")}
+                                      className="text-teal-600 accent-teal-600 cursor-pointer"
+                                    />
+                                    <span className="text-xs font-bold text-slate-800">
+                                      Pilih Dokumen TUG 5 Eksisting Manual:
+                                    </span>
+                                  </label>
+                                  {targetTUG5Option === "existing" && (
+                                    <select
+                                      value={selectedTargetMRId}
+                                      onChange={(e) => setSelectedTargetMRId(e.target.value)}
+                                      className="w-full mt-1 px-3 py-1.5 bg-white border border-slate-300 rounded-lg text-xs font-mono font-medium focus:ring-2 focus:ring-teal-500 focus:outline-none"
+                                    >
+                                      <option value="">-- Pilih Dokumen TUG 5 Dari Daftar ({requests.length} Dokumen) --</option>
+                                      {requests.map(r => (
+                                        <option key={r.id} value={r.id}>
+                                          {r.request_number} &bull; {r.vessel_name} {r.work_order_ref ? `(SPK: ${r.work_order_ref})` : ""} [{r.status}]
+                                        </option>
+                                      ))}
+                                    </select>
+                                  )}
+                                </div>
+
+                                {/* Option 3: Create new TUG 5 */}
+                                <label 
+                                  className={`p-2.5 rounded-lg border flex items-start gap-2.5 cursor-pointer transition-all ${
+                                    targetTUG5Option === "new" 
+                                      ? "bg-blue-50 border-blue-500 ring-1 ring-blue-500 text-blue-950 font-bold" 
+                                      : "bg-white border-slate-200 hover:bg-slate-50 text-slate-700"
+                                  }`}
+                                  onClick={() => setTargetTUG5Option("new")}
+                                >
+                                  <input
+                                    type="radio"
+                                    name="targetTUG5Option"
+                                    checked={targetTUG5Option === "new"}
+                                    onChange={() => setTargetTUG5Option("new")}
+                                    className="mt-0.5 text-blue-600 accent-blue-600 cursor-pointer"
+                                  />
+                                  <div className="text-xs">
+                                    <div className="font-bold text-slate-900">
+                                      Buat Dokumen TUG 5 Baru Secara Otomatis dari Inbound Ini
+                                    </div>
+                                    <div className="text-[10.5px] text-slate-500 font-normal mt-0.5">
+                                      Sistem akan membuat nomor TUG 5 baru untuk {selectedInbound.vessel_name || "kapal terkait"} dan mengisi seluruh barang Inbound ke dalamnya dengan status Arrived (Tiba).
+                                    </div>
+                                  </div>
+                                </label>
+                              </div>
+                            )}
+                          </div>
+                        </>
+                      ) : (
+                        <div className="p-12 text-center text-slate-400 font-mono text-xs my-auto">
+                          Pilih salah satu penerimaan Inbound di panel sebelah kiri untuk melihat rincian barang.
+                        </div>
+                      )}
+                    </div>
+
+                  </div>
+                )}
+              </div>
+            )}
+
+            {/* TAB 2: OTOMASI MASSAL SEMUA DOKUMEN TUG 5 */}
+            {inboundModalTab === "batch_sync" && (
+              <div className="p-6 space-y-5 overflow-y-auto text-xs text-slate-700 flex-1">
+                {/* Highlight / Explanation Box */}
+                <div className="p-3.5 bg-emerald-50/80 border border-emerald-200/80 rounded-xl flex items-start gap-3">
+                  <Info className="w-5 h-5 text-emerald-600 shrink-0 mt-0.5" />
+                  <div className="text-xs text-emerald-950 space-y-1">
+                    <p className="font-bold">
+                      Otomasi Penerimaan & Progress Dokumen TUG 5 Massal
+                    </p>
+                    <p className="text-emerald-800 leading-relaxed font-sans text-[11.5px]">
+                      Dengan fitur ini, item barang pada dokumen TUG 5 akan ditandai <span className="font-bold text-emerald-900">Arrived (Tiba)</span> dan dokumen berstatus <span className="font-bold text-emerald-900">Terprogress</span>. Baik status fisik <span className="underline font-semibold">Sesuai</span> ataupun <span className="underline font-semibold">Tidak Sesuai (Selisih)</span>, alur TUG 5 tetap berjalan lancar untuk ditandatangani dan dicetak.
+                    </p>
+                  </div>
                 </div>
-              ) : (
+
+                {/* Scope Selection */}
+                {targetSingleMR ? (
+                  <div className="p-3.5 bg-slate-50 border border-slate-200 rounded-xl space-y-1.5">
+                    <div className="text-[10px] font-mono uppercase font-black text-slate-500 tracking-wider">Dokumen TUG 5 Sasaran:</div>
+                    <div className="flex items-center justify-between">
+                      <div>
+                        <span className="font-mono text-sm font-black text-slate-900">{targetSingleMR.request_number}</span>
+                        <span className="text-slate-500 text-xs ml-2 font-medium">({targetSingleMR.vessel_name})</span>
+                      </div>
+                      <span className="font-mono text-[11px] font-bold text-slate-600 bg-white px-2 py-0.5 rounded border border-slate-200">
+                        {(targetSingleMR.items || []).length} Barang SPK
+                      </span>
+                    </div>
+                    {targetSingleMR.work_order_ref && (
+                      <div className="text-[11px] font-mono text-rose-600 font-bold">
+                        Ref SPK: {targetSingleMR.work_order_ref}
+                      </div>
+                    )}
+                  </div>
+                ) : (
+                  <div className="space-y-2">
+                    <label className="block text-xs font-bold text-slate-800 uppercase tracking-wider font-mono">
+                      1. Cakupan Dokumen TUG 5:
+                    </label>
+                    <div className="grid grid-cols-1 sm:grid-cols-3 gap-2.5">
+                      <button
+                        type="button"
+                        onClick={() => setInboundSyncScope("unlinked")}
+                        className={`p-3 rounded-xl border text-left transition-all cursor-pointer ${
+                          inboundSyncScope === "unlinked"
+                            ? "bg-teal-50/80 border-teal-500 ring-2 ring-teal-500/20 text-teal-950 font-bold"
+                            : "bg-white border-slate-200 hover:bg-slate-50 text-slate-700"
+                        }`}
+                      >
+                        <div className="text-xs font-bold">Semua Belum Inbound</div>
+                        <div className="text-[10px] text-slate-500 mt-1 font-mono">
+                          {requests.filter(r => !getInboundInfoForMR(r).hasInbound).length} Dokumen
+                        </div>
+                      </button>
+
+                      <button
+                        type="button"
+                        onClick={() => setInboundSyncScope("selected")}
+                        className={`p-3 rounded-xl border text-left transition-all cursor-pointer ${
+                          inboundSyncScope === "selected"
+                            ? "bg-teal-50/80 border-teal-500 ring-2 ring-teal-500/20 text-teal-950 font-bold"
+                            : "bg-white border-slate-200 hover:bg-slate-50 text-slate-700"
+                        }`}
+                      >
+                        <div className="text-xs font-bold">Dokumen Terpilih Saja</div>
+                        <div className="text-[10px] text-slate-500 mt-1 font-mono">
+                          {selectedMRIds.length} Checklist
+                        </div>
+                      </button>
+
+                      <button
+                        type="button"
+                        onClick={() => setInboundSyncScope("filtered")}
+                        className={`p-3 rounded-xl border text-left transition-all cursor-pointer ${
+                          inboundSyncScope === "filtered"
+                            ? "bg-teal-50/80 border-teal-500 ring-2 ring-teal-500/20 text-teal-950 font-bold"
+                            : "bg-white border-slate-200 hover:bg-slate-50 text-slate-700"
+                        }`}
+                      >
+                        <div className="text-xs font-bold">Sesuai Filter Tabel</div>
+                        <div className="text-[10px] text-slate-500 mt-1 font-mono">
+                          {filteredRequests.length} Dokumen Aktif
+                        </div>
+                      </button>
+                    </div>
+                  </div>
+                )}
+
+                {/* Status Verification Mode */}
                 <div className="space-y-2">
                   <label className="block text-xs font-bold text-slate-800 uppercase tracking-wider font-mono">
-                    1. Cakupan Dokumen TUG 5:
+                    {targetSingleMR ? "1" : "2"}. Mode Status Verifikasi Inbound:
                   </label>
-                  <div className="grid grid-cols-1 sm:grid-cols-3 gap-2.5">
-                    <button
-                      type="button"
-                      onClick={() => setInboundSyncScope("unlinked")}
-                      className={`p-3 rounded-xl border text-left transition-all cursor-pointer ${
-                        inboundSyncScope === "unlinked"
-                          ? "bg-teal-50/80 border-teal-500 ring-2 ring-teal-500/20 text-teal-950 font-bold"
+                  <div className="space-y-2">
+                    <div
+                      onClick={() => setInboundSyncMode("sesuai")}
+                      className={`p-3.5 rounded-xl border transition-all cursor-pointer flex items-start gap-3 ${
+                        inboundSyncMode === "sesuai"
+                          ? "bg-emerald-50/80 border-emerald-500 ring-2 ring-emerald-500/20 text-emerald-950"
                           : "bg-white border-slate-200 hover:bg-slate-50 text-slate-700"
                       }`}
                     >
-                      <div className="text-xs font-bold">Semua Belum Inbound</div>
-                      <div className="text-[10px] text-slate-500 mt-1 font-mono">
-                        {requests.filter(r => !getInboundInfoForMR(r).hasInbound).length} Dokumen
+                      <input
+                        type="radio"
+                        name="inboundSyncMode"
+                        checked={inboundSyncMode === "sesuai"}
+                        onChange={() => setInboundSyncMode("sesuai")}
+                        className="mt-0.5 text-emerald-600 focus:ring-emerald-500 cursor-pointer accent-emerald-600"
+                      />
+                      <div>
+                        <div className="font-bold text-xs flex items-center gap-1.5 text-emerald-950">
+                          <CheckCircle className="w-3.5 h-3.5 text-emerald-600" />
+                          <span>✓ Sesuai (Lengkap & Terverifikasi)</span>
+                        </div>
+                        <p className="text-[11px] text-slate-600 mt-0.5 font-sans leading-relaxed">
+                          Fisik dan jumlah seluruh barang tiba sesuai spesifikasi SPK. Dokumen TUG 5 diberi tanda Sesuai (Lengkap).
+                        </p>
                       </div>
-                    </button>
+                    </div>
 
-                    <button
-                      type="button"
-                      onClick={() => setInboundSyncScope("selected")}
-                      className={`p-3 rounded-xl border text-left transition-all cursor-pointer ${
-                        inboundSyncScope === "selected"
-                          ? "bg-teal-50/80 border-teal-500 ring-2 ring-teal-500/20 text-teal-950 font-bold"
+                    <div
+                      onClick={() => setInboundSyncMode("partial")}
+                      className={`p-3.5 rounded-xl border transition-all cursor-pointer flex items-start gap-3 ${
+                        inboundSyncMode === "partial"
+                          ? "bg-amber-50/80 border-amber-500 ring-2 ring-amber-500/20 text-amber-950"
                           : "bg-white border-slate-200 hover:bg-slate-50 text-slate-700"
                       }`}
                     >
-                      <div className="text-xs font-bold">Dokumen Terpilih Saja</div>
-                      <div className="text-[10px] text-slate-500 mt-1 font-mono">
-                        {selectedMRIds.length} Checklist
+                      <input
+                        type="radio"
+                        name="inboundSyncMode"
+                        checked={inboundSyncMode === "partial"}
+                        onChange={() => setInboundSyncMode("partial")}
+                        className="mt-0.5 text-amber-600 focus:ring-amber-500 cursor-pointer accent-amber-600"
+                      />
+                      <div>
+                        <div className="font-bold text-xs flex items-center gap-1.5 text-amber-950">
+                          <AlertTriangle className="w-3.5 h-3.5 text-amber-600" />
+                          <span>⚠️ Tidak Sesuai (Catatan Fisik / Selisih) — Tetap Terprogress</span>
+                        </div>
+                        <p className="text-[11px] text-slate-600 mt-0.5 font-sans leading-relaxed">
+                          Pemeriksaan gudang mencatat adanya catatan fisik/selisih jumlah, namun dokumen TUG 5 <strong>TETAP TERPROGRESS</strong> agar tanda tangan dan proses tidak tertahan.
+                        </p>
                       </div>
-                    </button>
+                    </div>
 
-                    <button
-                      type="button"
-                      onClick={() => setInboundSyncScope("filtered")}
-                      className={`p-3 rounded-xl border text-left transition-all cursor-pointer ${
-                        inboundSyncScope === "filtered"
-                          ? "bg-teal-50/80 border-teal-500 ring-2 ring-teal-500/20 text-teal-950 font-bold"
+                    <div
+                      onClick={() => setInboundSyncMode("auto")}
+                      className={`p-3.5 rounded-xl border transition-all cursor-pointer flex items-start gap-3 ${
+                        inboundSyncMode === "auto"
+                          ? "bg-blue-50/80 border-blue-500 ring-2 ring-blue-500/20 text-blue-950"
                           : "bg-white border-slate-200 hover:bg-slate-50 text-slate-700"
                       }`}
                     >
-                      <div className="text-xs font-bold">Sesuai Filter Tabel</div>
-                      <div className="text-[10px] text-slate-500 mt-1 font-mono">
-                        {filteredRequests.length} Dokumen Aktif
+                      <input
+                        type="radio"
+                        name="inboundSyncMode"
+                        checked={inboundSyncMode === "auto"}
+                        onChange={() => setInboundSyncMode("auto")}
+                        className="mt-0.5 text-blue-600 focus:ring-blue-500 cursor-pointer accent-blue-600"
+                      />
+                      <div>
+                        <div className="font-bold text-xs flex items-center gap-1.5 text-blue-950">
+                          <Truck className="w-3.5 h-3.5 text-blue-600" />
+                          <span>🤖 Otomatis (Cek Penerimaan Register Inbound Eksisting)</span>
+                        </div>
+                        <p className="text-[11px] text-slate-600 mt-0.5 font-sans leading-relaxed">
+                          Jika sudah ada data receiving di Inbound, gunakan status aktualnya. Jika belum ada, otomatis dibuatkan verifikasi Sesuai.
+                        </p>
                       </div>
-                    </button>
+                    </div>
                   </div>
                 </div>
-              )}
 
-              {/* Status Verification Mode */}
-              <div className="space-y-2">
-                <label className="block text-xs font-bold text-slate-800 uppercase tracking-wider font-mono">
-                  {targetSingleMR ? "1" : "2"}. Mode Status Verifikasi Inbound:
-                </label>
-                <div className="space-y-2">
-                  <div
-                    onClick={() => setInboundSyncMode("sesuai")}
-                    className={`p-3.5 rounded-xl border transition-all cursor-pointer flex items-start gap-3 ${
-                      inboundSyncMode === "sesuai"
-                        ? "bg-emerald-50/80 border-emerald-500 ring-2 ring-emerald-500/20 text-emerald-950"
-                        : "bg-white border-slate-200 hover:bg-slate-50 text-slate-700"
-                    }`}
-                  >
+                {/* Tanggal Penerimaan & Catatan */}
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 pt-1">
+                  <div>
+                    <label className="block text-xs font-bold text-slate-700 mb-1 font-mono uppercase">
+                      Tanggal Penerimaan Inbound:
+                    </label>
                     <input
-                      type="radio"
-                      name="inboundSyncMode"
-                      checked={inboundSyncMode === "sesuai"}
-                      onChange={() => setInboundSyncMode("sesuai")}
-                      className="mt-0.5 text-emerald-600 focus:ring-emerald-500 cursor-pointer accent-emerald-600"
+                      type="date"
+                      value={inboundSyncDate}
+                      onChange={(e) => setInboundSyncDate(e.target.value)}
+                      className="w-full px-3 py-2 border border-slate-300 rounded-lg text-xs font-medium focus:ring-2 focus:ring-teal-500 focus:outline-none"
                     />
-                    <div>
-                      <div className="font-bold text-xs flex items-center gap-1.5 text-emerald-950">
-                        <CheckCircle className="w-3.5 h-3.5 text-emerald-600" />
-                        <span>✓ Sesuai (Lengkap & Terverifikasi)</span>
-                      </div>
-                      <p className="text-[11px] text-slate-600 mt-0.5 font-sans leading-relaxed">
-                        Fisik dan jumlah seluruh barang tiba sesuai spesifikasi SPK. Dokumen TUG 5 diberi tanda Sesuai (Lengkap).
-                      </p>
-                    </div>
                   </div>
-
-                  <div
-                    onClick={() => setInboundSyncMode("partial")}
-                    className={`p-3.5 rounded-xl border transition-all cursor-pointer flex items-start gap-3 ${
-                      inboundSyncMode === "partial"
-                        ? "bg-amber-50/80 border-amber-500 ring-2 ring-amber-500/20 text-amber-950"
-                        : "bg-white border-slate-200 hover:bg-slate-50 text-slate-700"
-                    }`}
-                  >
+                  <div>
+                    <label className="block text-xs font-bold text-slate-700 mb-1 font-mono uppercase">
+                      Catatan Verifikasi Gudang:
+                    </label>
                     <input
-                      type="radio"
-                      name="inboundSyncMode"
-                      checked={inboundSyncMode === "partial"}
-                      onChange={() => setInboundSyncMode("partial")}
-                      className="mt-0.5 text-amber-600 focus:ring-amber-500 cursor-pointer accent-amber-600"
+                      type="text"
+                      value={inboundSyncNotes}
+                      onChange={(e) => setInboundSyncNotes(e.target.value)}
+                      placeholder="Contoh: Fisik diperiksa sesuai / diterima dengan catatan"
+                      className="w-full px-3 py-2 border border-slate-300 rounded-lg text-xs font-medium focus:ring-2 focus:ring-teal-500 focus:outline-none"
                     />
-                    <div>
-                      <div className="font-bold text-xs flex items-center gap-1.5 text-amber-950">
-                        <AlertTriangle className="w-3.5 h-3.5 text-amber-600" />
-                        <span>⚠️ Tidak Sesuai (Catatan Fisik / Selisih) — Tetap Terprogress</span>
-                      </div>
-                      <p className="text-[11px] text-slate-600 mt-0.5 font-sans leading-relaxed">
-                        Pemeriksaan gudang mencatat adanya catatan fisik/selisih jumlah, namun dokumen TUG 5 <strong>TETAP TERPROGRESS</strong> agar tanda tangan dan proses tidak tertahan.
-                      </p>
-                    </div>
-                  </div>
-
-                  <div
-                    onClick={() => setInboundSyncMode("auto")}
-                    className={`p-3.5 rounded-xl border transition-all cursor-pointer flex items-start gap-3 ${
-                      inboundSyncMode === "auto"
-                        ? "bg-blue-50/80 border-blue-500 ring-2 ring-blue-500/20 text-blue-950"
-                        : "bg-white border-slate-200 hover:bg-slate-50 text-slate-700"
-                    }`}
-                  >
-                    <input
-                      type="radio"
-                      name="inboundSyncMode"
-                      checked={inboundSyncMode === "auto"}
-                      onChange={() => setInboundSyncMode("auto")}
-                      className="mt-0.5 text-blue-600 focus:ring-blue-500 cursor-pointer accent-blue-600"
-                    />
-                    <div>
-                      <div className="font-bold text-xs flex items-center gap-1.5 text-blue-950">
-                        <Truck className="w-3.5 h-3.5 text-blue-600" />
-                        <span>🤖 Otomatis (Cek Penerimaan Register Inbound Eksisting)</span>
-                      </div>
-                      <p className="text-[11px] text-slate-600 mt-0.5 font-sans leading-relaxed">
-                        Jika sudah ada data receiving di Inbound, gunakan status aktualnya. Jika belum ada, otomatis dibuatkan verifikasi Sesuai.
-                      </p>
-                    </div>
                   </div>
                 </div>
               </div>
-
-              {/* Tanggal Penerimaan & Catatan */}
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 pt-1">
-                <div>
-                  <label className="block text-xs font-bold text-slate-700 mb-1 font-mono uppercase">
-                    Tanggal Penerimaan Inbound:
-                  </label>
-                  <input
-                    type="date"
-                    value={inboundSyncDate}
-                    onChange={(e) => setInboundSyncDate(e.target.value)}
-                    className="w-full px-3 py-2 border border-slate-300 rounded-lg text-xs font-medium focus:ring-2 focus:ring-teal-500 focus:outline-none"
-                  />
-                </div>
-                <div>
-                  <label className="block text-xs font-bold text-slate-700 mb-1 font-mono uppercase">
-                    Catatan Verifikasi Gudang:
-                  </label>
-                  <input
-                    type="text"
-                    value={inboundSyncNotes}
-                    onChange={(e) => setInboundSyncNotes(e.target.value)}
-                    placeholder="Contoh: Fisik diperiksa sesuai / diterima dengan catatan"
-                    className="w-full px-3 py-2 border border-slate-300 rounded-lg text-xs font-medium focus:ring-2 focus:ring-teal-500 focus:outline-none"
-                  />
-                </div>
-              </div>
-
-            </div>
+            )}
 
             {/* Modal Footer */}
             <div className="px-6 py-4 bg-slate-50 border-t border-slate-200 flex items-center justify-between shrink-0">
-              <span className="text-[11px] font-mono text-slate-500">
-                {targetSingleMR ? "1 Dokumen TUG 5" : inboundSyncScope === "selected" ? `${selectedMRIds.length} Dokumen Checklist` : inboundSyncScope === "filtered" ? `${filteredRequests.length} Dokumen Filter` : `${requests.filter(r => !getInboundInfoForMR(r).hasInbound).length} Dokumen Belum Inbound`}
-              </span>
-              <div className="flex items-center gap-2.5">
-                <button
-                  type="button"
-                  disabled={isProcessingInboundSync}
-                  onClick={() => {
-                    setIsInboundSyncModalOpen(false);
-                    setTargetSingleMR(null);
-                  }}
-                  className="px-4 py-2 border border-slate-300 hover:bg-slate-100 text-slate-700 font-bold rounded-lg cursor-pointer transition-colors"
-                >
-                  Batal
-                </button>
-                <button
-                  type="button"
-                  disabled={isProcessingInboundSync}
-                  onClick={executeInboundSync}
-                  className={`px-5 py-2 bg-gradient-to-r from-emerald-600 to-teal-700 hover:from-emerald-500 hover:to-teal-600 text-white font-bold rounded-lg flex items-center gap-2 shadow-sm cursor-pointer transition-all ${
-                    isProcessingInboundSync ? "opacity-70 cursor-not-allowed" : ""
-                  }`}
-                >
-                  {isProcessingInboundSync ? (
-                    <>
-                      <span className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin"></span>
-                      <span>Memproses Inbound...</span>
-                    </>
-                  ) : (
-                    <>
-                      <ArrowDownToLine className="w-4 h-4" />
-                      <span>Proses & Ambil Data Inbound</span>
-                    </>
-                  )}
-                </button>
-              </div>
+              {inboundModalTab === "review_inbound" ? (
+                <>
+                  <div className="text-xs text-slate-600 font-medium">
+                    {selectedInbound ? (
+                      <span className="flex items-center gap-1.5 flex-wrap">
+                        <span className="font-bold text-slate-800">{selectedInbound.purchase_order_num}</span>
+                        <span className="text-slate-400">&rarr;</span>
+                        <span className="font-mono text-emerald-700 font-bold">
+                          {(selectedInbound.items || []).length} Item
+                        </span>
+                        <span className="text-slate-400">&rarr;</span>
+                        <span className="text-slate-700 font-bold">
+                          {targetSingleMR 
+                            ? targetSingleMR.request_number 
+                            : targetTUG5Option === "matched" && matchedTUG5ForSelectedInbound 
+                            ? `TUG 5: ${matchedTUG5ForSelectedInbound.request_number}` 
+                            : targetTUG5Option === "existing" && selectedTargetMRId
+                            ? `TUG 5 Terpilih`
+                            : "TUG 5 Baru"}
+                        </span>
+                      </span>
+                    ) : (
+                      <span>Pilih Inbound terlebih dahulu</span>
+                    )}
+                  </div>
+                  <div className="flex items-center gap-2.5">
+                    <button
+                      type="button"
+                      disabled={isProcessingInboundSync}
+                      onClick={() => {
+                        setIsInboundSyncModalOpen(false);
+                        setTargetSingleMR(null);
+                      }}
+                      className="px-4 py-2 border border-slate-300 hover:bg-slate-100 text-slate-700 font-bold rounded-lg cursor-pointer transition-colors text-xs"
+                    >
+                      Batal
+                    </button>
+                    <button
+                      type="button"
+                      disabled={isProcessingInboundSync || !selectedInbound}
+                      onClick={handleApplySelectedInboundToTUG5}
+                      className={`px-5 py-2 bg-gradient-to-r from-emerald-600 to-teal-700 hover:from-emerald-500 hover:to-teal-600 text-white font-bold rounded-lg flex items-center gap-2 shadow-sm cursor-pointer transition-all text-xs ${
+                        isProcessingInboundSync || !selectedInbound ? "opacity-60 cursor-not-allowed" : ""
+                      }`}
+                    >
+                      {isProcessingInboundSync ? (
+                        <>
+                          <span className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin"></span>
+                          <span>Memasukkan ke TUG 5...</span>
+                        </>
+                      ) : (
+                        <>
+                          <ArrowDownToLine className="w-4 h-4" />
+                          <span>📥 Masukkan Data ke TUG 5</span>
+                        </>
+                      )}
+                    </button>
+                  </div>
+                </>
+              ) : (
+                <>
+                  <span className="text-[11px] font-mono text-slate-500">
+                    {targetSingleMR ? "1 Dokumen TUG 5" : inboundSyncScope === "selected" ? `${selectedMRIds.length} Dokumen Checklist` : inboundSyncScope === "filtered" ? `${filteredRequests.length} Dokumen Filter` : `${requests.filter(r => !getInboundInfoForMR(r).hasInbound).length} Dokumen Belum Inbound`}
+                  </span>
+                  <div className="flex items-center gap-2.5">
+                    <button
+                      type="button"
+                      disabled={isProcessingInboundSync}
+                      onClick={() => {
+                        setIsInboundSyncModalOpen(false);
+                        setTargetSingleMR(null);
+                      }}
+                      className="px-4 py-2 border border-slate-300 hover:bg-slate-100 text-slate-700 font-bold rounded-lg cursor-pointer transition-colors text-xs"
+                    >
+                      Batal
+                    </button>
+                    <button
+                      type="button"
+                      disabled={isProcessingInboundSync}
+                      onClick={executeInboundSync}
+                      className={`px-5 py-2 bg-gradient-to-r from-emerald-600 to-teal-700 hover:from-emerald-500 hover:to-teal-600 text-white font-bold rounded-lg flex items-center gap-2 shadow-sm cursor-pointer transition-all text-xs ${
+                        isProcessingInboundSync ? "opacity-70 cursor-not-allowed" : ""
+                      }`}
+                    >
+                      {isProcessingInboundSync ? (
+                        <>
+                          <span className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin"></span>
+                          <span>Memproses Inbound Massal...</span>
+                        </>
+                      ) : (
+                        <>
+                          <ArrowDownToLine className="w-4 h-4" />
+                          <span>Proses Otomasi Massal</span>
+                        </>
+                      )}
+                    </button>
+                  </div>
+                </>
+              )}
             </div>
 
           </div>
