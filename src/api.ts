@@ -23,7 +23,9 @@ import {
   ReceivingStatus,
   DigitalSignature,
   normalizeUserRole,
-  Vessel
+  Vessel,
+  MaintenanceConfig,
+  MaintenanceLog
 } from "./types.js";
 import { supabase, isSupabaseConfigured, uploadSignatureToStorage } from "./supabaseClient.js";
 import { 
@@ -2575,6 +2577,147 @@ export const api = {
     return fetcher<DigitalSignature[]>("/api/signatures/reset", {
       method: "POST",
     });
+  },
+
+  // Maintenance Mode Management
+  async getMaintenanceStatus(): Promise<MaintenanceConfig> {
+    const defaultVal: MaintenanceConfig = {
+      is_maintenance: false,
+      message: "Sistem WMS PT. Pelayaran Bahtera Adhiguna sedang dalam pemeliharaan berkala untuk peningkatan database dan optimasi sistem armada.",
+      estimated_finish: "Segera kembali online",
+      updated_by: "Fikri Haikal (Superadmin)",
+      updated_at: new Date().toISOString()
+    };
+
+    // 1. Try local cache first
+    let localConfig: MaintenanceConfig = defaultVal;
+    try {
+      const stored = localStorage.getItem("wms_maintenance_config");
+      if (stored) {
+        const parsed = JSON.parse(stored);
+        if (parsed && typeof parsed.is_maintenance === "boolean") {
+          localConfig = { ...defaultVal, ...parsed };
+        }
+      }
+    } catch (e) {
+      // ignore
+    }
+
+    // 2. Query Supabase audit_logs for module = 'MAINTENANCE'
+    if (isSupabaseConfigured) {
+      try {
+        const { data, error } = await supabase
+          .from("audit_logs")
+          .select("*")
+          .eq("module", "MAINTENANCE")
+          .order("timestamp", { ascending: false })
+          .limit(1);
+
+        if (!error && data && data.length > 0 && data[0].details) {
+          try {
+            const parsed = typeof data[0].details === "string" ? JSON.parse(data[0].details) : data[0].details;
+            const remoteConfig: MaintenanceConfig = {
+              ...defaultVal,
+              ...parsed,
+              updated_at: data[0].timestamp || parsed.updated_at
+            };
+            localStorage.setItem("wms_maintenance_config", JSON.stringify(remoteConfig));
+            return remoteConfig;
+          } catch (e) {
+            console.error("Failed to parse maintenance details from Supabase:", e);
+          }
+        }
+      } catch (err) {
+        console.warn("Supabase maintenance query failed, fallback to local:", err);
+      }
+    }
+
+    // 3. Fallback to Express backend if reachable
+    try {
+      const res = await fetch("/api/maintenance");
+      if (res.ok) {
+        const data = await res.json();
+        if (data && typeof data.is_maintenance === "boolean") {
+          localStorage.setItem("wms_maintenance_config", JSON.stringify(data));
+          return data;
+        }
+      }
+    } catch (e) {
+      // ignore
+    }
+
+    return localConfig;
+  },
+
+  async updateMaintenanceStatus(config: Partial<MaintenanceConfig>, operator: string = "Super Admin"): Promise<MaintenanceConfig> {
+    const current = await this.getMaintenanceStatus();
+    const updated: MaintenanceConfig = {
+      ...current,
+      ...config,
+      updated_by: operator,
+      updated_at: new Date().toISOString()
+    };
+
+    // 1. Save to localStorage
+    try {
+      localStorage.setItem("wms_maintenance_config", JSON.stringify(updated));
+    } catch (e) {
+      // ignore
+    }
+
+    // 2. Record to Supabase audit_logs
+    if (isSupabaseConfigured) {
+      try {
+        await supabase.from("audit_logs").insert([{
+          action: updated.is_maintenance ? "ACTIVATE_MAINTENANCE" : "DEACTIVATE_MAINTENANCE",
+          module: "MAINTENANCE",
+          details: JSON.stringify(updated),
+          operator: operator,
+          timestamp: new Date().toISOString()
+        }]);
+      } catch (err) {
+        console.error("Failed to record maintenance to Supabase:", err);
+      }
+    }
+
+    // 3. Notify Express backend if running
+    try {
+      await fetch("/api/maintenance", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(updated)
+      });
+    } catch (e) {
+      // ignore
+    }
+
+    return updated;
+  },
+
+  async getMaintenanceLogs(): Promise<MaintenanceLog[]> {
+    if (isSupabaseConfigured) {
+      try {
+        const { data, error } = await supabase
+          .from("audit_logs")
+          .select("*")
+          .eq("module", "MAINTENANCE")
+          .order("timestamp", { ascending: false })
+          .limit(20);
+
+        if (!error && data) {
+          return data.map((d: any) => ({
+            id: d.id,
+            action: d.action,
+            operator: d.operator,
+            timestamp: d.timestamp,
+            details: d.details
+          }));
+        }
+      } catch (e) {
+        console.warn("Error fetching maintenance logs:", e);
+      }
+    }
+    return [];
   }
 };
 

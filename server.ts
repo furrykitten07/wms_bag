@@ -2580,6 +2580,35 @@ app.get("/api/db/status", (req, res) => {
   });
 });
 
+let systemMaintenanceConfig = {
+  is_maintenance: false,
+  message: "Sistem WMS PT. Pelayaran Bahtera Adhiguna sedang dalam pemeliharaan berkala untuk peningkatan database dan optimasi sistem armada.",
+  estimated_finish: "Segera kembali online",
+  updated_by: "Fikri Haikal (Superadmin)",
+  updated_at: new Date().toISOString()
+};
+
+app.get("/api/maintenance", (req, res) => {
+  res.json(systemMaintenanceConfig);
+});
+
+app.post("/api/maintenance", (req, res) => {
+  const userHeader = req.headers["x-user-username"] as string || "Super Admin";
+  systemMaintenanceConfig = {
+    ...systemMaintenanceConfig,
+    ...req.body,
+    updated_by: req.body.updated_by || userHeader,
+    updated_at: new Date().toISOString()
+  };
+  createAudit(
+    systemMaintenanceConfig.is_maintenance ? "Activate Maintenance" : "Deactivate Maintenance",
+    "System Maintenance",
+    `Status: ${systemMaintenanceConfig.is_maintenance ? "ACTIVE" : "INACTIVE"}. Message: ${systemMaintenanceConfig.message}`,
+    userHeader
+  );
+  res.json({ success: true, config: systemMaintenanceConfig });
+});
+
 app.post("/api/demo/seed", async (req, res) => {
   try {
     if (isDbConnected()) {

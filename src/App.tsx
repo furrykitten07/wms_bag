@@ -29,7 +29,8 @@ import {
   MaterialReturn,
   MaterialReturnStatus,
   DigitalSignature,
-  Vessel
+  Vessel,
+  MaintenanceConfig
 } from "./types.js";
 import { ChevronRight, ShieldAlert, CheckCircle } from "lucide-react";
 
@@ -53,13 +54,24 @@ import UsersManagementView from "./components/UsersManagementView.js";
 import SignatureManagementView from "./components/SignatureManagementView.js";
 import VesselsManagementView from "./components/VesselsManagementView.js";
 import PublicSparePartView from "./components/PublicSparePartView.js";
+import MaintenanceScreen from "./components/MaintenanceScreen.js";
+import MaintenanceAdminView from "./components/MaintenanceAdminView.js";
 
-import { AlertCircle, RefreshCw, Layers } from "lucide-react";
+import { AlertCircle, RefreshCw, Layers, Wrench } from "lucide-react";
 
 export default function App() {
   const [currentTab, setCurrentTab] = useState<string>("dashboard");
   const [loading, setLoading] = useState<boolean>(true);
   const [error, setError] = useState<string | null>(null);
+
+  // System Maintenance Configuration State
+  const [maintenanceConfig, setMaintenanceConfig] = useState<MaintenanceConfig>({
+    is_maintenance: false,
+    message: "Sistem WMS PT. Pelayaran Bahtera Adhiguna sedang dalam pemeliharaan berkala untuk peningkatan database dan optimasi sistem armada.",
+    estimated_finish: "Segera kembali online",
+    updated_by: "Fikri Haikal (Superadmin)",
+    updated_at: new Date().toISOString()
+  });
 
   // Global search managed in Header
   const [searchValue, setSearchValue] = useState<string>("");
@@ -124,10 +136,42 @@ export default function App() {
     bootApp();
   }, []);
 
+  // Periodic background sync for Maintenance status (across devices & tabs)
+  useEffect(() => {
+    const checkMaintenance = async () => {
+      try {
+        const latest = await api.getMaintenanceStatus();
+        setMaintenanceConfig(prev => {
+          if (
+            prev.is_maintenance !== latest.is_maintenance || 
+            prev.message !== latest.message || 
+            prev.estimated_finish !== latest.estimated_finish
+          ) {
+            return latest;
+          }
+          return prev;
+        });
+      } catch (e) {
+        // ignore
+      }
+    };
+
+    const interval = setInterval(checkMaintenance, 12000);
+    return () => clearInterval(interval);
+  }, []);
+
   const bootApp = async () => {
     setLoading(true);
     setError(null);
     try {
+      // 0. Fetch System Maintenance State
+      try {
+        const maint = await api.getMaintenanceStatus();
+        setMaintenanceConfig(maint);
+      } catch (e) {
+        console.warn("Could not fetch maintenance config:", e);
+      }
+
       // 1. Fetch User directory
       const usrList = await api.getUsers();
       setSimulatedUsers(usrList);
@@ -348,6 +392,39 @@ export default function App() {
   const handleDeleteUser = async (id: string) => {
     await api.deleteUser(id);
     await syncAllTables();
+  };
+
+  // MAINTENANCE MANAGEMENT ACTIONS (SUPER ADMIN ONLY)
+  const handleUpdateMaintenance = async (newConfig: Partial<MaintenanceConfig>) => {
+    const operator = currentUser?.name || "Fikri Haikal (Superadmin)";
+    const updated = await api.updateMaintenanceStatus(newConfig, operator);
+    setMaintenanceConfig(updated);
+    return updated;
+  };
+
+  const handleSuperAdminLoginFromMaintenance = async (usernameStr: string, password?: string): Promise<boolean> => {
+    try {
+      const usrList = simulatedUsers.length > 0 ? simulatedUsers : await api.getUsers();
+      const cleanInput = usernameStr.trim().toLowerCase();
+      const matched = usrList.find(u => u.username.toLowerCase() === cleanInput);
+      if (matched) {
+        const isSA = matched.role === UserRole.SUPER_ADMIN || matched.username.toLowerCase() === "superadmin";
+        if (!isSA) {
+          return false;
+        }
+        localStorage.setItem("wms_username", matched.username);
+        setCurrentUserHeader(matched.username);
+        setCurrentUser(matched);
+        setIsAuthenticated(true);
+        setCurrentTab("maintenance");
+        await syncAllTables();
+        return true;
+      }
+      return false;
+    } catch (e) {
+      console.error("Super Admin login error:", e);
+      return false;
+    }
   };
 
   // PARTS ACTION: CREATE
@@ -816,6 +893,29 @@ export default function App() {
     );
   }
 
+  const isSuperAdmin = Boolean(
+    currentUser && (
+      currentUser.role === UserRole.SUPER_ADMIN || 
+      (currentUser.username && currentUser.username.toLowerCase() === "superadmin")
+    )
+  );
+
+  // INTERCEPT: If Maintenance Mode is Active AND active user is NOT Super Admin:
+  // Directly render MaintenanceScreen! Normal users cannot see Login or Dashboard.
+  if (maintenanceConfig.is_maintenance && !isSuperAdmin) {
+    return (
+      <MaintenanceScreen 
+        config={maintenanceConfig}
+        onCheckStatus={async () => {
+          const latest = await api.getMaintenanceStatus();
+          setMaintenanceConfig(latest);
+          return latest;
+        }}
+        onSuperAdminLogin={handleSuperAdminLoginFromMaintenance}
+      />
+    );
+  }
+
   // Intercept and display login if unauthenticated or active user is state-null
   if (!isAuthenticated || !currentUser) {
     return <LoginView onLoginSuccess={handleLoginSuccess} loading={loading} />;
@@ -849,6 +949,26 @@ export default function App() {
           onLogout={handleLogout}
         />
 
+        {/* Global Super Admin Maintenance Active Banner */}
+        {maintenanceConfig.is_maintenance && isSuperAdmin && (
+          <div className="bg-gradient-to-r from-rose-600 via-rose-700 to-amber-600 text-white px-6 py-2.5 flex items-center justify-between text-xs font-mono font-bold shrink-0 shadow-md border-b border-rose-800 z-30">
+            <div className="flex items-center gap-2.5">
+              <span className="w-2.5 h-2.5 rounded-full bg-white animate-ping shrink-0" />
+              <Wrench className="w-4 h-4 text-white animate-pulse shrink-0" />
+              <span className="truncate">
+                ⚠️ PERHATIAN SUPER ADMIN: MODE MAINTENANCE AKTIF. Pengguna lain saat ini diblokir dan dialihkan ke Layar Pemeliharaan.
+              </span>
+            </div>
+            <button
+              type="button"
+              onClick={() => setCurrentTab("maintenance")}
+              className="bg-white text-rose-800 hover:bg-rose-50 px-3 py-1 rounded-lg text-[10.5px] font-black uppercase tracking-wider transition-all cursor-pointer shadow-xs shrink-0"
+            >
+              Kelola Mode Maintenance &rarr;
+            </button>
+          </div>
+        )}
+
         {/* Main Structural Frame split */}
         <div className="flex-1 flex overflow-hidden">
         
@@ -862,6 +982,7 @@ export default function App() {
             lowStock: summary.lowStockParts,
             activeDispatches: summary.activeDispatchesCount
           }}
+          isMaintenanceActive={maintenanceConfig.is_maintenance}
         />
 
         {/* Active Application tab switches */}
@@ -1287,6 +1408,16 @@ export default function App() {
               onUpdateSignature={handleUpdateSignature}
               onDeleteSignature={handleDeleteSignature}
               onResetDefaults={handleResetDefaultSignatures}
+            />
+          )}
+
+          {/* Pusat Kontrol Mode Maintenance (Super Admin only) */}
+          {currentTab === "maintenance" && isSuperAdmin && (
+            <MaintenanceAdminView 
+              config={maintenanceConfig}
+              currentUser={currentUser}
+              onUpdateConfig={handleUpdateMaintenance}
+              onRefresh={syncAllTables}
             />
           )}
 

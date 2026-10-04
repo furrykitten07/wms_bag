@@ -536,5 +536,21 @@ export interface DigitalSignature {
   updated_at: string;
 }
 
+export interface MaintenanceConfig {
+  is_maintenance: boolean;
+  message: string;
+  estimated_finish?: string;
+  updated_by?: string;
+  updated_at?: string;
+}
+
+export interface MaintenanceLog {
+  id?: string;
+  action: "ACTIVATE_MAINTENANCE" | "DEACTIVATE_MAINTENANCE" | "UPDATE_MESSAGE" | string;
+  operator: string;
+  timestamp: string;
+  details?: string;
+}
+
 
 
