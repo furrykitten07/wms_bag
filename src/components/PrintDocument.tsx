@@ -1175,8 +1175,8 @@ export default function PrintDocument({
                             <th className="px-4 py-2 border-r border-slate-300">GENUINE DESCRIPTION</th>
                             <th className="px-4 py-2 border-r border-slate-300 text-center">QTY</th>
                             <th className="px-4 py-2 border-r border-slate-300 text-center">UNIT</th>
-                            <th className="px-4 py-2 border-r border-slate-300 text-right">UNIT PRICE (USD)</th>
-                            <th className="px-4 py-2 text-right">TOTAL AMOUNT</th>
+                            <th className="px-4 py-2 border-r border-slate-300 text-right">UNIT PRICE (RP)</th>
+                            <th className="px-4 py-2 text-right">TOTAL AMOUNT (RP)</th>
                           </>
                         )}
                       </tr>
@@ -1393,35 +1393,55 @@ export default function PrintDocument({
                             <td className="px-4 py-2 text-right font-mono font-bold text-slate-400">(-)</td>
                           </tr>
                         ) : (
-                          (data?.items || []).map((item, idx) => {
-                            const requested = item.qty_requested || (item as any).qty_ordered || 0;
-                            const price = (item as any).unit_price !== undefined && (item as any).unit_price !== null ? Number((item as any).unit_price) : 0;
-                            const subtotal = requested * price;
+                          <>
+                            {(data?.items || []).map((item, idx) => {
+                              const requested = (item as any).qty_dispatched !== undefined && (item as any).qty_dispatched !== null
+                                ? Number((item as any).qty_dispatched) 
+                                : (item.qty_requested || (item as any).qty_ordered || 0);
+                              const price = (item as any).unit_price !== undefined && (item as any).unit_price !== null ? Number((item as any).unit_price) : 0;
+                              const subtotal = requested * price;
 
-                            return (
-                              <tr key={idx} className="font-medium text-slate-900">
-                                <td className="px-3 py-2 border-r border-slate-300 text-center font-mono text-slate-400">{idx + 1}</td>
-                                <td className="px-4 py-2 border-r border-slate-300 font-mono text-[11px] font-bold text-blue-800">
-                                  {item.part_number || "(-)"}
-                                </td>
-                                <td className="px-4 py-2 border-r border-slate-300">
-                                  <span className="font-bold">{item.spare_part_name || "(-)"}</span>
-                                  {(item as any).keeper_notes && (
-                                    <p className="text-[10px] text-slate-700 font-sans italic bg-slate-100 p-1 mt-1 rounded border border-slate-200">
-                                      <strong className="not-italic font-mono uppercase text-[9px] text-slate-900">Catatan Item:</strong> {(item as any).keeper_notes}
-                                    </p>
-                                  )}
-                                  {(item as any).reject_reason && (
-                                    <p className="text-[10px] text-red-600 italic font-mono uppercase bg-red-50 p-1 mt-1">Rejected: {(item as any).reject_reason}</p>
-                                  )}
-                                </td>
-                                <td className="px-4 py-2 border-r border-slate-300 text-center font-mono text-slate-800">{requested}</td>
-                                <td className="px-4 py-2 border-r border-slate-300 text-center text-slate-500 uppercase font-mono">{(item as any).unit || "PCS"}</td>
-                                <td className="px-4 py-2 border-r border-slate-300 text-right font-mono text-slate-600">${price.toLocaleString()}</td>
-                                <td className="px-4 py-2 text-right font-mono font-bold text-slate-900">${subtotal.toLocaleString()}</td>
-                              </tr>
-                            );
-                          })
+                              return (
+                                <tr key={idx} className="font-medium text-slate-900 border-b border-slate-200">
+                                  <td className="px-3 py-2 border-r border-slate-300 text-center font-mono text-slate-400">{idx + 1}</td>
+                                  <td className="px-4 py-2 border-r border-slate-300 font-mono text-[11px] font-bold text-blue-800">
+                                    {item.part_number || "(-)"}
+                                  </td>
+                                  <td className="px-4 py-2 border-r border-slate-300">
+                                    <span className="font-bold">{item.spare_part_name || "(-)"}</span>
+                                    {(item as any).keeper_notes && (
+                                      <p className="text-[10px] text-slate-700 font-sans italic bg-slate-100 p-1 mt-1 rounded border border-slate-200">
+                                        <strong className="not-italic font-mono uppercase text-[9px] text-slate-900">Catatan Item:</strong> {(item as any).keeper_notes}
+                                      </p>
+                                    )}
+                                    {(item as any).reject_reason && (
+                                      <p className="text-[10px] text-red-600 italic font-mono uppercase bg-red-50 p-1 mt-1">Rejected: {(item as any).reject_reason}</p>
+                                    )}
+                                  </td>
+                                  <td className="px-4 py-2 border-r border-slate-300 text-center font-mono font-bold text-slate-800">{requested}</td>
+                                  <td className="px-4 py-2 border-r border-slate-300 text-center text-slate-500 uppercase font-mono">{(item as any).unit || "PCS"}</td>
+                                  <td className="px-4 py-2 border-r border-slate-300 text-right font-mono text-slate-600">Rp. {price.toLocaleString("id-ID")}</td>
+                                  <td className="px-4 py-2 text-right font-mono font-bold text-slate-900">Rp. {subtotal.toLocaleString("id-ID")}</td>
+                                </tr>
+                              );
+                            })}
+
+                            {/* Surat Jalan Official Total Row */}
+                            <tr className="bg-slate-50 text-[10px] uppercase font-bold font-mono border-t-2 border-slate-900">
+                              <td className="px-4 py-2.5 border-r border-slate-300 text-right font-black" colSpan={5}>
+                                TOTAL KESELURUHAN (RP):
+                              </td>
+                              <td className="px-4 py-2.5 text-right font-black text-slate-900 bg-slate-100 font-mono text-xs" colSpan={2}>
+                                Rp. {((data?.items || []).reduce((acc: number, itm: any) => {
+                                  const q = (itm as any).qty_dispatched !== undefined && (itm as any).qty_dispatched !== null
+                                    ? Number((itm as any).qty_dispatched) 
+                                    : (itm.qty_requested || (itm as any).qty_ordered || 0);
+                                  const p = (itm as any).unit_price !== undefined && (itm as any).unit_price !== null ? Number((itm as any).unit_price) : 0;
+                                  return acc + (q * p);
+                                }, 0)).toLocaleString("id-ID")}
+                              </td>
+                            </tr>
+                          </>
                         )
                       )}
                     </tbody>
