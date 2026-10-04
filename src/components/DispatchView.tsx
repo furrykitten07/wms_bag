@@ -292,7 +292,12 @@ export default function DispatchView({
         (reqRef && d.request_reference === reqRef) ||
         (woRef && (d.work_order_ref === woRef || d.spk_number === woRef))
       )
-    ).sort((a, b) => new Date(a.dispatch_date || a.created_at || 0).getTime() - new Date(b.dispatch_date || b.created_at || 0).getTime());
+    ).sort((a, b) => {
+      const timeA = new Date(a.created_at || a.dispatch_date || 0).getTime();
+      const timeB = new Date(b.created_at || b.dispatch_date || 0).getTime();
+      if (timeA !== timeB) return timeA - timeB;
+      return (a.id || "").localeCompare(b.id || "");
+    });
 
     const targetMR = requests?.find(r => 
       Boolean(r) && (
@@ -435,7 +440,12 @@ export default function DispatchView({
       )
     );
 
-    matches.sort((a, b) => new Date(a.dispatch_date || a.created_at || 0).getTime() - new Date(b.dispatch_date || b.created_at || 0).getTime());
+    matches.sort((a, b) => {
+      const timeA = new Date(a.created_at || a.dispatch_date || 0).getTime();
+      const timeB = new Date(b.created_at || b.dispatch_date || 0).getTime();
+      if (timeA !== timeB) return timeA - timeB;
+      return (a.id || "").localeCompare(b.id || "");
+    });
 
     let totalRequested = 0;
     let totalDispatched = 0;
@@ -459,6 +469,26 @@ export default function DispatchView({
       totalDispatched,
       isAllComplete,
       hasPartial
+    };
+  };
+
+  // Helper to accurately resolve phase number and total phases for any dispatch
+  const getDispatchPhaseInfo = (dsp: OutboundDispatch) => {
+    const multiHist = getMultiShipmentHistoryForSPK(dsp.work_order_ref || dsp.spk_number, dsp.request_reference);
+    const matchIndex = multiHist.dispatches.findIndex(d => d.id === dsp.id);
+
+    // Extract phase from notes text if annotated (e.g. [PENGIRIMAN PARSIAL TAHAP 1] or [PENGIRIMAN SUSULAN LENGKAP TAHAP 2])
+    const notesPhaseMatch = (dsp.notes || "").match(/TAHAP\s+(\d+)/i);
+    const notesPhase = notesPhaseMatch ? parseInt(notesPhaseMatch[1], 10) : undefined;
+
+    const calculatedPhase = notesPhase || dsp.shipment_phase || (matchIndex >= 0 ? matchIndex + 1 : 1);
+    const totalPhases = Math.max(multiHist.count, calculatedPhase);
+
+    return {
+      phase: calculatedPhase,
+      totalPhases,
+      isMultiPhase: totalPhases > 1,
+      multiHist
     };
   };
 
@@ -1547,11 +1577,11 @@ export default function DispatchView({
                           <span className="font-mono text-[9px] uppercase">Ref TUG 5: <span className="font-bold text-blue-800">{item.request_reference}</span></span>
                           {item.work_order_ref && <span className="font-mono text-[9px] uppercase">WO: <span className="font-bold text-rose-700">{item.work_order_ref}</span></span>}
                           {(() => {
-                            const multiHist = getMultiShipmentHistoryForSPK(item.work_order_ref || item.spk_number, item.request_reference);
-                            if (multiHist.count > 1) {
+                            const pInfo = getDispatchPhaseInfo(item);
+                            if (pInfo.isMultiPhase) {
                               return (
-                                <span className="bg-purple-100 text-purple-900 border border-purple-300 px-1.5 py-0.5 rounded text-[8.5px] font-black w-fit mt-0.5 flex items-center gap-1">
-                                  📦 Shipment Multi-Tahap ({item.shipment_phase || 1} dari {multiHist.count})
+                                <span className="bg-purple-100 text-purple-900 border border-purple-300 px-1.5 py-0.5 rounded text-[8.5px] font-black w-fit mt-0.5 flex items-center gap-1 shadow-2xs">
+                                  📦 Shipment Multi-Tahap ({pInfo.phase} dari {pInfo.totalPhases})
                                 </span>
                               );
                             }
@@ -1604,8 +1634,9 @@ export default function DispatchView({
                       {/* Status */}
                       <td className="p-3.5 text-center">
                         {(() => {
+                          const pInfo = getDispatchPhaseInfo(item);
                           const isPartialDisp = item.is_partial || item.status === "DISPATCHED_PARTIAL";
-                          const phaseLabel = item.shipment_phase ? ` (Tahap ${item.shipment_phase})` : "";
+                          const phaseLabel = pInfo.isMultiPhase ? ` (Tahap ${pInfo.phase})` : "";
                           
                           if (isPartialDisp) {
                             return (
@@ -1637,7 +1668,7 @@ export default function DispatchView({
                                   <CheckCircle className="w-3 h-3 text-emerald-600 shrink-0" />
                                   ✓ Dispatched Lengkap{phaseLabel}
                                 </span>
-                                {item.shipment_phase && item.shipment_phase > 1 && (
+                                {pInfo.isMultiPhase && (
                                   <button
                                     type="button"
                                     onClick={(e) => {
@@ -1647,7 +1678,7 @@ export default function DispatchView({
                                     className="text-[9px] font-bold text-purple-700 hover:text-purple-900 bg-purple-50 hover:bg-purple-100 border border-purple-200 px-1.5 py-0.5 rounded-full cursor-pointer flex items-center gap-1 transition-colors"
                                   >
                                     <History className="w-2.5 h-2.5" />
-                                    <span>Riwayat {item.shipment_phase} Tahap</span>
+                                    <span>Riwayat {pInfo.phase} Tahap</span>
                                   </button>
                                 )}
                               </div>
@@ -1672,20 +1703,23 @@ export default function DispatchView({
                       <td className="p-3.5 text-right no-print relative">
                         <div className="flex items-center justify-end gap-1.5">
                           {/* Quick Followup Dispatch Button directly in row */}
-                          {(item.is_partial || item.status === "DISPATCHED_PARTIAL") && (
-                            <button
-                              type="button"
-                              onClick={(e) => {
-                                e.stopPropagation();
-                                handleOpenFollowupDispatch(item);
-                              }}
-                              className="px-2.5 py-1.5 bg-gradient-to-r from-amber-500 to-orange-600 hover:from-amber-600 hover:to-orange-700 text-white font-bold text-[10.5px] rounded-xl shadow-xs hover:shadow transition-all flex items-center gap-1 cursor-pointer active:scale-95 shrink-0"
-                              title="Kirim pengiriman susulan berikutnya untuk sisa barang yang belum terkirim"
-                            >
-                              <Truck className="w-3.5 h-3.5" />
-                              <span>Kirim Susulan (Tahap {(item.shipment_phase || 1) + 1})</span>
-                            </button>
-                          )}
+                          {(item.is_partial || item.status === "DISPATCHED_PARTIAL") && (() => {
+                            const pInfo = getDispatchPhaseInfo(item);
+                            return (
+                              <button
+                                type="button"
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  handleOpenFollowupDispatch(item);
+                                }}
+                                className="px-2.5 py-1.5 bg-gradient-to-r from-amber-500 to-orange-600 hover:from-amber-600 hover:to-orange-700 text-white font-bold text-[10.5px] rounded-xl shadow-xs hover:shadow transition-all flex items-center gap-1 cursor-pointer active:scale-95 shrink-0"
+                                title="Kirim pengiriman susulan berikutnya untuk sisa barang yang belum terkirim"
+                              >
+                                <Truck className="w-3.5 h-3.5" />
+                                <span>Kirim Susulan (Tahap {pInfo.phase + 1})</span>
+                              </button>
+                            );
+                          })()}
 
                           <div className="relative inline-block text-left">
                             <button
@@ -1894,20 +1928,23 @@ export default function DispatchView({
                                     </div>
 
                                     {/* Quick Actions for Partial Multi-Shipment */}
-                                    {(item.is_partial || item.status === "DISPATCHED_PARTIAL") && (
-                                      <button
-                                        type="button"
-                                        onClick={(e) => {
-                                          e.stopPropagation();
-                                          setActiveActionId(null);
-                                          handleOpenFollowupDispatch(item);
-                                        }}
-                                        className="w-full px-2.5 py-1.5 text-xs font-bold bg-amber-50 hover:bg-amber-100 text-amber-900 rounded-lg border border-amber-200 flex items-center gap-2 cursor-pointer transition-colors text-left"
-                                      >
-                                        <Truck className="w-3.5 h-3.5 text-amber-600" />
-                                        <span>Kirim Susulan (Tahap {(item.shipment_phase || 1) + 1})</span>
-                                      </button>
-                                    )}
+                                    {(item.is_partial || item.status === "DISPATCHED_PARTIAL") && (() => {
+                                      const pInfo = getDispatchPhaseInfo(item);
+                                      return (
+                                        <button
+                                          type="button"
+                                          onClick={(e) => {
+                                            e.stopPropagation();
+                                            setActiveActionId(null);
+                                            handleOpenFollowupDispatch(item);
+                                          }}
+                                          className="w-full px-2.5 py-1.5 text-xs font-bold bg-amber-50 hover:bg-amber-100 text-amber-900 rounded-lg border border-amber-200 flex items-center gap-2 cursor-pointer transition-colors text-left"
+                                        >
+                                          <Truck className="w-3.5 h-3.5 text-amber-600" />
+                                          <span>Kirim Susulan (Tahap {pInfo.phase + 1})</span>
+                                        </button>
+                                      );
+                                    })()}
 
                                     <button
                                       type="button"
@@ -2162,27 +2199,30 @@ export default function DispatchView({
                 </div>
 
                 {/* Partial Dispatch Status Warning Box */}
-                {(selectedDispatch.is_partial || selectedDispatch.incomplete_items_summary) && (
-                  <div className="bg-amber-50 border-2 border-amber-300 p-3.5 rounded-lg space-y-2 text-xs text-amber-900">
-                    <div className="flex items-center justify-between">
-                      <div className="flex items-center gap-1.5 font-bold text-amber-950">
-                        <AlertTriangle className="w-4 h-4 text-amber-600 shrink-0" />
-                        <span>⚠️ DISPATCH PARSIAL - BARANG BELUM LENGKAP</span>
+                {(selectedDispatch.is_partial || selectedDispatch.incomplete_items_summary) && (() => {
+                  const pInfo = getDispatchPhaseInfo(selectedDispatch);
+                  return (
+                    <div className="bg-amber-50 border-2 border-amber-300 p-3.5 rounded-lg space-y-2 text-xs text-amber-900">
+                      <div className="flex items-center justify-between">
+                        <div className="flex items-center gap-1.5 font-bold text-amber-950">
+                          <AlertTriangle className="w-4 h-4 text-amber-600 shrink-0" />
+                          <span>⚠️ DISPATCH PARSIAL - BARANG BELUM LENGKAP</span>
+                        </div>
+                        {pInfo.isMultiPhase && (
+                          <span className="bg-amber-200 text-amber-950 font-mono text-[10px] font-black px-2 py-0.5 rounded">
+                            Tahap ke-{pInfo.phase} (dari {pInfo.totalPhases})
+                          </span>
+                        )}
                       </div>
-                      {selectedDispatch.shipment_phase && (
-                        <span className="bg-amber-200 text-amber-950 font-mono text-[10px] font-black px-2 py-0.5 rounded">
-                          Tahap ke-{selectedDispatch.shipment_phase}
-                        </span>
+                      {selectedDispatch.incomplete_items_summary && (
+                        <div className="bg-white/90 p-2.5 rounded border border-amber-200 text-[11px] font-mono text-amber-950 leading-relaxed">
+                          <span className="font-bold block text-[9.5px] text-amber-700 uppercase">Catatan & Summary Barang Belum Lengkap:</span>
+                          {selectedDispatch.incomplete_items_summary}
+                        </div>
                       )}
                     </div>
-                    {selectedDispatch.incomplete_items_summary && (
-                      <div className="bg-white/90 p-2.5 rounded border border-amber-200 text-[11px] font-mono text-amber-950 leading-relaxed">
-                        <span className="font-bold block text-[9.5px] text-amber-700 uppercase">Catatan & Summary Barang Belum Lengkap:</span>
-                        {selectedDispatch.incomplete_items_summary}
-                      </div>
-                    )}
-                  </div>
-                )}
+                  );
+                })()}
 
                 {/* 4-Tahap Approval Stepper */}
                 <div className="bg-slate-900 text-white rounded-xl p-4 border border-slate-800 space-y-3">
@@ -2673,7 +2713,7 @@ export default function DispatchView({
 
                         <div className="space-y-2 max-h-56 overflow-y-auto pr-1">
                           {multiHist.dispatches.map((dsp, idx) => {
-                            const phaseNum = dsp.shipment_phase || (idx + 1);
+                            const phaseNum = getDispatchPhaseInfo(dsp).phase || (idx + 1);
                             const isThisCurrent = dsp.id === selectedDispatch.id;
 
                             return (
@@ -4311,7 +4351,7 @@ export default function DispatchView({
 
                   <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3">
                     {relatedDispatches.map((d, idx) => {
-                      const phaseNum = d.shipment_phase || (idx + 1);
+                      const phaseNum = getDispatchPhaseInfo(d).phase || (idx + 1);
                       const isCurrent = d.id === partialDetailModalItem.id;
                       const qtyInThis = (d.items || []).reduce((sum, item) => sum + (item.qty_dispatched || 0), 0);
                       const dDate = d.dispatch_date ? new Date(d.dispatch_date).toLocaleDateString("id-ID") : "-";
@@ -4379,7 +4419,7 @@ export default function DispatchView({
                           <th className="p-2.5 text-center w-24 bg-slate-200/50">Target SPK</th>
                           {relatedDispatches.map((d, idx) => (
                             <th key={d.id} className="p-2.5 text-center w-24 text-purple-900 bg-purple-50/80 border-l border-purple-100">
-                              Tahap {d.shipment_phase || (idx + 1)}
+                              Tahap {getDispatchPhaseInfo(d).phase || (idx + 1)}
                             </th>
                           ))}
                           <th className="p-2.5 text-center w-28 text-blue-900 bg-blue-50/80 border-l border-blue-100">Total Terkirim</th>
