@@ -279,6 +279,8 @@ export default function DispatchView({
   const [dDest, setDDest] = useState("Port Agent / Vessel Side");
 
   const [dispatchItems, setDispatchItems] = useState<any[]>([]);
+  const [tableTabFilter, setTableTabFilter] = useState<"shortage" | "selected" | "complete" | "all">("shortage");
+  const [tableSearchQuery, setTableSearchQuery] = useState("");
 
   // Detailed multi-shipment fulfillment breakdown per part & per phase
   const getDetailedFulfillmentForDispatch = (dsp: OutboundDispatch) => {
@@ -528,9 +530,13 @@ export default function DispatchView({
           };
         }).filter(Boolean);
         setDispatchItems(items);
+        const hasAnyShortage = items.some(i => ((i?.qty_requested || 0) - (i?.previously_dispatched || 0)) > 0);
+        setTableTabFilter(hasAnyShortage ? "shortage" : "all");
+        setTableSearchQuery("");
       }
     } else if (!selectedTug5Id && dispatchSource === "tug5") {
       setDispatchItems([]);
+      setTableSearchQuery("");
     }
   }, [selectedTug5Id, dispatchSource, requests, dispatchList, receivingList]);
 
@@ -577,6 +583,13 @@ export default function DispatchView({
         const selectedMR = requests.find(r => Boolean(r) && r.id === selectedTug5Id);
         if (!selectedMR) {
           alert("Dokumen TUG 5 tidak ditemukan.");
+          setIsLoading(false);
+          return;
+        }
+
+        const totalQtyDispatchedInThisBatch = dispatchItems.reduce((acc, i) => acc + (Number(i.qty_dispatched) || 0), 0);
+        if (totalQtyDispatchedInThisBatch <= 0) {
+          alert("Perhatian: Belum ada suku cadang yang ditentukan untuk dikirim pada tahap ini (Total QTY Kirim = 0).\n\nSilakan centang checkbox [Kirim?] atau tentukan jumlah pada kolom QTY Kirim untuk suku cadang yang akan dikirim.");
           setIsLoading(false);
           return;
         }
@@ -3176,18 +3189,20 @@ export default function DispatchView({
                             </div>
                           )}
 
-                          {/* Interactive Item Table */}
-                          <div className="bg-white p-3.5 rounded-lg border border-slate-200 space-y-3">
-                            <div className="flex items-center justify-between flex-wrap gap-2">
+                          {/* Interactive Item Table with UX Filters, Search, and Partial Dispatch Controls */}
+                          <div className="bg-white p-3.5 rounded-xl border border-slate-250 shadow-xs space-y-3.5">
+                            {/* Top Control Bar: Title & Batch Preset Buttons */}
+                            <div className="flex items-center justify-between flex-wrap gap-2.5 bg-slate-50/80 p-2.5 rounded-lg border border-slate-200">
                               <div>
-                                <span className="text-[10px] font-bold text-slate-700 uppercase tracking-wider block">
-                                  Atur QTY Suku Cadang Yang Dikirim Pada Tahap Ini ({dispatchItems.length} Item)
+                                <span className="text-xs font-black text-slate-800 uppercase tracking-wider flex items-center gap-1.5 font-mono">
+                                  <PackageCheck className="w-4 h-4 text-blue-600" />
+                                  Atur Suku Cadang Dikirim ({dispatchItems.length} Item)
                                 </span>
-                                <span className="text-[9.5px] font-mono text-slate-400">
-                                  Anda dapat mengubah QTY dikirim jika pengiriman dilakukan bertahap (parsial).
+                                <span className="text-[10px] font-mono text-slate-500">
+                                  Pilih suku cadang dan tentukan QTY yang dikirim untuk {currentPhase > 1 ? `Tahap ke-${currentPhase} (Susulan)` : 'tahap ini'}.
                                 </span>
                               </div>
-                              <div className="flex items-center gap-1.5">
+                              <div className="flex items-center gap-1.5 flex-wrap">
                                 <button
                                   type="button"
                                   onClick={() => {
@@ -3200,217 +3215,508 @@ export default function DispatchView({
                                       return { ...item, qty_dispatched: maxRemaining };
                                     }));
                                   }}
-                                  className="px-2.5 py-1 bg-blue-50 hover:bg-blue-100 text-blue-700 border border-blue-200 rounded text-[10px] font-bold cursor-pointer transition-colors shadow-2xs"
-                                  title="Isi otomatis semua item dengan sisa QTY yang belum terkirim"
+                                  className="px-3 py-1.5 bg-blue-600 hover:bg-blue-700 text-white rounded-lg text-[10.5px] font-bold cursor-pointer transition-colors shadow-xs flex items-center gap-1"
+                                  title="Isi otomatis semua barang dengan sisa QTY yang belum terkirim"
                                 >
-                                  ⚡ Isi Semua Sisa
+                                  ⚡ Kirim Semua Sisa
+                                </button>
+                                <button
+                                  type="button"
+                                  onClick={() => {
+                                    setDispatchItems(prevItems => prevItems.map(item => ({ ...item, qty_dispatched: 0 })));
+                                    setTableTabFilter("shortage");
+                                  }}
+                                  className="px-2.5 py-1.5 bg-amber-50 hover:bg-amber-100 text-amber-800 border border-amber-300 rounded-lg text-[10.5px] font-bold cursor-pointer transition-colors shadow-2xs flex items-center gap-1"
+                                  title="Kosongkan QTY semua barang menjadi 0 agar Anda dapat memilih dan mencentang barang tertentu saja"
+                                >
+                                  📦 Mode Parsial (Nolkan &amp; Pilih Sendiri)
                                 </button>
                                 <button
                                   type="button"
                                   onClick={() => {
                                     setDispatchItems(prevItems => prevItems.map(item => ({ ...item, qty_dispatched: 0 })));
                                   }}
-                                  className="px-2 py-1 bg-slate-100 hover:bg-slate-200 text-slate-600 rounded text-[10px] font-bold cursor-pointer transition-colors"
-                                  title="Kosongkan nilai QTY kirim menjadi 0"
+                                  className="px-2.5 py-1.5 bg-slate-200/80 hover:bg-slate-300 text-slate-700 rounded-lg text-[10.5px] font-bold cursor-pointer transition-colors"
+                                  title="Nolkan semua nilai QTY kirim"
                                 >
-                                  ✕ Nolkan (0)
+                                  ✕ Nolkan Semua (0)
                                 </button>
                               </div>
                             </div>
 
-                            {/* Summary KPI Badges */}
-                            <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 pt-1 font-mono text-xs">
-                              <div className="bg-slate-50 border border-slate-200 rounded-lg p-2 flex flex-col">
-                                <span className="text-[9px] uppercase text-slate-400 font-bold">Total Suku Cadang</span>
-                                <span className="text-sm font-black text-slate-800">{dispatchItems.length} Item</span>
-                              </div>
-                              <div className="bg-emerald-50/70 border border-emerald-200 rounded-lg p-2 flex flex-col">
-                                <span className="text-[9px] uppercase text-emerald-600 font-bold">Sudah Selesai (100%)</span>
-                                <span className="text-sm font-black text-emerald-800">
-                                  {dispatchItems.filter(i => (i.previously_dispatched || 0) >= (i.qty_requested || 0)).length} Item
-                                </span>
-                              </div>
-                              <div className="bg-blue-50/70 border border-blue-200 rounded-lg p-2 flex flex-col">
-                                <span className="text-[9px] uppercase text-blue-600 font-bold">Dikirim Tahap Ini</span>
-                                <span className="text-sm font-black text-blue-800">
-                                  {dispatchItems.filter(i => (i.qty_dispatched || 0) > 0).length} Item ({dispatchItems.reduce((acc, i) => acc + (i.qty_dispatched || 0), 0)} Qty)
-                                </span>
-                              </div>
-                              <div className="bg-rose-50/70 border border-rose-200 rounded-lg p-2 flex flex-col">
-                                <span className="text-[9px] uppercase text-rose-600 font-bold">Sisa Belum Terkirim</span>
-                                <span className="text-sm font-black text-rose-800">
-                                  {dispatchItems.filter(i => {
-                                    const req = i.qty_requested || 0;
-                                    const prev = i.previously_dispatched || 0;
-                                    const curr = i.qty_dispatched || 0;
-                                    return (req - prev - curr) > 0;
-                                  }).length} Item
-                                </span>
-                              </div>
-                            </div>
+                            {/* Summary KPI Badges (Interactive clickable filters) */}
+                            {(() => {
+                              const shortageCount = dispatchItems.filter(i => {
+                                const req = i.qty_requested || 0;
+                                const prev = i.previously_dispatched || 0;
+                                return (req - prev) > 0;
+                              }).length;
+                              const selectedCount = dispatchItems.filter(i => (i.qty_dispatched || 0) > 0).length;
+                              const selectedQtyTotal = dispatchItems.reduce((acc, i) => acc + (Number(i.qty_dispatched) || 0), 0);
+                              const completeCount = dispatchItems.filter(i => (i.previously_dispatched || 0) >= (i.qty_requested || 0)).length;
 
-                            {/* Table with Sticky Header */}
-                            <div className="overflow-x-auto max-h-[460px] overflow-y-auto border border-slate-200 rounded-lg shadow-inner">
-                              <table className="w-full text-left text-[11px] border-collapse relative">
-                                <thead className="sticky top-0 z-10 bg-slate-100/95 backdrop-blur-xs border-b-2 border-slate-300 shadow-xs">
-                                  <tr className="text-slate-700 font-mono text-[10px] uppercase tracking-wider">
-                                    <th className="p-2.5 font-black">Suku Cadang / Part No.</th>
-                                    <th className="p-2.5 text-center w-14 font-black">Satuan</th>
-                                    <th className="p-2.5 text-center w-20 font-black text-slate-700">Target SPK</th>
-                                    <th className="p-2.5 text-center w-24 font-black text-amber-900 bg-amber-100/50">Diterima Inbound</th>
-                                    <th className="p-2.5 text-center w-24 font-black text-slate-700 bg-slate-200/50">Pernah Dikirim</th>
-                                    <th className="p-2.5 text-center w-36 font-black text-blue-900 bg-blue-100/60">QTY Kirim Tahap Ini</th>
-                                    <th className="p-2.5 text-center w-24 font-black text-rose-900 bg-rose-50/50">Sisa Belum Kirim</th>
-                                    <th className="p-2.5 text-center w-28 font-black">Status Item</th>
-                                  </tr>
-                                </thead>
-                                <tbody className="divide-y divide-slate-100 text-slate-800 font-sans">
-                                  {dispatchItems.map((itm, index) => {
-                                    const prev = itm.previously_dispatched || 0;
-                                    const req = itm.qty_requested || 0;
-                                    const curr = itm.qty_dispatched || 0;
-                                    const inboundQty = (itm as any).qty_inbound_received !== undefined ? (itm as any).qty_inbound_received : req;
-                                    const maxAvailable = Math.max(0, req - prev);
-                                    const remaining = Math.max(0, req - prev - curr);
-                                    const isAlreadyFinished = prev >= req;
-                                    const isItemCompleteAfterThis = (prev + curr) >= req;
-                                    const isInboundShort = inboundQty < req;
+                              return (
+                                <>
+                                  <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 font-mono text-xs">
+                                    <div 
+                                      onClick={() => setTableTabFilter("all")}
+                                      className={`border rounded-xl p-2.5 flex flex-col cursor-pointer transition-all ${
+                                        tableTabFilter === "all" ? "bg-slate-100 border-slate-400 ring-2 ring-slate-400/30" : "bg-slate-50 border-slate-200 hover:bg-slate-100/70"
+                                      }`}
+                                    >
+                                      <span className="text-[9.5px] uppercase text-slate-500 font-bold">Total Suku Cadang</span>
+                                      <span className="text-base font-black text-slate-800">{dispatchItems.length} Item</span>
+                                    </div>
+                                    <div 
+                                      onClick={() => setTableTabFilter("shortage")}
+                                      className={`border rounded-xl p-2.5 flex flex-col cursor-pointer transition-all ${
+                                        tableTabFilter === "shortage" ? "bg-amber-100/70 border-amber-400 ring-2 ring-amber-400/40" : "bg-amber-50/70 border-amber-200 hover:bg-amber-100/40"
+                                      }`}
+                                    >
+                                      <span className="text-[9.5px] uppercase text-amber-700 font-bold flex items-center justify-between">
+                                        Perlu Dikirim / Ada Sisa
+                                        {shortageCount > 0 && <span className="w-2 h-2 rounded-full bg-amber-500 animate-pulse"></span>}
+                                      </span>
+                                      <span className="text-base font-black text-amber-900">{shortageCount} Item</span>
+                                    </div>
+                                    <div 
+                                      onClick={() => setTableTabFilter("selected")}
+                                      className={`border rounded-xl p-2.5 flex flex-col cursor-pointer transition-all ${
+                                        tableTabFilter === "selected" ? "bg-blue-100/80 border-blue-400 ring-2 ring-blue-400/40" : "bg-blue-50/70 border-blue-200 hover:bg-blue-100/40"
+                                      }`}
+                                    >
+                                      <span className="text-[9.5px] uppercase text-blue-700 font-bold">Dikirim Tahap Ini</span>
+                                      <span className="text-base font-black text-blue-900">
+                                        {selectedCount} Item ({selectedQtyTotal} Qty)
+                                      </span>
+                                    </div>
+                                    <div 
+                                      onClick={() => setTableTabFilter("complete")}
+                                      className={`border rounded-xl p-2.5 flex flex-col cursor-pointer transition-all ${
+                                        tableTabFilter === "complete" ? "bg-emerald-100/80 border-emerald-400 ring-2 ring-emerald-400/40" : "bg-emerald-50/70 border-emerald-200 hover:bg-emerald-100/40"
+                                      }`}
+                                    >
+                                      <span className="text-[9.5px] uppercase text-emerald-700 font-bold">Sudah Selesai (100%)</span>
+                                      <span className="text-base font-black text-emerald-900">{completeCount} Item</span>
+                                    </div>
+                                  </div>
 
-                                    return (
-                                      <tr 
-                                        key={index} 
-                                        className={`transition-colors ${
-                                          isAlreadyFinished 
-                                            ? "bg-slate-50/70 text-slate-500 hover:bg-slate-100/50" 
-                                            : remaining === 0 
-                                              ? "bg-emerald-50/20 hover:bg-emerald-50/40" 
-                                              : "hover:bg-blue-50/30"
+                                  {/* Filter Tabs & Search Bar */}
+                                  <div className="flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-2.5 pt-1 border-t border-slate-150">
+                                    {/* Tabs */}
+                                    <div className="flex items-center gap-1 overflow-x-auto pb-1 sm:pb-0">
+                                      <button
+                                        type="button"
+                                        onClick={() => setTableTabFilter("shortage")}
+                                        className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all whitespace-nowrap cursor-pointer flex items-center gap-1.5 ${
+                                          tableTabFilter === "shortage"
+                                            ? "bg-amber-600 text-white shadow-xs font-black"
+                                            : "bg-slate-100 text-slate-700 hover:bg-slate-200"
                                         }`}
                                       >
-                                        <td className="p-2.5">
-                                          <div className="flex items-center gap-1.5">
-                                            <span className="font-bold text-slate-900">{itm.spare_part_name}</span>
-                                            {isAlreadyFinished && (
-                                              <span className="text-[9px] bg-slate-200 text-slate-600 px-1.5 py-0.2 rounded font-bold uppercase font-mono">
-                                                Selesai
-                                              </span>
-                                            )}
-                                          </div>
-                                          <div className="text-[10px] text-slate-400 font-mono">
-                                            {itm.part_number && itm.part_number !== "-" ? itm.part_number : "-"}
-                                          </div>
-                                          {itm.inbound_notes && (
-                                            <div className="text-[9.5px] text-amber-700 italic font-mono mt-0.5">
-                                              Catatan Inbound: {itm.inbound_notes}
-                                            </div>
-                                          )}
-                                        </td>
-                                        <td className="p-2.5 text-center font-mono font-bold text-slate-600">{itm.unit}</td>
-                                        <td className="p-2.5 text-center font-mono font-bold text-slate-800">{req}</td>
-                                        <td className="p-2.5 text-center font-mono font-bold bg-amber-50/30">
-                                          <span className={isInboundShort ? "text-amber-900 font-black" : "text-slate-800"}>
-                                            {inboundQty}
-                                          </span>
-                                          {isInboundShort && (
-                                            <span className="text-[9px] text-rose-600 block font-normal font-sans">
-                                              Kurang {req - inboundQty}
-                                            </span>
-                                          )}
-                                        </td>
-                                        <td className="p-2.5 text-center font-mono font-bold text-slate-600 bg-slate-50/50">
-                                          {prev > 0 ? (
-                                            <span className="text-blue-700 bg-blue-50 border border-blue-200 px-2 py-0.5 rounded font-black text-xs">
-                                              {prev}
-                                            </span>
-                                          ) : (
-                                            <span className="text-slate-400">0</span>
-                                          )}
-                                        </td>
-                                        <td className="p-2.5 text-center bg-blue-50/30">
-                                          {isAlreadyFinished ? (
-                                            <div className="flex items-center justify-center gap-1">
-                                              <span className="text-xs font-mono font-bold text-slate-400">0</span>
-                                              <span className="text-[9px] text-emerald-700 font-bold bg-emerald-100 px-1.5 py-0.5 rounded font-mono">
-                                                Lengkap
-                                              </span>
-                                            </div>
-                                          ) : (
-                                            <div className="flex items-center justify-center gap-1">
-                                              <input
-                                                type="number"
-                                                min="0"
-                                                max={maxAvailable}
-                                                value={itm.qty_dispatched}
-                                                onChange={(e) => {
-                                                  const rawVal = parseInt(e.target.value);
-                                                  const parsedVal = isNaN(rawVal) ? 0 : rawVal;
-                                                  const clampedVal = Math.min(maxAvailable, Math.max(0, parsedVal));
-                                                  setDispatchItems(prevItems => prevItems.map((item, i) => i === index ? { ...item, qty_dispatched: clampedVal } : item));
-                                                }}
-                                                className={`w-16 bg-white border rounded p-1 text-center font-mono font-black text-xs focus:outline-none focus:ring-2 focus:ring-blue-500 shadow-2xs ${
-                                                  curr > 0 ? "border-blue-500 text-blue-900 bg-blue-50/40" : "border-slate-300 text-slate-400"
-                                                }`}
-                                              />
-                                              <div className="flex flex-col gap-0.5">
-                                                <button
-                                                  type="button"
-                                                  onClick={() => {
-                                                    setDispatchItems(prevItems => prevItems.map((item, i) => i === index ? { ...item, qty_dispatched: maxAvailable } : item));
-                                                  }}
-                                                  className="px-1 py-0.2 bg-blue-100 hover:bg-blue-200 text-blue-800 rounded text-[8.5px] font-bold cursor-pointer font-mono"
-                                                  title={`Isi maksimal sisa (${maxAvailable})`}
-                                                >
-                                                  Max
-                                                </button>
-                                                <button
-                                                  type="button"
-                                                  onClick={() => {
-                                                    setDispatchItems(prevItems => prevItems.map((item, i) => i === index ? { ...item, qty_dispatched: 0 } : item));
-                                                  }}
-                                                  className="px-1 py-0.2 bg-slate-100 hover:bg-slate-200 text-slate-600 rounded text-[8.5px] font-bold cursor-pointer font-mono"
-                                                  title="Nolkan QTY kirim"
-                                                >
-                                                  0
-                                                </button>
-                                              </div>
-                                            </div>
-                                          )}
-                                          {!isAlreadyFinished && (
-                                            <span className="text-[9px] text-slate-400 font-mono block mt-0.5">
-                                              Maks sisa: {maxAvailable}
-                                            </span>
-                                          )}
-                                        </td>
-                                        <td className="p-2.5 text-center font-mono font-bold bg-rose-50/20">
-                                          {remaining > 0 ? (
-                                            <span className="text-rose-700 bg-rose-100/80 px-2 py-0.5 rounded font-black text-xs">
-                                              {remaining}
-                                            </span>
-                                          ) : (
-                                            <span className="text-emerald-700 font-black text-xs">0</span>
-                                          )}
-                                        </td>
-                                        <td className="p-2.5 text-center">
-                                          {isAlreadyFinished ? (
-                                            <span className="bg-slate-100 text-slate-700 border border-slate-200 px-2 py-0.5 rounded text-[9.5px] font-bold font-mono">
-                                              ✓ Sudah Dikirim
-                                            </span>
-                                          ) : isItemCompleteAfterThis ? (
-                                            <span className="bg-emerald-100 text-emerald-800 border border-emerald-200 px-2 py-0.5 rounded text-[9.5px] font-bold font-mono">
-                                              ✓ Lengkap
-                                            </span>
-                                          ) : (
-                                            <span className="bg-amber-100 text-amber-800 border border-amber-200 px-2 py-0.5 rounded text-[9.5px] font-bold font-mono">
-                                              ⚠️ Parsial ({remaining} {itm.unit})
-                                            </span>
-                                          )}
-                                        </td>
+                                        <span>⚠️ Perlu Dikirim / Sisa</span>
+                                        <span className={`px-1.5 py-0.2 rounded-full text-[10px] font-mono ${
+                                          tableTabFilter === "shortage" ? "bg-amber-800 text-white" : "bg-amber-100 text-amber-900"
+                                        }`}>
+                                          {shortageCount}
+                                        </span>
+                                      </button>
+                                      <button
+                                        type="button"
+                                        onClick={() => setTableTabFilter("selected")}
+                                        className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all whitespace-nowrap cursor-pointer flex items-center gap-1.5 ${
+                                          tableTabFilter === "selected"
+                                            ? "bg-blue-600 text-white shadow-xs font-black"
+                                            : "bg-slate-100 text-slate-700 hover:bg-slate-200"
+                                        }`}
+                                      >
+                                        <span>📦 Terpilih ({selectedCount})</span>
+                                      </button>
+                                      <button
+                                        type="button"
+                                        onClick={() => setTableTabFilter("complete")}
+                                        className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all whitespace-nowrap cursor-pointer flex items-center gap-1.5 ${
+                                          tableTabFilter === "complete"
+                                            ? "bg-emerald-600 text-white shadow-xs font-black"
+                                            : "bg-slate-100 text-slate-700 hover:bg-slate-200"
+                                        }`}
+                                      >
+                                        <span>✓ Sudah Selesai ({completeCount})</span>
+                                      </button>
+                                      <button
+                                        type="button"
+                                        onClick={() => setTableTabFilter("all")}
+                                        className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all whitespace-nowrap cursor-pointer flex items-center gap-1.5 ${
+                                          tableTabFilter === "all"
+                                            ? "bg-slate-800 text-white shadow-xs font-black"
+                                            : "bg-slate-100 text-slate-700 hover:bg-slate-200"
+                                        }`}
+                                      >
+                                        <span>📋 Semua ({dispatchItems.length})</span>
+                                      </button>
+                                    </div>
+
+                                    {/* Live Table Search */}
+                                    <div className="relative min-w-[220px]">
+                                      <Search className="w-3.5 h-3.5 text-slate-400 absolute left-2.5 top-1/2 -translate-y-1/2 pointer-events-none" />
+                                      <input
+                                        type="text"
+                                        value={tableSearchQuery}
+                                        onChange={(e) => setTableSearchQuery(e.target.value)}
+                                        placeholder="Cari suku cadang / part number..."
+                                        className="w-full bg-slate-50 border border-slate-250 rounded-lg text-xs pl-8 pr-7 py-1.5 font-medium text-slate-800 placeholder:text-slate-400 focus:outline-none focus:ring-1 focus:ring-blue-500 focus:bg-white"
+                                      />
+                                      {tableSearchQuery && (
+                                        <button
+                                          type="button"
+                                          onClick={() => setTableSearchQuery("")}
+                                          className="absolute right-2 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600 p-0.5 cursor-pointer"
+                                        >
+                                          <X className="w-3.5 h-3.5" />
+                                        </button>
+                                      )}
+                                    </div>
+                                  </div>
+                                </>
+                              );
+                            })()}
+
+                            {/* Table with Sticky Header */}
+                            {(() => {
+                              const itemsWithOrig = dispatchItems.map((itm, index) => ({ itm, originalIndex: index }));
+                              const filteredList = itemsWithOrig.filter(({ itm }) => {
+                                const req = itm.qty_requested || 0;
+                                const prev = itm.previously_dispatched || 0;
+                                const curr = itm.qty_dispatched || 0;
+                                const hasShortage = (req - prev) > 0;
+                                const isFinished = prev >= req;
+                                const isSelected = curr > 0;
+
+                                if (tableTabFilter === "shortage") {
+                                  if (!hasShortage && !isSelected) return false;
+                                } else if (tableTabFilter === "selected") {
+                                  if (!isSelected) return false;
+                                } else if (tableTabFilter === "complete") {
+                                  if (!isFinished) return false;
+                                }
+
+                                if (tableSearchQuery.trim()) {
+                                  const q = tableSearchQuery.toLowerCase();
+                                  const name = (itm.spare_part_name || "").toLowerCase();
+                                  const pn = (itm.part_number || "").toLowerCase();
+                                  return name.includes(q) || pn.includes(q);
+                                }
+
+                                return true;
+                              }).sort((a, b) => {
+                                // 1. Items currently dispatched (> 0) on top
+                                const aCurr = a.itm.qty_dispatched || 0;
+                                const bCurr = b.itm.qty_dispatched || 0;
+                                if (aCurr > 0 && bCurr === 0) return -1;
+                                if (bCurr > 0 && aCurr === 0) return 1;
+
+                                // 2. Items with remaining shortage on top
+                                const aRem = (a.itm.qty_requested || 0) - (a.itm.previously_dispatched || 0);
+                                const bRem = (b.itm.qty_requested || 0) - (b.itm.previously_dispatched || 0);
+                                if (aRem > 0 && bRem <= 0) return -1;
+                                if (bRem > 0 && aRem <= 0) return 1;
+
+                                return a.originalIndex - b.originalIndex;
+                              });
+
+                              return (
+                                <div className="overflow-x-auto max-h-[460px] overflow-y-auto border border-slate-200 rounded-xl shadow-inner">
+                                  <table className="w-full text-left text-[11px] border-collapse relative">
+                                    <thead className="sticky top-0 z-10 bg-slate-100/95 backdrop-blur-xs border-b-2 border-slate-300 shadow-xs">
+                                      <tr className="text-slate-700 font-mono text-[10px] uppercase tracking-wider">
+                                        <th className="p-2.5 text-center w-12 font-black">Kirim?</th>
+                                        <th className="p-2.5 font-black">Suku Cadang / Part No.</th>
+                                        <th className="p-2.5 text-center w-14 font-black">Satuan</th>
+                                        <th className="p-2.5 text-center w-20 font-black text-slate-700">Target SPK</th>
+                                        <th className="p-2.5 text-center w-24 font-black text-amber-900 bg-amber-100/50">Diterima Inbound</th>
+                                        <th className="p-2.5 text-center w-28 font-black text-slate-800 bg-slate-200/60">Pernah Dikirim (Tahap Lalu)</th>
+                                        <th className="p-2.5 text-center w-36 font-black text-blue-900 bg-blue-100/60">QTY Kirim (Tahap Ini)</th>
+                                        <th className="p-2.5 text-center w-24 font-black text-rose-900 bg-rose-50/50">Sisa Belum Kirim</th>
+                                        <th className="p-2.5 text-center w-28 font-black">Status Item</th>
                                       </tr>
-                                    );
-                                  })}
-                                </tbody>
-                              </table>
-                            </div>
+                                    </thead>
+                                    <tbody className="divide-y divide-slate-100 text-slate-800 font-sans">
+                                      {filteredList.length === 0 ? (
+                                        <tr>
+                                          <td colSpan={9} className="p-8 text-center text-slate-500 font-medium">
+                                            <div className="flex flex-col items-center justify-center gap-1.5">
+                                              <ClipboardList className="w-8 h-8 text-slate-300" />
+                                              <span>Tidak ada suku cadang pada kategori filter ini.</span>
+                                              {tableSearchQuery && (
+                                                <button
+                                                  type="button"
+                                                  onClick={() => setTableSearchQuery("")}
+                                                  className="text-xs text-blue-600 underline font-bold mt-1 cursor-pointer"
+                                                >
+                                                  Hapus Pencarian &quot;{tableSearchQuery}&quot;
+                                                </button>
+                                              )}
+                                            </div>
+                                          </td>
+                                        </tr>
+                                      ) : (
+                                        filteredList.map(({ itm, originalIndex }) => {
+                                          const prev = itm.previously_dispatched || 0;
+                                          const req = itm.qty_requested || 0;
+                                          const curr = itm.qty_dispatched || 0;
+                                          const inboundQty = (itm as any).qty_inbound_received !== undefined ? (itm as any).qty_inbound_received : req;
+                                          const maxAvailable = Math.max(0, req - prev);
+                                          const remaining = Math.max(0, req - prev - curr);
+                                          const isAlreadyFinished = prev >= req;
+                                          const isItemCompleteAfterThis = (prev + curr) >= req;
+                                          const isInboundShort = inboundQty < req;
+                                          const isSelectedForDispatch = curr > 0;
+
+                                          return (
+                                            <tr 
+                                              key={originalIndex} 
+                                              className={`transition-colors ${
+                                                isSelectedForDispatch
+                                                  ? "bg-blue-50/50 hover:bg-blue-50/70"
+                                                  : isAlreadyFinished 
+                                                    ? "bg-slate-50/60 text-slate-500 hover:bg-slate-100/50 opacity-75" 
+                                                    : remaining === 0 
+                                                      ? "bg-emerald-50/20 hover:bg-emerald-50/40" 
+                                                      : "hover:bg-slate-50/80"
+                                              }`}
+                                            >
+                                              {/* Checkbox Kirim Toggle */}
+                                              <td className="p-2.5 text-center">
+                                                {isAlreadyFinished ? (
+                                                  <span className="text-emerald-600 text-xs font-bold" title="Barang ini sudah terkirim 100%">✓</span>
+                                                ) : (
+                                                  <input
+                                                    type="checkbox"
+                                                    checked={isSelectedForDispatch}
+                                                    onChange={(e) => {
+                                                      const willBeChecked = e.target.checked;
+                                                      setDispatchItems(prevItems => prevItems.map((item, i) => {
+                                                        if (i !== originalIndex) return item;
+                                                        return {
+                                                          ...item,
+                                                          qty_dispatched: willBeChecked ? maxAvailable : 0
+                                                        };
+                                                      }));
+                                                    }}
+                                                    className="w-4 h-4 rounded text-blue-600 border-slate-300 focus:ring-blue-500 cursor-pointer"
+                                                    title={isSelectedForDispatch ? "Hilangkan centang untuk membatalkan pengiriman barang ini" : "Centang untuk mengirim barang ini"}
+                                                  />
+                                                )}
+                                              </td>
+
+                                              {/* Suku Cadang & Part No */}
+                                              <td className="p-2.5">
+                                                <div className="flex items-center gap-1.5 flex-wrap">
+                                                  <span className={`font-bold ${isSelectedForDispatch ? 'text-blue-950 font-black' : isAlreadyFinished ? 'text-slate-600' : 'text-slate-900'}`}>
+                                                    {itm.spare_part_name}
+                                                  </span>
+                                                  {isAlreadyFinished && (
+                                                    <span className="text-[9px] bg-slate-200 text-slate-700 px-1.5 py-0.2 rounded font-bold uppercase font-mono">
+                                                      100% Selesai
+                                                    </span>
+                                                  )}
+                                                  {isSelectedForDispatch && (
+                                                    <span className="text-[9px] bg-blue-100 text-blue-800 border border-blue-200 px-1.5 py-0.2 rounded font-bold uppercase font-mono">
+                                                      Kirim {curr} {itm.unit}
+                                                    </span>
+                                                  )}
+                                                </div>
+                                                <div className="text-[10px] text-slate-400 font-mono mt-0.5">
+                                                  {itm.part_number && itm.part_number !== "-" ? itm.part_number : "-"}
+                                                </div>
+                                                {itm.inbound_notes && (
+                                                  <div className="text-[9.5px] text-amber-700 italic font-mono mt-0.5">
+                                                    Catatan Inbound: {itm.inbound_notes}
+                                                  </div>
+                                                )}
+                                              </td>
+
+                                              <td className="p-2.5 text-center font-mono font-bold text-slate-600">{itm.unit}</td>
+                                              <td className="p-2.5 text-center font-mono font-bold text-slate-800">{req}</td>
+
+                                              {/* Diterima Inbound */}
+                                              <td className="p-2.5 text-center font-mono font-bold bg-amber-50/30">
+                                                <span className={isInboundShort ? "text-amber-900 font-black" : "text-slate-800"}>
+                                                  {inboundQty}
+                                                </span>
+                                                {isInboundShort && (
+                                                  <span className="text-[9px] text-rose-600 block font-normal font-sans">
+                                                    Kurang {req - inboundQty}
+                                                  </span>
+                                                )}
+                                              </td>
+
+                                              {/* Pernah Dikirim (Tahap Lalu) */}
+                                              <td className="p-2.5 text-center font-mono font-bold text-slate-600 bg-slate-50/60">
+                                                {prev > 0 ? (
+                                                  <div className="inline-flex flex-col items-center">
+                                                    <span className="text-blue-800 bg-blue-100 border border-blue-200 px-2 py-0.5 rounded font-black text-xs">
+                                                      {prev} {itm.unit}
+                                                    </span>
+                                                    <span className="text-[8.5px] text-slate-500 font-sans mt-0.5">
+                                                      (Tahap Lalu)
+                                                    </span>
+                                                  </div>
+                                                ) : (
+                                                  <span className="text-slate-400 font-medium">0</span>
+                                                )}
+                                              </td>
+
+                                              {/* QTY Kirim Tahap Ini */}
+                                              <td className="p-2.5 text-center bg-blue-50/30">
+                                                {isAlreadyFinished ? (
+                                                  <div className="flex items-center justify-center gap-1">
+                                                    <span className="text-xs font-mono font-bold text-slate-400">0</span>
+                                                    <span className="text-[9px] text-emerald-700 font-bold bg-emerald-100 px-1.5 py-0.5 rounded font-mono">
+                                                      Lengkap
+                                                    </span>
+                                                  </div>
+                                                ) : (
+                                                  <div className="flex items-center justify-center gap-1">
+                                                    <input
+                                                      type="number"
+                                                      min="0"
+                                                      max={maxAvailable}
+                                                      value={itm.qty_dispatched}
+                                                      onChange={(e) => {
+                                                        const rawVal = parseInt(e.target.value);
+                                                        const parsedVal = isNaN(rawVal) ? 0 : rawVal;
+                                                        const clampedVal = Math.min(maxAvailable, Math.max(0, parsedVal));
+                                                        setDispatchItems(prevItems => prevItems.map((item, i) => i === originalIndex ? { ...item, qty_dispatched: clampedVal } : item));
+                                                      }}
+                                                      className={`w-16 bg-white border rounded p-1 text-center font-mono font-black text-xs focus:outline-none focus:ring-2 focus:ring-blue-500 shadow-2xs ${
+                                                        curr > 0 ? "border-blue-500 text-blue-900 bg-blue-50/50 ring-1 ring-blue-400" : "border-slate-300 text-slate-400"
+                                                      }`}
+                                                    />
+                                                    <div className="flex flex-col gap-0.5">
+                                                      <button
+                                                        type="button"
+                                                        onClick={() => {
+                                                          setDispatchItems(prevItems => prevItems.map((item, i) => i === originalIndex ? { ...item, qty_dispatched: maxAvailable } : item));
+                                                        }}
+                                                        className="px-1.5 py-0.2 bg-blue-100 hover:bg-blue-200 text-blue-800 rounded text-[8.5px] font-bold cursor-pointer font-mono"
+                                                        title={`Isi maksimal sisa (${maxAvailable})`}
+                                                      >
+                                                        Max
+                                                      </button>
+                                                      <button
+                                                        type="button"
+                                                        onClick={() => {
+                                                          setDispatchItems(prevItems => prevItems.map((item, i) => i === originalIndex ? { ...item, qty_dispatched: 0 } : item));
+                                                        }}
+                                                        className="px-1.5 py-0.2 bg-slate-100 hover:bg-slate-200 text-slate-600 rounded text-[8.5px] font-bold cursor-pointer font-mono"
+                                                        title="Nolkan QTY kirim"
+                                                      >
+                                                        0
+                                                      </button>
+                                                    </div>
+                                                  </div>
+                                                )}
+                                                {!isAlreadyFinished && (
+                                                  <span className="text-[9px] text-slate-400 font-mono block mt-0.5">
+                                                    Maks sisa: <strong className="text-slate-700">{maxAvailable}</strong>
+                                                  </span>
+                                                )}
+                                              </td>
+
+                                              {/* Sisa Belum Kirim */}
+                                              <td className="p-2.5 text-center font-mono font-bold bg-rose-50/20">
+                                                {remaining > 0 ? (
+                                                  <span className="text-rose-700 bg-rose-100/80 px-2 py-0.5 rounded font-black text-xs">
+                                                    {remaining}
+                                                  </span>
+                                                ) : (
+                                                  <span className="text-emerald-700 font-black text-xs">0</span>
+                                                )}
+                                              </td>
+
+                                              {/* Status Item */}
+                                              <td className="p-2.5 text-center">
+                                                {isAlreadyFinished ? (
+                                                  <span className="bg-slate-100 text-slate-700 border border-slate-200 px-2 py-0.5 rounded text-[9.5px] font-bold font-mono">
+                                                    ✓ Sudah Dikirim
+                                                  </span>
+                                                ) : isItemCompleteAfterThis ? (
+                                                  <span className="bg-emerald-100 text-emerald-800 border border-emerald-200 px-2 py-0.5 rounded text-[9.5px] font-bold font-mono">
+                                                    ✓ Lengkap
+                                                  </span>
+                                                ) : (
+                                                  <span className="bg-amber-100 text-amber-800 border border-amber-200 px-2 py-0.5 rounded text-[9.5px] font-bold font-mono">
+                                                    ⚠️ Parsial ({remaining} {itm.unit})
+                                                  </span>
+                                                )}
+                                              </td>
+                                            </tr>
+                                          );
+                                        })
+                                      )}
+                                    </tbody>
+                                  </table>
+                                </div>
+                              );
+                            })()}
+
+                            {/* Live Dispatched Items Summary Banner */}
+                            {(() => {
+                              const selectedItems = dispatchItems
+                                .map((itm, originalIndex) => ({ itm, originalIndex }))
+                                .filter(({ itm }) => (itm.qty_dispatched || 0) > 0);
+                              const totalQty = selectedItems.reduce((acc, { itm }) => acc + (Number(itm.qty_dispatched) || 0), 0);
+
+                              if (selectedItems.length > 0) {
+                                return (
+                                  <div className="bg-blue-50/90 border border-blue-200 rounded-xl p-3 shadow-2xs space-y-2">
+                                    <div className="flex items-center justify-between">
+                                      <span className="text-xs font-black text-blue-950 flex items-center gap-1.5 font-mono">
+                                        <PackageCheck className="w-4 h-4 text-blue-600" />
+                                        RINGKASAN SUKU CADANG DIKIRIM PADA TAHAP INI ({selectedItems.length} Jenis &bull; Total {totalQty} Unit):
+                                      </span>
+                                      <span className="text-[10px] font-mono font-bold bg-blue-200 text-blue-900 px-2 py-0.5 rounded">
+                                        Siap Terbit TUG 8
+                                      </span>
+                                    </div>
+                                    <div className="flex flex-wrap gap-1.5 max-h-24 overflow-y-auto pt-1">
+                                      {selectedItems.map(({ itm, originalIndex }) => (
+                                        <span 
+                                          key={originalIndex} 
+                                          className="inline-flex items-center gap-1.5 text-[11px] bg-white border border-blue-300 text-blue-950 font-bold px-2.5 py-1 rounded-lg shadow-2xs"
+                                        >
+                                          <span>{itm.spare_part_name}</span>
+                                          <span className="bg-blue-600 text-white font-mono text-[10px] px-1.5 py-0.2 rounded-full font-black">
+                                            {itm.qty_dispatched} {itm.unit}
+                                          </span>
+                                          <button
+                                            type="button"
+                                            onClick={() => {
+                                              setDispatchItems(prev => prev.map((item, i) => i === originalIndex ? { ...item, qty_dispatched: 0 } : item));
+                                            }}
+                                            className="text-slate-400 hover:text-rose-600 hover:bg-rose-50 rounded-full w-4 h-4 flex items-center justify-center cursor-pointer transition-colors"
+                                            title="Batalkan pengiriman barang ini"
+                                          >
+                                            ×
+                                          </button>
+                                        </span>
+                                      ))}
+                                    </div>
+                                  </div>
+                                );
+                              }
+
+                              return (
+                                <div className="bg-amber-50 border border-amber-300 rounded-xl p-3 flex items-center gap-2.5 text-xs text-amber-900">
+                                  <AlertTriangle className="w-4 h-4 text-amber-600 shrink-0" />
+                                  <div>
+                                    <span className="font-bold block text-amber-950">Belum ada suku cadang yang dipilih untuk dikirim pada tahap ini.</span>
+                                    Silakan centang checkbox <strong>[Kirim?]</strong> atau isi nilai pada kolom <strong>QTY Kirim</strong> di tabel atas.
+                                  </div>
+                                </div>
+                              );
+                            })()}
                           </div>
                         </div>
                       );
@@ -3815,31 +4121,37 @@ export default function DispatchView({
                       )}
 
                       <div className="max-h-60 overflow-y-auto divide-y divide-slate-100">
-                        {dispatchItems.map((itm, idx) => {
-                          const isSent = itm.qty_dispatched > 0;
+                        {dispatchItems
+                          .map((itm, idx) => ({ itm, idx }))
+                          .sort((a, b) => (b.itm.qty_dispatched || 0) - (a.itm.qty_dispatched || 0))
+                          .map(({ itm, idx }) => {
+                          const isSent = (itm.qty_dispatched || 0) > 0;
                           return (
-                            <div key={idx} className="py-3 flex flex-col md:flex-row md:items-center justify-between gap-4 text-xs">
+                            <div key={idx} className={`py-2.5 px-2 rounded-lg flex flex-col md:flex-row md:items-center justify-between gap-4 text-xs transition-colors ${
+                              isSent ? "bg-blue-50/40 hover:bg-blue-50/70" : "opacity-60 hover:opacity-100"
+                            }`}>
                               <div className="flex-1">
-                                <strong className={`block font-bold ${isSent ? "text-slate-900" : "text-slate-400 line-through font-medium"}`}>
-                                  {itm.spare_part_name}
-                                </strong>
-                                <div className="flex flex-wrap items-center gap-1.5 mt-0.5">
-                                  <span className="text-slate-400 font-mono text-[10px]">Part No: {itm.part_number} &bull; Unit: {itm.unit || "PCS"}</span>
-                                  {itm.qty_requested > 0 && !isSent && (
-                                    <span className="bg-amber-50 text-amber-700 border border-amber-200 px-1.5 py-0.1 rounded font-bold text-[8.5px] uppercase">
+                                <div className="flex items-center gap-2">
+                                  <strong className={`block font-bold ${isSent ? "text-slate-900" : "text-slate-400 line-through font-medium"}`}>
+                                    {itm.spare_part_name}
+                                  </strong>
+                                  {isSent ? (
+                                    <span className="bg-emerald-100 text-emerald-800 border border-emerald-300 px-1.5 py-0.2 rounded font-bold text-[9px] uppercase font-mono">
+                                      Siap Dikirim ({itm.qty_dispatched} {itm.unit || "PCS"})
+                                    </span>
+                                  ) : (
+                                    <span className="bg-slate-100 text-slate-600 border border-slate-200 px-1.5 py-0.2 rounded font-bold text-[9px] uppercase font-mono">
                                       Tidak Dikirim
                                     </span>
                                   )}
-                                  {isSent && (
-                                    <span className="bg-emerald-50 text-emerald-700 border border-emerald-200 px-1.5 py-0.1 rounded font-bold text-[8.5px] uppercase">
-                                      Siap Dikirim
-                                    </span>
-                                  )}
+                                </div>
+                                <div className="flex flex-wrap items-center gap-1.5 mt-0.5">
+                                  <span className="text-slate-400 font-mono text-[10px]">Part No: {itm.part_number} &bull; Unit: {itm.unit || "PCS"}</span>
                                 </div>
                               </div>
 
                               <div className="flex flex-wrap items-center gap-4 text-right">
-                                <div className="font-mono text-center bg-slate-50 border border-slate-150 p-1.5 rounded min-w-[90px]">
+                                <div className="font-mono text-center bg-white border border-slate-200 p-1.5 rounded min-w-[90px] shadow-2xs">
                                   <span className="text-slate-400 text-[8px] block uppercase font-bold leading-none mb-1">QTY Kirim</span>
                                   <strong className={`font-extrabold text-xs ${isSent ? "text-blue-700" : "text-slate-450"}`}>
                                     {itm.qty_dispatched} / {itm.qty_requested} {itm.unit || "PCS"}
@@ -3859,7 +4171,7 @@ export default function DispatchView({
                                         const val = Math.max(0, parseInt(e.target.value) || 0);
                                         setDispatchItems(prev => prev.map((item, i) => i === idx ? { ...item, unit_price: val } : item));
                                       }}
-                                      className="w-full bg-slate-50 border border-slate-250 rounded p-1 pl-6 text-xs font-bold font-mono text-right text-slate-800 focus:outline-none focus:border-blue-500"
+                                      className="w-full bg-white border border-slate-250 rounded p-1 pl-6 text-xs font-bold font-mono text-right text-slate-800 focus:outline-none focus:border-blue-500"
                                     />
                                   </div>
                                 </div>
@@ -3887,14 +4199,14 @@ export default function DispatchView({
                   type="submit"
                   disabled={
                     isLoading || 
-                    (dispatchSource === "tug5" && !selectedTug5Id) || 
-                    (dispatchSource === "tug10" && (!selectedTug10Id || !targetVesselName.trim()))
+                    (dispatchSource === "tug5" && (!selectedTug5Id || dispatchItems.every(i => (i.qty_dispatched || 0) === 0))) || 
+                    (dispatchSource === "tug10" && (!selectedTug10Id || !targetVesselName.trim() || dispatchItems.every(i => (i.qty_dispatched || 0) === 0)))
                   }
-                  className={`px-5 py-2.5 rounded text-white text-xs font-bold uppercase tracking-wider transition-all flex items-center gap-1.5 cursor-pointer ${
+                  className={`px-5 py-2.5 rounded-lg text-white text-xs font-bold uppercase tracking-wider transition-all flex items-center gap-1.5 cursor-pointer shadow-md ${
                     isLoading || 
-                    (dispatchSource === "tug5" && !selectedTug5Id) || 
-                    (dispatchSource === "tug10" && (!selectedTug10Id || !targetVesselName.trim()))
-                      ? "bg-slate-300 border-slate-300 cursor-not-allowed text-slate-500"
+                    (dispatchSource === "tug5" && (!selectedTug5Id || dispatchItems.every(i => (i.qty_dispatched || 0) === 0))) || 
+                    (dispatchSource === "tug10" && (!selectedTug10Id || !targetVesselName.trim() || dispatchItems.every(i => (i.qty_dispatched || 0) === 0)))
+                      ? "bg-slate-300 border-slate-300 cursor-not-allowed text-slate-500 shadow-none"
                       : dispatchSource === "tug10"
                         ? "bg-emerald-600 hover:bg-emerald-500 border border-emerald-700"
                         : "bg-blue-600 hover:bg-blue-500 border border-blue-700"
