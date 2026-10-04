@@ -35,19 +35,20 @@ import {
   Truck, 
   ArrowUpRight,
   TrendingUp,
-  Sparkles
+  Sparkles,
+  History as HistoryIcon
 } from "lucide-react";
 import { MaintenanceLog, User, UserRole } from "../types.js";
 import { api } from "../api.js";
 
 interface LoginAndLogsViewProps {
   currentUser: User | null;
-  users: User[];
+  users?: User[];
   onRefresh?: () => Promise<void>;
 }
 
 // Helper to generate seed historical audit logs if Supabase has limited records
-function generateRealisticHistoryLogs(users: User[]): MaintenanceLog[] {
+function generateRealisticHistoryLogs(users: User[] = []): MaintenanceLog[] {
   const actionsList = [
     { action: "LOGIN", module: "AUTH", details: { status: "SUCCESS", device: "Desktop (Windows 11 / Chrome)", ip: "192.168.10.45" } },
     { action: "VIEW_DASHBOARD", module: "SYSTEM", details: { page: "/dashboard", duration: "12m" } },
@@ -99,7 +100,7 @@ function generateRealisticHistoryLogs(users: User[]): MaintenanceLog[] {
 
 export default function LoginAndLogsView({
   currentUser,
-  users,
+  users = [],
   onRefresh
 }: LoginAndLogsViewProps) {
   const [logs, setLogs] = useState<MaintenanceLog[]>([]);
@@ -810,7 +811,7 @@ export default function LoginAndLogsView({
           
           <div className="p-4 bg-slate-50 border-b border-slate-200 flex items-center justify-between flex-wrap gap-2">
             <div className="flex items-center gap-2">
-              <History className="w-4 h-4 text-blue-600" />
+              <HistoryIcon className="w-4 h-4 text-blue-600" />
               <h3 className="text-xs font-black uppercase tracking-wider text-slate-900 font-mono">
                 Tabel Rincian Riwayat ({filteredLogs.length} Log)
               </h3>
