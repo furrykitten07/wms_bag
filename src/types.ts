@@ -546,7 +546,8 @@ export interface MaintenanceConfig {
 
 export interface MaintenanceLog {
   id?: string;
-  action: "ACTIVATE_MAINTENANCE" | "DEACTIVATE_MAINTENANCE" | "UPDATE_MESSAGE" | string;
+  action: "ACTIVATE_MAINTENANCE" | "DEACTIVATE_MAINTENANCE" | "UPDATE_MESSAGE" | "LOGIN" | "LOGOUT" | string;
+  module?: "AUTH" | "MAINTENANCE" | "INVENTORY" | "LOGISTICS" | "DISPATCH" | "RECEIVING" | "USER_MANAGEMENT" | string;
   operator: string;
   timestamp: string;
   details?: string;

@@ -2722,6 +2722,72 @@ export const api = {
       }
     }
     return [];
+  },
+
+  async recordAuditLog(payload: {
+    action: string;
+    module: string;
+    operator: string;
+    details?: any;
+  }): Promise<void> {
+    const detailsStr = typeof payload.details === "string" ? payload.details : JSON.stringify(payload.details || {});
+    const logRec = {
+      action: payload.action,
+      module: payload.module,
+      operator: payload.operator || "System",
+      details: detailsStr,
+      timestamp: new Date().toISOString()
+    };
+
+    if (isSupabaseConfigured) {
+      try {
+        await supabase.from("audit_logs").insert([logRec]);
+      } catch (err) {
+        console.warn("Failed to insert audit log into Supabase:", err);
+      }
+    }
+
+    try {
+      const stored = localStorage.getItem("wms_audit_logs_cache");
+      const list = stored ? JSON.parse(stored) : [];
+      list.unshift({ ...logRec, id: `log-${Date.now()}` });
+      localStorage.setItem("wms_audit_logs_cache", JSON.stringify(list.slice(0, 500)));
+    } catch (e) {
+      // ignore
+    }
+  },
+
+  async getAllAuditLogs(limit: number = 500): Promise<MaintenanceLog[]> {
+    if (isSupabaseConfigured) {
+      try {
+        const { data, error } = await supabase
+          .from("audit_logs")
+          .select("*")
+          .order("timestamp", { ascending: false })
+          .limit(limit);
+
+        if (!error && data && data.length > 0) {
+          return data.map((d: any) => ({
+            id: d.id,
+            action: d.action,
+            module: d.module || "SYSTEM",
+            operator: d.operator || "Unknown",
+            timestamp: d.timestamp,
+            details: d.details
+          }));
+        }
+      } catch (err) {
+        console.warn("Error fetching all audit logs from Supabase:", err);
+      }
+    }
+
+    try {
+      const stored = localStorage.getItem("wms_audit_logs_cache");
+      if (stored) return JSON.parse(stored);
+    } catch (e) {}
+
+    return [];
   }
 };
+
 

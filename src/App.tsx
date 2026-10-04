@@ -56,6 +56,7 @@ import VesselsManagementView from "./components/VesselsManagementView.js";
 import PublicSparePartView from "./components/PublicSparePartView.js";
 import MaintenanceScreen from "./components/MaintenanceScreen.js";
 import MaintenanceAdminView from "./components/MaintenanceAdminView.js";
+import LoginAndLogsView from "./components/LoginAndLogsView.js";
 
 import { AlertCircle, RefreshCw, Layers, Wrench } from "lucide-react";
 
@@ -326,6 +327,25 @@ export default function App() {
           setCurrentTab("dashboard");
         }
 
+        // Record user login to Audit Trail
+        try {
+          api.recordAuditLog({
+            action: "LOGIN",
+            module: "AUTH",
+            operator: matched.name || usernameStr,
+            details: {
+              username: matched.username,
+              role: matched.role,
+              vessel_name: matched.vessel_name || "-",
+              warehouse_name: matched.warehouse_name || "Gudang Utama Merak",
+              userAgent: navigator.userAgent,
+              status: "SUCCESS"
+            }
+          }).catch(() => {});
+        } catch (e) {
+          // ignore
+        }
+
         await syncAllTables();
       } else {
         alert("Otorisasi WMS gagal - operator tidak sinkron.");
@@ -338,6 +358,17 @@ export default function App() {
   };
 
   const handleLogout = () => {
+    if (currentUser) {
+      api.recordAuditLog({
+        action: "LOGOUT",
+        module: "AUTH",
+        operator: currentUser.name || currentUser.username,
+        details: {
+          username: currentUser.username,
+          role: currentUser.role
+        }
+      }).catch(() => {});
+    }
     localStorage.removeItem("wms_username");
     setCurrentUser(null);
     setIsAuthenticated(false);
@@ -1408,6 +1439,15 @@ export default function App() {
               onUpdateSignature={handleUpdateSignature}
               onDeleteSignature={handleDeleteSignature}
               onResetDefaults={handleResetDefaultSignatures}
+            />
+          )}
+
+          {/* Monitoring Login & Activity Logs (Super Admin only) */}
+          {currentTab === "login-logs" && isSuperAdmin && (
+            <LoginAndLogsView 
+              currentUser={currentUser}
+              users={simulatedUsers}
+              onRefresh={syncAllTables}
             />
           )}
 

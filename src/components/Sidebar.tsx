@@ -21,7 +21,8 @@ import {
   ShieldCheck,
   FileSignature,
   Ship,
-  Wrench
+  Wrench,
+  Activity
 } from "lucide-react";
 import { UserRole, User } from "../types.js";
 
@@ -298,32 +299,51 @@ export default function Sidebar({
           </div>
         </button>
 
-        {/* Khusus Role Super Admin: Mode Maintenance */}
+        {/* Khusus Role Super Admin: Login & Activity Logs & Mode Maintenance */}
         {(currentUser?.role === UserRole.SUPER_ADMIN || currentUser?.username?.toLowerCase() === "superadmin") && (
-          <button
-            onClick={() => setCurrentTab("maintenance")}
-            className={`flex items-center justify-between px-3 py-2.5 rounded-md text-xs font-semibold tracking-tight transition-all duration-150 ${
-              currentTab === "maintenance" 
-                ? "bg-amber-500 text-white shadow-xs font-bold" 
-                : isMaintenanceActive
-                ? "text-rose-700 bg-rose-50 hover:bg-rose-100 border border-rose-200 font-bold"
-                : "text-amber-800 bg-amber-50/60 hover:bg-amber-100/70 border border-amber-200/60"
-            }`}
-          >
-            <div className="flex items-center gap-2.5">
-              <Wrench className={`w-4 h-4 ${currentTab === "maintenance" ? "text-white" : isMaintenanceActive ? "text-rose-600 animate-pulse" : "text-amber-600"} shrink-0`} />
-              <span>Mode Maintenance</span>
-            </div>
-            {isMaintenanceActive ? (
-              <span className="bg-rose-600 text-white px-1.5 py-0.5 rounded text-[8.5px] font-black uppercase font-mono animate-pulse">
-                AKTIF
+          <>
+            <button
+              onClick={() => setCurrentTab("login-logs")}
+              className={`flex items-center justify-between px-3 py-2.5 rounded-md text-xs font-semibold tracking-tight transition-all duration-150 ${
+                currentTab === "login-logs" 
+                  ? "bg-white text-blue-600 border border-slate-200 shadow-xs font-bold" 
+                  : "text-slate-650 hover:bg-slate-200/70 hover:text-slate-900"
+              }`}
+            >
+              <div className="flex items-center gap-2.5">
+                <Activity className={`w-4 h-4 ${currentTab === "login-logs" ? "text-blue-500" : "text-slate-400"} shrink-0`} />
+                <span>Login &amp; Logs Audit</span>
+              </div>
+              <span className="bg-blue-100 text-blue-700 px-1.5 py-0.5 rounded text-[8.5px] font-mono font-bold uppercase">
+                AUDIT
               </span>
-            ) : (
-              <span className="bg-slate-200 text-slate-600 px-1.5 py-0.5 rounded text-[8.5px] font-bold uppercase font-mono">
-                OFF
-              </span>
-            )}
-          </button>
+            </button>
+
+            <button
+              onClick={() => setCurrentTab("maintenance")}
+              className={`flex items-center justify-between px-3 py-2.5 rounded-md text-xs font-semibold tracking-tight transition-all duration-150 ${
+                currentTab === "maintenance" 
+                  ? "bg-amber-500 text-white shadow-xs font-bold" 
+                  : isMaintenanceActive
+                  ? "text-rose-700 bg-rose-50 hover:bg-rose-100 border border-rose-200 font-bold"
+                  : "text-amber-800 bg-amber-50/60 hover:bg-amber-100/70 border border-amber-200/60"
+              }`}
+            >
+              <div className="flex items-center gap-2.5">
+                <Wrench className={`w-4 h-4 ${currentTab === "maintenance" ? "text-white" : isMaintenanceActive ? "text-rose-600 animate-pulse" : "text-amber-600"} shrink-0`} />
+                <span>Mode Maintenance</span>
+              </div>
+              {isMaintenanceActive ? (
+                <span className="bg-rose-600 text-white px-1.5 py-0.5 rounded text-[8.5px] font-black uppercase font-mono animate-pulse">
+                  AKTIF
+                </span>
+              ) : (
+                <span className="bg-slate-200 text-slate-600 px-1.5 py-0.5 rounded text-[8.5px] font-bold uppercase font-mono">
+                  OFF
+                </span>
+              )}
+            </button>
+          </>
         )}
       </div>
     </nav>
