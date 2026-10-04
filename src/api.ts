@@ -2668,8 +2668,12 @@ export const api = {
     // 2. Record to Supabase audit_logs
     if (isSupabaseConfigured) {
       try {
+        const actionType = config.is_maintenance !== undefined 
+          ? (updated.is_maintenance ? "ACTIVATE_MAINTENANCE" : "DEACTIVATE_MAINTENANCE")
+          : "UPDATE_CONFIG";
+
         await supabase.from("audit_logs").insert([{
-          action: updated.is_maintenance ? "ACTIVATE_MAINTENANCE" : "DEACTIVATE_MAINTENANCE",
+          action: actionType,
           module: "MAINTENANCE",
           details: JSON.stringify(updated),
           operator: operator,
@@ -2702,7 +2706,7 @@ export const api = {
           .select("*")
           .eq("module", "MAINTENANCE")
           .order("timestamp", { ascending: false })
-          .limit(20);
+          .limit(150);
 
         if (!error && data) {
           return data.map((d: any) => ({
