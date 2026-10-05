@@ -459,7 +459,7 @@ function ensureSparePartsFromInboundItems(
   }
 
   // Also sync to Supabase if connected
-  if (isSupabaseConfigured() && createdOrUpdatedParts.length > 0) {
+  if (isSupabaseConfigured && createdOrUpdatedParts.length > 0) {
     (async () => {
       try {
         const rows = createdOrUpdatedParts.map(p => sanitizeRecord(p, VALID_PART_COLUMNS));
