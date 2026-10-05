@@ -1630,7 +1630,7 @@ export default function DispatchView({
           </span>
         </div>
 
-        <div className="flex-1 overflow-auto pb-16">
+        <div className="flex-1 overflow-auto pb-48">
           {filtered.length === 0 ? (
             <div className="p-16 text-center">
               <ClipboardList className="w-10 h-10 text-slate-300 mx-auto mb-2" />
@@ -1875,177 +1875,176 @@ export default function DispatchView({
                                     setActiveActionId(null);
                                   }}
                                 />
-                                <div className={`absolute right-0 ${idx >= paginatedDsp.length - 2 && paginatedDsp.length > 2 ? "bottom-full mb-2" : "top-full mt-2"} w-72 bg-white border border-slate-200 rounded-2xl shadow-2xl z-50 overflow-hidden text-left p-1.5 animate-in fade-in zoom-in-95 duration-150 ring-1 ring-black/5 divide-y divide-slate-100 text-slate-700`}>
+                                <div className={`absolute right-0 ${idx >= 4 && idx >= paginatedDsp.length - 2 ? "bottom-full mb-2" : "top-full mt-2"} w-80 max-h-[calc(100vh-140px)] sm:max-h-[480px] overflow-y-auto overscroll-contain bg-white border border-slate-200 rounded-2xl shadow-2xl z-50 text-left p-2 animate-in fade-in zoom-in-95 duration-150 ring-1 ring-slate-900/10 text-slate-700 divide-y divide-slate-100 scrollbar-thin`}>
                                   
                                   {/* Header Info */}
-                                  <div className="px-3.5 py-2.5 bg-slate-50/80 rounded-xl mb-1">
-                                    <div className="flex items-center justify-between">
-                                      <span className="text-[10px] font-mono font-bold text-slate-400 uppercase tracking-wider">TUG 8 Dispatch</span>
-                                      <span className="text-[9px] font-mono font-extrabold px-1.5 py-0.5 rounded bg-blue-100 text-blue-700 border border-blue-200">{item.status}</span>
+                                  <div className="p-2.5 bg-gradient-to-r from-slate-900 to-slate-800 rounded-xl text-white mb-1.5 shadow-xs">
+                                    <div className="flex items-center justify-between gap-2">
+                                      <span className="text-[9.5px] font-mono font-bold text-slate-400 uppercase tracking-wider">TUG 8 Dispatch</span>
+                                      <span className="text-[9px] font-mono font-extrabold px-2 py-0.5 rounded bg-blue-500/20 text-blue-300 border border-blue-400/30 truncate max-w-[120px]">
+                                        {item.status}
+                                      </span>
                                     </div>
-                                    <div className="font-mono text-xs font-black text-slate-800 truncate mt-0.5">{item.tug8_number || item.bon_pengeluaran_number || item.id}</div>
-                                    <div className="text-[10.5px] text-slate-500 font-medium truncate">{item.vessel_name}</div>
+                                    <div className="font-mono text-xs font-black text-rose-300 truncate mt-1">
+                                      {item.tug8_number || item.bon_pengeluaran_number || item.id}
+                                    </div>
+                                    <div className="text-[11px] text-slate-300 font-bold truncate mt-0.5 flex items-center gap-1">
+                                      <span>⚓</span> {item.vessel_name}
+                                    </div>
                                   </div>
 
-                                  {/* SECTION 1: PERSETUJUAN & TTD DIGITAL (4 ROLES) */}
+                                  {/* SECTION 1: PERSETUJUAN & TTD DIGITAL (2x2 Grid) */}
                                   <div className="py-1.5 space-y-1">
-                                    <div className="px-2 py-1 text-[9px] font-mono font-black uppercase tracking-widest text-slate-400 flex items-center gap-1.5">
-                                      <ShieldCheck className="w-3.5 h-3.5 text-emerald-500" />
-                                      <span>Approval & Tanda Tangan</span>
+                                    <div className="px-1 text-[9px] font-mono font-black uppercase tracking-widest text-slate-400 flex items-center justify-between">
+                                      <span className="flex items-center gap-1">
+                                        <ShieldCheck className="w-3.5 h-3.5 text-emerald-500" />
+                                        Approval 4 Tahap
+                                      </span>
+                                      <span className="text-[8.5px] text-slate-400 font-mono">Aldi/Alfin/Emir/Sumbono</span>
                                     </div>
 
-                                    {/* 1. ALDI HIDAYAT (PETUGAS GUDANG) */}
-                                    {item.aldi_signed ? (
-                                      <div className="px-2.5 py-1.5 bg-emerald-50/80 border border-emerald-200/80 rounded-lg flex items-center justify-between">
-                                        <div className="flex items-center gap-1.5">
-                                          <CheckCircle className="w-3.5 h-3.5 text-emerald-600 shrink-0" />
-                                          <div>
-                                            <div className="text-[11px] font-bold text-emerald-900 leading-tight">Aldi Hidayat</div>
-                                            <div className="text-[9px] text-emerald-700 font-mono">Petugas Gudang &bull; Signed</div>
+                                    <div className="grid grid-cols-2 gap-1.5">
+                                      {/* 1. ALDI HIDAYAT (PETUGAS GUDANG) */}
+                                      {item.aldi_signed ? (
+                                        <div className="px-2 py-1.5 bg-emerald-50 border border-emerald-200/80 rounded-lg flex items-center justify-between text-[10.5px]">
+                                          <div className="truncate">
+                                            <div className="font-bold text-emerald-950 truncate leading-none">Aldi H.</div>
+                                            <div className="text-[8.5px] text-emerald-700 font-mono mt-0.5">Petugas Gudang</div>
                                           </div>
+                                          <span className="text-[8.5px] font-mono font-black text-emerald-700 bg-emerald-100 px-1 py-0.5 rounded shrink-0">✓ ACC</span>
                                         </div>
-                                        <span className="text-[9px] font-mono font-bold text-emerald-600 bg-emerald-100 px-1.5 py-0.5 rounded">✓ ACC</span>
-                                      </div>
-                                    ) : (
-                                      <button
-                                        type="button"
-                                        onClick={async (e) => {
-                                          e.stopPropagation();
-                                          setActiveActionId(null);
-                                          const now = new Date().toISOString();
-                                          if (onUpdateDispatch) {
-                                            await onUpdateDispatch(item.id, {
-                                              aldi_signed: true,
-                                              aldi_signed_at: now,
-                                              aldi_signature_url: ALDI_SIGNATURE_URL
-                                            });
-                                          }
-                                        }}
-                                        className="w-full px-2.5 py-2 text-xs font-bold bg-teal-50 hover:bg-teal-100 text-teal-800 rounded-lg border border-teal-200 flex items-center justify-between cursor-pointer transition-colors text-left"
-                                        title="Beri Tanda Tangan Digital Petugas Gudang (Aldi Hidayat)"
-                                      >
-                                        <div className="flex items-center gap-2">
-                                          <CheckCircle className="w-3.5 h-3.5 text-teal-600" />
-                                          <span>✓ TTD Petugas Gudang (Aldi)</span>
-                                        </div>
-                                        <span className="text-[9px] font-mono bg-teal-200 text-teal-900 px-1.5 py-0.5 rounded font-black">ACC</span>
-                                      </button>
-                                    )}
+                                      ) : (
+                                        <button
+                                          type="button"
+                                          onClick={async (e) => {
+                                            e.stopPropagation();
+                                            setActiveActionId(null);
+                                            const now = new Date().toISOString();
+                                            if (onUpdateDispatch) {
+                                              await onUpdateDispatch(item.id, {
+                                                aldi_signed: true,
+                                                aldi_signed_at: now,
+                                                aldi_signature_url: ALDI_SIGNATURE_URL
+                                              });
+                                            }
+                                          }}
+                                          className="px-2 py-1.5 bg-teal-50 hover:bg-teal-100 text-teal-900 border border-teal-200 rounded-lg flex items-center justify-between text-[10.5px] font-bold cursor-pointer transition-colors text-left"
+                                          title="Beri Tanda Tangan Digital Petugas Gudang (Aldi Hidayat)"
+                                        >
+                                          <div className="truncate">
+                                            <div className="font-bold truncate leading-none">Aldi H.</div>
+                                            <div className="text-[8.5px] text-teal-700 font-mono mt-0.5">Petugas Gudang</div>
+                                          </div>
+                                          <span className="text-[8.5px] font-mono bg-teal-200 text-teal-900 px-1.5 py-0.5 rounded font-black shrink-0">TTD</span>
+                                        </button>
+                                      )}
 
-                                    {/* 2. MAGHFUR MUHAMMAD ALFIN (KEPALA GUDANG) */}
-                                    {item.alfin_signed ? (
-                                      <div className="px-2.5 py-1.5 bg-emerald-50/80 border border-emerald-200/80 rounded-lg flex items-center justify-between">
-                                        <div className="flex items-center gap-1.5">
-                                          <CheckCircle className="w-3.5 h-3.5 text-emerald-600 shrink-0" />
-                                          <div>
-                                            <div className="text-[11px] font-bold text-emerald-900 leading-tight">M. Alfin</div>
-                                            <div className="text-[9px] text-emerald-700 font-mono">Kepala Gudang &bull; Signed</div>
+                                      {/* 2. MAGHFUR MUHAMMAD ALFIN (KEPALA GUDANG) */}
+                                      {item.alfin_signed ? (
+                                        <div className="px-2 py-1.5 bg-emerald-50 border border-emerald-200/80 rounded-lg flex items-center justify-between text-[10.5px]">
+                                          <div className="truncate">
+                                            <div className="font-bold text-emerald-950 truncate leading-none">M. Alfin</div>
+                                            <div className="text-[8.5px] text-emerald-700 font-mono mt-0.5">Kepala Gudang</div>
                                           </div>
+                                          <span className="text-[8.5px] font-mono font-black text-emerald-700 bg-emerald-100 px-1.5 py-0.5 rounded shrink-0">✓ ACC</span>
                                         </div>
-                                        <span className="text-[9px] font-mono font-bold text-emerald-600 bg-emerald-100 px-1.5 py-0.5 rounded">✓ ACC</span>
-                                      </div>
-                                    ) : (
-                                      <button
-                                        type="button"
-                                        onClick={async (e) => {
-                                          e.stopPropagation();
-                                          setActiveActionId(null);
-                                          const now = new Date().toISOString();
-                                          if (onUpdateDispatch) {
-                                            await onUpdateDispatch(item.id, {
-                                              alfin_signed: true,
-                                              alfin_signed_at: now,
-                                              alfin_signature_url: ALFIN_SIGNATURE_URL
-                                            });
-                                          }
-                                        }}
-                                        className="w-full px-2.5 py-2 text-xs font-bold bg-emerald-50 hover:bg-emerald-100 text-emerald-800 rounded-lg border border-emerald-200 flex items-center justify-between cursor-pointer transition-colors text-left"
-                                        title="Beri Tanda Tangan Digital Kepala Gudang (Maghfur Muhammad Alfin)"
-                                      >
-                                        <div className="flex items-center gap-2">
-                                          <CheckCircle className="w-3.5 h-3.5 text-emerald-600" />
-                                          <span>✓ TTD Kepala Gudang (Alfin)</span>
-                                        </div>
-                                        <span className="text-[9px] font-mono bg-emerald-200 text-emerald-900 px-1.5 py-0.5 rounded font-black">ACC</span>
-                                      </button>
-                                    )}
+                                      ) : (
+                                        <button
+                                          type="button"
+                                          onClick={async (e) => {
+                                            e.stopPropagation();
+                                            setActiveActionId(null);
+                                            const now = new Date().toISOString();
+                                            if (onUpdateDispatch) {
+                                              await onUpdateDispatch(item.id, {
+                                                alfin_signed: true,
+                                                alfin_signed_at: now,
+                                                alfin_signature_url: ALFIN_SIGNATURE_URL
+                                              });
+                                            }
+                                          }}
+                                          className="px-2 py-1.5 bg-emerald-50 hover:bg-emerald-100 text-emerald-900 border border-emerald-200 rounded-lg flex items-center justify-between text-[10.5px] font-bold cursor-pointer transition-colors text-left"
+                                          title="Beri Tanda Tangan Digital Kepala Gudang (Maghfur Muhammad Alfin)"
+                                        >
+                                          <div className="truncate">
+                                            <div className="font-bold truncate leading-none">M. Alfin</div>
+                                            <div className="text-[8.5px] text-emerald-700 font-mono mt-0.5">Kepala Gudang</div>
+                                          </div>
+                                          <span className="text-[8.5px] font-mono bg-emerald-200 text-emerald-900 px-1.5 py-0.5 rounded font-black shrink-0">TTD</span>
+                                        </button>
+                                      )}
 
-                                    {/* 3. MOHAMAT EMIR FERDIAN (MANAGER LOGISTIK) */}
-                                    {item.emir_signed ? (
-                                      <div className="px-2.5 py-1.5 bg-emerald-50/80 border border-emerald-200/80 rounded-lg flex items-center justify-between">
-                                        <div className="flex items-center gap-1.5">
-                                          <CheckCircle className="w-3.5 h-3.5 text-emerald-600 shrink-0" />
-                                          <div>
-                                            <div className="text-[11px] font-bold text-emerald-900 leading-tight">Emir Ferdian</div>
-                                            <div className="text-[9px] text-emerald-700 font-mono">Manager Logistik &bull; Signed</div>
+                                      {/* 3. MOHAMAT EMIR FERDIAN (MANAGER LOGISTIK) */}
+                                      {item.emir_signed ? (
+                                        <div className="px-2 py-1.5 bg-emerald-50 border border-emerald-200/80 rounded-lg flex items-center justify-between text-[10.5px]">
+                                          <div className="truncate">
+                                            <div className="font-bold text-emerald-950 truncate leading-none">Emir F.</div>
+                                            <div className="text-[8.5px] text-emerald-700 font-mono mt-0.5">Manager Logistik</div>
                                           </div>
+                                          <span className="text-[8.5px] font-mono font-black text-emerald-700 bg-emerald-100 px-1.5 py-0.5 rounded shrink-0">✓ ACC</span>
                                         </div>
-                                        <span className="text-[9px] font-mono font-bold text-emerald-600 bg-emerald-100 px-1.5 py-0.5 rounded">✓ ACC</span>
-                                      </div>
-                                    ) : (
-                                      <button
-                                        type="button"
-                                        onClick={async (e) => {
-                                          e.stopPropagation();
-                                          setActiveActionId(null);
-                                          const now = new Date().toISOString();
-                                          if (onUpdateDispatch) {
-                                            await onUpdateDispatch(item.id, {
-                                              emir_signed: true,
-                                              emir_signed_at: now,
-                                              emir_signature_url: "https://api.dicebear.com/7.x/initials/svg?seed=EmirFerdian"
-                                            });
-                                          }
-                                        }}
-                                        className="w-full px-2.5 py-2 text-xs font-bold bg-amber-50 hover:bg-amber-100 text-amber-900 rounded-lg border border-amber-200 flex items-center justify-between cursor-pointer transition-colors text-left"
-                                        title="Beri Tanda Tangan Digital Manager Logistik (Mohamat Emir Ferdian)"
-                                      >
-                                        <div className="flex items-center gap-2">
-                                          <CheckCircle className="w-3.5 h-3.5 text-amber-600" />
-                                          <span>✓ TTD Level 2 (Emir)</span>
-                                        </div>
-                                        <span className="text-[9px] font-mono bg-amber-200 text-amber-900 px-1.5 py-0.5 rounded font-black">ACC</span>
-                                      </button>
-                                    )}
+                                      ) : (
+                                        <button
+                                          type="button"
+                                          onClick={async (e) => {
+                                            e.stopPropagation();
+                                            setActiveActionId(null);
+                                            const now = new Date().toISOString();
+                                            if (onUpdateDispatch) {
+                                              await onUpdateDispatch(item.id, {
+                                                emir_signed: true,
+                                                emir_signed_at: now,
+                                                emir_signature_url: "https://api.dicebear.com/7.x/initials/svg?seed=EmirFerdian"
+                                              });
+                                            }
+                                          }}
+                                          className="px-2 py-1.5 bg-amber-50 hover:bg-amber-100 text-amber-900 border border-amber-200 rounded-lg flex items-center justify-between text-[10.5px] font-bold cursor-pointer transition-colors text-left"
+                                          title="Beri Tanda Tangan Digital Manager Logistik (Mohamat Emir Ferdian)"
+                                        >
+                                          <div className="truncate">
+                                            <div className="font-bold truncate leading-none">Emir F.</div>
+                                            <div className="text-[8.5px] text-amber-700 font-mono mt-0.5">Manager Logistik</div>
+                                          </div>
+                                          <span className="text-[8.5px] font-mono bg-amber-200 text-amber-900 px-1.5 py-0.5 rounded font-black shrink-0">TTD</span>
+                                        </button>
+                                      )}
 
-                                    {/* 4. SUMBONO (VP RENDALHAR) */}
-                                    {item.sumbono_signed ? (
-                                      <div className="px-2.5 py-1.5 bg-emerald-50/80 border border-emerald-200/80 rounded-lg flex items-center justify-between">
-                                        <div className="flex items-center gap-1.5">
-                                          <CheckCircle className="w-3.5 h-3.5 text-emerald-600 shrink-0" />
-                                          <div>
-                                            <div className="text-[11px] font-bold text-emerald-900 leading-tight">Sumbono</div>
-                                            <div className="text-[9px] text-emerald-700 font-mono">VP Rendalhar &bull; Signed</div>
+                                      {/* 4. SUMBONO (VP RENDALHAR) */}
+                                      {item.sumbono_signed ? (
+                                        <div className="px-2 py-1.5 bg-emerald-50 border border-emerald-200/80 rounded-lg flex items-center justify-between text-[10.5px]">
+                                          <div className="truncate">
+                                            <div className="font-bold text-emerald-950 truncate leading-none">Sumbono</div>
+                                            <div className="text-[8.5px] text-emerald-700 font-mono mt-0.5">VP Rendalhar</div>
                                           </div>
+                                          <span className="text-[8.5px] font-mono font-black text-emerald-700 bg-emerald-100 px-1.5 py-0.5 rounded shrink-0">✓ ACC</span>
                                         </div>
-                                        <span className="text-[9px] font-mono font-bold text-emerald-600 bg-emerald-100 px-1.5 py-0.5 rounded">✓ ACC</span>
-                                      </div>
-                                    ) : (
-                                      <button
-                                        type="button"
-                                        onClick={async (e) => {
-                                          e.stopPropagation();
-                                          setActiveActionId(null);
-                                          const now = new Date().toISOString();
-                                          if (onUpdateDispatch) {
-                                            await onUpdateDispatch(item.id, {
-                                              sumbono_signed: true,
-                                              sumbono_signed_at: now,
-                                              sumbono_signature_url: "https://api.dicebear.com/7.x/initials/svg?seed=Sumbono",
-                                              status: DispatchStatus.DELIVERED
-                                            });
-                                          }
-                                        }}
-                                        className="w-full px-2.5 py-2 text-xs font-bold bg-indigo-50 hover:bg-indigo-100 text-indigo-900 rounded-lg border border-indigo-200 flex items-center justify-between cursor-pointer transition-colors text-left"
-                                        title="Beri Tanda Tangan Digital VP Rendalhar (Sumbono)"
-                                      >
-                                        <div className="flex items-center gap-2">
-                                          <CheckCircle className="w-3.5 h-3.5 text-indigo-600" />
-                                          <span>✓ Sahkan & TTD (Sumbono)</span>
-                                        </div>
-                                        <span className="text-[9px] font-mono bg-indigo-200 text-indigo-900 px-1.5 py-0.5 rounded font-black">ACC</span>
-                                      </button>
-                                    )}
+                                      ) : (
+                                        <button
+                                          type="button"
+                                          onClick={async (e) => {
+                                            e.stopPropagation();
+                                            setActiveActionId(null);
+                                            const now = new Date().toISOString();
+                                            if (onUpdateDispatch) {
+                                              await onUpdateDispatch(item.id, {
+                                                sumbono_signed: true,
+                                                sumbono_signed_at: now,
+                                                sumbono_signature_url: "https://api.dicebear.com/7.x/initials/svg?seed=Sumbono",
+                                                status: DispatchStatus.DELIVERED
+                                              });
+                                            }
+                                          }}
+                                          className="px-2 py-1.5 bg-indigo-50 hover:bg-indigo-100 text-indigo-900 border border-indigo-200 rounded-lg flex items-center justify-between text-[10.5px] font-bold cursor-pointer transition-colors text-left"
+                                          title="Beri Tanda Tangan Digital VP Rendalhar (Sumbono)"
+                                        >
+                                          <div className="truncate">
+                                            <div className="font-bold truncate leading-none">Sumbono</div>
+                                            <div className="text-[8.5px] text-indigo-700 font-mono mt-0.5">VP Rendalhar</div>
+                                          </div>
+                                          <span className="text-[8.5px] font-mono bg-indigo-200 text-indigo-900 px-1.5 py-0.5 rounded font-black shrink-0">TTD</span>
+                                        </button>
+                                      )}
+                                    </div>
                                   </div>
 
                                   {/* SECTION 2: DOKUMEN & OPERASIONAL */}
