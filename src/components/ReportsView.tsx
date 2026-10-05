@@ -106,6 +106,10 @@ export default function ReportsView({
 
   const safeFormatDate = (dateVal?: any, options?: Intl.DateTimeFormatOptions) => {
     if (!dateVal) return "-";
+    if (typeof dateVal === "string" && /^\d{4}-\d{2}-\d{2}$/.test(dateVal)) {
+      const [y, m, d] = dateVal.split("-").map(Number);
+      return new Date(y, m - 1, d).toLocaleDateString("id-ID", options);
+    }
     const d = new Date(dateVal);
     if (isNaN(d.getTime())) return String(dateVal);
     return d.toLocaleDateString("id-ID", options);
@@ -221,7 +225,9 @@ export default function ReportsView({
               reference_number: refCode,
               vessel_name: dspVessel,
               remarks: `Outbound TUG 8 | Kapal: ${dsp.vessel_name || '-'} | Tujuan: ${dsp.destination_port || 'Pelabuhan'} | Transporter: ${dsp.transporter_name || '-'}`,
-              transaction_date: dsp.dispatch_date || dsp.created_at || new Date().toISOString(),
+              transaction_date: dsp.dispatch_date 
+                ? (dsp.dispatch_date.includes("T") ? dsp.dispatch_date : `${dsp.dispatch_date}T12:00:00.000Z`)
+                : (dsp.created_at || new Date().toISOString()),
               created_by: dsp.created_by || "Staff Gudang"
             });
           }
@@ -501,19 +507,19 @@ export default function ReportsView({
         const spkDate = new Date(s.created_at);
         spkDate.setHours(0, 0, 0, 0);
 
-        const now = new Date();
-        now.setHours(0, 0, 0, 0);
+        const endOfToday = new Date();
+        endOfToday.setHours(23, 59, 59, 999);
 
         if (timeFilter === "week") {
           const oneWeekAgo = new Date();
-          oneWeekAgo.setDate(now.getDate() - 7);
+          oneWeekAgo.setDate(endOfToday.getDate() - 7);
           oneWeekAgo.setHours(0, 0, 0, 0);
-          if (spkDate < oneWeekAgo || spkDate > now) return false;
+          if (spkDate < oneWeekAgo || spkDate > endOfToday) return false;
         } else if (timeFilter === "month") {
           const oneMonthAgo = new Date();
-          oneMonthAgo.setDate(now.getDate() - 30);
+          oneMonthAgo.setDate(endOfToday.getDate() - 30);
           oneMonthAgo.setHours(0, 0, 0, 0);
-          if (spkDate < oneMonthAgo || spkDate > now) return false;
+          if (spkDate < oneMonthAgo || spkDate > endOfToday) return false;
         } else if (timeFilter === "custom") {
           if (dateFrom) {
             const from = new Date(dateFrom);
@@ -563,19 +569,19 @@ export default function ReportsView({
       const txDate = new Date(m.transaction_date);
       txDate.setHours(0, 0, 0, 0);
 
-      const now = new Date();
-      now.setHours(0, 0, 0, 0);
+      const endOfToday = new Date();
+      endOfToday.setHours(23, 59, 59, 999);
 
       if (timeFilter === "week") {
         const oneWeekAgo = new Date();
-        oneWeekAgo.setDate(now.getDate() - 7);
+        oneWeekAgo.setDate(endOfToday.getDate() - 7);
         oneWeekAgo.setHours(0, 0, 0, 0);
-        if (txDate < oneWeekAgo || txDate > now) return false;
+        if (txDate < oneWeekAgo || txDate > endOfToday) return false;
       } else if (timeFilter === "month") {
         const oneMonthAgo = new Date();
-        oneMonthAgo.setDate(now.getDate() - 30);
+        oneMonthAgo.setDate(endOfToday.getDate() - 30);
         oneMonthAgo.setHours(0, 0, 0, 0);
-        if (txDate < oneMonthAgo || txDate > now) return false;
+        if (txDate < oneMonthAgo || txDate > endOfToday) return false;
       } else if (timeFilter === "custom") {
         if (dateFrom) {
           const from = new Date(dateFrom);

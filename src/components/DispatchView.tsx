@@ -277,6 +277,8 @@ export default function DispatchView({
   const [notesText, setNotesText] = useState("");
   const [wName, setWName] = useState("GUDANG UTAMA");
   const [dDest, setDDest] = useState("Port Agent / Vessel Side");
+  const [dispatchDate, setDispatchDate] = useState<string>(() => new Date().toISOString().split("T")[0]);
+  const [editDispatchDate, setEditDispatchDate] = useState<string>("");
 
   const [dispatchItems, setDispatchItems] = useState<any[]>([]);
   const [tableTabFilter, setTableTabFilter] = useState<"shortage" | "selected" | "complete" | "all">("shortage");
@@ -698,7 +700,13 @@ export default function DispatchView({
           ? `[PENGIRIMAN PARSIAL TAHAP ${currentPhase}] ` + notesText 
           : (currentPhase > 1 ? `[PENGIRIMAN SUSULAN LENGKAP TAHAP ${currentPhase}] ` : "") + notesText;
 
+        const customDateIso = dispatchDate 
+          ? new Date(`${dispatchDate}T12:00:00.000Z`).toISOString() 
+          : new Date().toISOString();
+
         const payload: Partial<OutboundDispatch> = {
+          dispatch_date: dispatchDate || new Date().toISOString().split("T")[0],
+          created_at: customDateIso,
           request_reference: selectedMR.request_number,
           vessel_name: selectedMR.vessel_name,
           warehouse_name: wName,
@@ -720,7 +728,7 @@ export default function DispatchView({
           status: isPartial ? "DISPATCHED_PARTIAL" : DispatchStatus.DISPATCHED,
           dispatch_logs: [
             {
-              timestamp: new Date().toISOString(),
+              timestamp: customDateIso,
               action: `PENGIRIMAN TAHAP ${currentPhase}`,
               user: role || "Petugas Gudang",
               notes: isPartial 
@@ -753,6 +761,7 @@ export default function DispatchView({
         setNotesText("");
         setWName("GUDANG UTAMA");
         setDDest("Port Agent / Vessel Side");
+        setDispatchDate(new Date().toISOString().split("T")[0]);
 
         let successMsg = `Pengiriman Tahap ${currentPhase} (TUG 8) berhasil diterbitkan!`;
         if (selectedMR.work_order_ref) {
@@ -777,7 +786,13 @@ export default function DispatchView({
 
         const vTarget = targetVesselName.trim() || `Kapal Penerima (ex-${selectedReturn.vessel_name})`;
 
+        const customDateIso = dispatchDate 
+          ? new Date(`${dispatchDate}T12:00:00.000Z`).toISOString() 
+          : new Date().toISOString();
+
         const payload: Partial<OutboundDispatch> = {
+          dispatch_date: dispatchDate || new Date().toISOString().split("T")[0],
+          created_at: customDateIso,
           request_reference: selectedReturn.return_number,
           vessel_name: vTarget,
           warehouse_name: wName || selectedReturn.warehouse_name || "GUDANG PENURUNAN",
@@ -816,6 +831,7 @@ export default function DispatchView({
         setNotesText("");
         setWName("GUDANG UTAMA");
         setDDest("Port Agent / Vessel Side");
+        setDispatchDate(new Date().toISOString().split("T")[0]);
 
         alert(`Transfer Antar Kapal Berhasil!\n\nDokumen Pengiriman TUG 8 telah terbit untuk kapal ${vTarget} dan terhubung dengan penurunan barang kapal ${selectedReturn.vessel_name} (TUG 10: ${selectedReturn.return_number}).\nStatus dokumen TUG 10 otomatis diubah menjadi COMPLETED.`);
       }
@@ -853,6 +869,8 @@ export default function DispatchView({
     setDeliveryDestination(dsp.delivery_destination || "");
     setNotes(dsp.notes || "");
     setDispatchStatusFlg(dsp.status);
+    const dVal = (dsp as any).dispatch_date || (dsp.created_at ? dsp.created_at.split("T")[0] : "");
+    setEditDispatchDate(dVal ? dVal.split("T")[0] : new Date().toISOString().split("T")[0]);
     setErrorMessage(null);
   };
 
@@ -869,7 +887,9 @@ export default function DispatchView({
         driver_pic: driverPic,
         warehouse_name: warehouseName,
         delivery_destination: deliveryDestination,
-        notes: notes
+        notes: notes,
+        dispatch_date: editDispatchDate || undefined,
+        created_at: editDispatchDate ? new Date(`${editDispatchDate}T12:00:00.000Z`).toISOString() : selectedDispatch.created_at
       });
       setSelectedDispatch(null);
     } catch (err: any) {
@@ -2390,6 +2410,24 @@ export default function DispatchView({
                           ⚠️ Status DISPATCHED secara resmi memotong Stok Fisik suku cadang pada WMS dan mencatat histori Kartu Stok (Ledger / Mutasi). Sisa kuota akan dicadangkan.
                         </p>
                       )}
+                    </div>
+
+                    {/* Tanggal Transaksi / Pengiriman TUG 8 */}
+                    <div>
+                      <label className="text-[10px] uppercase font-bold text-slate-500 font-mono block mb-1 flex items-center gap-1.5">
+                        <Calendar className="w-3.5 h-3.5 text-blue-600" />
+                        Tanggal Transaksi Pengiriman (TUG 8)
+                      </label>
+                      <input
+                        type="date"
+                        value={editDispatchDate}
+                        disabled={isLoading}
+                        onChange={(e) => setEditDispatchDate(e.target.value)}
+                        className="w-full bg-slate-50 border border-slate-250 p-2 text-xs rounded font-mono font-bold text-slate-800 focus:outline-none focus:ring-1 focus:ring-blue-500 cursor-pointer"
+                      />
+                      <span className="text-[9px] text-slate-400 font-mono mt-0.5 block">
+                        Menyesuaikan tanggal pada Laporan Keluar Masuk &amp; Mutasi Stok
+                      </span>
                     </div>
 
                     {/* Warehouse Name input */}
@@ -4041,6 +4079,29 @@ export default function DispatchView({
                     <span className="text-[10px] text-slate-500 bg-slate-100 border border-slate-200 px-2 py-0.5 rounded font-mono font-bold">
                       Opsional / Tidak Wajib
                     </span>
+                  </div>
+
+                  {/* Tanggal Transaksi / Pengiriman TUG 8 */}
+                  <div className="bg-gradient-to-r from-blue-50/90 via-indigo-50/60 to-slate-50 border border-blue-200 p-3.5 rounded-xl flex flex-col sm:flex-row sm:items-center justify-between gap-3 shadow-2xs">
+                    <div className="space-y-0.5">
+                      <label className="text-xs font-black text-blue-950 uppercase tracking-wide flex items-center gap-1.5 font-sans">
+                        <Calendar className="w-4 h-4 text-blue-600 shrink-0" />
+                        Tanggal Transaksi Pengiriman (TUG 8)
+                        <span className="text-rose-500 font-bold">*</span>
+                      </label>
+                      <p className="text-[10px] text-slate-500 leading-tight">
+                        Tentukan tanggal resmi keluar barang. Tanggal ini akan otomatis tercatat dan menyesuaikan pada <strong>Laporan Keluar Masuk</strong>, Kartu Mutasi Stok, serta Dokumen Surat Jalan.
+                      </p>
+                    </div>
+                    <div className="shrink-0 w-full sm:w-56">
+                      <input
+                        type="date"
+                        required
+                        value={dispatchDate}
+                        onChange={(e) => setDispatchDate(e.target.value)}
+                        className="w-full bg-white border border-blue-300 rounded-lg text-xs px-3 py-2 font-mono font-bold text-slate-900 shadow-xs focus:outline-none focus:ring-2 focus:ring-blue-500 cursor-pointer"
+                      />
+                    </div>
                   </div>
 
                   <div className="grid grid-cols-1 md:grid-cols-3 gap-4">

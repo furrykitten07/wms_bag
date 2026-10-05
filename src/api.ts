@@ -785,7 +785,8 @@ function getLocalFallbackData<T>(url: string, options: RequestInit = {}): T {
       delivery_destination: body.delivery_destination || "Port Agent / Vessel Side",
       notes: body.notes || "",
       created_by: currentUsername || "Petugas Gudang",
-      created_at: nowStr,
+      dispatch_date: body.dispatch_date ? String(body.dispatch_date).split("T")[0] : nowStr.split("T")[0],
+      created_at: body.created_at || (body.dispatch_date ? new Date(`${String(body.dispatch_date).split("T")[0]}T12:00:00.000Z`).toISOString() : nowStr),
       updated_at: nowStr,
       work_order_ref: body.work_order_ref || "",
       account_code: body.account_code || "BPP",
@@ -1281,7 +1282,7 @@ async function fetcher<T>(url: string, options: RequestInit = {}): Promise<T> {
           status: body.status || "Draft",
           items: body.items || [],
           created_by: currentUsername || "Petugas Gudang",
-          created_at: now,
+          created_at: body.created_at || (body.dispatch_date ? new Date(`${String(body.dispatch_date).split("T")[0]}T12:00:00.000Z`).toISOString() : now),
           updated_at: now
         };
         const cleanRec = sanitizeRecord(rec, VALID_DSP_COLUMNS);
@@ -1300,6 +1301,9 @@ async function fetcher<T>(url: string, options: RequestInit = {}): Promise<T> {
         const payload = { ...body, updated_at: now };
         if (payload.dispatch_date) {
           payload.dispatch_date = String(payload.dispatch_date).split("T")[0];
+          if (!payload.created_at) {
+            payload.created_at = new Date(`${payload.dispatch_date}T12:00:00.000Z`).toISOString();
+          }
         }
         const cleanUpdate = sanitizeRecord(payload, VALID_DSP_COLUMNS);
         const { data, error } = await supabase.from("outbound_dispatches").update(cleanUpdate).eq("id", id).select().single();

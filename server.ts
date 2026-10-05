@@ -1205,7 +1205,8 @@ app.post("/api/dispatch", async (req, res) => {
     delivery_destination: body.delivery_destination || "Port Agent / Vessel Side",
     notes: body.notes || "",
     created_by: userHeader || "Budi Santoso",
-    created_at: nowStr,
+    dispatch_date: body.dispatch_date ? String(body.dispatch_date).split("T")[0] : nowStr.split("T")[0],
+    created_at: body.created_at || (body.dispatch_date ? new Date(`${String(body.dispatch_date).split("T")[0]}T12:00:00.000Z`).toISOString() : nowStr),
     updated_at: nowStr,
     work_order_ref: body.work_order_ref || "",
     account_code: body.account_code || "BPP",
@@ -1365,9 +1366,14 @@ app.put("/api/dispatch/:id", (req, res) => {
     sumbono_signature_url: updateBody.sumbono_signature_url || oldDsp.sumbono_signature_url,
     courier_name: updateBody.courier_name !== undefined ? updateBody.courier_name : oldDsp.courier_name,
     tracking_number: updateBody.tracking_number !== undefined ? updateBody.tracking_number : oldDsp.tracking_number,
-    dispatch_date: (nextStatus === DispatchStatus.DISPATCHED || nextStatus === "Ready To Dispatch" as any) 
-      ? new Date().toISOString() 
-      : oldDsp.dispatch_date,
+    dispatch_date: updateBody.dispatch_date !== undefined 
+      ? String(updateBody.dispatch_date).split("T")[0] 
+      : ((nextStatus === DispatchStatus.DISPATCHED || nextStatus === "Ready To Dispatch" as any) 
+        ? (oldDsp.dispatch_date || new Date().toISOString().split("T")[0]) 
+        : oldDsp.dispatch_date),
+    created_at: updateBody.dispatch_date 
+      ? new Date(`${String(updateBody.dispatch_date).split("T")[0]}T12:00:00.000Z`).toISOString() 
+      : oldDsp.created_at,
     notes: updateBody.notes !== undefined ? updateBody.notes : oldDsp.notes,
     driver_pic: updateBody.driver_pic !== undefined ? updateBody.driver_pic : oldDsp.driver_pic,
     delivery_destination: updateBody.delivery_destination !== undefined ? updateBody.delivery_destination : oldDsp.delivery_destination,
