@@ -37,7 +37,9 @@ import {
   ShieldCheck,
   CheckCircle,
   Layers,
-  PackageCheck
+  PackageCheck,
+  Edit3,
+  Plus
 } from "lucide-react";
 import { OutboundDispatch, DispatchStatus, UserRole, SparePart, MaterialRequest, SPKWorkOrder, MaterialReturn, InboundReceiving, ReceivingStatus, Vessel } from "../types.js";
 import { FLEET_VESSELS } from "./ReceivingView.js";
@@ -279,6 +281,17 @@ export default function DispatchView({
   const [dDest, setDDest] = useState("Port Agent / Vessel Side");
   const [dispatchDate, setDispatchDate] = useState<string>(() => new Date().toISOString().split("T")[0]);
   const [editDispatchDate, setEditDispatchDate] = useState<string>("");
+  const [editVesselName, setEditVesselName] = useState<string>("");
+  const [editTug8Number, setEditTug8Number] = useState<string>("");
+  const [editSuratJalanNumber, setEditSuratJalanNumber] = useState<string>("");
+  const [editItems, setEditItems] = useState<any[]>([]);
+  const [showAddItemForm, setShowAddItemForm] = useState<boolean>(false);
+  const [selectedAddPartId, setSelectedAddPartId] = useState<string>("");
+  const [customPartName, setCustomPartName] = useState<string>("");
+  const [customPartNumber, setCustomPartNumber] = useState<string>("");
+  const [customPartQty, setCustomPartQty] = useState<number>(1);
+  const [customPartUnit, setCustomPartUnit] = useState<string>("PCS");
+  const [customPartPrice, setCustomPartPrice] = useState<number>(0);
 
   const [dispatchItems, setDispatchItems] = useState<any[]>([]);
   const [tableTabFilter, setTableTabFilter] = useState<"shortage" | "selected" | "complete" | "all">("shortage");
@@ -871,16 +884,101 @@ export default function DispatchView({
     setDispatchStatusFlg(dsp.status);
     const dVal = (dsp as any).dispatch_date || (dsp.created_at ? dsp.created_at.split("T")[0] : "");
     setEditDispatchDate(dVal ? dVal.split("T")[0] : new Date().toISOString().split("T")[0]);
+    setEditVesselName(dsp.vessel_name || "");
+    setEditTug8Number(dsp.tug8_number || dsp.bon_pengeluaran_number || "");
+    setEditSuratJalanNumber(dsp.surat_jalan_number || "");
+    setEditItems(
+      (dsp.items || []).map((itm, i) => ({
+        ...itm,
+        spare_part_id: itm.spare_part_id || `item-${Date.now()}-${i}`,
+        spare_part_name: itm.spare_part_name || "Suku Cadang",
+        part_number: itm.part_number || "-",
+        qty_requested: itm.qty_requested !== undefined ? Number(itm.qty_requested) : (Number(itm.qty_dispatched) || 1),
+        qty_dispatched: itm.qty_dispatched !== undefined ? Number(itm.qty_dispatched) : (Number(itm.qty_requested) || 1),
+        unit_price: itm.unit_price !== undefined ? Number(itm.unit_price) : 0,
+        unit: itm.unit || "PCS"
+      }))
+    );
+    setShowAddItemForm(false);
+    setSelectedAddPartId("");
+    setCustomPartName("");
+    setCustomPartNumber("");
+    setCustomPartQty(1);
+    setCustomPartUnit("PCS");
+    setCustomPartPrice(0);
     setErrorMessage(null);
+  };
+
+  const handleAddEditItem = () => {
+    let name = customPartName.trim();
+    let num = customPartNumber.trim();
+    let unit = customPartUnit.trim() || "PCS";
+    let price = customPartPrice;
+    let partId = selectedAddPartId;
+
+    if (selectedAddPartId) {
+      const p = parts.find(part => part.id === selectedAddPartId);
+      if (p) {
+        name = name || p.part_name;
+        num = num || p.part_number;
+        unit = unit || p.unit || "PCS";
+        price = price || p.unit_price || 0;
+      }
+    }
+
+    if (!name) {
+      alert("Harap masukkan nama suku cadang atau pilih dari katalog.");
+      return;
+    }
+
+    const newItem = {
+      spare_part_id: partId || `custom-${Date.now()}`,
+      spare_part_name: name,
+      part_number: num || "-",
+      qty_requested: Number(customPartQty) || 1,
+      qty_dispatched: Number(customPartQty) || 1,
+      unit: unit,
+      unit_price: Number(price) || 0
+    };
+
+    setEditItems(prev => [...prev, newItem]);
+    setSelectedAddPartId("");
+    setCustomPartName("");
+    setCustomPartNumber("");
+    setCustomPartQty(1);
+    setCustomPartUnit("PCS");
+    setCustomPartPrice(0);
+    setShowAddItemForm(false);
   };
 
   const handleCommitDispatchUpdate = async () => {
     if (!selectedDispatch) return;
+    if (!editVesselName.trim()) {
+      setErrorMessage("Nama kapal tujuan tidak boleh kosong.");
+      return;
+    }
+    if (editItems.length === 0) {
+      setErrorMessage("Daftar barang tidak boleh kosong. Minimal harus ada 1 suku cadang.");
+      return;
+    }
     setIsLoading(true);
     setErrorMessage(null);
 
     try {
-      await onUpdateDispatch(selectedDispatch.id, {
+      const isPartialCalc = editItems.some(i => (Number(i.qty_dispatched) || 0) < (Number(i.qty_requested) || Number(i.qty_dispatched) || 0));
+      const incompleteSummary = editItems
+        .filter(i => (Number(i.qty_dispatched) || 0) < (Number(i.qty_requested) || 0))
+        .map(i => `${i.spare_part_name} (${i.part_number}): Terkirim ${i.qty_dispatched || 0}/${i.qty_requested} ${i.unit}`)
+        .join("; ");
+
+      const sanitizedItems = editItems.map(itm => ({
+        ...itm,
+        qty_dispatched: Number(itm.qty_dispatched) || 0,
+        qty_requested: Number(itm.qty_requested) !== undefined ? Number(itm.qty_requested) : (Number(itm.qty_dispatched) || 0),
+        unit_price: Number(itm.unit_price) || 0
+      }));
+
+      const updatePayload: Partial<OutboundDispatch> = {
         status: dispatchStatusFlg,
         courier_name: courierName,
         tracking_number: trackingNumber,
@@ -888,12 +986,21 @@ export default function DispatchView({
         warehouse_name: warehouseName,
         delivery_destination: deliveryDestination,
         notes: notes,
+        vessel_name: editVesselName,
+        tug8_number: editTug8Number || selectedDispatch.tug8_number,
+        bon_pengeluaran_number: editTug8Number || selectedDispatch.bon_pengeluaran_number,
+        surat_jalan_number: editSuratJalanNumber || selectedDispatch.surat_jalan_number,
+        items: sanitizedItems,
+        is_partial: isPartialCalc,
+        incomplete_items_summary: isPartialCalc ? incompleteSummary : undefined,
         dispatch_date: editDispatchDate || undefined,
         created_at: editDispatchDate ? new Date(`${editDispatchDate}T12:00:00.000Z`).toISOString() : selectedDispatch.created_at
-      });
+      };
+
+      await onUpdateDispatch(selectedDispatch.id, updatePayload);
       setSelectedDispatch(null);
     } catch (err: any) {
-      setErrorMessage(err.message || "Gagal memperbarui status pengiriman.");
+      setErrorMessage(err.message || "Gagal memperbarui status dan data pengiriman.");
     } finally {
       setIsLoading(false);
     }
@@ -1986,12 +2093,15 @@ export default function DispatchView({
                                         setActiveActionId(null);
                                         handleOpenUpdateModal(item);
                                       }}
-                                      className="w-full px-2.5 py-1.5 text-xs font-medium hover:bg-slate-100 text-slate-700 rounded-lg flex items-center gap-2 cursor-pointer transition-colors text-left"
+                                      className="w-full px-2.5 py-2 text-xs font-bold bg-blue-50 hover:bg-blue-100 text-blue-800 rounded-lg border border-blue-200/80 flex items-center gap-2 cursor-pointer transition-colors text-left shadow-2xs"
                                     >
                                       {role !== UserRole.VESSEL_CREW ? (
                                         <>
-                                          <SlidersHorizontal className="w-3.5 h-3.5 text-blue-500" />
-                                          <span>Update Status & Driver</span>
+                                          <Edit3 className="w-3.5 h-3.5 text-blue-600 shrink-0" />
+                                          <div className="flex flex-col">
+                                            <span>Edit Data Pengiriman (TUG 8)</span>
+                                            <span className="text-[9px] font-normal text-blue-600/80">Koreksi barang, qty, kapal, driver &amp; tanggal</span>
+                                          </div>
                                         </>
                                       ) : (
                                         <>
@@ -2169,11 +2279,21 @@ export default function DispatchView({
             
             {/* Modal Title bar */}
             <div className="bg-slate-900 text-white px-5 py-4 flex justify-between items-center border-b border-slate-800 shrink-0">
-              <div className="flex items-center gap-2">
-                <Truck className="w-5 h-5 text-orange-400" />
-                <h3 className="font-display font-black text-xs uppercase tracking-widest">
-                  Outbound Logistics Dispatch Control Center (Ref: {selectedDispatch.dispatch_number})
-                </h3>
+              <div className="flex items-center gap-3">
+                <div className="p-2 bg-blue-600/30 text-blue-400 rounded-lg border border-blue-500/30">
+                  <Edit3 className="w-5 h-5" />
+                </div>
+                <div>
+                  <h3 className="font-display font-black text-xs uppercase tracking-widest flex items-center gap-2">
+                    <span>Edit Data Pengiriman & Outbound Dispatch (TUG 8)</span>
+                    <span className="text-[10px] bg-blue-500/20 text-blue-300 font-mono px-2 py-0.5 rounded border border-blue-400/30">
+                      Ref: {selectedDispatch.dispatch_number || selectedDispatch.tug8_number || selectedDispatch.id}
+                    </span>
+                  </h3>
+                  <p className="text-[10.5px] text-slate-400 font-mono mt-0.5">
+                    Koreksi kesalahan pengiriman: kapal tujuan, kuantitas suku cadang, no dokumen, driver, dan tanggal transaksi.
+                  </p>
+                </div>
               </div>
               <button onClick={() => setSelectedDispatch(null)} className="text-slate-400 hover:text-white cursor-pointer p-1">
                 <X className="w-5 h-5" />
@@ -2199,22 +2319,88 @@ export default function DispatchView({
                 )}
 
                 {/* General Card Information Info Box */}
-                <div className="bg-slate-50 border border-slate-200 p-4 rounded-md space-y-1.5 select-none text-slate-600">
-                  <div className="flex justify-between border-b border-slate-150 pb-1.5 mb-1.5">
-                    <span className="font-mono text-[9px] font-bold text-slate-400">Kapal Tujuan (Vessel)</span>
-                    <span className="font-bold text-slate-900">⚓ {selectedDispatch.vessel_name}</span>
+                <div className="bg-slate-50 border border-slate-200 p-4 rounded-md space-y-2.5 text-slate-700">
+                  {/* Vessel selection / edit */}
+                  <div className="border-b border-slate-200 pb-2">
+                    <label className="font-mono text-[9.5px] font-bold text-slate-500 uppercase flex items-center justify-between mb-1">
+                      <span className="flex items-center gap-1">
+                        <Anchor className="w-3.5 h-3.5 text-blue-600" /> Kapal Tujuan (Vessel)
+                      </span>
+                      {role !== UserRole.VESSEL_CREW && (
+                        <span className="text-[9px] text-blue-600 font-bold bg-blue-100/60 px-1.5 py-0.5 rounded">Dapat Diedit</span>
+                      )}
+                    </label>
+                    {role !== UserRole.VESSEL_CREW ? (
+                      <div className="flex gap-2 items-center">
+                        <select
+                          value={editVesselName}
+                          onChange={(e) => setEditVesselName(e.target.value)}
+                          className="flex-1 bg-white border border-slate-300 p-1.5 rounded text-xs font-bold text-slate-900 focus:outline-none focus:ring-1 focus:ring-blue-500 cursor-pointer"
+                        >
+                          {vessels && vessels.length > 0 ? (
+                            vessels.map(v => (
+                              <option key={v.id || v.name} value={v.name}>{v.name}</option>
+                            ))
+                          ) : (
+                            FLEET_VESSELS.map(v => (
+                              <option key={v} value={v}>{v}</option>
+                            ))
+                          )}
+                          {!((vessels || []).some(v => v.name === editVesselName) || FLEET_VESSELS.includes(editVesselName as any)) && editVesselName && (
+                            <option value={editVesselName}>{editVesselName}</option>
+                          )}
+                        </select>
+                        <input
+                          type="text"
+                          placeholder="Nama kapal..."
+                          value={editVesselName}
+                          onChange={(e) => setEditVesselName(e.target.value)}
+                          className="w-36 bg-white border border-slate-300 p-1.5 rounded text-xs font-semibold text-slate-900 focus:outline-none focus:ring-1 focus:ring-blue-500"
+                        />
+                      </div>
+                    ) : (
+                      <div className="font-bold text-slate-900 text-xs">⚓ {selectedDispatch.vessel_name}</div>
+                    )}
                   </div>
-                  <div className="flex justify-between">
-                    <span>No. TUG 8:</span>
-                    <span className="font-mono font-bold text-rose-800">{selectedDispatch.tug8_number || "AWAITING"}</span>
+
+                  {/* No. TUG 8 & No. Surat Jalan */}
+                  <div className="grid grid-cols-2 gap-2 border-b border-slate-200 pb-2">
+                    <div>
+                      <span className="font-mono text-[9px] font-bold text-slate-500 uppercase block mb-1">No. TUG 8</span>
+                      {role !== UserRole.VESSEL_CREW ? (
+                        <input
+                          type="text"
+                          value={editTug8Number}
+                          onChange={(e) => setEditTug8Number(e.target.value)}
+                          className="w-full bg-white border border-slate-300 p-1.5 rounded text-xs font-mono font-bold text-rose-800 focus:outline-none focus:ring-1 focus:ring-blue-500"
+                        />
+                      ) : (
+                        <span className="font-mono font-bold text-rose-800 text-xs">{selectedDispatch.tug8_number || "AWAITING"}</span>
+                      )}
+                    </div>
+                    <div>
+                      <span className="font-mono text-[9px] font-bold text-slate-500 uppercase block mb-1">No. Surat Jalan</span>
+                      {role !== UserRole.VESSEL_CREW ? (
+                        <input
+                          type="text"
+                          value={editSuratJalanNumber}
+                          onChange={(e) => setEditSuratJalanNumber(e.target.value)}
+                          placeholder="SJL-..."
+                          className="w-full bg-white border border-slate-300 p-1.5 rounded text-xs font-mono font-bold text-emerald-800 focus:outline-none focus:ring-1 focus:ring-blue-500"
+                        />
+                      ) : (
+                        <span className="font-mono font-bold text-emerald-800 text-xs">{selectedDispatch.surat_jalan_number || "-"}</span>
+                      )}
+                    </div>
                   </div>
-                  <div className="flex justify-between">
-                    <span>Material Request Ref:</span>
-                    <span className="font-mono font-bold text-blue-700">{selectedDispatch.request_reference}</span>
+
+                  <div className="flex justify-between text-xs">
+                    <span className="text-slate-500">Material Request Ref:</span>
+                    <span className="font-mono font-bold text-blue-700">{selectedDispatch.request_reference || "-"}</span>
                   </div>
-                  <div className="flex justify-between">
-                    <span>Coordinated By:</span>
-                    <span>{selectedDispatch.created_by}</span>
+                  <div className="flex justify-between text-xs">
+                    <span className="text-slate-500">Coordinated By:</span>
+                    <span className="font-semibold text-slate-800">{selectedDispatch.created_by || "Petugas Gudang"}</span>
                   </div>
                 </div>
 
@@ -2530,20 +2716,151 @@ export default function DispatchView({
               {/* Right Side: Interactive WMS Picking Sheet with real coordinates & stock checking (7 Cols) */}
               <div className="lg:col-span-7 space-y-4">
                 <div className="flex justify-between items-center pb-2 border-b border-slate-100 shrink-0">
-                  <h4 className="text-xs uppercase font-mono font-bold tracking-widest text-slate-800 flex items-center gap-1">
-                    <CheckSquare className="w-4 h-4 text-orange-500" /> 2. Lembar Picking Suku Cadang (WMS Helper)
-                  </h4>
-                  <span className="text-[9.5px] text-slate-400 font-mono uppercase bg-slate-100 px-2 py-0.5 rounded font-bold">Automatic Allocation</span>
+                  <div>
+                    <h4 className="text-xs uppercase font-mono font-bold tracking-widest text-slate-800 flex items-center gap-1.5">
+                      <CheckSquare className="w-4 h-4 text-orange-500" /> 2. Rincian Suku Cadang yang Dikirim (Editable)
+                    </h4>
+                    <p className="text-[11px] text-slate-500 mt-0.5">
+                      Koreksi kuantitas kirim (QTY), harga satuan, atau hapus &amp; tambah item suku cadang bila ada salah pengiriman.
+                    </p>
+                  </div>
+                  {role !== UserRole.VESSEL_CREW && (
+                    <button
+                      type="button"
+                      onClick={() => setShowAddItemForm(!showAddItemForm)}
+                      className="px-2.5 py-1.5 bg-blue-600 hover:bg-blue-700 text-white font-mono text-[10.5px] font-bold uppercase rounded-md flex items-center gap-1 cursor-pointer transition-colors shadow-xs"
+                    >
+                      <Plus className="w-3.5 h-3.5" />
+                      <span>{showAddItemForm ? "Tutup Form" : "+ Tambah Item"}</span>
+                    </button>
+                  )}
                 </div>
 
-                <p className="text-[11px] text-slate-500 leading-normal">
-                  Karyawan Gudang (Warehouse Operator) menggunakan informasi layout koordinat di bawah untuk mengumpulkan suku cadang sedia ada di rak fisik:
-                </p>
+                {/* FORM TAMBAH ITEM BARU JIKA ADA YANG KURANG / SALAH */}
+                {showAddItemForm && (
+                  <div className="bg-blue-50/70 border border-blue-200 rounded-lg p-3.5 space-y-3">
+                    <div className="flex items-center justify-between border-b border-blue-200/60 pb-1.5">
+                      <span className="font-mono text-xs font-bold text-blue-900 uppercase flex items-center gap-1">
+                        <Plus className="w-3.5 h-3.5 text-blue-600" /> Tambah Suku Cadang ke Pengiriman TUG 8
+                      </span>
+                      <button
+                        type="button"
+                        onClick={() => setShowAddItemForm(false)}
+                        className="text-slate-400 hover:text-slate-700 p-0.5 cursor-pointer"
+                      >
+                        <X className="w-4 h-4" />
+                      </button>
+                    </div>
 
-                {/* Grid Item Cards of Suku Cadang */}
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                      <div>
+                        <label className="text-[10px] font-mono uppercase font-bold text-slate-600 block mb-1">
+                          Pilih dari Stok Gudang:
+                        </label>
+                        <select
+                          value={selectedAddPartId}
+                          onChange={(e) => {
+                            const pId = e.target.value;
+                            setSelectedAddPartId(pId);
+                            const found = parts.find(p => p.id === pId);
+                            if (found) {
+                              setCustomPartName(found.part_name);
+                              setCustomPartNumber(found.part_number);
+                              setCustomPartUnit(found.unit || "PCS");
+                              setCustomPartPrice(found.unit_price || 0);
+                            }
+                          }}
+                          className="w-full bg-white border border-slate-300 p-1.5 rounded text-xs font-semibold text-slate-800"
+                        >
+                          <option value="">-- Pilih Suku Cadang (Opsional) --</option>
+                          {parts.map(p => (
+                            <option key={p.id} value={p.id}>
+                              {p.part_name} ({p.part_number}) - Stok: {p.current_stock} {p.unit}
+                            </option>
+                          ))}
+                        </select>
+                      </div>
+
+                      <div>
+                        <label className="text-[10px] font-mono uppercase font-bold text-slate-600 block mb-1">
+                          Nama Suku Cadang:
+                        </label>
+                        <input
+                          type="text"
+                          value={customPartName}
+                          onChange={(e) => setCustomPartName(e.target.value)}
+                          placeholder="e.g. CYLINDER LINER"
+                          className="w-full bg-white border border-slate-300 p-1.5 rounded text-xs font-bold text-slate-800"
+                        />
+                      </div>
+                    </div>
+
+                    <div className="grid grid-cols-2 md:grid-cols-4 gap-2">
+                      <div>
+                        <label className="text-[10px] font-mono uppercase font-bold text-slate-600 block mb-1">
+                          Part Number:
+                        </label>
+                        <input
+                          type="text"
+                          value={customPartNumber}
+                          onChange={(e) => setCustomPartNumber(e.target.value)}
+                          placeholder="e.g. 101.002.04"
+                          className="w-full bg-white border border-slate-300 p-1.5 rounded text-xs font-mono font-bold text-slate-800"
+                        />
+                      </div>
+                      <div>
+                        <label className="text-[10px] font-mono uppercase font-bold text-slate-600 block mb-1">
+                          QTY Dikirim:
+                        </label>
+                        <input
+                          type="number"
+                          min="1"
+                          value={customPartQty}
+                          onChange={(e) => setCustomPartQty(Math.max(1, parseInt(e.target.value) || 1))}
+                          className="w-full bg-white border border-slate-300 p-1.5 rounded text-xs font-mono font-bold text-rose-700 text-center"
+                        />
+                      </div>
+                      <div>
+                        <label className="text-[10px] font-mono uppercase font-bold text-slate-600 block mb-1">
+                          Satuan:
+                        </label>
+                        <input
+                          type="text"
+                          value={customPartUnit}
+                          onChange={(e) => setCustomPartUnit(e.target.value)}
+                          placeholder="PCS / SET"
+                          className="w-full bg-white border border-slate-300 p-1.5 rounded text-xs font-mono font-bold text-slate-800 uppercase"
+                        />
+                      </div>
+                      <div>
+                        <label className="text-[10px] font-mono uppercase font-bold text-slate-600 block mb-1">
+                          Harga Satuan (IDR):
+                        </label>
+                        <input
+                          type="number"
+                          min="0"
+                          value={customPartPrice}
+                          onChange={(e) => setCustomPartPrice(Math.max(0, parseInt(e.target.value) || 0))}
+                          className="w-full bg-white border border-slate-300 p-1.5 rounded text-xs font-mono font-bold text-slate-800 text-right"
+                        />
+                      </div>
+                    </div>
+
+                    <div className="flex justify-end gap-2 pt-1">
+                      <button
+                        type="button"
+                        onClick={handleAddEditItem}
+                        className="px-3 py-1.5 bg-blue-600 hover:bg-blue-700 text-white font-mono text-xs font-bold rounded cursor-pointer transition-colors shadow-xs"
+                      >
+                        ✓ Masukkan ke Pengiriman
+                      </button>
+                    </div>
+                  </div>
+                )}
+
+                {/* Grid Item Cards of Suku Cadang (EDITABLE) */}
                 <div className="space-y-3">
-                  {selectedDispatch.items.map((itm, idx) => {
-                    // Match parts state
+                  {editItems.map((itm, idx) => {
                     const actualPart = parts.find(p => matchSparePartItem(p, itm));
                     const coords = actualPart ? getShelfCoordinates(actualPart) : {
                       zone: "Zone A (General)",
@@ -2554,86 +2871,188 @@ export default function DispatchView({
                     };
 
                     const currentStock = actualPart ? actualPart.current_stock : 0;
-                    const stockIsLow = currentStock < itm.qty_dispatched;
+                    const stockIsLow = currentStock < (Number(itm.qty_dispatched) || 0);
 
                     return (
                       <div 
                         key={itm.spare_part_id || idx} 
-                        className={`border rounded-lg p-4 font-sans relative transition-all shadow-2xs hover:shadow-xs bg-white ${
-                          stockIsLow ? "border-red-200 bg-red-50/20" : "border-slate-200"
+                        className={`border rounded-lg p-3.5 font-sans relative transition-all shadow-2xs hover:shadow-xs bg-white ${
+                          stockIsLow ? "border-amber-300 bg-amber-50/20" : "border-slate-200"
                         }`}
                       >
-                        <div className="flex flex-col md:flex-row md:items-start justify-between gap-2.5">
+                        <div className="flex flex-col md:flex-row md:items-start justify-between gap-3">
                           
-                          {/* Part Details */}
-                          <div>
-                            <span className="font-mono text-[9px] uppercase tracking-wider bg-slate-100 text-slate-600 px-1.5 py-0.5 rounded">ITEM #{idx+1}</span>
-                            <h5 className="font-extrabold text-slate-900 text-sm mt-1">{itm.spare_part_name}</h5>
-                            <p className="font-mono text-[10.5px] text-slate-450 mt-0.5">Part No: {itm.part_number} | Satuan: {itm.unit || "PCS"}</p>
+                          {/* Part Details (Editable name/part number if coordinator) */}
+                          <div className="flex-1">
+                            <div className="flex items-center gap-2">
+                              <span className="font-mono text-[9px] uppercase tracking-wider bg-slate-100 text-slate-600 font-bold px-1.5 py-0.5 rounded">
+                                ITEM #{idx + 1}
+                              </span>
+                              <span className="text-[10px] font-mono text-blue-700 font-bold bg-blue-50 px-2 py-0.5 rounded">
+                                {coords.locationCode} ({coords.zone})
+                              </span>
+                            </div>
+
+                            {role !== UserRole.VESSEL_CREW ? (
+                              <input
+                                type="text"
+                                value={itm.spare_part_name}
+                                onChange={(e) => {
+                                  const val = e.target.value;
+                                  setEditItems(prev => prev.map((it, i) => i === idx ? { ...it, spare_part_name: val } : it));
+                                }}
+                                className="w-full font-extrabold text-slate-900 text-sm mt-1 bg-slate-50/70 hover:bg-white focus:bg-white border border-slate-200 focus:border-blue-500 rounded px-2 py-1 outline-none"
+                              />
+                            ) : (
+                              <h5 className="font-extrabold text-slate-900 text-sm mt-1">{itm.spare_part_name}</h5>
+                            )}
+
+                            <div className="flex flex-wrap items-center gap-3 mt-1.5 text-xs text-slate-600 font-mono">
+                              <div className="flex items-center gap-1">
+                                <span className="text-slate-400 text-[10px] uppercase font-bold">Part No:</span>
+                                {role !== UserRole.VESSEL_CREW ? (
+                                  <input
+                                    type="text"
+                                    value={itm.part_number}
+                                    onChange={(e) => {
+                                      const val = e.target.value;
+                                      setEditItems(prev => prev.map((it, i) => i === idx ? { ...it, part_number: val } : it));
+                                    }}
+                                    className="bg-slate-50/70 hover:bg-white focus:bg-white border border-slate-200 focus:border-blue-500 rounded px-1.5 py-0.5 text-xs font-mono font-bold text-slate-700 w-32 outline-none"
+                                  />
+                                ) : (
+                                  <span className="font-bold">{itm.part_number}</span>
+                                )}
+                              </div>
+
+                              <div className="flex items-center gap-1">
+                                <span className="text-slate-400 text-[10px] uppercase font-bold">Satuan:</span>
+                                {role !== UserRole.VESSEL_CREW ? (
+                                  <input
+                                    type="text"
+                                    value={itm.unit || "PCS"}
+                                    onChange={(e) => {
+                                      const val = e.target.value;
+                                      setEditItems(prev => prev.map((it, i) => i === idx ? { ...it, unit: val } : it));
+                                    }}
+                                    className="bg-slate-50/70 hover:bg-white focus:bg-white border border-slate-200 focus:border-blue-500 rounded px-1.5 py-0.5 text-xs font-mono font-bold text-slate-700 w-16 uppercase outline-none"
+                                  />
+                                ) : (
+                                  <span className="font-bold">{itm.unit || "PCS"}</span>
+                                )}
+                              </div>
+                            </div>
                             
                             {/* Material Layout Coordinate */}
-                            <div className="mt-3 bg-blue-50/50 border border-blue-100 rounded-md p-2.5 flex items-center gap-4 text-xs font-mono select-none">
+                            <div className="mt-2.5 bg-blue-50/50 border border-blue-100 rounded-md p-2 flex items-center gap-3 text-xs font-mono select-none">
                               <div>
-                                <span className="text-[8.5px] text-slate-400 block uppercase font-bold">Lokasi Rak Mekanik</span>
-                                <span className="font-bold text-blue-800 text-[11px] flex items-center gap-1">
-                                  <MapPin className="w-3.5 h-3.5 text-blue-500 shrink-0" />
+                                <span className="text-[8px] text-slate-400 block uppercase font-bold">Rak Gudang</span>
+                                <span className="font-bold text-blue-800 text-[10.5px] flex items-center gap-1">
+                                  <MapPin className="w-3 h-3 text-blue-500 shrink-0" />
                                   {coords.locationCode}
                                 </span>
                               </div>
-                              <div className="border-l border-blue-200 pl-3 leading-normal text-[10px] text-slate-500">
+                              <div className="border-l border-blue-200 pl-2.5 text-[9.5px] text-slate-500">
                                 <div>Zona: {coords.zone}</div>
-                                <div>Rack: {coords.rack} · Level: {coords.level} · Bin: {coords.bin}</div>
+                                <div>R:{coords.rack} · L:{coords.level} · B:{coords.bin}</div>
                               </div>
                             </div>
                           </div>
 
-                          {/* Inventory Volumes */}
-                          <div className="text-right flex md:flex-col justify-between items-center md:items-end gap-3 self-stretch shrink-0 md:border-l border-slate-150 md:pl-4 min-w-[120px]">
+                          {/* Inventory Volumes & Editable Controls */}
+                          <div className="text-right flex md:flex-col justify-between items-center md:items-end gap-2.5 self-stretch shrink-0 md:border-l border-slate-150 md:pl-4 min-w-[140px]">
                             
                             {/* Stock Available */}
                             <div className="font-mono text-xs">
-                              <span className="text-[8.5px] text-slate-400 block uppercase font-bold tracking-wider leading-none">Stok Fisik Gudang</span>
-                              <span className={`text-base font-black ${stockIsLow ? "text-red-650" : "text-slate-905"}`}>{currentStock}</span>
-                              <span className="text-[9px] text-slate-405 font-medium ml-1">tersedia</span>
+                              <span className="text-[8px] text-slate-400 block uppercase font-bold tracking-wider leading-none">Stok Fisik</span>
+                              <span className={`text-sm font-black ${stockIsLow ? "text-amber-700" : "text-slate-800"}`}>{currentStock}</span>
+                              <span className="text-[9px] text-slate-400 font-medium ml-1">tersedia</span>
                             </div>
 
-                            {/* Picking quantity */}
-                            <div className="font-mono text-xs bg-slate-50 p-1.5 border border-slate-200 rounded text-center min-w-[100px]">
-                              <span className="text-[8px] text-slate-400 block uppercase font-bold leading-none mb-1">Jumlah Di-Cetak</span>
-                              <span className="text-sm font-black text-rose-700">{itm.qty_dispatched}</span>
-                              <span className="font-sans text-[8px] text-slate-500 block uppercase font-normal mt-0.5">Approved: {itm.qty_requested}</span>
+                            {/* Picking quantity (EDITABLE) */}
+                            <div className="font-mono text-xs bg-rose-50/80 p-2 border border-rose-200 rounded-lg text-center w-full">
+                              <span className="text-[8px] text-rose-800 block uppercase font-bold leading-none mb-1">
+                                QTY Dikirim (TUG 8)
+                              </span>
+                              {role !== UserRole.VESSEL_CREW ? (
+                                <div className="flex items-center justify-center gap-1">
+                                  <button
+                                    type="button"
+                                    onClick={() => {
+                                      setEditItems(prev => prev.map((it, i) => i === idx ? { ...it, qty_dispatched: Math.max(0, (Number(it.qty_dispatched) || 0) - 1) } : it));
+                                    }}
+                                    className="w-5 h-5 rounded bg-white hover:bg-rose-100 text-rose-800 font-bold border border-rose-300 flex items-center justify-center cursor-pointer text-xs"
+                                  >
+                                    -
+                                  </button>
+                                  <input
+                                    type="number"
+                                    min="0"
+                                    value={itm.qty_dispatched !== undefined ? itm.qty_dispatched : 0}
+                                    onChange={(e) => {
+                                      const val = Math.max(0, parseInt(e.target.value) || 0);
+                                      setEditItems(prev => prev.map((it, i) => i === idx ? { ...it, qty_dispatched: val } : it));
+                                    }}
+                                    className="w-12 text-center font-black text-sm text-rose-700 bg-white border border-rose-300 rounded py-0.5 focus:outline-none focus:ring-1 focus:ring-rose-500"
+                                  />
+                                  <button
+                                    type="button"
+                                    onClick={() => {
+                                      setEditItems(prev => prev.map((it, i) => i === idx ? { ...it, qty_dispatched: (Number(it.qty_dispatched) || 0) + 1 } : it));
+                                    }}
+                                    className="w-5 h-5 rounded bg-white hover:bg-rose-100 text-rose-800 font-bold border border-rose-300 flex items-center justify-center cursor-pointer text-xs"
+                                  >
+                                    +
+                                  </button>
+                                </div>
+                              ) : (
+                                <span className="text-sm font-black text-rose-700">{itm.qty_dispatched}</span>
+                              )}
+                              <span className="font-sans text-[8px] text-slate-500 block uppercase font-normal mt-1">
+                                Permintaan: {itm.qty_requested || itm.qty_dispatched}
+                              </span>
                             </div>
 
                             {/* Unit Price Editable Input */}
-                            <div className="font-mono text-xs bg-slate-50 p-1.5 border border-slate-200 rounded text-center min-w-[110px]">
+                            <div className="font-mono text-xs bg-slate-50 p-1.5 border border-slate-200 rounded text-center w-full">
                               <span className="text-[8px] text-slate-400 block uppercase font-bold leading-none mb-1">Harga Stn (IDR)</span>
                               <div className="relative">
                                 <span className="absolute left-1.5 top-0.5 text-[9px] text-slate-400 font-bold">Rp</span>
                                 <input
                                   type="number"
                                   min="0"
+                                  disabled={role === UserRole.VESSEL_CREW}
                                   value={itm.unit_price !== undefined ? itm.unit_price : 0}
-                                  onChange={async (e) => {
+                                  onChange={(e) => {
                                     const val = Math.max(0, parseInt(e.target.value) || 0);
-                                    const updatedItems = selectedDispatch.items.map((item, i) => i === idx ? { ...item, unit_price: val } : item);
-                                    setSelectedDispatch({ ...selectedDispatch, items: updatedItems });
-                                    await onUpdateDispatch(selectedDispatch.id, { items: updatedItems });
+                                    setEditItems(prev => prev.map((it, i) => i === idx ? { ...it, unit_price: val } : it));
                                   }}
-                                  className="w-full bg-white border border-slate-250 rounded px-1 pl-5 py-0.5 text-xs font-bold text-slate-800 text-right focus:outline-none focus:border-blue-500"
+                                  className="w-full bg-white border border-slate-250 rounded px-1 pl-5 py-0.5 text-xs font-bold text-slate-800 text-right focus:outline-none focus:border-blue-500 disabled:bg-slate-100"
                                 />
                               </div>
                             </div>
 
+                            {/* Delete Item Button if Coordinator */}
+                            {role !== UserRole.VESSEL_CREW && (
+                              <button
+                                type="button"
+                                onClick={() => {
+                                  if (editItems.length <= 1) {
+                                    alert("Pengiriman minimal harus memiliki 1 suku cadang.");
+                                    return;
+                                  }
+                                  if (window.confirm(`Hapus item '${itm.spare_part_name}' dari pengiriman TUG 8 ini?`)) {
+                                    setEditItems(prev => prev.filter((_, i) => i !== idx));
+                                  }
+                                }}
+                                className="text-[10px] text-rose-600 hover:text-rose-800 hover:bg-rose-50 px-2 py-0.5 rounded flex items-center gap-1 font-mono cursor-pointer transition-colors"
+                              >
+                                <Trash2 className="w-3 h-3" /> Hapus Item
+                              </button>
+                            )}
+
                           </div>
                         </div>
-
-                        {/* Negative stock warnings */}
-                        {stockIsLow && (
-                          <div className="mt-3 bg-red-100 border border-red-200 text-red-800 text-[10px] p-2.5 rounded font-mono font-bold uppercase tracking-wide flex items-center gap-1.5 animate-bounce select-none">
-                            <AlertTriangle className="w-4 h-4 text-red-600 shrink-0" />
-                            <span>STOK TIDAK MENCUKUPI! SYSTEM GUDANG AKAN MEMBLOKIR TRANSAKSI OUTBOUND INI.</span>
-                          </div>
-                        )}
 
                       </div>
                     );
@@ -2879,7 +3298,8 @@ export default function DispatchView({
                     onClick={handleCommitDispatchUpdate}
                     className="w-full sm:w-auto px-5 py-2.5 bg-blue-600 hover:bg-blue-500 disabled:bg-slate-800 text-white font-bold uppercase rounded-md text-xs transition-all shadow-xs flex items-center justify-center gap-2 cursor-pointer"
                   >
-                    {isLoading ? "Saving Data..." : "Commit Changes"}
+                    <CheckCircle2 className="w-4 h-4" />
+                    {isLoading ? "Menyimpan Perubahan..." : "Simpan Perubahan Pengiriman (TUG 8)"}
                   </button>
                 )}
               </div>
