@@ -3,7 +3,7 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
-import React, { useState, useEffect, useMemo } from "react";
+import React, { useState, useEffect, useMemo, useRef } from "react";
 import { 
   Wrench, 
   ShieldAlert, 
@@ -32,7 +32,18 @@ import {
   Check,
   Copy,
   X,
-  Sparkles
+  Sparkles,
+  Music,
+  Play,
+  Pause,
+  Volume2,
+  VolumeX,
+  Upload,
+  Repeat,
+  Disc,
+  Trash2,
+  RotateCcw,
+  Sliders
 } from "lucide-react";
 import { MaintenanceConfig, MaintenanceLog, User } from "../types.js";
 import { api } from "../api.js";
@@ -81,11 +92,150 @@ export default function MaintenanceAdminView({
   const [selectedLogDetail, setSelectedLogDetail] = useState<MaintenanceLog | null>(null);
   const [copiedId, setCopiedId] = useState(false);
 
+  // Audio configuration state (Super Admin exclusive)
+  const [audioUrl, setAudioUrl] = useState<string>(
+    config.audio_url || (typeof window !== "undefined" ? localStorage.getItem("wms_maintenance_custom_song_data") || "" : "")
+  );
+  const [audioTitle, setAudioTitle] = useState<string>(
+    config.audio_title || (typeof window !== "undefined" ? localStorage.getItem("wms_maintenance_custom_song_name") || "" : "") || "PT. BAG Maritime Chill Lounge (Lo-Fi Ambient Loop)"
+  );
+  const [audioEnabled, setAudioEnabled] = useState<boolean>(
+    config.audio_enabled ?? true
+  );
+  const [adminIsPlaying, setAdminIsPlaying] = useState<boolean>(false);
+  const [adminAudioVol, setAdminAudioVol] = useState<number>(0.7);
+  const [audioUploadError, setAudioUploadError] = useState<string>("");
+  const [audioSaveSuccess, setAudioSaveSuccess] = useState<boolean>(false);
+  const [isSavingAudio, setIsSavingAudio] = useState<boolean>(false);
+
+  const adminAudioRef = useRef<HTMLAudioElement | null>(null);
+  const adminFileInputRef = useRef<HTMLInputElement | null>(null);
+
   // Sync state if config prop updates
   useEffect(() => {
     setMessage(config.message || "");
     setEstimatedFinish(config.estimated_finish || "");
+    if (config.audio_url !== undefined) {
+      setAudioUrl(config.audio_url || (typeof window !== "undefined" ? localStorage.getItem("wms_maintenance_custom_song_data") || "" : ""));
+    }
+    if (config.audio_title !== undefined) {
+      setAudioTitle(config.audio_title || (typeof window !== "undefined" ? localStorage.getItem("wms_maintenance_custom_song_name") || "" : "") || "PT. BAG Maritime Chill Lounge (Lo-Fi Ambient Loop)");
+    }
+    if (config.audio_enabled !== undefined) {
+      setAudioEnabled(config.audio_enabled);
+    }
   }, [config]);
+
+  // Admin Audio Preview Synchronizer
+  useEffect(() => {
+    const audio = adminAudioRef.current;
+    if (!audio) return;
+    audio.volume = adminAudioVol;
+    if (adminIsPlaying) {
+      const srcToPlay = audioUrl || "https://cdn.pixabay.com/download/audio/2022/05/27/audio_1808fbf07a.mp3";
+      audio.src = srcToPlay;
+      audio.play().catch(err => {
+        console.warn("Admin audio preview error:", err);
+        setAdminIsPlaying(false);
+      });
+    } else {
+      audio.pause();
+    }
+  }, [adminIsPlaying, audioUrl]);
+
+  const handleAdminFileUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    setAudioUploadError("");
+
+    if (!file.type.startsWith("audio/")) {
+      setAudioUploadError("File harus berupa format audio (.mp3, .wav, .m4a, .aac, dsb).");
+      return;
+    }
+
+    const MAX_SIZE_MB = 12;
+    if (file.size > MAX_SIZE_MB * 1024 * 1024) {
+      setAudioUploadError(`Ukuran file maksimal ${MAX_SIZE_MB}MB.`);
+      return;
+    }
+
+    const reader = new FileReader();
+    reader.onload = (event) => {
+      const base64Data = event.target?.result as string;
+      if (base64Data) {
+        const cleanName = file.name.replace(/\.[^/.]+$/, "");
+        setAudioUrl(base64Data);
+        setAudioTitle(cleanName);
+        if (typeof window !== "undefined") {
+          try {
+            localStorage.setItem("wms_maintenance_custom_song_data", base64Data);
+            localStorage.setItem("wms_maintenance_custom_song_name", cleanName);
+          } catch (storageErr) {
+            console.warn("Local storage write error:", storageErr);
+          }
+        }
+      }
+    };
+    reader.onerror = () => {
+      setAudioUploadError("Gagal membaca berkas lagu. Silakan coba file lain.");
+    };
+    reader.readAsDataURL(file);
+  };
+
+  const handleSaveAudioConfig = async () => {
+    setIsSavingAudio(true);
+    setAudioSaveSuccess(false);
+    setAudioUploadError("");
+    try {
+      await onUpdateConfig({
+        audio_url: audioUrl,
+        audio_title: audioTitle.trim() || "PT. BAG Maritime Chill Lounge (Lo-Fi Ambient Loop)",
+        audio_enabled: audioEnabled
+      });
+      setAudioSaveSuccess(true);
+      await loadLogs();
+      setTimeout(() => setAudioSaveSuccess(false), 3000);
+    } catch (err: any) {
+      setAudioUploadError("Gagal menyimpan konfigurasi musik: " + (err.message || "Error"));
+    } finally {
+      setIsSavingAudio(false);
+    }
+  };
+
+  const handleResetAudioToDefault = async () => {
+    if (!window.confirm("Kembalikan musik pengiring maintenance ke lagu bawaan PT. BAG Lo-Fi Ambient?")) {
+      return;
+    }
+    setIsSavingAudio(true);
+    setAudioUploadError("");
+    try {
+      if (typeof window !== "undefined") {
+        localStorage.removeItem("wms_maintenance_custom_song_data");
+        localStorage.removeItem("wms_maintenance_custom_song_name");
+      }
+      setAudioUrl("");
+      const defaultTitle = "PT. BAG Maritime Chill Lounge (Lo-Fi Ambient Loop)";
+      setAudioTitle(defaultTitle);
+      setAudioEnabled(true);
+      if (adminAudioRef.current) {
+        adminAudioRef.current.pause();
+      }
+      setAdminIsPlaying(false);
+      await onUpdateConfig({
+        audio_url: "",
+        audio_title: defaultTitle,
+        audio_enabled: true
+      });
+      setAudioSaveSuccess(true);
+      await loadLogs();
+      setTimeout(() => setAudioSaveSuccess(false), 3000);
+    } catch (err: any) {
+      setAudioUploadError("Gagal mereset musik: " + (err.message || "Error"));
+    } finally {
+      setIsSavingAudio(false);
+    }
+  };
 
   // Load audit logs on mount
   useEffect(() => {
@@ -502,6 +652,246 @@ export default function MaintenanceAdminView({
             </p>
           </div>
 
+        </div>
+
+        {/* Audio Lounge Super Admin Configuration Card */}
+        <div className="bg-white rounded-2xl border border-slate-200 shadow-2xs overflow-hidden">
+          {/* Audio Element for admin preview */}
+          <audio
+            ref={adminAudioRef}
+            loop={true}
+            onEnded={() => {
+              if (adminAudioRef.current) {
+                adminAudioRef.current.currentTime = 0;
+                adminAudioRef.current.play().catch(console.warn);
+              }
+            }}
+          />
+
+          {/* Hidden File Input */}
+          <input
+            type="file"
+            ref={adminFileInputRef}
+            onChange={handleAdminFileUpload}
+            accept="audio/*,.mp3,.wav,.ogg,.m4a,.aac"
+            className="hidden"
+          />
+
+          {/* Card Header */}
+          <div className="p-4 sm:p-5 bg-gradient-to-r from-slate-900 via-slate-800 to-indigo-950 text-white border-b border-slate-700/60 flex flex-col md:flex-row md:items-center justify-between gap-3">
+            <div className="flex items-center gap-3">
+              <div className="w-10 h-10 rounded-xl bg-blue-500/20 border border-blue-400/40 text-blue-400 flex items-center justify-center shrink-0 shadow-inner">
+                <Music className="w-5 h-5 animate-pulse" />
+              </div>
+              <div>
+                <div className="flex items-center gap-2 flex-wrap">
+                  <h3 className="text-sm font-black uppercase tracking-wider text-white font-mono">
+                    Pengaturan Musik Pengiring Maintenance (Audio Lounge)
+                  </h3>
+                  <span className="bg-blue-500/20 border border-blue-400/30 text-blue-300 text-[10px] font-mono font-bold px-2 py-0.5 rounded-full flex items-center gap-1">
+                    <Repeat className="w-2.5 h-2.5" /> Loop Otomatis
+                  </span>
+                  <span className="bg-amber-500/20 border border-amber-400/30 text-amber-300 text-[10px] font-mono font-bold px-2 py-0.5 rounded-full">
+                    Khusus Super Admin
+                  </span>
+                </div>
+                <p className="text-xs text-slate-300 mt-1">
+                  Atur lagu yang akan diputar terus menerus (infinite loop) saat pengunjung membuka layar maintenance.
+                </p>
+              </div>
+            </div>
+
+            <div className="flex items-center gap-2 self-start md:self-auto">
+              <label className="flex items-center gap-2 text-xs font-mono text-slate-300 bg-slate-800/80 px-3 py-1.5 rounded-lg border border-slate-700 cursor-pointer hover:bg-slate-800">
+                <input
+                  type="checkbox"
+                  checked={audioEnabled}
+                  onChange={(e) => setAudioEnabled(e.target.checked)}
+                  className="rounded border-slate-600 text-blue-500 focus:ring-blue-400 cursor-pointer"
+                />
+                <span>Fitur Audio Aktif</span>
+              </label>
+            </div>
+          </div>
+
+          {/* Card Body */}
+          <div className="p-5 sm:p-6 space-y-6">
+            {/* Error Message */}
+            {audioUploadError && (
+              <div className="p-3 bg-rose-50 border border-rose-200 rounded-xl text-rose-700 text-xs font-mono flex items-center gap-2 animate-in fade-in">
+                <AlertTriangle className="w-4 h-4 shrink-0 text-rose-500" />
+                <span>{audioUploadError}</span>
+              </div>
+            )}
+
+            {/* Success Message */}
+            {audioSaveSuccess && (
+              <div className="p-3 bg-emerald-50 border border-emerald-200 rounded-xl text-emerald-800 text-xs font-mono flex items-center gap-2 animate-in fade-in">
+                <CheckCircle2 className="w-4 h-4 shrink-0 text-emerald-600" />
+                <span>Pengaturan musik maintenance berhasil disimpan & tersinkronisasi untuk seluruh pengunjung!</span>
+              </div>
+            )}
+
+            <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">
+              
+              {/* Left Column: Upload Box & Track Title */}
+              <div className="lg:col-span-7 space-y-4">
+                <div>
+                  <label className="text-xs font-bold text-slate-700 uppercase font-mono block mb-1.5">
+                    1. Unggah Berkas Audio Baru
+                  </label>
+                  <p className="text-xs text-slate-500 mb-3">
+                    Unggah file audio MP3 atau WAV berukuran wajar (maks. 12MB). File yang diunggah akan disimpan sebagai musik resmi di layar maintenance.
+                  </p>
+
+                  {/* Drag/Click Upload Area */}
+                  <div
+                    onClick={() => adminFileInputRef.current?.click()}
+                    className="border-2 border-dashed border-slate-300 hover:border-blue-500 bg-slate-50 hover:bg-blue-50/50 rounded-2xl p-6 text-center cursor-pointer transition-all duration-200 group flex flex-col items-center justify-center gap-2"
+                  >
+                    <div className="w-12 h-12 rounded-xl bg-white border border-slate-200 text-slate-600 group-hover:text-blue-600 group-hover:border-blue-300 group-hover:scale-105 flex items-center justify-center transition-all shadow-2xs">
+                      <Upload className="w-6 h-6" />
+                    </div>
+                    <div>
+                      <p className="text-xs font-bold text-slate-800 group-hover:text-blue-700">
+                        Klik untuk memilih berkas musik dari perangkat
+                      </p>
+                      <p className="text-[11px] text-slate-500 font-mono mt-0.5">
+                        Mendukung MP3, WAV, AAC, M4A, OGG (Maks. 12MB)
+                      </p>
+                    </div>
+                    <span className="inline-flex items-center gap-1.5 text-[11px] font-mono font-bold bg-blue-600 text-white px-3 py-1 rounded-lg mt-1 group-hover:bg-blue-700 shadow-2xs">
+                      <Disc className="w-3.5 h-3.5 animate-spin" /> Pilih File Audio
+                    </span>
+                  </div>
+                </div>
+
+                {/* Track Title Input */}
+                <div>
+                  <label className="text-xs font-bold text-slate-700 uppercase font-mono block mb-1.5">
+                    2. Judul / Keterangan Lagu (Tampil di Layar Pengunjung)
+                  </label>
+                  <input
+                    type="text"
+                    value={audioTitle}
+                    onChange={(e) => setAudioTitle(e.target.value)}
+                    placeholder="Contoh: PT. BAG Maritime Chill Lounge"
+                    className="w-full bg-slate-50 border border-slate-300 rounded-xl px-3.5 py-2.5 text-xs text-slate-900 focus:bg-white focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 font-sans shadow-2xs"
+                  />
+                  <span className="text-[10.5px] text-slate-400 font-mono mt-1 block">
+                    Nama ini akan muncul pada widget pemutar musik di halaman maintenance publik.
+                  </span>
+                </div>
+              </div>
+
+              {/* Right Column: Audio Preview & Status Player */}
+              <div className="lg:col-span-5 flex flex-col justify-between space-y-4">
+                <div>
+                  <label className="text-xs font-bold text-slate-700 uppercase font-mono block mb-1.5">
+                    Pratinjau Suara & Status Musik
+                  </label>
+                  
+                  {/* Styled Audio Card preview */}
+                  <div className="bg-slate-900 text-white rounded-2xl border border-slate-800 p-4 shadow-sm relative overflow-hidden">
+                    <div className="flex items-center gap-3">
+                      <div className={`w-11 h-11 rounded-full bg-blue-600/30 border border-blue-400/50 flex items-center justify-center text-blue-400 shrink-0 ${adminIsPlaying ? 'animate-spin' : ''}`} style={{ animationDuration: '6s' }}>
+                        <Disc className="w-6 h-6" />
+                      </div>
+                      <div className="min-w-0 flex-1">
+                        <div className="flex items-center gap-1.5">
+                          <span className="text-[9px] font-mono uppercase font-bold text-amber-400 bg-amber-500/20 px-1.5 py-0.5 rounded">
+                            {audioUrl ? "Lagu Kustom Super Admin" : "Lo-Fi Bawaan PT. BAG"}
+                          </span>
+                          <span className="text-[9px] font-mono text-emerald-400 bg-emerald-500/10 px-1.5 py-0.5 rounded flex items-center gap-0.5">
+                            <Repeat className="w-2.5 h-2.5" /> Loop
+                          </span>
+                        </div>
+                        <h4 className="text-xs font-bold text-slate-100 truncate mt-1">
+                          {audioTitle || "PT. BAG Maritime Chill Lounge (Lo-Fi Ambient Loop)"}
+                        </h4>
+                        <p className="text-[10px] text-slate-400 font-mono mt-0.5">
+                          {audioUrl ? "Sumber: File lokal diunggah Super Admin" : "Sumber: Audio stream relaksasi maritim bawaan"}
+                        </p>
+                      </div>
+                    </div>
+
+                    {/* Admin Test Audio Controls */}
+                    <div className="mt-4 pt-3 border-t border-slate-800 flex items-center justify-between gap-3">
+                      <button
+                        type="button"
+                        onClick={() => setAdminIsPlaying(!adminIsPlaying)}
+                        className={`px-3 py-1.5 rounded-lg text-xs font-bold font-mono flex items-center gap-1.5 transition-all cursor-pointer shadow-2xs ${
+                          adminIsPlaying 
+                            ? 'bg-amber-500 hover:bg-amber-600 text-slate-950 font-black' 
+                            : 'bg-blue-600 hover:bg-blue-700 text-white'
+                        }`}
+                      >
+                        {adminIsPlaying ? (
+                          <>
+                            <Pause className="w-3.5 h-3.5 fill-current" /> Jeda Tes
+                          </>
+                        ) : (
+                          <>
+                            <Play className="w-3.5 h-3.5 fill-current" /> Tes Putar Lagu
+                          </>
+                        )}
+                      </button>
+
+                      <div className="flex items-center gap-1.5 text-xs text-slate-400 font-mono">
+                        <Volume2 className="w-3.5 h-3.5 text-slate-400" />
+                        <input
+                          type="range"
+                          min="0"
+                          max="1"
+                          step="0.05"
+                          value={adminAudioVol}
+                          onChange={(e) => setAdminAudioVol(parseFloat(e.target.value))}
+                          className="w-16 sm:w-20 h-1 bg-slate-700 rounded-lg appearance-none cursor-pointer accent-blue-400"
+                        />
+                        <span className="text-[10px] w-6">{Math.round(adminAudioVol * 100)}%</span>
+                      </div>
+                    </div>
+                  </div>
+
+                  <p className="text-[11px] text-slate-500 font-mono mt-2">
+                    💡 Pengunjung maintenance tidak dapat mengunggah lagu; hanya Super Admin di halaman ini yang berwenang mengganti musik.
+                  </p>
+                </div>
+
+                {/* Save and Reset Action Buttons */}
+                <div className="flex flex-col sm:flex-row items-center gap-2 pt-2">
+                  <button
+                    type="button"
+                    onClick={handleSaveAudioConfig}
+                    disabled={isSavingAudio}
+                    className="w-full sm:flex-1 bg-blue-600 hover:bg-blue-700 active:bg-blue-800 text-white font-mono font-bold text-xs py-2.5 px-4 rounded-xl transition-all shadow-2xs flex items-center justify-center gap-2 cursor-pointer disabled:opacity-60"
+                  >
+                    {isSavingAudio ? (
+                      <RefreshCw className="w-3.5 h-3.5 animate-spin" />
+                    ) : (
+                      <Save className="w-3.5 h-3.5" />
+                    )}
+                    <span>Simpan Pengaturan Musik</span>
+                  </button>
+
+                  {audioUrl && (
+                    <button
+                      type="button"
+                      onClick={handleResetAudioToDefault}
+                      disabled={isSavingAudio}
+                      className="w-full sm:w-auto bg-slate-100 hover:bg-rose-50 hover:text-rose-700 text-slate-600 border border-slate-200 hover:border-rose-200 font-mono font-bold text-xs py-2.5 px-3 rounded-xl transition-colors flex items-center justify-center gap-1.5 cursor-pointer disabled:opacity-60"
+                      title="Kembalikan ke lagu Lo-Fi bawaan"
+                    >
+                      <RotateCcw className="w-3.5 h-3.5" />
+                      <span>Reset Lagu</span>
+                    </button>
+                  )}
+                </div>
+
+              </div>
+
+            </div>
+          </div>
         </div>
 
         {/* Audit Trail & Maintenance Logs Card */}

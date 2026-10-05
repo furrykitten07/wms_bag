@@ -2590,7 +2590,10 @@ export const api = {
       message: "Sistem WMS PT. Pelayaran Bahtera Adhiguna sedang dalam pemeliharaan berkala untuk peningkatan database dan optimasi sistem armada.",
       estimated_finish: "Segera kembali online",
       updated_by: "Fikri Haikal (Superadmin)",
-      updated_at: new Date().toISOString()
+      updated_at: new Date().toISOString(),
+      audio_url: "",
+      audio_title: "PT. BAG Maritime Chill Lounge (Lo-Fi Ambient Loop)",
+      audio_enabled: true
     };
 
     // 1. Try local cache first

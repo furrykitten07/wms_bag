@@ -33,7 +33,6 @@ import {
   Pause,
   Volume2,
   VolumeX,
-  Upload,
   Repeat,
   Disc,
   Sparkles,
@@ -168,20 +167,20 @@ export default function MaintenanceScreen({
   // System Online Celebration State
   const [isOnlineRedirecting, setIsOnlineRedirecting] = useState(false);
 
-  // --- MAINTENANCE BACKGROUND MUSIC & UPLOAD PLAYER ---
+  // --- MAINTENANCE BACKGROUND MUSIC PLAYER (Configured by Super Admin) ---
   const [isPlaying, setIsPlaying] = useState(false);
   const [isLooping, setIsLooping] = useState(true); // Loop terus menerus jika habis
   const [volume, setVolume] = useState(0.7);
   const [isMuted, setIsMuted] = useState(false);
   const [currentTime, setCurrentTime] = useState(0);
   const [duration, setDuration] = useState(0);
-  const [songTitle, setSongTitle] = useState(DEFAULT_TRACK_TITLE);
-  const [audioSource, setAudioSource] = useState<string | null>(null);
-  const [isCustomUpload, setIsCustomUpload] = useState(false);
-  const [uploadToast, setUploadToast] = useState<string | null>(null);
+
+  // Audio track configured centrally by Super Admin
+  const activeAudioUrl = config.audio_url || (typeof window !== "undefined" ? localStorage.getItem("wms_maintenance_custom_song_data") : null);
+  const songTitle = config.audio_title || (typeof window !== "undefined" ? localStorage.getItem("wms_maintenance_custom_song_name") : null) || DEFAULT_TRACK_TITLE;
+  const isCustomUpload = Boolean(activeAudioUrl);
 
   const audioRef = useRef<HTMLAudioElement | null>(null);
-  const fileInputRef = useRef<HTMLInputElement | null>(null);
   const synthRef = useRef<ProceduralLoFiSynth | null>(null);
 
   // Initialize synth instance
@@ -192,19 +191,6 @@ export default function MaintenanceScreen({
     };
   }, []);
 
-  // Restore saved custom song if previously uploaded
-  useEffect(() => {
-    try {
-      const savedData = localStorage.getItem("wms_maintenance_custom_song_data");
-      const savedName = localStorage.getItem("wms_maintenance_custom_song_name");
-      if (savedData && savedName) {
-        setAudioSource(savedData);
-        setSongTitle(savedName);
-        setIsCustomUpload(true);
-      }
-    } catch {}
-  }, []);
-
   // Audio Playback Orchestrator (HTML Audio vs Fallback Ambient Synth)
   useEffect(() => {
     const audio = audioRef.current;
@@ -213,19 +199,18 @@ export default function MaintenanceScreen({
     audio.volume = isMuted ? 0 : volume;
 
     if (isPlaying) {
-      if (audioSource) {
-        // User uploaded custom song
+      if (activeAudioUrl) {
+        // Song uploaded by Super Admin
         synthRef.current?.stop();
-        audio.src = audioSource;
+        audio.src = activeAudioUrl;
         audio.play().catch(err => {
-          console.warn("Custom audio play blocked:", err);
+          console.warn("Audio play prevented:", err);
           setIsPlaying(false);
         });
       } else {
         // Default chill song: Play default audio stream, or fallback to offline synth
         audio.src = DEFAULT_AUDIO_STREAM_URL;
         audio.play().catch(() => {
-          // Fallback to procedural synth if audio stream blocked or offline
           synthRef.current?.start(isMuted ? 0 : volume);
         });
       }
@@ -233,7 +218,7 @@ export default function MaintenanceScreen({
       audio.pause();
       synthRef.current?.stop();
     }
-  }, [isPlaying, audioSource]);
+  }, [isPlaying, activeAudioUrl]);
 
   // Synchronize volume across audio element and synth
   useEffect(() => {
@@ -251,56 +236,6 @@ export default function MaintenanceScreen({
       audioRef.current.currentTime = 0;
       audioRef.current.play().catch(() => {});
     }
-  };
-
-  // Custom Song File Upload
-  const handleFileUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0];
-    if (!file) return;
-
-    if (audioSource && audioSource.startsWith("blob:")) {
-      URL.revokeObjectURL(audioSource);
-    }
-
-    const objUrl = URL.createObjectURL(file);
-    const cleanTitle = file.name.replace(/\.[^/.]+$/, "");
-    setAudioSource(objUrl);
-    setSongTitle(cleanTitle);
-    setIsCustomUpload(true);
-    setIsPlaying(true);
-    setCurrentTime(0);
-
-    setUploadToast(`🎵 Berhasil memuat lagu: "${cleanTitle}". Mode loop aktif (akan diulang terus menerus).`);
-    setTimeout(() => setUploadToast(null), 5000);
-
-    // Save in localStorage if under 5MB
-    if (file.size < 5 * 1024 * 1024) {
-      const reader = new FileReader();
-      reader.onload = () => {
-        try {
-          localStorage.setItem("wms_maintenance_custom_song_data", reader.result as string);
-          localStorage.setItem("wms_maintenance_custom_song_name", cleanTitle);
-        } catch {}
-      };
-      reader.readAsDataURL(file);
-    }
-  };
-
-  // Reset to Default Relaxing Track
-  const handleResetToDefault = () => {
-    try {
-      localStorage.removeItem("wms_maintenance_custom_song_data");
-      localStorage.removeItem("wms_maintenance_custom_song_name");
-    } catch {}
-    if (audioSource && audioSource.startsWith("blob:")) {
-      URL.revokeObjectURL(audioSource);
-    }
-    setAudioSource(null);
-    setSongTitle(DEFAULT_TRACK_TITLE);
-    setIsCustomUpload(false);
-    setCurrentTime(0);
-    setUploadToast("Kembali ke trek musik santai bawaan sistem.");
-    setTimeout(() => setUploadToast(null), 3000);
   };
 
   // Time format helper (00:00)
@@ -702,7 +637,7 @@ export default function MaintenanceScreen({
                       ? "bg-purple-500/20 text-purple-300 border-purple-500/30" 
                       : "bg-blue-500/20 text-blue-300 border-blue-500/30"
                   }`}>
-                    {isCustomUpload ? "File Kustom" : "Lo-Fi Bawaan"}
+                    {isCustomUpload ? "Pilihan Super Admin" : "Lo-Fi Bawaan"}
                   </span>
                 </div>
                 <h4 className="text-sm sm:text-base font-bold text-white truncate max-w-md mt-0.5 font-sans">
@@ -765,7 +700,7 @@ export default function MaintenanceScreen({
             />
           </div>
 
-          {/* Controls Cluster: Play/Pause, Upload Button, Reset & Volume */}
+          {/* Controls Cluster: Play/Pause & Volume */}
           <div className="mt-4 flex flex-col sm:flex-row items-center justify-between gap-3.5">
             <div className="flex items-center gap-2.5 w-full sm:w-auto">
               
@@ -773,7 +708,7 @@ export default function MaintenanceScreen({
               <button
                 type="button"
                 onClick={() => setIsPlaying(!isPlaying)}
-                className={`flex-1 sm:flex-none px-5 py-2.5 rounded-xl font-bold text-xs uppercase font-mono tracking-wider flex items-center justify-center gap-2 transition-all shadow-md active:scale-95 cursor-pointer ${
+                className={`flex-1 sm:flex-none px-6 py-2.5 rounded-xl font-bold text-xs uppercase font-mono tracking-wider flex items-center justify-center gap-2 transition-all shadow-md active:scale-95 cursor-pointer ${
                   isPlaying
                     ? "bg-amber-500 hover:bg-amber-400 text-slate-950 shadow-amber-500/25"
                     : "bg-blue-600 hover:bg-blue-500 text-white shadow-blue-600/30"
@@ -792,37 +727,9 @@ export default function MaintenanceScreen({
                 )}
               </button>
 
-              {/* Upload Custom Audio Button */}
-              <button
-                type="button"
-                onClick={() => fileInputRef.current?.click()}
-                className="flex-1 sm:flex-none px-4 py-2.5 rounded-xl bg-slate-800 hover:bg-slate-700/80 text-slate-200 hover:text-white border border-slate-700 text-xs font-mono font-bold flex items-center justify-center gap-2 transition-all cursor-pointer shadow-sm active:scale-95"
-                title="Unggah file lagu sendiri dari komputer / HP (.mp3, .wav, .m4a)"
-              >
-                <Upload className="w-4 h-4 text-blue-400" />
-                <span>Unggah Lagu Sendiri</span>
-              </button>
-
-              {/* Reset to Default Button if custom song loaded */}
-              {isCustomUpload && (
-                <button
-                  type="button"
-                  onClick={handleResetToDefault}
-                  className="p-2.5 rounded-xl bg-slate-800/80 hover:bg-slate-700 text-slate-400 hover:text-rose-300 border border-slate-700 transition-colors cursor-pointer"
-                  title="Kembali ke musik bawaan"
-                >
-                  <RotateCcw className="w-4 h-4" />
-                </button>
-              )}
-
-              {/* Hidden file input */}
-              <input
-                ref={fileInputRef}
-                type="file"
-                accept="audio/*"
-                onChange={handleFileUpload}
-                className="hidden"
-              />
+              <span className="text-[10px] font-mono text-slate-400 hidden sm:inline">
+                {isCustomUpload ? "Diunggah oleh Super Admin" : "Lagu Relaksasi Bawaan"}
+              </span>
             </div>
 
             {/* Volume Control */}
@@ -859,14 +766,6 @@ export default function MaintenanceScreen({
 
           </div>
 
-          {/* Upload Success Feedback Notification */}
-          {uploadToast && (
-            <div className="mt-3 p-2 rounded-lg bg-emerald-950/70 border border-emerald-500/40 text-emerald-300 text-xs font-mono flex items-center gap-2 animate-in fade-in duration-200">
-              <Sparkles className="w-4 h-4 text-emerald-400 shrink-0" />
-              <span>{uploadToast}</span>
-            </div>
-          )}
-
         </div>
 
       </main>
@@ -886,7 +785,7 @@ export default function MaintenanceScreen({
       />
 
       {/* FLOATING MINI AUDIO CONTROLLER (Bottom Right) */}
-      <div className="fixed bottom-4 right-4 z-40 bg-slate-900/95 border border-slate-700/80 hover:border-blue-500/40 shadow-2xl shadow-black/80 rounded-full px-3.5 py-2 flex items-center gap-3 backdrop-blur-md transition-all">
+      <div className="fixed bottom-4 right-4 z-40 bg-slate-900/95 border border-slate-700/80 hover:border-blue-500/40 shadow-2xl shadow-black/80 rounded-full px-4 py-2 flex items-center gap-3 backdrop-blur-md transition-all">
         <button
           type="button"
           onClick={() => setIsPlaying(!isPlaying)}
@@ -908,15 +807,6 @@ export default function MaintenanceScreen({
             <Repeat className="w-2.5 h-2.5" /> Loop Aktif
           </span>
         </div>
-
-        <button
-          type="button"
-          onClick={() => fileInputRef.current?.click()}
-          className="p-1.5 rounded-full hover:bg-slate-800 text-slate-400 hover:text-white transition-colors cursor-pointer"
-          title="Unggah Lagu Sendiri"
-        >
-          <Upload className="w-3.5 h-3.5 text-blue-400" />
-        </button>
       </div>
 
       {/* FOOTER */}

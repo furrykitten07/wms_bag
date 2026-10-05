@@ -542,6 +542,9 @@ export interface MaintenanceConfig {
   estimated_finish?: string;
   updated_by?: string;
   updated_at?: string;
+  audio_url?: string;
+  audio_title?: string;
+  audio_enabled?: boolean;
 }
 
 export interface MaintenanceLog {
