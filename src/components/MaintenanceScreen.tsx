@@ -27,9 +27,116 @@ import {
   PhoneCall,
   Mail,
   HelpCircle,
-  ExternalLink
+  ExternalLink,
+  Music,
+  Play,
+  Pause,
+  Volume2,
+  VolumeX,
+  Upload,
+  Repeat,
+  Disc,
+  Sparkles,
+  RotateCcw,
+  Sliders
 } from "lucide-react";
 import { MaintenanceConfig } from "../types.js";
+
+// Royalty-free calm ambient stream or fallback procedural chord synthesizer
+const DEFAULT_AUDIO_STREAM_URL = "https://cdn.pixabay.com/download/audio/2022/05/27/audio_1808fbf07a.mp3";
+const DEFAULT_TRACK_TITLE = "PT. BAG Maritime Chill Lounge (Lo-Fi Ambient Loop)";
+
+// Offline Procedural Web Audio Ambient Chords Synthesizer (infinite loop backup)
+class ProceduralLoFiSynth {
+  private ctx: AudioContext | null = null;
+  private isRunning = false;
+  private masterGain: GainNode | null = null;
+  private timer: any = null;
+
+  start(volume = 0.5) {
+    if (this.isRunning || typeof window === "undefined") return;
+    try {
+      const AudioCtx = window.AudioContext || (window as any).webkitAudioContext;
+      if (!AudioCtx) return;
+      this.ctx = new AudioCtx();
+      this.masterGain = this.ctx.createGain();
+      this.masterGain.gain.setValueAtTime(volume * 0.18, this.ctx.currentTime);
+      this.masterGain.connect(this.ctx.destination);
+      this.isRunning = true;
+      this.runLoop();
+    } catch (e) {
+      console.warn("Synth start error:", e);
+    }
+  }
+
+  setVolume(vol: number) {
+    if (this.masterGain && this.ctx && this.isRunning) {
+      try {
+        this.masterGain.gain.setTargetAtTime(vol * 0.18, this.ctx.currentTime, 0.05);
+      } catch {}
+    }
+  }
+
+  stop() {
+    this.isRunning = false;
+    if (this.timer) {
+      clearInterval(this.timer);
+      this.timer = null;
+    }
+    if (this.ctx) {
+      this.ctx.close().catch(() => {});
+      this.ctx = null;
+    }
+  }
+
+  private playHarmonics(notes: number[], length: number) {
+    if (!this.ctx || !this.masterGain || !this.isRunning) return;
+    const now = this.ctx.currentTime;
+    notes.forEach((freq, idx) => {
+      try {
+        const osc = this.ctx!.createOscillator();
+        const gain = this.ctx!.createGain();
+        const filter = this.ctx!.createBiquadFilter();
+
+        osc.type = idx % 2 === 0 ? "sine" : "triangle";
+        osc.frequency.setValueAtTime(freq, now);
+
+        filter.type = "lowpass";
+        filter.frequency.setValueAtTime(700, now);
+
+        gain.gain.setValueAtTime(0.001, now);
+        gain.gain.exponentialRampToValueAtTime(0.05 / (idx + 1), now + 1.2);
+        gain.gain.exponentialRampToValueAtTime(0.0001, now + length);
+
+        osc.connect(filter);
+        filter.connect(gain);
+        gain.connect(this.masterGain!);
+
+        osc.start(now);
+        osc.stop(now + length + 0.3);
+      } catch {}
+    });
+  }
+
+  private runLoop() {
+    // Soothing corporate maritime ambient chords: Cmaj9 -> Am9 -> Fmaj7 -> Gsus4
+    const chords = [
+      [261.63, 329.63, 392.00, 493.88],
+      [220.00, 261.63, 329.63, 392.00],
+      [174.61, 220.00, 261.63, 349.23],
+      [196.00, 246.94, 293.66, 392.00]
+    ];
+    let step = 0;
+    const stepDuration = 5;
+    const tick = () => {
+      if (!this.isRunning) return;
+      this.playHarmonics(chords[step % chords.length], stepDuration);
+      step++;
+    };
+    tick();
+    this.timer = setInterval(tick, stepDuration * 1000);
+  }
+}
 
 interface MaintenanceScreenProps {
   config: MaintenanceConfig;
@@ -60,6 +167,149 @@ export default function MaintenanceScreen({
 
   // System Online Celebration State
   const [isOnlineRedirecting, setIsOnlineRedirecting] = useState(false);
+
+  // --- MAINTENANCE BACKGROUND MUSIC & UPLOAD PLAYER ---
+  const [isPlaying, setIsPlaying] = useState(false);
+  const [isLooping, setIsLooping] = useState(true); // Loop terus menerus jika habis
+  const [volume, setVolume] = useState(0.7);
+  const [isMuted, setIsMuted] = useState(false);
+  const [currentTime, setCurrentTime] = useState(0);
+  const [duration, setDuration] = useState(0);
+  const [songTitle, setSongTitle] = useState(DEFAULT_TRACK_TITLE);
+  const [audioSource, setAudioSource] = useState<string | null>(null);
+  const [isCustomUpload, setIsCustomUpload] = useState(false);
+  const [uploadToast, setUploadToast] = useState<string | null>(null);
+
+  const audioRef = useRef<HTMLAudioElement | null>(null);
+  const fileInputRef = useRef<HTMLInputElement | null>(null);
+  const synthRef = useRef<ProceduralLoFiSynth | null>(null);
+
+  // Initialize synth instance
+  useEffect(() => {
+    synthRef.current = new ProceduralLoFiSynth();
+    return () => {
+      synthRef.current?.stop();
+    };
+  }, []);
+
+  // Restore saved custom song if previously uploaded
+  useEffect(() => {
+    try {
+      const savedData = localStorage.getItem("wms_maintenance_custom_song_data");
+      const savedName = localStorage.getItem("wms_maintenance_custom_song_name");
+      if (savedData && savedName) {
+        setAudioSource(savedData);
+        setSongTitle(savedName);
+        setIsCustomUpload(true);
+      }
+    } catch {}
+  }, []);
+
+  // Audio Playback Orchestrator (HTML Audio vs Fallback Ambient Synth)
+  useEffect(() => {
+    const audio = audioRef.current;
+    if (!audio) return;
+
+    audio.volume = isMuted ? 0 : volume;
+
+    if (isPlaying) {
+      if (audioSource) {
+        // User uploaded custom song
+        synthRef.current?.stop();
+        audio.src = audioSource;
+        audio.play().catch(err => {
+          console.warn("Custom audio play blocked:", err);
+          setIsPlaying(false);
+        });
+      } else {
+        // Default chill song: Play default audio stream, or fallback to offline synth
+        audio.src = DEFAULT_AUDIO_STREAM_URL;
+        audio.play().catch(() => {
+          // Fallback to procedural synth if audio stream blocked or offline
+          synthRef.current?.start(isMuted ? 0 : volume);
+        });
+      }
+    } else {
+      audio.pause();
+      synthRef.current?.stop();
+    }
+  }, [isPlaying, audioSource]);
+
+  // Synchronize volume across audio element and synth
+  useEffect(() => {
+    const audio = audioRef.current;
+    const effectiveVol = isMuted ? 0 : volume;
+    if (audio) {
+      audio.volume = effectiveVol;
+    }
+    synthRef.current?.setVolume(effectiveVol);
+  }, [volume, isMuted]);
+
+  // Handle Song End -> Enforce Continuous Infinite Loop
+  const handleAudioEnded = () => {
+    if (isLooping && audioRef.current) {
+      audioRef.current.currentTime = 0;
+      audioRef.current.play().catch(() => {});
+    }
+  };
+
+  // Custom Song File Upload
+  const handleFileUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    if (audioSource && audioSource.startsWith("blob:")) {
+      URL.revokeObjectURL(audioSource);
+    }
+
+    const objUrl = URL.createObjectURL(file);
+    const cleanTitle = file.name.replace(/\.[^/.]+$/, "");
+    setAudioSource(objUrl);
+    setSongTitle(cleanTitle);
+    setIsCustomUpload(true);
+    setIsPlaying(true);
+    setCurrentTime(0);
+
+    setUploadToast(`🎵 Berhasil memuat lagu: "${cleanTitle}". Mode loop aktif (akan diulang terus menerus).`);
+    setTimeout(() => setUploadToast(null), 5000);
+
+    // Save in localStorage if under 5MB
+    if (file.size < 5 * 1024 * 1024) {
+      const reader = new FileReader();
+      reader.onload = () => {
+        try {
+          localStorage.setItem("wms_maintenance_custom_song_data", reader.result as string);
+          localStorage.setItem("wms_maintenance_custom_song_name", cleanTitle);
+        } catch {}
+      };
+      reader.readAsDataURL(file);
+    }
+  };
+
+  // Reset to Default Relaxing Track
+  const handleResetToDefault = () => {
+    try {
+      localStorage.removeItem("wms_maintenance_custom_song_data");
+      localStorage.removeItem("wms_maintenance_custom_song_name");
+    } catch {}
+    if (audioSource && audioSource.startsWith("blob:")) {
+      URL.revokeObjectURL(audioSource);
+    }
+    setAudioSource(null);
+    setSongTitle(DEFAULT_TRACK_TITLE);
+    setIsCustomUpload(false);
+    setCurrentTime(0);
+    setUploadToast("Kembali ke trek musik santai bawaan sistem.");
+    setTimeout(() => setUploadToast(null), 3000);
+  };
+
+  // Time format helper (00:00)
+  const formatTime = (seconds: number) => {
+    if (isNaN(seconds) || !isFinite(seconds)) return "00:00";
+    const m = Math.floor(seconds / 60);
+    const s = Math.floor(seconds % 60);
+    return `${m.toString().padStart(2, "0")}:${s.toString().padStart(2, "0")}`;
+  };
 
   // Auto-refresh countdown effect (every 30 seconds)
   useEffect(() => {
@@ -419,7 +669,255 @@ export default function MaintenanceScreen({
           </div>
         )}
 
+        {/* 🎵 MAINTENANCE LOUNGE MUSIC PLAYER CARD */}
+        <div className="w-full mt-8 bg-gradient-to-r from-slate-900/95 via-slate-900/90 to-slate-950/95 border-2 border-blue-500/30 hover:border-blue-500/50 rounded-2xl p-5 sm:p-6 text-left shadow-2xl shadow-blue-950/40 backdrop-blur-xl relative overflow-hidden transition-all duration-300">
+          
+          {/* Subtle Ambient Glow Bar */}
+          <div className="absolute top-0 left-0 right-0 h-1 bg-gradient-to-r from-blue-500 via-indigo-500 to-amber-400" />
+
+          {/* Top Row: Track identity & Loop Status Badge */}
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 pb-3 border-b border-slate-800/80">
+            <div className="flex items-center gap-3">
+              {/* Rotating Vinyl Disc icon when playing */}
+              <div className="relative">
+                <div className={`w-11 h-11 rounded-full bg-slate-950 border-2 border-slate-700 flex items-center justify-center text-amber-400 shadow-md ${isPlaying ? "animate-spin" : ""}`} style={{ animationDuration: "3s" }}>
+                  <Disc className="w-6 h-6" />
+                </div>
+                {isPlaying && (
+                  <span className="absolute -top-1 -right-1 flex h-3 w-3">
+                    <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-blue-400 opacity-75"></span>
+                    <span className="relative inline-flex rounded-full h-3 w-3 bg-blue-500"></span>
+                  </span>
+                )}
+              </div>
+
+              <div className="min-w-0">
+                <div className="flex items-center gap-2">
+                  <span className="text-[10px] font-mono font-black text-blue-400 uppercase tracking-widest flex items-center gap-1">
+                    <Music className="w-3 h-3 text-blue-400" />
+                    BAG LOUNGE PLAYER &bull; MUSIK PENGIRING
+                  </span>
+                  <span className={`text-[9px] font-mono font-bold px-1.5 py-0.2 rounded border ${
+                    isCustomUpload 
+                      ? "bg-purple-500/20 text-purple-300 border-purple-500/30" 
+                      : "bg-blue-500/20 text-blue-300 border-blue-500/30"
+                  }`}>
+                    {isCustomUpload ? "File Kustom" : "Lo-Fi Bawaan"}
+                  </span>
+                </div>
+                <h4 className="text-sm sm:text-base font-bold text-white truncate max-w-md mt-0.5 font-sans">
+                  {songTitle}
+                </h4>
+              </div>
+            </div>
+
+            {/* Right Status: Infinite Loop Badge & Dancing Sound Bars */}
+            <div className="flex items-center gap-3 self-end sm:self-auto">
+              {/* Animated Equalizer sound bars */}
+              <div className="flex items-end gap-1 h-5 px-1 bg-slate-950/60 rounded border border-slate-800 p-1">
+                {[40, 75, 100, 60, 90, 50].map((h, i) => (
+                  <span
+                    key={i}
+                    className={`w-1 rounded-full bg-gradient-to-t from-amber-400 to-blue-400 transition-all duration-300 ${
+                      isPlaying ? "animate-pulse" : "opacity-25"
+                    }`}
+                    style={{
+                      height: isPlaying ? `${Math.max(4, h * (volume || 0.5))}%` : "4px",
+                      animationDelay: `${i * 120}ms`,
+                      animationDuration: `${0.6 + (i % 3) * 0.2}s`
+                    }}
+                  />
+                ))}
+              </div>
+
+              {/* Infinite Loop Badge (always active as requested) */}
+              <div 
+                className="bg-emerald-500/20 text-emerald-300 border border-emerald-500/40 px-2.5 py-1 rounded-full text-[10px] font-mono font-bold uppercase inline-flex items-center gap-1.5 shadow-sm shadow-emerald-500/10 cursor-pointer"
+                title="Fitur aktif: Lagu akan diulang terus menerus secara otomatis jika habis"
+              >
+                <Repeat className={`w-3 h-3 text-emerald-400 ${isPlaying ? "animate-spin" : ""}`} style={{ animationDuration: "5s" }} />
+                <span>Loop: Diulang Terus</span>
+              </div>
+            </div>
+          </div>
+
+          {/* Scrubber Progress Bar */}
+          <div className="mt-3.5 space-y-1">
+            <div className="flex items-center justify-between text-[10px] font-mono text-slate-400">
+              <span>{formatTime(currentTime)}</span>
+              <span>{duration > 0 ? formatTime(duration) : (isPlaying ? "∞ Loop" : "--:--")}</span>
+            </div>
+            <input
+              type="range"
+              min="0"
+              max={duration || 100}
+              step="0.1"
+              value={currentTime}
+              onChange={(e) => {
+                const val = parseFloat(e.target.value);
+                setCurrentTime(val);
+                if (audioRef.current && duration > 0) {
+                  audioRef.current.currentTime = val;
+                }
+              }}
+              disabled={duration <= 0}
+              className="w-full h-1.5 bg-slate-800 rounded-lg appearance-none cursor-pointer accent-blue-500 focus:outline-none disabled:opacity-40"
+            />
+          </div>
+
+          {/* Controls Cluster: Play/Pause, Upload Button, Reset & Volume */}
+          <div className="mt-4 flex flex-col sm:flex-row items-center justify-between gap-3.5">
+            <div className="flex items-center gap-2.5 w-full sm:w-auto">
+              
+              {/* Main Play/Pause Button */}
+              <button
+                type="button"
+                onClick={() => setIsPlaying(!isPlaying)}
+                className={`flex-1 sm:flex-none px-5 py-2.5 rounded-xl font-bold text-xs uppercase font-mono tracking-wider flex items-center justify-center gap-2 transition-all shadow-md active:scale-95 cursor-pointer ${
+                  isPlaying
+                    ? "bg-amber-500 hover:bg-amber-400 text-slate-950 shadow-amber-500/25"
+                    : "bg-blue-600 hover:bg-blue-500 text-white shadow-blue-600/30"
+                }`}
+              >
+                {isPlaying ? (
+                  <>
+                    <Pause className="w-4 h-4 fill-current" />
+                    <span>Jeda Musik</span>
+                  </>
+                ) : (
+                  <>
+                    <Play className="w-4 h-4 fill-current ml-0.5" />
+                    <span>Putar Musik</span>
+                  </>
+                )}
+              </button>
+
+              {/* Upload Custom Audio Button */}
+              <button
+                type="button"
+                onClick={() => fileInputRef.current?.click()}
+                className="flex-1 sm:flex-none px-4 py-2.5 rounded-xl bg-slate-800 hover:bg-slate-700/80 text-slate-200 hover:text-white border border-slate-700 text-xs font-mono font-bold flex items-center justify-center gap-2 transition-all cursor-pointer shadow-sm active:scale-95"
+                title="Unggah file lagu sendiri dari komputer / HP (.mp3, .wav, .m4a)"
+              >
+                <Upload className="w-4 h-4 text-blue-400" />
+                <span>Unggah Lagu Sendiri</span>
+              </button>
+
+              {/* Reset to Default Button if custom song loaded */}
+              {isCustomUpload && (
+                <button
+                  type="button"
+                  onClick={handleResetToDefault}
+                  className="p-2.5 rounded-xl bg-slate-800/80 hover:bg-slate-700 text-slate-400 hover:text-rose-300 border border-slate-700 transition-colors cursor-pointer"
+                  title="Kembali ke musik bawaan"
+                >
+                  <RotateCcw className="w-4 h-4" />
+                </button>
+              )}
+
+              {/* Hidden file input */}
+              <input
+                ref={fileInputRef}
+                type="file"
+                accept="audio/*"
+                onChange={handleFileUpload}
+                className="hidden"
+              />
+            </div>
+
+            {/* Volume Control */}
+            <div className="flex items-center gap-2.5 w-full sm:w-auto justify-end bg-slate-950/40 px-3 py-1.5 rounded-xl border border-slate-800">
+              <button
+                type="button"
+                onClick={() => setIsMuted(!isMuted)}
+                className="text-slate-400 hover:text-white transition-colors cursor-pointer p-0.5"
+                title={isMuted ? "Bunyikan" : "Bisukan"}
+              >
+                {isMuted || volume === 0 ? (
+                  <VolumeX className="w-4 h-4 text-rose-400" />
+                ) : (
+                  <Volume2 className="w-4 h-4 text-slate-300" />
+                )}
+              </button>
+              <input
+                type="range"
+                min="0"
+                max="1"
+                step="0.05"
+                value={isMuted ? 0 : volume}
+                onChange={(e) => {
+                  const val = parseFloat(e.target.value);
+                  setVolume(val);
+                  setIsMuted(false);
+                }}
+                className="w-20 sm:w-24 h-1.5 bg-slate-800 rounded-lg appearance-none cursor-pointer accent-blue-500 focus:outline-none"
+              />
+              <span className="text-[10px] font-mono text-slate-400 w-8 text-right">
+                {isMuted ? "0%" : `${Math.round(volume * 100)}%`}
+              </span>
+            </div>
+
+          </div>
+
+          {/* Upload Success Feedback Notification */}
+          {uploadToast && (
+            <div className="mt-3 p-2 rounded-lg bg-emerald-950/70 border border-emerald-500/40 text-emerald-300 text-xs font-mono flex items-center gap-2 animate-in fade-in duration-200">
+              <Sparkles className="w-4 h-4 text-emerald-400 shrink-0" />
+              <span>{uploadToast}</span>
+            </div>
+          )}
+
+        </div>
+
       </main>
+
+      {/* Hidden Global Audio Element (Enforces loop={true} and onEnded replay) */}
+      <audio
+        ref={audioRef}
+        loop={isLooping}
+        onTimeUpdate={() => {
+          if (audioRef.current) setCurrentTime(audioRef.current.currentTime);
+        }}
+        onLoadedMetadata={() => {
+          if (audioRef.current) setDuration(audioRef.current.duration);
+        }}
+        onEnded={handleAudioEnded}
+        className="hidden"
+      />
+
+      {/* FLOATING MINI AUDIO CONTROLLER (Bottom Right) */}
+      <div className="fixed bottom-4 right-4 z-40 bg-slate-900/95 border border-slate-700/80 hover:border-blue-500/40 shadow-2xl shadow-black/80 rounded-full px-3.5 py-2 flex items-center gap-3 backdrop-blur-md transition-all">
+        <button
+          type="button"
+          onClick={() => setIsPlaying(!isPlaying)}
+          className={`w-8 h-8 rounded-full flex items-center justify-center transition-all shadow-md active:scale-95 cursor-pointer ${
+            isPlaying
+              ? "bg-amber-500 text-slate-950 shadow-amber-500/30"
+              : "bg-blue-600 text-white shadow-blue-600/30"
+          }`}
+          title={isPlaying ? "Jeda Musik" : "Putar Musik"}
+        >
+          {isPlaying ? <Pause className="w-4 h-4 fill-current" /> : <Play className="w-4 h-4 fill-current ml-0.5" />}
+        </button>
+
+        <div className="flex flex-col max-w-[130px] sm:max-w-[180px]">
+          <span className="text-[10.5px] font-bold text-white truncate font-sans">
+            {songTitle}
+          </span>
+          <span className="text-[9px] text-emerald-400 font-mono flex items-center gap-1">
+            <Repeat className="w-2.5 h-2.5" /> Loop Aktif
+          </span>
+        </div>
+
+        <button
+          type="button"
+          onClick={() => fileInputRef.current?.click()}
+          className="p-1.5 rounded-full hover:bg-slate-800 text-slate-400 hover:text-white transition-colors cursor-pointer"
+          title="Unggah Lagu Sendiri"
+        >
+          <Upload className="w-3.5 h-3.5 text-blue-400" />
+        </button>
+      </div>
 
       {/* FOOTER */}
       <footer className="w-full border-t border-slate-800/80 bg-slate-950/80 py-4 px-4 sm:px-6 z-10">
