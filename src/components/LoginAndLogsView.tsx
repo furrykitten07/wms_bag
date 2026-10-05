@@ -47,6 +47,24 @@ interface LoginAndLogsViewProps {
   onRefresh?: () => Promise<void>;
 }
 
+// Helper memformat tanggal & waktu presisi Asia/Jakarta (WIB / UTC+7)
+export function formatJakartaDateTime(dateInput?: string | number | Date): string {
+  if (!dateInput) return "-";
+  const d = new Date(dateInput);
+  if (isNaN(d.getTime())) return String(dateInput);
+
+  return d.toLocaleString("id-ID", {
+    timeZone: "Asia/Jakarta",
+    day: "2-digit",
+    month: "short",
+    year: "numeric",
+    hour: "2-digit",
+    minute: "2-digit",
+    second: "2-digit",
+    hour12: false
+  });
+}
+
 // Helper to generate seed historical audit logs if Supabase has limited records
 function generateRealisticHistoryLogs(users: User[] = []): MaintenanceLog[] {
   const actionsList = [
@@ -67,17 +85,25 @@ function generateRealisticHistoryLogs(users: User[] = []): MaintenanceLog[] {
   // Generate logs for past 10 days
   for (let d = 9; d >= 0; d--) {
     const dayDate = new Date(now.getTime() - d * 24 * 60 * 60 * 1000);
-    // 3 to 7 events per day
-    const eventsPerDay = 4 + (d % 4);
+    // 3 to 7 events per day (untuk hari ini hanya sedikit & strictly di masa lalu)
+    const eventsPerDay = d === 0 ? 3 : 4 + (d % 4);
 
     for (let e = 0; e < eventsPerDay; e++) {
       const u = users[e % (users.length || 1)] || { name: "Fikri Haikal", username: "superadmin", role: UserRole.SUPER_ADMIN };
       const act = actionsList[(d + e) % actionsList.length];
       
-      const hour = 8 + (e * 2);
-      const minute = 10 + (e * 7);
-      const eventTime = new Date(dayDate);
-      eventTime.setHours(hour, minute, (e * 13) % 60);
+      let eventTime: Date;
+      if (d === 0) {
+        // HARI INI: Waktu HARUS strictly di masa lalu dari jam realtime Jakarta saat ini!
+        // Contoh: 35 menit lalu, 90 menit lalu, 180 menit lalu (TIDAK AKAN PERNAH DI MASA DEPAN)
+        const minutesAgo = 35 + (e * 55) + ((e * 19) % 30);
+        eventTime = new Date(now.getTime() - minutesAgo * 60 * 1000);
+      } else {
+        const hour = 8 + (e * 2);
+        const minute = 10 + (e * 7);
+        eventTime = new Date(dayDate);
+        eventTime.setHours(hour, minute, (e * 13) % 60);
+      }
 
       result.push({
         id: `seed-log-${d}-${e}`,
@@ -118,6 +144,30 @@ export default function LoginAndLogsView({
   // Pagination
   const [currentPage, setCurrentPage] = useState(1);
   const [itemsPerPage, setItemsPerPage] = useState(10);
+  const [realtimeJakarta, setRealtimeJakarta] = useState<string>("");
+
+  // Live Realtime Clock Asia/Jakarta (WIB)
+  useEffect(() => {
+    const updateRealtimeClock = () => {
+      const now = new Date();
+      const formatted = now.toLocaleString("id-ID", {
+        timeZone: "Asia/Jakarta",
+        weekday: "long",
+        day: "2-digit",
+        month: "short",
+        year: "numeric",
+        hour: "2-digit",
+        minute: "2-digit",
+        second: "2-digit",
+        hour12: false
+      });
+      setRealtimeJakarta(formatted);
+    };
+
+    updateRealtimeClock();
+    const timer = setInterval(updateRealtimeClock, 1000);
+    return () => clearInterval(timer);
+  }, []);
 
   useEffect(() => {
     loadAllLogs();
@@ -133,9 +183,13 @@ export default function LoginAndLogsView({
       const realIds = new Set(realLogs.map(l => l.id || l.timestamp));
       const filteredSeed = seedLogs.filter(s => !realIds.has(s.id || s.timestamp));
 
-      const combined = [...realLogs, ...filteredSeed].sort((a, b) => {
-        return new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime();
-      });
+      // Filter guard: cegah log dengan timestamp masa depan (> waktu saat ini + 30 detik)
+      const maxAllowedTime = Date.now() + 30000;
+      const combined = [...realLogs, ...filteredSeed]
+        .filter(l => new Date(l.timestamp).getTime() <= maxAllowedTime)
+        .sort((a, b) => {
+          return new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime();
+        });
 
       setLogs(combined);
     } catch (e) {
@@ -167,11 +221,18 @@ export default function LoginAndLogsView({
       const logTime = new Date(log.timestamp).getTime();
       const diffDays = (now - logTime) / (1000 * 60 * 60 * 24);
 
-      // Date Range Filter
-      if (dateRange === "TODAY" && diffDays > 1) return false;
-      if (dateRange === "7DAYS" && diffDays > 7) return false;
-      if (dateRange === "14DAYS" && diffDays > 14) return false;
-      if (dateRange === "30DAYS" && diffDays > 30) return false;
+      // Date Range Filter (Berdasarkan kalender WIB / Asia/Jakarta)
+      if (dateRange === "TODAY") {
+        const todayStr = new Intl.DateTimeFormat("en-CA", { timeZone: "Asia/Jakarta" }).format(new Date());
+        const logDateStr = new Intl.DateTimeFormat("en-CA", { timeZone: "Asia/Jakarta" }).format(new Date(log.timestamp));
+        if (todayStr !== logDateStr) return false;
+      } else if (dateRange === "7DAYS" && diffDays > 7) {
+        return false;
+      } else if (dateRange === "14DAYS" && diffDays > 14) {
+        return false;
+      } else if (dateRange === "30DAYS" && diffDays > 30) {
+        return false;
+      }
 
       // Mode Filter: LOGIN vs LOGS
       const isLoginEvent = (log.action || "").toUpperCase().includes("LOGIN") || 
@@ -213,13 +274,13 @@ export default function LoginAndLogsView({
 
     for (let i = chartDays - 1; i >= 0; i--) {
       const d = new Date(now.getTime() - i * 24 * 60 * 60 * 1000);
-      const dateKey = d.toISOString().split("T")[0];
-      const label = d.toLocaleDateString("id-ID", { day: "2-digit", month: "short" });
+      const dateKey = new Intl.DateTimeFormat("en-CA", { timeZone: "Asia/Jakarta" }).format(d);
+      const label = d.toLocaleDateString("id-ID", { timeZone: "Asia/Jakarta", day: "2-digit", month: "short" });
       map.set(dateKey, { dateStr: dateKey, label, logins: 0, logs: 0, total: 0 });
     }
 
     logs.forEach(log => {
-      const dateKey = (log.timestamp || "").split("T")[0];
+      const dateKey = new Intl.DateTimeFormat("en-CA", { timeZone: "Asia/Jakarta" }).format(new Date(log.timestamp));
       if (map.has(dateKey)) {
         const isLogin = (log.action || "").toUpperCase().includes("LOGIN") || 
                         (log.module || "").toUpperCase() === "AUTH";
@@ -374,6 +435,20 @@ export default function LoginAndLogsView({
           </div>
 
           <div className="flex items-center gap-2.5 shrink-0 flex-wrap">
+            {/* Realtime Live Jakarta Clock Badge */}
+            <div className="px-3.5 py-1.5 bg-slate-900 border border-slate-700/80 rounded-xl text-white flex items-center gap-2.5 shadow-xs font-mono">
+              <span className="relative flex h-2.5 w-2.5 shrink-0">
+                <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75"></span>
+                <span className="relative inline-flex rounded-full h-2.5 w-2.5 bg-emerald-500"></span>
+              </span>
+              <div className="flex flex-col text-left">
+                <span className="text-[9px] uppercase font-bold text-slate-400 leading-none">Realtime Jakarta (WIB)</span>
+                <span className="text-xs font-black text-amber-300 leading-tight mt-0.5 tracking-wide">
+                  {realtimeJakarta || "Memuat..."} WIB
+                </span>
+              </div>
+            </div>
+
             <button
               type="button"
               onClick={handleExportCSV}
@@ -837,7 +912,7 @@ export default function LoginAndLogsView({
               <thead className="bg-slate-100 text-[10px] font-mono font-bold text-slate-700 uppercase border-b border-slate-200">
                 <tr>
                   <th className="p-3.5 w-12 text-center">No</th>
-                  <th className="p-3.5 w-44 whitespace-nowrap">Waktu</th>
+                  <th className="p-3.5 w-52 whitespace-nowrap">Waktu (WIB / Jakarta)</th>
                   <th className="p-3.5 w-36 whitespace-nowrap">Tipe Event</th>
                   <th className="p-3.5 w-48 whitespace-nowrap">User / Operator</th>
                   <th className="p-3.5 min-w-[280px]">Rincian &amp; Keterangan Aktivitas</th>
@@ -868,15 +943,7 @@ export default function LoginAndLogsView({
                     const isReceiving = (log.action || "").toUpperCase().includes("RECEIVING");
 
                     const logNumber = startIndex + idx + 1;
-                    const dateObj = new Date(log.timestamp);
-                    const formattedDate = dateObj.toLocaleString("id-ID", {
-                      day: "2-digit",
-                      month: "short",
-                      year: "numeric",
-                      hour: "2-digit",
-                      minute: "2-digit",
-                      second: "2-digit"
-                    });
+                    const formattedDate = formatJakartaDateTime(log.timestamp);
 
                     return (
                       <tr 
@@ -890,8 +957,9 @@ export default function LoginAndLogsView({
 
                         <td className="p-3.5 font-mono text-[11px] text-slate-700 whitespace-nowrap">
                           <div className="flex items-center gap-1.5 font-bold">
-                            <Clock className="w-3.5 h-3.5 text-slate-400 shrink-0" />
+                            <Clock className="w-3.5 h-3.5 text-blue-500 shrink-0" />
                             <span>{formattedDate}</span>
+                            <span className="text-[9px] font-black text-blue-700 bg-blue-50 border border-blue-200/80 px-1 py-0.2 rounded">WIB</span>
                           </div>
                         </td>
 
@@ -1109,7 +1177,7 @@ export default function LoginAndLogsView({
                   <div>
                     <span className="text-slate-400 block text-[10px] uppercase">Waktu Kejadian:</span>
                     <strong className="text-slate-800">
-                      {new Date(selectedLogDetail.timestamp).toLocaleString("id-ID")}
+                      {formatJakartaDateTime(selectedLogDetail.timestamp)} WIB
                     </strong>
                   </div>
                   <div>
