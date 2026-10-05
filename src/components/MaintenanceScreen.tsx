@@ -168,7 +168,7 @@ export default function MaintenanceScreen({
   const [isOnlineRedirecting, setIsOnlineRedirecting] = useState(false);
 
   // --- MAINTENANCE BACKGROUND MUSIC PLAYER (Configured by Super Admin) ---
-  const [isPlaying, setIsPlaying] = useState(false);
+  const [isPlaying, setIsPlaying] = useState(config.audio_enabled !== false);
   const [isLooping, setIsLooping] = useState(true); // Loop terus menerus jika habis
   const [volume, setVolume] = useState(0.7);
   const [isMuted, setIsMuted] = useState(false);
@@ -191,7 +191,7 @@ export default function MaintenanceScreen({
     };
   }, []);
 
-  // Audio Playback Orchestrator (HTML Audio vs Fallback Ambient Synth)
+  // Audio Playback Orchestrator with True Autoplay upon entering Maintenance
   useEffect(() => {
     const audio = audioRef.current;
     if (!audio) return;
@@ -199,21 +199,29 @@ export default function MaintenanceScreen({
     audio.volume = isMuted ? 0 : volume;
 
     if (isPlaying) {
-      if (activeAudioUrl) {
-        // Song uploaded by Super Admin
-        synthRef.current?.stop();
-        audio.src = activeAudioUrl;
-        audio.play().catch(err => {
-          console.warn("Audio play prevented:", err);
-          setIsPlaying(false);
-        });
-      } else {
-        // Default chill song: Play default audio stream, or fallback to offline synth
-        audio.src = DEFAULT_AUDIO_STREAM_URL;
-        audio.play().catch(() => {
-          synthRef.current?.start(isMuted ? 0 : volume);
-        });
+      const srcToPlay = activeAudioUrl || DEFAULT_AUDIO_STREAM_URL;
+      if (audio.src !== srcToPlay) {
+        audio.src = srcToPlay;
       }
+
+      // Try playing immediately (autoplay)
+      audio.play().catch(err => {
+        console.warn("Direct unmuted autoplay restricted by browser policy; arming instant gesture listener:", err);
+        const playOnFirstTouch = () => {
+          if (audioRef.current && isPlaying) {
+            audioRef.current.play().catch(() => {
+              synthRef.current?.start(isMuted ? 0 : volume);
+            });
+          }
+          ["pointerdown", "click", "keydown", "touchstart", "scroll"].forEach(evt => {
+            window.removeEventListener(evt, playOnFirstTouch);
+          });
+        };
+
+        ["pointerdown", "click", "keydown", "touchstart", "scroll"].forEach(evt => {
+          window.addEventListener(evt, playOnFirstTouch, { once: true, passive: true });
+        });
+      });
     } else {
       audio.pause();
       synthRef.current?.stop();
@@ -389,21 +397,99 @@ export default function MaintenanceScreen({
             </div>
           </div>
 
-          {/* Right Status Badge & Auto-refresh status */}
-          <div className="flex items-center gap-3">
+          {/* Right Status Badges & Compact Music Player (Paling Kanan) */}
+          <div className="flex items-center gap-2 sm:gap-3">
             {/* Auto-refresh indicator badge */}
-            <div className="hidden md:flex items-center gap-2 px-3 py-1 rounded-full bg-slate-800/80 border border-slate-700/60 text-slate-400 text-[11px] font-mono">
+            <div className="hidden lg:flex items-center gap-2 px-2.5 py-1 rounded-full bg-slate-800/80 border border-slate-700/60 text-slate-400 text-[11px] font-mono">
               <RefreshCw className={`w-3 h-3 text-amber-400 ${isChecking ? "animate-spin" : ""}`} />
               <span>Auto-cek: <strong className="text-amber-300 font-bold">{countdown}s</strong></span>
             </div>
 
             {/* Maintenance Mode Live Beacon */}
-            <div className="flex items-center gap-2 px-3 sm:px-3.5 py-1.5 rounded-full bg-amber-500/15 border border-amber-500/30 text-amber-300 text-[10px] sm:text-[11px] font-mono font-bold uppercase tracking-wider shadow-sm shadow-amber-500/10">
-              <span className="relative flex h-2 w-2">
+            <div className="hidden sm:flex items-center gap-2 px-2.5 sm:px-3 py-1 rounded-full bg-amber-500/15 border border-amber-500/30 text-amber-300 text-[10px] sm:text-[11px] font-mono font-bold uppercase tracking-wider shadow-sm shadow-amber-500/10">
+              <span className="relative flex h-1.5 w-1.5">
                 <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-amber-400 opacity-75"></span>
-                <span className="relative inline-flex rounded-full h-2 w-2 bg-amber-500"></span>
+                <span className="relative inline-flex rounded-full h-1.5 w-1.5 bg-amber-500"></span>
               </span>
-              <span>Maintenance Mode</span>
+              <span>Maintenance</span>
+            </div>
+
+            {/* 🎵 COMPACT MUSIC PLAYER (PALING KANAN) */}
+            <div className="flex items-center gap-2 pl-2 sm:pl-2.5 border-l border-slate-800">
+              <div className="flex items-center gap-2 bg-slate-950/80 border border-slate-700/80 hover:border-blue-500/50 rounded-full px-2.5 sm:px-3 py-1 shadow-lg backdrop-blur-md transition-all">
+                {/* Vinyl Disc Icon */}
+                <div className="relative">
+                  <div 
+                    className={`w-6 h-6 rounded-full bg-slate-900 border border-slate-700 flex items-center justify-center text-amber-400 ${isPlaying ? "animate-spin" : ""}`}
+                    style={{ animationDuration: "3s" }}
+                  >
+                    <Disc className="w-3.5 h-3.5" />
+                  </div>
+                  {isPlaying && (
+                    <span className="absolute -top-0.5 -right-0.5 flex h-2 w-2">
+                      <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-blue-400 opacity-75"></span>
+                      <span className="relative inline-flex rounded-full h-2 w-2 bg-blue-500"></span>
+                    </span>
+                  )}
+                </div>
+
+                {/* Track Title and Equalizer */}
+                <div className="hidden md:flex flex-col max-w-[120px] lg:max-w-[150px] text-left">
+                  <span className="text-[10px] font-bold text-white truncate font-sans" title={songTitle}>
+                    {songTitle}
+                  </span>
+                  <div className="flex items-center gap-1.5">
+                    {/* Animated Equalizer sound bars */}
+                    <div className="flex items-end gap-0.5 h-2">
+                      {[40, 80, 50, 100].map((h, i) => (
+                        <span
+                          key={i}
+                          className={`w-0.5 rounded-full bg-gradient-to-t from-amber-400 to-blue-400 transition-all ${isPlaying ? "animate-pulse" : "opacity-30"}`}
+                          style={{
+                            height: isPlaying ? `${h}%` : "2px",
+                            animationDelay: `${i * 120}ms`
+                          }}
+                        />
+                      ))}
+                    </div>
+                    <span className="text-[8.5px] text-emerald-400 font-mono font-bold flex items-center gap-0.5">
+                      <Repeat className="w-2 h-2" /> Loop
+                    </span>
+                  </div>
+                </div>
+
+                {/* Play / Pause Toggle Button */}
+                <button
+                  type="button"
+                  onClick={() => setIsPlaying(!isPlaying)}
+                  className={`w-6 h-6 rounded-full flex items-center justify-center transition-all cursor-pointer shadow-xs active:scale-90 ${
+                    isPlaying 
+                      ? "bg-amber-500 text-slate-950 hover:bg-amber-400 shadow-amber-500/30" 
+                      : "bg-blue-600 text-white hover:bg-blue-500 shadow-blue-600/30"
+                  }`}
+                  title={isPlaying ? "Jeda Musik" : "Putar Musik (Autoplay Aktif)"}
+                >
+                  {isPlaying ? (
+                    <Pause className="w-3 h-3 fill-current" />
+                  ) : (
+                    <Play className="w-3 h-3 fill-current ml-0.5" />
+                  )}
+                </button>
+
+                {/* Mute Toggle */}
+                <button
+                  type="button"
+                  onClick={() => setIsMuted(!isMuted)}
+                  className="text-slate-400 hover:text-white transition-colors cursor-pointer p-0.5"
+                  title={isMuted ? "Bunyikan Musik" : "Bisukan Musik"}
+                >
+                  {isMuted ? (
+                    <VolumeX className="w-3.5 h-3.5 text-rose-400" />
+                  ) : (
+                    <Volume2 className="w-3.5 h-3.5 text-slate-300" />
+                  )}
+                </button>
+              </div>
             </div>
           </div>
 
@@ -604,176 +690,15 @@ export default function MaintenanceScreen({
           </div>
         )}
 
-        {/* 🎵 MAINTENANCE LOUNGE MUSIC PLAYER CARD */}
-        <div className="w-full mt-8 bg-gradient-to-r from-slate-900/95 via-slate-900/90 to-slate-950/95 border-2 border-blue-500/30 hover:border-blue-500/50 rounded-2xl p-5 sm:p-6 text-left shadow-2xl shadow-blue-950/40 backdrop-blur-xl relative overflow-hidden transition-all duration-300">
-          
-          {/* Subtle Ambient Glow Bar */}
-          <div className="absolute top-0 left-0 right-0 h-1 bg-gradient-to-r from-blue-500 via-indigo-500 to-amber-400" />
-
-          {/* Top Row: Track identity & Loop Status Badge */}
-          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 pb-3 border-b border-slate-800/80">
-            <div className="flex items-center gap-3">
-              {/* Rotating Vinyl Disc icon when playing */}
-              <div className="relative">
-                <div className={`w-11 h-11 rounded-full bg-slate-950 border-2 border-slate-700 flex items-center justify-center text-amber-400 shadow-md ${isPlaying ? "animate-spin" : ""}`} style={{ animationDuration: "3s" }}>
-                  <Disc className="w-6 h-6" />
-                </div>
-                {isPlaying && (
-                  <span className="absolute -top-1 -right-1 flex h-3 w-3">
-                    <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-blue-400 opacity-75"></span>
-                    <span className="relative inline-flex rounded-full h-3 w-3 bg-blue-500"></span>
-                  </span>
-                )}
-              </div>
-
-              <div className="min-w-0">
-                <div className="flex items-center gap-2">
-                  <span className="text-[10px] font-mono font-black text-blue-400 uppercase tracking-widest flex items-center gap-1">
-                    <Music className="w-3 h-3 text-blue-400" />
-                    BAG LOUNGE PLAYER &bull; MUSIK PENGIRING
-                  </span>
-                  <span className={`text-[9px] font-mono font-bold px-1.5 py-0.2 rounded border ${
-                    isCustomUpload 
-                      ? "bg-purple-500/20 text-purple-300 border-purple-500/30" 
-                      : "bg-blue-500/20 text-blue-300 border-blue-500/30"
-                  }`}>
-                    {isCustomUpload ? "Pilihan Super Admin" : "Lo-Fi Bawaan"}
-                  </span>
-                </div>
-                <h4 className="text-sm sm:text-base font-bold text-white truncate max-w-md mt-0.5 font-sans">
-                  {songTitle}
-                </h4>
-              </div>
-            </div>
-
-            {/* Right Status: Infinite Loop Badge & Dancing Sound Bars */}
-            <div className="flex items-center gap-3 self-end sm:self-auto">
-              {/* Animated Equalizer sound bars */}
-              <div className="flex items-end gap-1 h-5 px-1 bg-slate-950/60 rounded border border-slate-800 p-1">
-                {[40, 75, 100, 60, 90, 50].map((h, i) => (
-                  <span
-                    key={i}
-                    className={`w-1 rounded-full bg-gradient-to-t from-amber-400 to-blue-400 transition-all duration-300 ${
-                      isPlaying ? "animate-pulse" : "opacity-25"
-                    }`}
-                    style={{
-                      height: isPlaying ? `${Math.max(4, h * (volume || 0.5))}%` : "4px",
-                      animationDelay: `${i * 120}ms`,
-                      animationDuration: `${0.6 + (i % 3) * 0.2}s`
-                    }}
-                  />
-                ))}
-              </div>
-
-              {/* Infinite Loop Badge (always active as requested) */}
-              <div 
-                className="bg-emerald-500/20 text-emerald-300 border border-emerald-500/40 px-2.5 py-1 rounded-full text-[10px] font-mono font-bold uppercase inline-flex items-center gap-1.5 shadow-sm shadow-emerald-500/10 cursor-pointer"
-                title="Fitur aktif: Lagu akan diulang terus menerus secara otomatis jika habis"
-              >
-                <Repeat className={`w-3 h-3 text-emerald-400 ${isPlaying ? "animate-spin" : ""}`} style={{ animationDuration: "5s" }} />
-                <span>Loop: Diulang Terus</span>
-              </div>
-            </div>
-          </div>
-
-          {/* Scrubber Progress Bar */}
-          <div className="mt-3.5 space-y-1">
-            <div className="flex items-center justify-between text-[10px] font-mono text-slate-400">
-              <span>{formatTime(currentTime)}</span>
-              <span>{duration > 0 ? formatTime(duration) : (isPlaying ? "∞ Loop" : "--:--")}</span>
-            </div>
-            <input
-              type="range"
-              min="0"
-              max={duration || 100}
-              step="0.1"
-              value={currentTime}
-              onChange={(e) => {
-                const val = parseFloat(e.target.value);
-                setCurrentTime(val);
-                if (audioRef.current && duration > 0) {
-                  audioRef.current.currentTime = val;
-                }
-              }}
-              disabled={duration <= 0}
-              className="w-full h-1.5 bg-slate-800 rounded-lg appearance-none cursor-pointer accent-blue-500 focus:outline-none disabled:opacity-40"
-            />
-          </div>
-
-          {/* Controls Cluster: Play/Pause & Volume */}
-          <div className="mt-4 flex flex-col sm:flex-row items-center justify-between gap-3.5">
-            <div className="flex items-center gap-2.5 w-full sm:w-auto">
-              
-              {/* Main Play/Pause Button */}
-              <button
-                type="button"
-                onClick={() => setIsPlaying(!isPlaying)}
-                className={`flex-1 sm:flex-none px-6 py-2.5 rounded-xl font-bold text-xs uppercase font-mono tracking-wider flex items-center justify-center gap-2 transition-all shadow-md active:scale-95 cursor-pointer ${
-                  isPlaying
-                    ? "bg-amber-500 hover:bg-amber-400 text-slate-950 shadow-amber-500/25"
-                    : "bg-blue-600 hover:bg-blue-500 text-white shadow-blue-600/30"
-                }`}
-              >
-                {isPlaying ? (
-                  <>
-                    <Pause className="w-4 h-4 fill-current" />
-                    <span>Jeda Musik</span>
-                  </>
-                ) : (
-                  <>
-                    <Play className="w-4 h-4 fill-current ml-0.5" />
-                    <span>Putar Musik</span>
-                  </>
-                )}
-              </button>
-
-              <span className="text-[10px] font-mono text-slate-400 hidden sm:inline">
-                {isCustomUpload ? "Diunggah oleh Super Admin" : "Lagu Relaksasi Bawaan"}
-              </span>
-            </div>
-
-            {/* Volume Control */}
-            <div className="flex items-center gap-2.5 w-full sm:w-auto justify-end bg-slate-950/40 px-3 py-1.5 rounded-xl border border-slate-800">
-              <button
-                type="button"
-                onClick={() => setIsMuted(!isMuted)}
-                className="text-slate-400 hover:text-white transition-colors cursor-pointer p-0.5"
-                title={isMuted ? "Bunyikan" : "Bisukan"}
-              >
-                {isMuted || volume === 0 ? (
-                  <VolumeX className="w-4 h-4 text-rose-400" />
-                ) : (
-                  <Volume2 className="w-4 h-4 text-slate-300" />
-                )}
-              </button>
-              <input
-                type="range"
-                min="0"
-                max="1"
-                step="0.05"
-                value={isMuted ? 0 : volume}
-                onChange={(e) => {
-                  const val = parseFloat(e.target.value);
-                  setVolume(val);
-                  setIsMuted(false);
-                }}
-                className="w-20 sm:w-24 h-1.5 bg-slate-800 rounded-lg appearance-none cursor-pointer accent-blue-500 focus:outline-none"
-              />
-              <span className="text-[10px] font-mono text-slate-400 w-8 text-right">
-                {isMuted ? "0%" : `${Math.round(volume * 100)}%`}
-              </span>
-            </div>
-
-          </div>
-
-        </div>
-
       </main>
 
-      {/* Hidden Global Audio Element (Enforces loop={true} and onEnded replay) */}
+      {/* Hidden Global Audio Element (Enforces autoPlay, loop={true} and onEnded replay) */}
       <audio
         ref={audioRef}
+        autoPlay={true}
         loop={isLooping}
+        playsInline={true}
+        preload="auto"
         onTimeUpdate={() => {
           if (audioRef.current) setCurrentTime(audioRef.current.currentTime);
         }}
@@ -785,27 +710,56 @@ export default function MaintenanceScreen({
       />
 
       {/* FLOATING MINI AUDIO CONTROLLER (Bottom Right) */}
-      <div className="fixed bottom-4 right-4 z-40 bg-slate-900/95 border border-slate-700/80 hover:border-blue-500/40 shadow-2xl shadow-black/80 rounded-full px-4 py-2 flex items-center gap-3 backdrop-blur-md transition-all">
+      <div className="fixed bottom-4 right-4 z-40 bg-slate-900/95 border border-slate-700/80 hover:border-blue-500/50 shadow-2xl shadow-black/80 rounded-2xl sm:rounded-full px-3.5 py-2 flex items-center gap-3 backdrop-blur-md transition-all">
         <button
           type="button"
           onClick={() => setIsPlaying(!isPlaying)}
-          className={`w-8 h-8 rounded-full flex items-center justify-center transition-all shadow-md active:scale-95 cursor-pointer ${
+          className={`w-8 h-8 rounded-full flex items-center justify-center transition-all shadow-md active:scale-95 cursor-pointer shrink-0 ${
             isPlaying
               ? "bg-amber-500 text-slate-950 shadow-amber-500/30"
               : "bg-blue-600 text-white shadow-blue-600/30"
           }`}
-          title={isPlaying ? "Jeda Musik" : "Putar Musik"}
+          title={isPlaying ? "Jeda Musik" : "Putar Musik (Autoplay)"}
         >
           {isPlaying ? <Pause className="w-4 h-4 fill-current" /> : <Play className="w-4 h-4 fill-current ml-0.5" />}
         </button>
 
-        <div className="flex flex-col max-w-[130px] sm:max-w-[180px]">
-          <span className="text-[10.5px] font-bold text-white truncate font-sans">
+        <div className="flex flex-col max-w-[130px] sm:max-w-[200px]">
+          <span className="text-[11px] font-bold text-white truncate font-sans" title={songTitle}>
             {songTitle}
           </span>
-          <span className="text-[9px] text-emerald-400 font-mono flex items-center gap-1">
-            <Repeat className="w-2.5 h-2.5" /> Loop Aktif
-          </span>
+          <div className="flex items-center gap-2">
+            <span className="text-[9px] text-emerald-400 font-mono font-bold flex items-center gap-1">
+              <Repeat className="w-2.5 h-2.5" /> Loop Otomatis
+            </span>
+            <span className="text-[9px] text-slate-400 font-mono">
+              {isPlaying ? "Sedang Memutar" : "Dijeda"}
+            </span>
+          </div>
+        </div>
+
+        {/* Volume Controls in Floating Pill */}
+        <div className="hidden sm:flex items-center gap-1.5 pl-2 border-l border-slate-800">
+          <button
+            type="button"
+            onClick={() => setIsMuted(!isMuted)}
+            className="text-slate-400 hover:text-white transition-colors cursor-pointer"
+            title={isMuted ? "Bunyikan Musik" : "Bisukan Musik"}
+          >
+            {isMuted ? <VolumeX className="w-3.5 h-3.5 text-rose-400" /> : <Volume2 className="w-3.5 h-3.5 text-slate-300" />}
+          </button>
+          <input
+            type="range"
+            min="0"
+            max="1"
+            step="0.05"
+            value={isMuted ? 0 : volume}
+            onChange={(e) => {
+              setVolume(parseFloat(e.target.value));
+              setIsMuted(false);
+            }}
+            className="w-16 h-1 bg-slate-800 rounded-lg appearance-none cursor-pointer accent-blue-500"
+          />
         </div>
       </div>
 
