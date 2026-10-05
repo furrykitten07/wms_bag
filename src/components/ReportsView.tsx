@@ -126,6 +126,18 @@ export default function ReportsView({
   const allCombinedMovements = useMemo(() => {
     // 1. Valid POs from receivingList
     const validReceivingPOs = new Set((receivingList || []).map(r => r.purchase_order_num).filter(Boolean));
+
+    // Active dispatch references from live dispatchList
+    const activeDispatchRefs = new Set<string>();
+    (dispatchList || []).forEach(d => {
+      if (!d) return;
+      [d.tug8_number, d.bon_pengeluaran_number, d.dispatch_number, d.surat_jalan_number, d.manifest_number, d.id, `DSP-${d.id}`]
+        .filter(Boolean)
+        .forEach(ref => {
+          activeDispatchRefs.add(String(ref).trim().toUpperCase());
+        });
+    });
+
     const seenTxKeys = new Set<string>();
 
     const sanitizedMovements: MovementLedgerEntry[] = [];
@@ -135,6 +147,20 @@ export default function ReportsView({
         // If receivingList is loaded and PO is not in receivingList, ignore orphaned receiving ledger entries
         if (Array.isArray(receivingList) && (!m.reference_number || !validReceivingPOs.has(m.reference_number))) {
           return;
+        }
+      }
+      if (m.transaction_type === TransactionType.DISPATCH) {
+        // If dispatchList is loaded, dispatchList is the authoritative source for Outbound Dispatches.
+        if (Array.isArray(dispatchList) && dispatchList.length > 0) {
+          const mRefUpper = String(m.reference_number || "").trim().toUpperCase();
+          // If this movement corresponds to a known dispatch, skip it so it is built accurately from dispatchList
+          if (activeDispatchRefs.has(mRefUpper)) {
+            return;
+          }
+          // If this movement is an old/orphaned DSP/TUG8 reference not present in dispatchList, skip it
+          if (mRefUpper.startsWith("DSP-") || mRefUpper.startsWith("TUG8-") || mRefUpper.startsWith("BPB-")) {
+            return;
+          }
         }
       }
       const uniqueKey = `${m.transaction_type}_${m.reference_number}_${m.spare_part_id || m.part_number}`;
@@ -177,7 +203,10 @@ export default function ReportsView({
           const uniqueKey = `${TransactionType.RECEIVING}_${refCode}_${item.spare_part_id || item.part_number || idx}`;
           if (!seenTxKeys.has(uniqueKey)) {
             seenTxKeys.add(uniqueKey);
-            const qty = item.qty_received || item.qty_ordered || 0;
+            const qty = item.qty_received !== undefined && item.qty_received !== null
+              ? Number(item.qty_received)
+              : (item.qty_ordered !== undefined ? Number(item.qty_ordered) : 0);
+            if (qty <= 0) return;
             const itemVessel = (item as any).vessel_name || recVessel || "";
             list.push({
               id: `rec-${rec.id}-${item.spare_part_id || idx}`,
@@ -200,31 +229,48 @@ export default function ReportsView({
       });
     }
 
-    // 3. Convert Outbound Dispatch records into ledger entries ONLY if not already in list
+    // 3. Convert Outbound Dispatch records into ledger entries from live dispatchList
     if (dispatchList && dispatchList.length > 0) {
       dispatchList.forEach(dsp => {
         if (!dsp || !dsp.items) return;
         const dspVessel = dsp.vessel_name || "";
+        const refCode = dsp.dispatch_number || dsp.tug8_number || dsp.bon_pengeluaran_number || dsp.surat_jalan_number || `DSP-${dsp.id}`;
         (dsp.items || []).forEach((item, idx) => {
           if (!item) return;
-          const refCode = dsp.tug8_number || dsp.dispatch_number || dsp.surat_jalan_number || dsp.bon_pengeluaran_number || `DSP-${dsp.id}`;
+
+          // Accurately determine the actual dispatched quantity:
+          // In Outbound Dispatch records, qty_dispatched represents the true physical goods volume shipped.
+          let qty = 0;
+          if (typeof item.qty_dispatched === "number") {
+            qty = item.qty_dispatched;
+          } else if (item.qty_dispatched !== undefined && item.qty_dispatched !== null && !isNaN(Number(item.qty_dispatched))) {
+            qty = Number(item.qty_dispatched);
+          } else if (typeof (item as any).qty === "number") {
+            qty = (item as any).qty;
+          } else if (item.qty_dispatched === undefined && typeof item.qty_requested === "number") {
+            qty = item.qty_requested;
+          }
+
+          // Crucial: Only include items that were ACTUALLY dispatched (qty > 0)
+          // If qty_dispatched is 0 or negative, this item was NOT shipped out in this dispatch!
+          if (qty <= 0) return;
+
           const uniqueKey = `${TransactionType.DISPATCH}_${refCode}_${item.spare_part_id || item.part_number || idx}`;
           if (!seenTxKeys.has(uniqueKey)) {
             seenTxKeys.add(uniqueKey);
-            const qty = item.qty_dispatched || item.qty_requested || 0;
             list.push({
               id: `dsp-${dsp.id}-${item.spare_part_id || idx}`,
               transaction_type: TransactionType.DISPATCH,
               spare_part_id: item.spare_part_id,
-              spare_part_name: item.spare_part_name,
-              part_number: item.part_number,
+              spare_part_name: item.spare_part_name || (item as any).part_name || "Suku Cadang",
+              part_number: item.part_number || "-",
               qty_in: 0,
               qty_out: qty,
               before_stock: qty,
               after_stock: 0,
               reference_number: refCode,
               vessel_name: dspVessel,
-              remarks: `Outbound TUG 8 | Kapal: ${dsp.vessel_name || '-'} | Tujuan: ${dsp.destination_port || 'Pelabuhan'} | Transporter: ${dsp.transporter_name || '-'}`,
+              remarks: `Outbound TUG 8 | Kapal: ${dsp.vessel_name || '-'} | Tujuan: ${dsp.delivery_destination || dsp.destination_port || 'Pelabuhan'} | Transporter: ${dsp.courier_name || dsp.transporter_name || '-'}`,
               transaction_date: dsp.dispatch_date 
                 ? (dsp.dispatch_date.includes("T") ? dsp.dispatch_date : `${dsp.dispatch_date}T12:00:00.000Z`)
                 : (dsp.created_at || new Date().toISOString()),
@@ -420,8 +466,8 @@ export default function ReportsView({
 
       const itemsList = Object.values(itemMap).map(it => ({
         ...it,
-        qty_tug8: it.qty_tug8 || it.qty_spk || 1,
-        qty_net: Math.max(0, (it.qty_tug8 || it.qty_spk || 1) - (it.qty_tug10 || 0))
+        qty_tug8: typeof it.qty_tug8 === "number" ? it.qty_tug8 : (it.qty_spk || 0),
+        qty_net: Math.max(0, (typeof it.qty_tug8 === "number" ? it.qty_tug8 : (it.qty_spk || 0)) - (it.qty_tug10 || 0))
       }));
 
       const vList = Array.isArray(spk.vessels) ? spk.vessels : [];
@@ -623,9 +669,15 @@ export default function ReportsView({
         }
       }
 
+      // 5. Checklist Document Type Filter (Inbound vs TUG 8)
+      if (docTypesFilter) {
+        if (isInbound && docTypesFilter.inbound === false) return false;
+        if (isOutbound && docTypesFilter.tug8 === false) return false;
+      }
+
       return true;
     });
-  }, [allCombinedMovements, parts, timeFilter, dateFrom, dateTo, typeFilter, categoryFilter, searchQuery]);
+  }, [allCombinedMovements, parts, timeFilter, dateFrom, dateTo, typeFilter, categoryFilter, searchQuery, docTypesFilter]);
 
   // Aggregate stats based on filtered data
   const stats = useMemo(() => {
@@ -1712,7 +1764,7 @@ export default function ReportsView({
                 {filteredData.map((m) => {
                   const partInfo = parts.find(p => p.id === m.spare_part_id);
                   const isPositive = m.qty_in > 0 || m.transaction_type === TransactionType.RECEIVING;
-                  const qtyChange = isPositive ? (m.qty_in || 1) : (m.qty_out || 1);
+                  const qtyChange = isPositive ? (m.qty_in || 0) : (m.qty_out || 0);
 
                   return (
                     <tr key={m.id} className="hover:bg-slate-50/70 transition-colors">

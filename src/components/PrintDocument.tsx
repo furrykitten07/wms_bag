@@ -143,10 +143,22 @@ export default function PrintDocument({
   }, []);
 
   const rawActiveList = useMemo(() => {
-    if (type === "stock_report") return inventoryList || [];
-    if (type === "mutation_report") return mutationList || [];
-    return data?.items || [];
-  }, [type, inventoryList, mutationList, data]);
+    let baseList = [];
+    if (type === "stock_report") baseList = inventoryList || [];
+    else if (type === "mutation_report") baseList = mutationList || [];
+    else baseList = data?.items || [];
+
+    if (type === "mutation_report" && activeDocTypes) {
+      baseList = baseList.filter((item: any) => {
+        const isIn = (item.qty_in > 0) || item.transaction_type === "RECEIVING";
+        const isOut = (item.qty_out > 0) || item.transaction_type === "DISPATCH";
+        if (isIn && activeDocTypes.inbound === false) return false;
+        if (isOut && activeDocTypes.tug8 === false) return false;
+        return true;
+      });
+    }
+    return baseList;
+  }, [type, inventoryList, mutationList, data, activeDocTypes]);
 
   const totalItems = rawActiveList.length;
   const totalPages = pageSize > 0 ? Math.ceil(totalItems / pageSize) || 1 : 1;

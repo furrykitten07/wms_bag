@@ -1669,9 +1669,13 @@ export default function DispatchView({
               </thead>
               <tbody className="divide-y divide-slate-100 text-slate-700">
                 {paginatedDsp.map((item, idx) => {
-                  const itemsCount = item.items.length;
-                  const partsSummary = item.items.map(i => {
-                    const qty = i.qty_dispatched || i.qty_requested || (i as any).requested_qty || (i as any).qty || (i as any).quantity || 1;
+                  const dispatchedItems = item.items.filter(i => {
+                    const q = i.qty_dispatched !== undefined && i.qty_dispatched !== null ? Number(i.qty_dispatched) : (Number(i.qty_requested) || 0);
+                    return q > 0;
+                  });
+                  const itemsCount = dispatchedItems.length > 0 ? dispatchedItems.length : item.items.length;
+                  const partsSummary = (dispatchedItems.length > 0 ? dispatchedItems : item.items).map(i => {
+                    const qty = i.qty_dispatched !== undefined && i.qty_dispatched !== null ? Number(i.qty_dispatched) : (Number(i.qty_requested) || 1);
                     const pNum = i.part_number && i.part_number !== "-" ? i.part_number : (i.spare_part_name || "Item");
                     return `${qty}x ${pNum}`;
                   }).join(", ");
@@ -3205,7 +3209,10 @@ export default function DispatchView({
                                   <div className="text-slate-300">
                                     <span className="text-slate-400">Barang Dikirim: </span>
                                     <strong className="text-white">
-                                      {dsp.items.map(i => `${i.qty_dispatched || i.qty_requested} ${i.unit || 'PCS'} ${i.spare_part_name}`).join(", ")}
+                                      {dsp.items
+                                        .filter(i => (i.qty_dispatched !== undefined ? Number(i.qty_dispatched) : (Number(i.qty_requested) || 0)) > 0)
+                                        .map(i => `${i.qty_dispatched !== undefined ? i.qty_dispatched : i.qty_requested} ${i.unit || 'PCS'} ${i.spare_part_name}`)
+                                        .join(", ") || "Tidak ada barang dikirim"}
                                     </strong>
                                   </div>
                                   <div>
