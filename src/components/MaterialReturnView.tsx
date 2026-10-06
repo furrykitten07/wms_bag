@@ -80,6 +80,7 @@ export default function MaterialReturnView({
   vessels = []
 }: MaterialReturnViewProps) {
   const [selectedReturnId, setSelectedReturnId] = useState<string | null>(null);
+  const [selectedReturn, setSelectedReturn] = useState<MaterialReturn | null>(null);
   const [activeActionId, setActiveActionId] = useState<string | null>(null);
   const [isCreating, setIsCreating] = useState<boolean>(false);
   const [isEditing, setIsEditing] = useState<boolean>(false);
@@ -154,7 +155,14 @@ export default function MaterialReturnView({
   const [qtyReturned, setQtyReturned] = useState<number>(1);
   const [itemNotes, setItemNotes] = useState<string>("");
 
-  const activeReturn = returns.find(r => r.id === selectedReturnId) || null;
+  const activeReturn = returns.find(r => r.id === (selectedReturnId || selectedReturn?.id)) || selectedReturn || null;
+
+  const handleOpenDetails = (ret: MaterialReturn) => {
+    setSelectedReturn(ret);
+    setSelectedReturnId(ret.id);
+    setActiveActionId(null);
+    setIsDetailsOpen(true);
+  };
 
   const resetForm = () => {
     setReturnDate(new Date().toISOString().split("T")[0]);
@@ -543,6 +551,8 @@ export default function MaterialReturnView({
       }
       if (selectedReturnId && selectedReturnIds.includes(selectedReturnId)) {
         setSelectedReturnId(null);
+        setSelectedReturn(null);
+        setIsDetailsOpen(false);
       }
       setSelectedReturnIds([]);
       alert(`Berhasil menghapus ${totalToDelete} dokumen TUG 10.`);
@@ -1534,7 +1544,7 @@ export default function MaterialReturnView({
                         return (
                           <tr 
                             key={ret.id} 
-                            onClick={() => { setSelectedReturnId(ret.id); setIsDetailsOpen(true); }}
+                            onClick={() => handleOpenDetails(ret)}
                             className={`group cursor-pointer transition-colors ${
                               isSelected
                                 ? "bg-rose-50/60 border-l-2 border-rose-500"
@@ -1801,7 +1811,7 @@ export default function MaterialReturnView({
                                               onClick={(e) => {
                                                 e.stopPropagation();
                                                 setActiveActionId(null);
-                                                setSelectedReturnId(ret.id); setIsDetailsOpen(true);
+                                                handleOpenDetails(ret);
                                               }}
                                               className="w-full px-2.5 py-1.5 text-xs font-medium hover:bg-slate-100 text-slate-700 rounded-lg flex items-center gap-2 cursor-pointer transition-colors text-left"
                                             >
@@ -1963,274 +1973,370 @@ export default function MaterialReturnView({
 
             </div>
 
-            {/* Right Side Sidebar - Return Details & Track Records */}
-            {isDetailsOpen && activeReturn && (
-              <div className="w-full lg:w-[400px] bg-white flex flex-col min-h-0 shrink-0 shadow-xl border-l border-slate-205 animate-slide-in">
-                
-                {/* Details Header */}
-                <div className="px-5 py-4.5 border-b border-slate-200 flex items-center justify-between bg-white shrink-0">
-                  <span className="text-xs font-mono font-black text-slate-800 uppercase tracking-widest">
-                    Detail Pengembalian TUG 10
-                  </span>
-                  <button
-                    onClick={() => setIsDetailsOpen(false)}
-                    className="text-slate-400 hover:text-slate-700 transition-colors cursor-pointer"
-                  >
-                    <X className="w-4.5 h-4.5" />
-                  </button>
-                </div>
-
-                {/* Details Scroll Body */}
-                <div className="flex-1 overflow-y-auto p-5 space-y-4 text-xs">
-                  
-                  {/* Visual Metadata Panel */}
-                  <div className="bg-slate-50 border border-slate-200 rounded-lg p-4 space-y-3 font-mono">
-                    <div className="flex items-baseline justify-between border-b border-slate-200 pb-2.5">
-                      <span className="text-slate-450 text-[10px] font-bold">NOMOR DOKUMEN</span>
-                      <strong className="text-indigo-600 text-sm font-black tracking-tight">{activeReturn.return_number}</strong>
-                    </div>
-
-                    <div className="grid grid-cols-2 gap-3 pt-1">
-                      <div>
-                        <span className="block text-slate-450 text-[9px] uppercase font-bold">Tanggal Kembali</span>
-                        <strong className="text-slate-800">{activeReturn.return_date}</strong>
-                      </div>
-                      <div>
-                        <span className="block text-slate-450 text-[9px] uppercase font-bold">Alasan Kembali</span>
-                        <strong className="text-rose-650 uppercase font-black">{activeReturn.return_reason}</strong>
-                      </div>
-                    </div>
-
-                    <div className="border-t border-slate-200 pt-2.5 grid grid-cols-2 gap-3 text-[10px]">
-                      <div>
-                        <span className="block text-slate-450 text-[8.5px] uppercase font-bold">Kapal Pengirim</span>
-                        <strong className="text-slate-900 block font-bold">⚓ {activeReturn.vessel_name}</strong>
-                      </div>
-                      <div>
-                        <span className="block text-slate-450 text-[8.5px] uppercase font-bold">Integrasi SPK / Ref</span>
-                        <strong className="text-indigo-650 block font-bold">{activeReturn.spk_number || "NO-SPK"}</strong>
-                      </div>
-                    </div>
-
-                    {activeReturn.dispatch_reference && (
-                      <div className="border-t border-slate-200 pt-2 flex justify-between text-[9px]">
-                        <span className="text-slate-450 uppercase font-bold">Referenced TUG 8 Dispatch:</span>
-                        <span className="text-slate-800 font-extrabold">{activeReturn.dispatch_reference}</span>
-                      </div>
-                    )}
-                  </div>
-
-                  {/* 4-Tahap Approval Stepper */}
-                  <div className="bg-slate-900 text-white rounded-xl p-4 border border-slate-800 space-y-3 font-mono">
-                    <div className="flex justify-between items-center border-b border-slate-800 pb-2">
-                      <span className="text-xs font-black font-display uppercase tracking-wider text-slate-200 flex items-center gap-1.5">
-                        <ShieldCheck className="w-4 h-4 text-emerald-400" />
-                        Approval TUG 10 & TTD Digital (4 Tahap)
-                      </span>
-                    </div>
-
-                    <div className="space-y-2 pt-1">
-                      {/* TAHAP 1: ALDI HIDAYAT (PETUGAS GUDANG) */}
-                      <div className={`p-2.5 rounded-lg border text-xs flex items-center justify-between ${activeReturn.aldi_signed ? 'bg-teal-950/40 border-teal-500/40 text-teal-100' : 'bg-slate-800/80 border-slate-700 text-slate-300'}`}>
-                        <div>
-                          <div className="font-bold">Tahap 1: Aldi Hidayat (Petugas Gudang)</div>
-                          <div className="text-[9.5px] text-teal-300">
-                            {activeReturn.aldi_signed ? `✓ Signed: ${activeReturn.aldi_signed_at ? new Date(activeReturn.aldi_signed_at).toLocaleDateString("id-ID") : "Terverifikasi"}` : "⏳ Pending Approval"}
-                          </div>
-                        </div>
-                        {!activeReturn.aldi_signed && isAldiRole && (
-                          <button
-                            type="button"
-                            onClick={async () => {
-                              const now = new Date().toISOString();
-                              await onUpdateReturn(activeReturn.id, {
-                                aldi_signed: true,
-                                aldi_signed_at: now,
-                                aldi_signature_url: ALDI_SIGNATURE_URL,
-                                status: activeReturn.status === "Draft" ? "Submitted" : activeReturn.status
-                              });
-                            }}
-                            className="px-2.5 py-1 bg-teal-600 hover:bg-teal-500 text-white font-bold text-[10px] uppercase rounded cursor-pointer"
-                          >
-                            TTD Petugas Gudang
-                          </button>
-                        )}
-                      </div>
-
-                      {/* TAHAP 2: ALFIN */}
-                      <div className={`p-2.5 rounded-lg border text-xs flex items-center justify-between ${activeReturn.alfin_signed ? 'bg-emerald-950/40 border-emerald-500/40 text-emerald-100' : 'bg-slate-800/80 border-slate-700 text-slate-300'}`}>
-                        <div>
-                          <div className="font-bold">L1: Maghfur Alfin (Kepala Gudang)</div>
-                          <div className="text-[9.5px] text-slate-400">
-                            {activeReturn.alfin_signed ? `✓ Signed: ${activeReturn.alfin_signed_at ? new Date(activeReturn.alfin_signed_at).toLocaleDateString("id-ID") : "Terverifikasi"}` : "⏳ Pending Approval"}
-                          </div>
-                        </div>
-                        {!activeReturn.alfin_signed && isAlfinRole && (
-                          <button
-                            type="button"
-                            onClick={async () => {
-                              const now = new Date().toISOString();
-                              await onUpdateReturn(activeReturn.id, {
-                                alfin_signed: true,
-                                alfin_signed_at: now,
-                                alfin_signature_url: "https://api.dicebear.com/7.x/initials/svg?seed=MaghfurAlfin",
-                                status: activeReturn.status === "Draft" ? "Submitted" : activeReturn.status
-                              });
-                            }}
-                            className="px-2.5 py-1 bg-emerald-600 hover:bg-emerald-500 text-white font-bold text-[10px] uppercase rounded cursor-pointer"
-                          >
-                            TTD Kepala Gudang
-                          </button>
-                        )}
-                      </div>
-
-                      {/* LEVEL 2: EMIR */}
-                      <div className={`p-2.5 rounded-lg border text-xs flex items-center justify-between ${activeReturn.emir_signed ? 'bg-emerald-950/40 border-emerald-500/40 text-emerald-100' : 'bg-slate-800/80 border-slate-700 text-slate-300'}`}>
-                        <div>
-                          <div className="font-bold">L2: Mohamat Emir (Manager)</div>
-                          <div className="text-[9.5px] text-slate-400">
-                            {activeReturn.emir_signed ? `✓ Signed: ${activeReturn.emir_signed_at ? new Date(activeReturn.emir_signed_at).toLocaleDateString("id-ID") : "Terverifikasi"}` : "⏳ Pending Approval"}
-                          </div>
-                        </div>
-                        {!activeReturn.emir_signed && isEmirRole && (
-                          <button
-                            type="button"
-                            onClick={async () => {
-                              const now = new Date().toISOString();
-                              await onUpdateReturn(activeReturn.id, {
-                                emir_signed: true,
-                                emir_signed_at: now,
-                                emir_signature_url: "https://api.dicebear.com/7.x/initials/svg?seed=EmirFerdian"
-                              });
-                            }}
-                            className="px-2.5 py-1 bg-amber-600 hover:bg-amber-500 text-white font-bold text-[10px] uppercase rounded cursor-pointer"
-                          >
-                            TTD Emir
-                          </button>
-                        )}
-                      </div>
-
-                      {/* LEVEL 3: SUMBONO */}
-                      <div className={`p-2.5 rounded-lg border text-xs flex items-center justify-between ${activeReturn.sumbono_signed ? 'bg-emerald-950/40 border-emerald-500/40 text-emerald-100' : 'bg-slate-800/80 border-slate-700 text-slate-300'}`}>
-                        <div>
-                          <div className="font-bold">L3: Sumbono (VP Rendalhar)</div>
-                          <div className="text-[9.5px] text-slate-400">
-                            {activeReturn.sumbono_signed ? `✓ Signed: ${activeReturn.sumbono_signed_at ? new Date(activeReturn.sumbono_signed_at).toLocaleDateString("id-ID") : "Disahkan"}` : "⏳ Pending Approval"}
-                          </div>
-                        </div>
-                        {!activeReturn.sumbono_signed && isSumbonoRole && (
-                          <button
-                            type="button"
-                            onClick={async () => {
-                              const now = new Date().toISOString();
-                              await onUpdateReturn(activeReturn.id, {
-                                sumbono_signed: true,
-                                sumbono_signed_at: now,
-                                sumbono_signature_url: "https://api.dicebear.com/7.x/initials/svg?seed=Sumbono",
-                                status: "Approved"
-                              });
-                            }}
-                            className="px-2.5 py-1 bg-indigo-600 hover:bg-indigo-500 text-white font-bold text-[10px] uppercase rounded cursor-pointer"
-                          >
-                            TTD Sumbono
-                          </button>
-                        )}
-                      </div>
-                    </div>
-                  </div>
-
-                  {/* Rejected Reason Banner */}
-                  {activeReturn.status === "Rejected" && activeReturn.reject_reason && (
-                    <div className="border border-rose-200 p-3 bg-rose-50 rounded-md text-rose-950 relative text-[11px] leading-relaxed shadow-3xs select-none">
-                      <div className="flex items-center gap-1.5 text-rose-700 font-mono font-bold uppercase mb-1">
-                        <AlertTriangle className="w-4 h-4 text-rose-500 animate-pulse" />
-                        PENOLAKAN OLEH WAREHOUSE ADMIN:
-                      </div>
-                      <p className="italic font-sans font-medium">
-                        "{activeReturn.reject_reason}"
-                      </p>
-                    </div>
-                  )}
-
-                  {/* Return Notes */}
-                  <div className="bg-slate-50 border border-slate-200 rounded p-3 text-[11px] text-slate-600 font-medium">
-                    <div className="flex justify-between items-center mb-1">
-                      <strong className="text-[9px] font-mono font-bold text-slate-450 uppercase block">Keterangan / Notes:</strong>
-                      <button
-                        onClick={() => {
-                          setEditingNotesId(activeReturn.id);
-                          setCurrentNotesValue(activeReturn.notes || "");
-                        }}
-                        className="text-[10px] text-emerald-600 hover:text-emerald-850 font-bold hover:underline cursor-pointer flex items-center gap-1"
-                      >
-                        <Edit3 className="w-3 h-3" />
-                        Edit Keterangan
-                      </button>
-                    </div>
-                    {activeReturn.notes ? (
-                      <p className="font-sans font-medium text-slate-700">{activeReturn.notes}</p>
-                    ) : (
-                      <p className="font-sans italic text-slate-400">Belum ada catatan keterangan.</p>
-                    )}
-                  </div>
-
-                  {/* Returned Material Items list */}
-                  <div className="space-y-2">
-                    <h5 className="text-[10px] font-mono font-black text-slate-500 uppercase tracking-widest pl-1">
-                      SUKU CADANG DIKEMBALIKAN:
-                    </h5>
-
-                    <div className="divide-y divide-slate-200 border border-slate-200 rounded-lg overflow-hidden bg-slate-50/50 shadow-3xs">
-                      {activeReturn.items.map((itm, iIdx) => (
-                        <div key={iIdx} className="p-3.5 space-y-2 hover:bg-slate-100/35 transition-colors">
-                          <div className="flex items-start justify-between gap-2">
-                            <div>
-                              <strong className="text-slate-900 block text-[11px] font-bold font-sans">
-                                {itm.part_name}
-                              </strong>
-                              <span className="font-mono text-[9px] text-slate-450 block uppercase font-bold tracking-tight mt-0.5">
-                                PN: {itm.part_number} &bull; {itm.unit || "PCS"}
-                              </span>
-                            </div>
-                            <span className="text-emerald-800 font-mono font-black text-xs bg-emerald-100 border border-emerald-200/50 px-2.5 py-1 rounded shadow-3xs">
-                              kembali: {itm.qty_returned}
-                            </span>
-                          </div>
-
-                          <div className="flex justify-between items-center text-[10px] font-mono text-slate-500 border-t border-slate-200/40 pt-1.5 font-medium">
-                            <span>Sisa asli (Issued/Used):</span>
-                            <span className="font-bold text-slate-650">{itm.qty_issued || 0} dikirim &bull; {itm.qty_used || 0} dipakai</span>
-                          </div>
-
-                          {itm.notes && (
-                            <p className="text-[10px] text-slate-500 italic leading-snug">
-                              *{itm.notes}
-                            </p>
-                          )}
-                        </div>
-                      ))}
-                    </div>
-                  </div>
-
-                  {/* Footer actions for printing */}
-                  <div className="pt-3 border-t border-slate-200 gap-2 flex flex-col font-mono text-[10px] font-black uppercase">
-                    <button
-                      onClick={() => onPreviewTUG10(activeReturn)}
-                      className="w-full bg-indigo-600 hover:bg-indigo-500 text-white border border-transparent p-3 rounded-lg flex items-center justify-center gap-2 cursor-pointer transition-all shadow-md hover:shadow-indigo-500/20"
-                    >
-                      <Printer className="w-4 h-4 text-white" />
-                      CETAK BON PENGEMBALIAN (TUG 10)
-                    </button>
-                  </div>
-
-                </div>
-
-              </div>
-            )}
-
           </div>
 
         </div>
+
+      {/* ========================================================= */}
+      {/* MODAL POPUP: DETAIL DOKUMEN TUG 10 (VIEW DETAILS DIALOG) */}
+      {/* ========================================================= */}
+      {isDetailsOpen && activeReturn && (
+        <div 
+          onClick={(e) => {
+            if (e.target === e.currentTarget) setIsDetailsOpen(false);
+          }}
+          className="fixed inset-0 z-50 bg-slate-900/75 backdrop-blur-xs flex items-center justify-center p-3 sm:p-5 overflow-y-auto no-print animate-in fade-in duration-150"
+        >
+          <div className="bg-white border border-slate-200 rounded-2xl shadow-2xl max-w-4xl w-full font-sans overflow-hidden my-auto flex flex-col max-h-[92vh] border-t-4 border-t-indigo-600 animate-in zoom-in-95 duration-150">
+            
+            {/* Modal Header */}
+            <div className="px-6 py-4.5 border-b border-slate-200 bg-slate-50/80 flex justify-between items-center shrink-0">
+              <div className="flex items-center gap-3.5">
+                <div className="bg-indigo-100 p-2.5 rounded-xl border border-indigo-200/60 text-indigo-600">
+                  <FileText className="w-6 h-6" />
+                </div>
+                <div>
+                  <div className="flex items-center gap-2.5 flex-wrap">
+                    <span className="text-xs font-mono font-bold text-slate-400 uppercase tracking-widest">
+                      DOKUMEN TUG 10
+                    </span>
+                    <h3 className="text-sm sm:text-base font-black font-display text-slate-900 tracking-tight uppercase">
+                      {activeReturn.return_number}
+                    </h3>
+                    {/* Status Badge */}
+                    <span className={`px-2.5 py-0.5 rounded-full text-[10px] font-mono font-black uppercase border ${
+                      activeReturn.status === "Approved"
+                        ? "bg-emerald-100 text-emerald-800 border-emerald-300"
+                        : activeReturn.status === "Submitted"
+                        ? "bg-blue-100 text-blue-800 border-blue-300"
+                        : activeReturn.status === "Rejected"
+                        ? "bg-rose-100 text-rose-800 border-rose-300"
+                        : "bg-amber-100 text-amber-800 border-amber-300"
+                    }`}>
+                      {activeReturn.status}
+                    </span>
+                  </div>
+                  <p className="text-[11px] text-slate-500 font-mono mt-0.5">
+                    Kapal: <strong className="text-slate-800 font-sans font-bold">⚓ {activeReturn.vessel_name}</strong> &bull; Tanggal: {activeReturn.return_date || "-"}
+                  </p>
+                </div>
+              </div>
+
+              <div className="flex items-center gap-2">
+                <button
+                  type="button"
+                  onClick={() => onPreviewTUG10(activeReturn)}
+                  className="hidden sm:flex items-center gap-1.5 px-3 py-1.5 bg-indigo-50 hover:bg-indigo-100 text-indigo-700 text-xs font-mono font-bold rounded-lg border border-indigo-200 transition-colors cursor-pointer"
+                  title="Cetak TUG 10 (PDF)"
+                >
+                  <Printer className="w-3.5 h-3.5" />
+                  <span>Cetak TUG 10</span>
+                </button>
+                <button 
+                  type="button"
+                  onClick={() => setIsDetailsOpen(false)}
+                  className="p-1.5 text-slate-400 hover:text-slate-700 hover:bg-slate-200 rounded-lg transition-colors cursor-pointer"
+                  title="Tutup Detail"
+                >
+                  <X className="w-5 h-5" />
+                </button>
+              </div>
+            </div>
+
+            {/* Modal Body (Scrollable) */}
+            <div className="flex-1 overflow-y-auto p-5 sm:p-6 space-y-5 text-xs custom-scrollbar">
+              
+              {/* Metadata Grid */}
+              <div className="bg-slate-50 border border-slate-200 rounded-xl p-4 space-y-3 font-mono">
+                <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
+                  <div>
+                    <span className="block text-slate-450 text-[9px] uppercase font-bold">Nomor Dokumen</span>
+                    <strong className="text-indigo-600 text-xs font-black">{activeReturn.return_number}</strong>
+                  </div>
+                  <div>
+                    <span className="block text-slate-450 text-[9px] uppercase font-bold">Tanggal Kembali</span>
+                    <strong className="text-slate-800 text-xs">{activeReturn.return_date}</strong>
+                  </div>
+                  <div>
+                    <span className="block text-slate-450 text-[9px] uppercase font-bold">Kapal Pengirim</span>
+                    <strong className="text-slate-900 text-xs block truncate">⚓ {activeReturn.vessel_name}</strong>
+                  </div>
+                  <div>
+                    <span className="block text-slate-450 text-[9px] uppercase font-bold">Alasan Pengembalian</span>
+                    <strong className="text-rose-600 text-xs uppercase font-black">{activeReturn.return_reason}</strong>
+                  </div>
+                </div>
+
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 border-t border-slate-200/80 pt-3">
+                  <div>
+                    <span className="block text-slate-450 text-[9px] uppercase font-bold">Integrasi SPK / Work Order</span>
+                    <strong className="text-indigo-600 font-bold">{activeReturn.spk_number || "MANUAL (Tanpa SPK)"}</strong>
+                  </div>
+                  {activeReturn.dispatch_reference && (
+                    <div>
+                      <span className="block text-slate-450 text-[9px] uppercase font-bold">Referensi Dispatch TUG 8</span>
+                      <strong className="text-slate-800 font-bold">{activeReturn.dispatch_reference}</strong>
+                    </div>
+                  )}
+                </div>
+
+                {/* Return Notes */}
+                <div className="border-t border-slate-200/80 pt-3">
+                  <div className="flex justify-between items-center mb-1">
+                    <span className="text-[9px] uppercase font-bold text-slate-450">Keterangan / Catatan Tambahan:</span>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setEditingNotesId(activeReturn.id);
+                        setCurrentNotesValue(activeReturn.notes || "");
+                      }}
+                      className="text-[10px] text-emerald-600 hover:text-emerald-700 font-bold hover:underline cursor-pointer flex items-center gap-1 font-mono"
+                    >
+                      <Edit3 className="w-3 h-3" />
+                      <span>Edit Keterangan</span>
+                    </button>
+                  </div>
+                  {activeReturn.notes ? (
+                    <p className="font-sans font-medium text-slate-700 text-xs bg-white p-2.5 rounded-lg border border-slate-200">
+                      {activeReturn.notes}
+                    </p>
+                  ) : (
+                    <p className="font-sans italic text-slate-400 text-xs">
+                      Tidak ada catatan keterangan khusus.
+                    </p>
+                  )}
+                </div>
+              </div>
+
+              {/* Rejection Alert if Rejected */}
+              {activeReturn.status === "Rejected" && activeReturn.reject_reason && (
+                <div className="border border-rose-200 p-3.5 bg-rose-50 rounded-xl text-rose-950 text-xs shadow-xs">
+                  <div className="flex items-center gap-1.5 text-rose-700 font-mono font-bold uppercase mb-1">
+                    <AlertTriangle className="w-4 h-4 text-rose-500 animate-pulse" />
+                    <span>ALASAN PENOLAKAN DOKUMEN:</span>
+                  </div>
+                  <p className="italic font-sans font-medium">
+                    "{activeReturn.reject_reason}"
+                  </p>
+                </div>
+              )}
+
+              {/* 4-Tahap Approval Stepper & Digital Signatures */}
+              <div className="bg-slate-900 text-white rounded-xl p-4 sm:p-5 border border-slate-800 space-y-3 font-mono">
+                <div className="flex justify-between items-center border-b border-slate-800 pb-2.5">
+                  <span className="text-xs font-black uppercase tracking-wider text-slate-200 flex items-center gap-2">
+                    <ShieldCheck className="w-4 h-4 text-emerald-400" />
+                    <span>Status Approval &amp; Tanda Tangan Digital (4 Level)</span>
+                  </span>
+                </div>
+
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5 pt-1">
+                  {/* TAHAP 1: ALDI HIDAYAT */}
+                  <div className={`p-3 rounded-lg border text-xs flex items-center justify-between gap-2 ${activeReturn.aldi_signed ? 'bg-teal-950/40 border-teal-500/40 text-teal-100' : 'bg-slate-800/80 border-slate-700 text-slate-300'}`}>
+                    <div>
+                      <div className="font-bold text-[11px]">1. Aldi Hidayat (Petugas Gudang)</div>
+                      <div className="text-[9.5px] text-teal-300 mt-0.5">
+                        {activeReturn.aldi_signed ? `✓ Signed: ${activeReturn.aldi_signed_at ? new Date(activeReturn.aldi_signed_at).toLocaleDateString("id-ID") : "Terverifikasi"}` : "⏳ Menunggu TTD"}
+                      </div>
+                    </div>
+                    {!activeReturn.aldi_signed && isAldiRole ? (
+                      <button
+                        type="button"
+                        onClick={async () => {
+                          const now = new Date().toISOString();
+                          await onUpdateReturn(activeReturn.id, {
+                            aldi_signed: true,
+                            aldi_signed_at: now,
+                            aldi_signature_url: ALDI_SIGNATURE_URL,
+                            status: activeReturn.status === "Draft" ? "Submitted" : activeReturn.status
+                          });
+                          setSelectedReturn(prev => prev ? { ...prev, aldi_signed: true, aldi_signed_at: now, aldi_signature_url: ALDI_SIGNATURE_URL } : prev);
+                        }}
+                        className="px-2.5 py-1 bg-teal-600 hover:bg-teal-500 text-white font-bold text-[10px] uppercase rounded cursor-pointer shrink-0"
+                      >
+                        TTD Sekarang
+                      </button>
+                    ) : activeReturn.aldi_signed ? (
+                      <span className="text-[9px] font-mono font-bold text-teal-300 bg-teal-900/60 px-2 py-0.5 rounded border border-teal-500/30">✓ ACC</span>
+                    ) : null}
+                  </div>
+
+                  {/* TAHAP 2: ALFIN */}
+                  <div className={`p-3 rounded-lg border text-xs flex items-center justify-between gap-2 ${activeReturn.alfin_signed ? 'bg-emerald-950/40 border-emerald-500/40 text-emerald-100' : 'bg-slate-800/80 border-slate-700 text-slate-300'}`}>
+                    <div>
+                      <div className="font-bold text-[11px]">2. Maghfur Alfin (Kepala Gudang)</div>
+                      <div className="text-[9.5px] text-slate-400 mt-0.5">
+                        {activeReturn.alfin_signed ? `✓ Signed: ${activeReturn.alfin_signed_at ? new Date(activeReturn.alfin_signed_at).toLocaleDateString("id-ID") : "Terverifikasi"}` : "⏳ Menunggu TTD"}
+                      </div>
+                    </div>
+                    {!activeReturn.alfin_signed && isAlfinRole ? (
+                      <button
+                        type="button"
+                        onClick={async () => {
+                          const now = new Date().toISOString();
+                          await onUpdateReturn(activeReturn.id, {
+                            alfin_signed: true,
+                            alfin_signed_at: now,
+                            alfin_signature_url: "https://api.dicebear.com/7.x/initials/svg?seed=MaghfurAlfin",
+                            status: activeReturn.status === "Draft" ? "Submitted" : activeReturn.status
+                          });
+                          setSelectedReturn(prev => prev ? { ...prev, alfin_signed: true, alfin_signed_at: now } : prev);
+                        }}
+                        className="px-2.5 py-1 bg-emerald-600 hover:bg-emerald-500 text-white font-bold text-[10px] uppercase rounded cursor-pointer shrink-0"
+                      >
+                        TTD Sekarang
+                      </button>
+                    ) : activeReturn.alfin_signed ? (
+                      <span className="text-[9px] font-mono font-bold text-emerald-300 bg-emerald-900/60 px-2 py-0.5 rounded border border-emerald-500/30">✓ ACC</span>
+                    ) : null}
+                  </div>
+
+                  {/* LEVEL 2: EMIR */}
+                  <div className={`p-3 rounded-lg border text-xs flex items-center justify-between gap-2 ${activeReturn.emir_signed ? 'bg-emerald-950/40 border-emerald-500/40 text-emerald-100' : 'bg-slate-800/80 border-slate-700 text-slate-300'}`}>
+                    <div>
+                      <div className="font-bold text-[11px]">3. Mohamat Emir (Manager Logistik)</div>
+                      <div className="text-[9.5px] text-slate-400 mt-0.5">
+                        {activeReturn.emir_signed ? `✓ Signed: ${activeReturn.emir_signed_at ? new Date(activeReturn.emir_signed_at).toLocaleDateString("id-ID") : "Terverifikasi"}` : "⏳ Menunggu TTD"}
+                      </div>
+                    </div>
+                    {!activeReturn.emir_signed && isEmirRole ? (
+                      <button
+                        type="button"
+                        onClick={async () => {
+                          const now = new Date().toISOString();
+                          await onUpdateReturn(activeReturn.id, {
+                            emir_signed: true,
+                            emir_signed_at: now,
+                            emir_signature_url: "https://api.dicebear.com/7.x/initials/svg?seed=EmirFerdian"
+                          });
+                          setSelectedReturn(prev => prev ? { ...prev, emir_signed: true, emir_signed_at: now } : prev);
+                        }}
+                        className="px-2.5 py-1 bg-amber-600 hover:bg-amber-500 text-white font-bold text-[10px] uppercase rounded cursor-pointer shrink-0"
+                      >
+                        TTD Sekarang
+                      </button>
+                    ) : activeReturn.emir_signed ? (
+                      <span className="text-[9px] font-mono font-bold text-emerald-300 bg-emerald-900/60 px-2 py-0.5 rounded border border-emerald-500/30">✓ ACC</span>
+                    ) : null}
+                  </div>
+
+                  {/* LEVEL 3: SUMBONO */}
+                  <div className={`p-3 rounded-lg border text-xs flex items-center justify-between gap-2 ${activeReturn.sumbono_signed ? 'bg-emerald-950/40 border-emerald-500/40 text-emerald-100' : 'bg-slate-800/80 border-slate-700 text-slate-300'}`}>
+                    <div>
+                      <div className="font-bold text-[11px]">4. Sumbono (VP Rendalhar)</div>
+                      <div className="text-[9.5px] text-slate-400 mt-0.5">
+                        {activeReturn.sumbono_signed ? `✓ Signed: ${activeReturn.sumbono_signed_at ? new Date(activeReturn.sumbono_signed_at).toLocaleDateString("id-ID") : "Disahkan"}` : "⏳ Menunggu TTD"}
+                      </div>
+                    </div>
+                    {!activeReturn.sumbono_signed && isSumbonoRole ? (
+                      <button
+                        type="button"
+                        onClick={async () => {
+                          const now = new Date().toISOString();
+                          await onUpdateReturn(activeReturn.id, {
+                            sumbono_signed: true,
+                            sumbono_signed_at: now,
+                            sumbono_signature_url: "https://api.dicebear.com/7.x/initials/svg?seed=Sumbono",
+                            status: "Approved"
+                          });
+                          setSelectedReturn(prev => prev ? { ...prev, sumbono_signed: true, sumbono_signed_at: now, status: "Approved" } : prev);
+                        }}
+                        className="px-2.5 py-1 bg-indigo-600 hover:bg-indigo-500 text-white font-bold text-[10px] uppercase rounded cursor-pointer shrink-0"
+                      >
+                        Sahkan Sekarang
+                      </button>
+                    ) : activeReturn.sumbono_signed ? (
+                      <span className="text-[9px] font-mono font-bold text-emerald-300 bg-emerald-900/60 px-2 py-0.5 rounded border border-emerald-500/30">✓ ACC</span>
+                    ) : null}
+                  </div>
+                </div>
+              </div>
+
+              {/* Returned Material Items Table */}
+              <div className="space-y-2">
+                <div className="flex items-center justify-between">
+                  <h4 className="text-xs font-mono font-black text-slate-900 uppercase tracking-wider flex items-center gap-1.5">
+                    <FileText className="w-4 h-4 text-indigo-600" />
+                    <span>Daftar Suku Cadang Dikembalikan ({activeReturn.items?.length || 0} Item)</span>
+                  </h4>
+                </div>
+
+                <div className="border border-slate-200 rounded-xl overflow-hidden shadow-2xs">
+                  <table className="w-full text-left text-xs border-collapse">
+                    <thead className="bg-slate-100 text-[10px] font-mono font-bold text-slate-600 uppercase border-b border-slate-200">
+                      <tr>
+                        <th className="p-3">Nama Barang &amp; Part Number</th>
+                        <th className="p-3 text-center">Satuan</th>
+                        <th className="p-3 text-center">Dikirim</th>
+                        <th className="p-3 text-center">Dipakai</th>
+                        <th className="p-3 text-center bg-emerald-50/80 text-emerald-900">Dikembalikan</th>
+                        <th className="p-3">Keterangan</th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-slate-100 text-slate-800">
+                      {(!activeReturn.items || activeReturn.items.length === 0) ? (
+                        <tr>
+                          <td colSpan={6} className="p-6 text-center text-slate-400 font-mono">
+                            Tidak ada item suku cadang terdata pada dokumen ini.
+                          </td>
+                        </tr>
+                      ) : (
+                        activeReturn.items.map((itm, iIdx) => (
+                          <tr key={iIdx} className="hover:bg-slate-50 transition-colors">
+                            <td className="p-3">
+                              <strong className="block text-slate-900 font-bold text-xs">{itm.part_name}</strong>
+                              <span className="font-mono text-[10px] text-slate-500">PN: {itm.part_number || "-"}</span>
+                            </td>
+                            <td className="p-3 text-center font-mono text-[11px] text-slate-600">{itm.unit || "PCS"}</td>
+                            <td className="p-3 text-center font-mono text-xs text-slate-600">{itm.qty_issued || 0}</td>
+                            <td className="p-3 text-center font-mono text-xs text-slate-600">{itm.qty_used || 0}</td>
+                            <td className="p-3 text-center bg-emerald-50/50">
+                              <span className="inline-block px-2.5 py-1 bg-emerald-100 border border-emerald-300 text-emerald-900 font-mono font-black text-xs rounded-md shadow-2xs">
+                                {itm.qty_returned}
+                              </span>
+                            </td>
+                            <td className="p-3 text-xs text-slate-600 italic">
+                              {itm.notes || "-"}
+                            </td>
+                          </tr>
+                        ))
+                      )}
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+
+            </div>
+
+            {/* Modal Footer */}
+            <div className="px-6 py-4 bg-slate-50 border-t border-slate-200 flex flex-col sm:flex-row items-center justify-between gap-3 shrink-0">
+              <div className="text-[11px] font-mono text-slate-500 flex items-center gap-1.5">
+                <span>Dokumen ID:</span>
+                <code className="text-slate-700 bg-slate-200 px-1.5 py-0.5 rounded text-[10px]">{activeReturn.id}</code>
+              </div>
+
+              <div className="flex items-center gap-2 w-full sm:w-auto">
+                <button
+                  type="button"
+                  onClick={() => onPreviewTUG10(activeReturn)}
+                  className="flex-1 sm:flex-none px-4 py-2.5 bg-indigo-600 hover:bg-indigo-500 text-white font-mono font-bold text-xs uppercase rounded-xl transition-all shadow-sm flex items-center justify-center gap-2 cursor-pointer"
+                >
+                  <Printer className="w-4 h-4" />
+                  <span>Cetak TUG 10 (PDF)</span>
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setIsDetailsOpen(false)}
+                  className="flex-1 sm:flex-none px-4 py-2.5 bg-white hover:bg-slate-100 text-slate-700 border border-slate-300 font-mono font-bold text-xs uppercase rounded-xl transition-colors cursor-pointer"
+                >
+                  Tutup
+                </button>
+              </div>
+            </div>
+
+          </div>
+        </div>
+      )}
 
     </div>
   );
