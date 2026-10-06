@@ -69,6 +69,7 @@ export default function SPKView({
 
   // Creation form states
   const [targetPort, setTargetPort] = useState("");
+  const [remarks, setRemarks] = useState("");
   const [vessels, setVessels] = useState<Array<{ vessel_name: string; items: Array<{ spare_part_id: string; qty_to_pick: number }> }>>([
     { vessel_name: "MV. KARTINI BARUNA", items: [{ spare_part_id: "", qty_to_pick: 1 }] }
   ]);

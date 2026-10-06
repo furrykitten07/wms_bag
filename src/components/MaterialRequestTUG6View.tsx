@@ -276,6 +276,7 @@ export default function MaterialRequestTUG6View({
   const [workOrderRef, setWorkOrderRef] = useState<string>("");
   const [accountCode, setAccountCode] = useState<string>("BPP");
   const [functionCode, setFunctionCode] = useState<string>("ARMADA");
+  const [remarks, setRemarks] = useState<string>("");
   const [formItems, setFormItems] = useState<Partial<MaterialRequestItem>[]>([]);
 
   const vesselOptions = useMemo(() => {
@@ -2815,8 +2816,8 @@ export default function MaterialRequestTUG6View({
                                     <div className="font-mono text-sm font-black text-blue-900">
                                       {item.tug5_qty}
                                     </div>
-                                    <div className="text-[9.5px] font-mono text-blue-700 truncate max-w-[120px]" title={item.tug5_request_number}>
-                                      {item.tug5_request_number || "Tidak Ada"}
+                                    <div className="text-[9.5px] font-mono text-blue-700 truncate max-w-[120px]" title={item.tug5_request_numbers?.join(", ")}>
+                                      {item.tug5_request_numbers?.join(", ") || "Tidak Ada"}
                                     </div>
                                     {item.tug5_status && (
                                       <span className="inline-block mt-0.5 px-1 py-0.2 rounded text-[8.5px] font-mono font-bold bg-blue-100 text-blue-800">
@@ -2830,8 +2831,8 @@ export default function MaterialRequestTUG6View({
                                     <div className={`font-mono text-sm font-black ${item.tug6_qty > 0 ? "text-emerald-700" : "text-rose-600"}`}>
                                       {item.tug6_qty}
                                     </div>
-                                    <div className="text-[9.5px] font-mono text-slate-600 truncate max-w-[120px]" title={item.tug6_request_number}>
-                                      {item.tug6_request_number || "Belum Dikeluarkan"}
+                                    <div className="text-[9.5px] font-mono text-slate-600 truncate max-w-[120px]" title={item.tug6_request_numbers?.join(", ")}>
+                                      {item.tug6_request_numbers?.join(", ") || "Belum Dikeluarkan"}
                                     </div>
                                     {item.tug6_status && (
                                       <span className="inline-block mt-0.5 px-1 py-0.2 rounded text-[8.5px] font-mono font-bold bg-slate-200 text-slate-800">
@@ -2867,7 +2868,7 @@ export default function MaterialRequestTUG6View({
 
                                   {/* Alasan Kritis / Justifikasi */}
                                   <td className="py-3 px-4 text-slate-600 text-[11px] leading-relaxed max-w-xs">
-                                    {item.critical_info.reason || "Komponen vital operasional kapal & sistem armada maritim."}
+                                    {item.critical_info.notes || item.match_reason || "Komponen vital operasional kapal & sistem armada maritim."}
                                   </td>
                                 </tr>
                               );
@@ -2914,12 +2915,12 @@ export default function MaterialRequestTUG6View({
                         `"${(item.critical_info.category || "").replace(/"/g, '""')}"`,
                         `"${(item.critical_info.equipment || "").replace(/"/g, '""')}"`,
                         item.tug5_qty,
-                        `"${item.tug5_request_number || ""}"`,
+                        `"${(item.tug5_request_numbers || []).join("; ")}"`,
                         item.tug6_qty,
-                        `"${item.tug6_request_number || ""}"`,
+                        `"${(item.tug6_request_numbers || []).join("; ")}"`,
                         `"${item.unit}"`,
                         `"${item.fulfillment_status}"`,
-                        `"${(item.critical_info.reason || "").replace(/"/g, '""')}"`
+                        `"${((item.critical_info.notes || item.match_reason || "") as string).replace(/"/g, '""')}"`
                       ]);
                       const csvContent = "data:text/csv;charset=utf-8," + [headers.join(","), ...rows.map(e => e.join(","))].join("\n");
                       const encodedUri = encodeURI(csvContent);
