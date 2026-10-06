@@ -262,12 +262,21 @@ export default function MaterialRequestView({
     // Auto-select matching inbound if available
     const mrSpk = (mr.work_order_ref || mr.spk_number || "").trim().toLowerCase();
     const mrReqNum = (mr.request_number || "").trim().toLowerCase();
+    const mrTug5 = (mr.tug5_number || "").trim().toLowerCase();
+    const mrVessel = (mr.vessel_name || "").toLowerCase().replace(/^mv\.\s*/i, "").trim();
+
     const foundInb = receivingList.find(r => {
       if (mr.receiving_ref_id && r.id === mr.receiving_ref_id) return true;
       const rSpk = (r.spk_number || "").trim().toLowerCase();
       if (mrSpk && rSpk && (rSpk === mrSpk || rSpk.includes(mrSpk) || mrSpk.includes(rSpk))) return true;
       const rPo = (r.purchase_order_num || "").trim().toLowerCase();
+      if (mrSpk && rPo && (rPo === mrSpk || rPo.includes(mrSpk) || mrSpk.includes(rPo))) return true;
       if (mrReqNum && rPo && (rPo === mrReqNum || rPo.includes(mrReqNum))) return true;
+      if (mrTug5 && rPo && (rPo === mrTug5 || rPo.includes(mrTug5) || mrTug5.includes(rPo))) return true;
+      if (mrVessel && r.vessel_name) {
+        const rv = r.vessel_name.toLowerCase().replace(/^mv\.\s*/i, "").trim();
+        if (rv && (rv === mrVessel || rv.includes(mrVessel) || mrVessel.includes(rv))) return true;
+      }
       return false;
     });
 
@@ -299,13 +308,21 @@ export default function MaterialRequestView({
   const getInboundInfoForMR = (mr: Partial<MaterialRequest> | MaterialRequest) => {
     const spkRef = (mr.work_order_ref || mr.spk_number || "").trim().toLowerCase();
     const reqNum = (mr.request_number || "").trim().toLowerCase();
+    const tug5Num = (mr.tug5_number || "").trim().toLowerCase();
+    const vName = (mr.vessel_name || "").toLowerCase().replace(/^mv\.\s*/i, "").trim();
 
     const match = receivingList.find(r => {
       if (mr.receiving_ref_id && r.id === mr.receiving_ref_id) return true;
       const rSpk = (r.spk_number || "").trim().toLowerCase();
       if (spkRef && rSpk && (rSpk === spkRef || rSpk.includes(spkRef) || spkRef.includes(rSpk))) return true;
       const rPo = (r.purchase_order_num || "").trim().toLowerCase();
+      if (spkRef && rPo && (rPo === spkRef || rPo.includes(spkRef) || spkRef.includes(rPo))) return true;
       if (reqNum && rPo && (rPo === reqNum || rPo.includes(reqNum))) return true;
+      if (tug5Num && rPo && (rPo === tug5Num || rPo.includes(tug5Num) || tug5Num.includes(rPo))) return true;
+      if (vName && r.vessel_name) {
+        const rvName = r.vessel_name.toLowerCase().replace(/^mv\.\s*/i, "").trim();
+        if (rvName && (rvName === vName || rvName.includes(vName) || vName.includes(rvName))) return true;
+      }
       return false;
     });
 
@@ -376,6 +393,43 @@ export default function MaterialRequestView({
       completionDate: completionDate ? String(completionDate).split("T")[0] : null,
       auditLogs: match.audit_logs || []
     };
+  };
+
+  // Helper to resolve Work Order Number based on PO number from Inbound Receiving
+  const getWorkOrderPONumber = (mr: Partial<MaterialRequest> | MaterialRequest): string => {
+    // 1. Direct receiving_ref_id
+    if (mr.receiving_ref_id) {
+      const direct = receivingList.find(r => r.id === mr.receiving_ref_id);
+      if (direct?.purchase_order_num) return direct.purchase_order_num;
+    }
+    // 2. From resolved inboundInfo
+    const inbInfo = getInboundInfoForMR(mr);
+    if (inbInfo?.receivingRecord?.purchase_order_num) {
+      return inbInfo.receivingRecord.purchase_order_num;
+    }
+    // 3. Match receiving by SPK or work_order_ref
+    const spkRef = (mr.spk_number || mr.work_order_ref || "").trim().toLowerCase();
+    if (spkRef) {
+      const recBySpk = receivingList.find(r => 
+        (r.spk_number && r.spk_number.trim().toLowerCase() === spkRef) ||
+        (r.purchase_order_num && r.purchase_order_num.trim().toLowerCase() === spkRef)
+      );
+      if (recBySpk?.purchase_order_num) return recBySpk.purchase_order_num;
+    }
+    // 4. Match receiving by vessel name
+    if (mr.vessel_name) {
+      const vClean = mr.vessel_name.toLowerCase().replace(/^mv\.\s*/i, "").trim();
+      const recByVessel = receivingList.find(r => {
+        const rvClean = (r.vessel_name || "").toLowerCase().replace(/^mv\.\s*/i, "").trim();
+        return rvClean && (rvClean === vClean || rvClean.includes(vClean) || vClean.includes(rvClean));
+      });
+      if (recByVessel?.purchase_order_num) return recByVessel.purchase_order_num;
+    }
+    // 5. Existing work_order_ref if present
+    if (mr.work_order_ref && mr.work_order_ref.trim() !== "" && mr.work_order_ref !== "-") {
+      return mr.work_order_ref;
+    }
+    return "-";
   };
 
   // Filtered Inbound List for selection modal
@@ -635,7 +689,7 @@ export default function MaterialRequestView({
             : undefined,
           completion_date: completionDate,
           items: finalItems,
-          work_order_ref: targetMR.work_order_ref || selectedInbound.spk_number || "",
+          work_order_ref: selectedInbound.purchase_order_num || selectedInbound.spk_number || targetMR.work_order_ref || "",
           spk_number: targetMR.spk_number || selectedInbound.spk_number || "",
           status: targetMR.status === "Draft" ? "Submitted" : targetMR.status,
           remarks: targetMR.remarks 
@@ -659,7 +713,7 @@ export default function MaterialRequestView({
           requester_name: currentUser.name || "Petugas Gudang",
           request_date: selectedInbound.received_date || now.split("T")[0],
           completion_date: completionDate,
-          work_order_ref: selectedInbound.spk_number || "",
+          work_order_ref: selectedInbound.purchase_order_num || selectedInbound.spk_number || "",
           spk_number: selectedInbound.spk_number || "",
           receiving_ref_id: selectedInbound.id,
           receiving_status: receivingStatus,
@@ -669,11 +723,14 @@ export default function MaterialRequestView({
             : undefined,
           account_code: "BPP",
           function_code: "ARMADA",
-          status: "Approved",
+          status: "Submitted",
           items: importedItems,
-          aldi_signed: true,
-          aldi_signed_at: now,
-          aldi_signature_url: ALDI_SIGNATURE_URL,
+          aldi_signed: false,
+          aldi_signed_at: undefined,
+          aldi_signature_url: undefined,
+          alfin_signed: false,
+          emir_signed: false,
+          sumbono_signed: false,
           remarks: `Diimpor otomatis dari Inbound Receiving: ${selectedInbound.purchase_order_num} (${selectedInbound.vendor_name || 'Vendor Logistik'})`
         };
 
@@ -783,11 +840,14 @@ export default function MaterialRequestView({
           spk_number: selectedTUG10.spk_number || "",
           account_code: "BPP",
           function_code: "ARMADA",
-          status: "Approved",
+          status: "Submitted",
           items: importedItems,
-          aldi_signed: true,
-          aldi_signed_at: now,
-          aldi_signature_url: ALDI_SIGNATURE_URL,
+          aldi_signed: false,
+          aldi_signed_at: undefined,
+          aldi_signature_url: undefined,
+          alfin_signed: false,
+          emir_signed: false,
+          sumbono_signed: false,
           remarks: `Diimpor otomatis dari Pengembalian Suku Cadang TUG 10: ${selectedTUG10.return_number} (${selectedTUG10.vessel_name}) - Alasan: ${selectedTUG10.return_reason || 'Leftover'}`
         };
 
@@ -1295,6 +1355,7 @@ export default function MaterialRequestView({
         (mr.requested_by && mr.requested_by.toLowerCase().includes(q)) ||
         (mr.created_by && mr.created_by.toLowerCase().includes(q)) ||
         (mr.work_order_ref && mr.work_order_ref.toLowerCase().includes(q)) ||
+        getWorkOrderPONumber(mr).toLowerCase().includes(q) ||
         (mr.remarks && mr.remarks.toLowerCase().includes(q)) ||
         (mr.notes && mr.notes.toLowerCase().includes(q));
 
@@ -1404,14 +1465,33 @@ export default function MaterialRequestView({
 
         {/* Mini 4-Role Signer Chips */}
         <div className="flex items-center gap-1">
-          <span 
-            title={mr.aldi_signed ? "Petugas Gudang (Aldi Hidayat): Sudah TTD" : "Petugas Gudang (Aldi Hidayat): Belum TTD"} 
-            className={`px-1.5 py-0.5 rounded text-[8.5px] font-mono font-bold border transition-colors ${
-              mr.aldi_signed ? "bg-teal-50 text-teal-700 border-teal-300 font-extrabold" : "bg-slate-50 text-slate-400 border-slate-200 line-through opacity-70"
+          <button 
+            type="button"
+            onClick={async (e) => {
+              e.stopPropagation();
+              const now = new Date().toISOString();
+              if (mr.aldi_signed) {
+                await onUpdateRequest(mr.id, {
+                  aldi_signed: false,
+                  aldi_signed_at: undefined,
+                  aldi_signature_url: undefined
+                });
+              } else {
+                await onUpdateRequest(mr.id, {
+                  aldi_signed: true,
+                  aldi_signed_at: now,
+                  aldi_signature_url: ALDI_SIGNATURE_URL,
+                  status: mr.status === "Draft" ? "Submitted" : mr.status
+                });
+              }
+            }}
+            title={mr.aldi_signed ? "Petugas Gudang (Aldi Hidayat): Sudah TTD (Klik untuk BATALKAN APPROVE / TIDAK DIAPPROVE)" : "Petugas Gudang (Aldi Hidayat): Belum TTD (Klik untuk TTD/APPROVE)"} 
+            className={`px-1.5 py-0.5 rounded text-[8.5px] font-mono font-bold border transition-all cursor-pointer hover:scale-105 active:scale-95 ${
+              mr.aldi_signed ? "bg-teal-50 hover:bg-teal-100 text-teal-700 border-teal-300 font-extrabold shadow-2xs" : "bg-slate-50 hover:bg-slate-100 text-slate-400 border-slate-200 line-through opacity-70"
             }`}
           >
             {mr.aldi_signed ? "✓ Aldi" : "Aldi"}
-          </span>
+          </button>
           <span 
             title={mr.alfin_signed ? "Kepala Gudang (Alfin): Sudah TTD" : "Kepala Gudang (Alfin): Belum TTD"} 
             className={`px-1.5 py-0.5 rounded text-[8.5px] font-mono font-bold border transition-colors ${
@@ -1651,6 +1731,24 @@ export default function MaterialRequestView({
             <div className="flex items-center gap-2 font-mono text-xs">
               <button
                 type="button"
+                onClick={async () => {
+                  for (const id of selectedMRIds) {
+                    await onUpdateRequest(id, {
+                      aldi_signed: false,
+                      aldi_signed_at: undefined,
+                      aldi_signature_url: undefined
+                    });
+                  }
+                  alert(`✓ Berhasil: ${selectedMRIds.length} dokumen TUG 5 terpilih kini berstatus Tidak Di-approve untuk Aldi.`);
+                }}
+                className="px-3 py-1.5 bg-amber-600 hover:bg-amber-700 active:bg-amber-800 text-white text-[11px] font-mono font-bold uppercase rounded-lg shadow-xs cursor-pointer flex items-center gap-1.5 transition-all"
+                title="Batalkan tanda tangan/approval Aldi untuk seluruh dokumen terpilih"
+              >
+                <XCircle className="w-3.5 h-3.5" />
+                <span>Tidak Di-approve Aldi ({selectedMRIds.length})</span>
+              </button>
+              <button
+                type="button"
                 onClick={() => setSelectedMRIds([])}
                 className="px-3 py-1 bg-white border border-rose-200 text-slate-700 hover:bg-slate-50 text-[11px] font-bold rounded-lg cursor-pointer transition-colors"
               >
@@ -1703,7 +1801,7 @@ export default function MaterialRequestView({
                 <th className="py-4 px-6 font-semibold">Pemohon (Chief Eng.)</th>
                 <th className="py-4 px-6 font-semibold text-center">Status Inbound</th>
                 <th className="py-4 px-6 font-semibold text-center">Kuantitas Item</th>
-                <th className="py-4 px-6 font-semibold">Work Order No.</th>
+                <th className="py-4 px-6 font-semibold" title="Work Order No. berdasarkan Nomor PO Penerimaan Inbound (Receiving)">Work Order No.</th>
                 <th className="py-4 px-6 font-semibold">Status Approval</th>
                 <th className="py-4 px-6 font-semibold text-right no-print w-40">Actions</th>
               </tr>
@@ -1809,7 +1907,7 @@ export default function MaterialRequestView({
                           {(mr.items || []).length} Suku Cadang
                         </span>
                       </td>
-                      <td className="py-4.5 px-6 font-mono text-rose-600 font-bold text-[11.5px]">{mr.work_order_ref || "-"}</td>
+                      <td className="py-4.5 px-6 font-mono text-rose-600 font-bold text-[11.5px]">{getWorkOrderPONumber(mr)}</td>
                       <td className="py-4.5 px-6">{renderApprovalStatus(mr)}</td>
                       <td className="py-4.5 px-6 text-right no-print relative">
                         <div className="flex items-center justify-end">
@@ -1869,7 +1967,25 @@ export default function MaterialRequestView({
                                             <div className="text-[9px] text-emerald-700 font-mono">Petugas Gudang &bull; Signed</div>
                                           </div>
                                         </div>
-                                        <span className="text-[9px] font-mono font-bold text-emerald-600 bg-emerald-100 px-1.5 py-0.5 rounded">✓ ACC</span>
+                                        <div className="flex items-center gap-1">
+                                          <span className="text-[9px] font-mono font-bold text-emerald-600 bg-emerald-100 px-1.5 py-0.5 rounded">✓ ACC</span>
+                                          <button
+                                            type="button"
+                                            onClick={async (e) => {
+                                              e.stopPropagation();
+                                              setActiveActionId(null);
+                                              await onUpdateRequest(mr.id, {
+                                                aldi_signed: false,
+                                                aldi_signed_at: undefined,
+                                                aldi_signature_url: undefined
+                                              });
+                                            }}
+                                            className="text-[9px] font-sans font-bold text-rose-600 hover:text-rose-700 hover:bg-rose-100 bg-rose-50 px-2 py-0.5 rounded border border-rose-200 cursor-pointer transition-colors shadow-2xs ml-1"
+                                            title="Batalkan Approve / Jadikan Tidak Di-approve untuk Aldi"
+                                          >
+                                            Batal
+                                          </button>
+                                        </div>
                                       </div>
                                     ) : (
                                       <button
@@ -2044,7 +2160,7 @@ export default function MaterialRequestView({
                                       onClick={(e) => {
                                         e.stopPropagation();
                                         setActiveActionId(null);
-                                        onPreviewTUG5(mr);
+                                        onPreviewTUG5({ ...mr, work_order_ref: getWorkOrderPONumber(mr) !== "-" ? getWorkOrderPONumber(mr) : (mr.work_order_ref || "") });
                                       }}
                                       className="w-full px-2.5 py-2 text-xs font-bold hover:bg-emerald-50 text-emerald-800 rounded-lg flex items-center gap-2.5 cursor-pointer transition-colors text-left"
                                     >
@@ -2317,8 +2433,8 @@ export default function MaterialRequestView({
                     Dokumen & Referensi Akuntansi
                   </h4>
                   <div className="flex justify-between border-b border-slate-100 pb-1 font-mono text-[11px]">
-                    <span className="text-slate-400">No. Perintah Kerja:</span>
-                    <span className="text-slate-800 font-black text-rose-600">{activeMR.work_order_ref || "TIADA"}</span>
+                    <span className="text-slate-400">Work Order No. (PO Inbound):</span>
+                    <span className="text-slate-800 font-black text-rose-600">{getWorkOrderPONumber(activeMR)}</span>
                   </div>
                   <div className="flex justify-between border-b border-slate-100 pb-1 font-mono text-[11px]">
                     <span className="text-slate-400">Kode Akun ERP:</span>
@@ -2609,8 +2725,24 @@ export default function MaterialRequestView({
                     </div>
 
                     {activeMR.aldi_signed ? (
-                      <div className="mt-3 pt-2 border-t border-emerald-500/30 text-[9.5px] font-mono text-emerald-300">
-                        ✓ TTD Digital dibubuhkan: {activeMR.aldi_signed_at ? new Date(activeMR.aldi_signed_at).toLocaleString("id-ID") : "Terverifikasi"}
+                      <div className="mt-3 pt-2 border-t border-emerald-500/30 flex items-center justify-between gap-2">
+                        <div className="text-[9.5px] font-mono text-emerald-300">
+                          ✓ TTD: {activeMR.aldi_signed_at ? new Date(activeMR.aldi_signed_at).toLocaleString("id-ID") : "Terverifikasi"}
+                        </div>
+                        <button
+                          type="button"
+                          onClick={async () => {
+                            await onUpdateRequest(activeMR.id, {
+                              aldi_signed: false,
+                              aldi_signed_at: undefined,
+                              aldi_signature_url: undefined
+                            });
+                          }}
+                          className="px-2 py-1 bg-rose-600 hover:bg-rose-500 text-white font-bold rounded text-[9.5px] font-sans cursor-pointer transition-colors shadow-2xs shrink-0"
+                          title="Batalkan Tanda Tangan / Jadikan Tidak Di-approve"
+                        >
+                          Batal Approve
+                        </button>
                       </div>
                     ) : isAldiRole ? (
                       <button
@@ -2772,7 +2904,7 @@ export default function MaterialRequestView({
               <div>
                 <button
                   onClick={() => {
-                    onPreviewTUG5(activeMR);
+                    onPreviewTUG5({ ...activeMR, work_order_ref: getWorkOrderPONumber(activeMR) !== "-" ? getWorkOrderPONumber(activeMR) : (activeMR.work_order_ref || "") });
                   }}
                   className="px-4 py-2 bg-slate-900 hover:bg-slate-850 text-white font-mono font-bold text-xs uppercase rounded-lg flex items-center gap-1.5 transition-all shadow-xs cursor-pointer"
                 >
@@ -2937,31 +3069,104 @@ export default function MaterialRequestView({
                   {/* Col 3 */}
                   <div className="space-y-3 bg-blue-50/20 p-3 rounded-lg border border-blue-100/50">
                     <div>
-                      <label className="text-[10px] font-bold text-slate-500 uppercase tracking-wider block mb-1">No. Perintah Kerja (Work Order)</label>
+                      <label className="text-[10px] font-bold text-slate-500 uppercase tracking-wider block mb-1">
+                        Work Order No. (Nomor PO Receiving Inbound)
+                      </label>
                       <select
                         value={workOrderRef}
                         onChange={(e) => {
                           const val = e.target.value;
                           setWorkOrderRef(val);
-                          const matchedSPK = spkList.find(s => s.spk_number === val);
-                          if (matchedSPK) {
-                            if (matchedSPK.vessels.length > 0) {
-                              setVesselName(matchedSPK.vessels[0].vessel_name);
+                          const matchedInb = receivingList.find(r => r.purchase_order_num === val || (r.spk_number && r.spk_number === val));
+                          if (matchedInb) {
+                            if (matchedInb.vessel_name) {
+                              setVesselName(matchedInb.vessel_name);
                             }
-                            if (matchedSPK.target_port) {
-                              setDeliveryAddress(`Pelabuhan Target: ${matchedSPK.target_port}`);
+                          } else {
+                            const matchedSPK = spkList.find(s => s.spk_number === val);
+                            if (matchedSPK) {
+                              if (matchedSPK.vessels.length > 0) {
+                                setVesselName(matchedSPK.vessels[0].vessel_name);
+                              }
+                              if (matchedSPK.target_port) {
+                                setDeliveryAddress(`Pelabuhan Target: ${matchedSPK.target_port}`);
+                              }
                             }
                           }
                         }}
                         className="w-full bg-white border border-slate-250 rounded-lg text-xs px-3 py-2 font-mono text-rose-600 font-bold focus:outline-none focus:ring-1 focus:ring-emerald-500 cursor-pointer"
                       >
-                        <option value="">-- HUBUNGKAN DENGAN SPK WMS --</option>
-                        {spkList.map(s => (
-                          <option key={s.id} value={s.spk_number}>
-                            {s.spk_number} &bull; {s.target_port} ({s.status})
-                          </option>
-                        ))}
+                        <option value="">-- PILIH NOMOR PO DARI INBOUND (RECEIVING) --</option>
+                        {receivingList.length > 0 && (
+                          <optgroup label="Nomor PO Receiving (Inbound)">
+                            {receivingList.map(r => (
+                              <option key={r.id} value={r.purchase_order_num}>
+                                {r.purchase_order_num} &bull; {r.vessel_name || 'Gudang Merak'} ({r.vendor_name || 'Vendor'}) [{r.status}]
+                              </option>
+                            ))}
+                          </optgroup>
+                        )}
+                        {spkList.length > 0 && (
+                          <optgroup label="Nomor SPK Lainnya">
+                            {spkList.map(s => (
+                              <option key={s.id} value={s.spk_number}>
+                                {s.spk_number} &bull; {s.target_port} ({s.status})
+                              </option>
+                            ))}
+                          </optgroup>
+                        )}
                       </select>
+
+                      <div className="mt-1 flex items-center gap-1.5">
+                        <span className="text-[9px] text-slate-400 font-mono">Atau input manual PO:</span>
+                        <input
+                          type="text"
+                          value={workOrderRef}
+                          onChange={(e) => setWorkOrderRef(e.target.value)}
+                          placeholder="Contoh: PO-2026-00123"
+                          className="flex-1 bg-white border border-slate-200 rounded px-2 py-0.5 text-[10px] font-mono font-bold text-slate-700 placeholder:text-slate-300 focus:outline-none focus:ring-1 focus:ring-emerald-500"
+                        />
+                      </div>
+
+                      {(() => {
+                        const matchedInb = receivingList.find(r => r.purchase_order_num === workOrderRef || (r.spk_number && r.spk_number === workOrderRef));
+                        if (!matchedInb) return null;
+                        const inbItems = matchedInb.items || [];
+                        return (
+                          <div className="mt-2 p-2 bg-emerald-50 border border-emerald-200 rounded text-center">
+                            <span className="text-[9px] font-bold text-emerald-800 block mb-1 uppercase tracking-tight">
+                              ✓ Terhubung Inbound PO: {matchedInb.purchase_order_num} ({inbItems.length} Item)
+                            </span>
+                            {inbItems.length > 0 && (
+                              <button
+                                type="button"
+                                onClick={() => {
+                                  if (confirm(`Muat ${inbItems.length} item dari Inbound PO ${matchedInb.purchase_order_num} ke dalam Form TUG 5?`)) {
+                                    const loadedItems: MaterialRequestItem[] = inbItems.map(it => {
+                                      const matchedPart = parts.find(p => p.id === it.spare_part_id || p.part_number === it.part_number);
+                                      return {
+                                        spare_part_id: matchedPart?.id || it.spare_part_id,
+                                        spare_part_name: it.part_name || it.spare_part_name || matchedPart?.part_name || "Suku Cadang",
+                                        part_number: it.part_number || matchedPart?.part_number || "-",
+                                        unit: it.unit || matchedPart?.unit || "PCS",
+                                        avg_monthly_usage: 1,
+                                        remaining_stock: matchedPart?.current_stock || 0,
+                                        requested_qty: it.qty_received || it.qty_ordered || 1,
+                                        approved_qty: it.qty_received || it.qty_ordered || 1,
+                                        notes: `Diambil dari Inbound PO: ${matchedInb.purchase_order_num}`
+                                      };
+                                    });
+                                    setFormItems(loadedItems);
+                                  }
+                                }}
+                                className="w-full py-1.5 px-3 bg-emerald-600 hover:bg-emerald-700 text-white font-bold rounded text-[10px] uppercase tracking-wider transition-all shadow-xs cursor-pointer"
+                              >
+                                📥 Muat Suku Cadang Dari Inbound PO Ini
+                              </button>
+                            )}
+                          </div>
+                        );
+                      })()}
 
                       {(() => {
                         const matchedSPK = spkList.find(s => s.spk_number === workOrderRef);
@@ -4748,7 +4953,10 @@ export default function MaterialRequestView({
       <BatchPrintZipModal
         isOpen={isBatchZipModalOpen}
         type="tug5"
-        requests={requests}
+        requests={requests.map(r => {
+          const po = getWorkOrderPONumber(r);
+          return po !== "-" ? { ...r, work_order_ref: po } : r;
+        })}
         signatures={signatures}
         onClose={() => setIsBatchZipModalOpen(false)}
         onPrintEmptyReport={(emptyReq) => onPreviewTUG5(emptyReq)}

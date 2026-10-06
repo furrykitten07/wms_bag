@@ -806,14 +806,33 @@ export default function MaterialRequestTUG6View({
 
         {/* Mini 4-Role Signer Chips */}
         <div className="flex items-center gap-1">
-          <span 
-            title={mr.aldi_signed ? "Petugas Gudang (Aldi Hidayat): Sudah TTD" : "Petugas Gudang (Aldi Hidayat): Belum TTD"} 
-            className={`px-1.5 py-0.5 rounded text-[8.5px] font-mono font-bold border transition-colors ${
-              mr.aldi_signed ? "bg-teal-50 text-teal-700 border-teal-300 font-extrabold" : "bg-slate-50 text-slate-400 border-slate-200 line-through opacity-70"
+          <button 
+            type="button"
+            onClick={async (e) => {
+              e.stopPropagation();
+              const now = new Date().toISOString();
+              if (mr.aldi_signed) {
+                await onUpdateRequest(mr.id, {
+                  aldi_signed: false,
+                  aldi_signed_at: undefined,
+                  aldi_signature_url: undefined
+                });
+              } else {
+                await onUpdateRequest(mr.id, {
+                  aldi_signed: true,
+                  aldi_signed_at: now,
+                  aldi_signature_url: ALDI_SIGNATURE_URL,
+                  status: mr.status === "Draft" ? "Submitted" : mr.status
+                });
+              }
+            }}
+            title={mr.aldi_signed ? "Petugas Gudang (Aldi Hidayat): Sudah TTD (Klik untuk BATALKAN APPROVE / TIDAK DIAPPROVE)" : "Petugas Gudang (Aldi Hidayat): Belum TTD (Klik untuk TTD/APPROVE)"} 
+            className={`px-1.5 py-0.5 rounded text-[8.5px] font-mono font-bold border transition-all cursor-pointer hover:scale-105 active:scale-95 ${
+              mr.aldi_signed ? "bg-teal-50 hover:bg-teal-100 text-teal-700 border-teal-300 font-extrabold shadow-2xs" : "bg-slate-50 hover:bg-slate-100 text-slate-400 border-slate-200 line-through opacity-70"
             }`}
           >
             {mr.aldi_signed ? "✓ Aldi" : "Aldi"}
-          </span>
+          </button>
           <span 
             title={mr.alfin_signed ? "Kepala Gudang (Alfin): Sudah TTD" : "Kepala Gudang (Alfin): Belum TTD"} 
             className={`px-1.5 py-0.5 rounded text-[8.5px] font-mono font-bold border transition-colors ${
@@ -1138,7 +1157,25 @@ export default function MaterialRequestTUG6View({
                                             <div className="text-[9px] text-emerald-700 font-mono">Petugas Gudang &bull; Signed</div>
                                           </div>
                                         </div>
-                                        <span className="text-[9px] font-mono font-bold text-emerald-600 bg-emerald-100 px-1.5 py-0.5 rounded">✓ ACC</span>
+                                        <div className="flex items-center gap-1">
+                                          <span className="text-[9px] font-mono font-bold text-emerald-600 bg-emerald-100 px-1.5 py-0.5 rounded">✓ ACC</span>
+                                          <button
+                                            type="button"
+                                            onClick={async (e) => {
+                                              e.stopPropagation();
+                                              setActiveActionId(null);
+                                              await onUpdateRequest(mr.id, {
+                                                aldi_signed: false,
+                                                aldi_signed_at: undefined,
+                                                aldi_signature_url: undefined
+                                              });
+                                            }}
+                                            className="text-[9px] font-sans font-bold text-rose-600 hover:text-rose-700 hover:bg-rose-100 bg-rose-50 px-2 py-0.5 rounded border border-rose-200 cursor-pointer transition-colors shadow-2xs ml-1"
+                                            title="Batalkan Approve / Jadikan Tidak Di-approve untuk Aldi"
+                                          >
+                                            Batal
+                                          </button>
+                                        </div>
                                       </div>
                                     ) : (
                                       <button
@@ -1589,8 +1626,24 @@ export default function MaterialRequestTUG6View({
                     </div>
 
                     {activeMR.aldi_signed ? (
-                      <div className="mt-3 pt-2 border-t border-teal-500/30 text-[9.5px] font-mono text-teal-300">
-                        ✓ TTD Digital dibubuhkan: {activeMR.aldi_signed_at ? new Date(activeMR.aldi_signed_at).toLocaleString("id-ID") : "Terverifikasi"}
+                      <div className="mt-3 pt-2 border-t border-teal-500/30 flex items-center justify-between gap-2">
+                        <div className="text-[9.5px] font-mono text-teal-300">
+                          ✓ TTD: {activeMR.aldi_signed_at ? new Date(activeMR.aldi_signed_at).toLocaleString("id-ID") : "Terverifikasi"}
+                        </div>
+                        <button
+                          type="button"
+                          onClick={async () => {
+                            await onUpdateRequest(activeMR.id, {
+                              aldi_signed: false,
+                              aldi_signed_at: undefined,
+                              aldi_signature_url: undefined
+                            });
+                          }}
+                          className="px-2 py-1 bg-rose-600 hover:bg-rose-500 text-white font-bold rounded text-[9.5px] font-sans cursor-pointer transition-colors shadow-2xs shrink-0"
+                          title="Batalkan Tanda Tangan / Jadikan Tidak Di-approve"
+                        >
+                          Batal Approve
+                        </button>
                       </div>
                     ) : isAldiRole ? (
                       <button
