@@ -35,7 +35,11 @@ import {
   Archive,
   ShieldCheck,
   CheckCircle2,
-  SlidersHorizontal
+  SlidersHorizontal,
+  AlertOctagon,
+  ShieldAlert,
+  Sparkles,
+  ExternalLink
 } from "lucide-react";
 import { 
   User as UserType, 
@@ -46,11 +50,17 @@ import {
   MaterialRequestStatus,
   SPKWorkOrder,
   DigitalSignature,
-  Vessel
+  Vessel,
+  CriticalSparePart
 } from "../types.js";
 import { FLEET_VESSELS } from "./ReceivingView.js";
 import BatchPrintZipModal from "./BatchPrintZipModal.js";
 import { createEmptyTUGReportRequest } from "../utils/zipDocumentGenerator.js";
+import {
+  checkIsCriticalPart,
+  matchCriticalPartsForSPK,
+  SPKCriticalComparisonItem
+} from "../utils/criticalSpareParts.js";
 
 const ALDI_SIGNATURE_URL = `data:image/svg+xml;utf8,<svg xmlns="http://www.w3.org/2000/svg" width="220" height="70" viewBox="0 0 220 70"><path d="M 20 42 C 45 15, 60 55, 90 28 C 110 15, 130 52, 160 32 C 180 22, 190 48, 200 40" stroke="%230f2b5c" stroke-width="2.5" fill="none" stroke-linecap="round"/><path d="M 35 52 L 185 48" stroke="%231e293b" stroke-width="1.8" fill="none" stroke-linecap="round"/><text x="75" y="62" font-family="cursive" font-size="11" font-weight="bold" fill="%230f2b5c">Aldi Hidayat</text></svg>`;
 const ALFIN_SIGNATURE_URL = `data:image/svg+xml;utf8,<svg xmlns="http://www.w3.org/2000/svg" width="220" height="70" viewBox="0 0 220 70"><path d="M 15 42 C 35 15, 50 58, 80 25 C 100 12, 120 52, 150 30 C 170 20, 185 45, 205 35" stroke="%230f2b5c" stroke-width="2.5" fill="none" stroke-linecap="round"/><path d="M 30 50 L 180 46" stroke="%231e293b" stroke-width="1.8" fill="none" stroke-linecap="round"/><text x="45" y="62" font-family="cursive" font-size="11" font-weight="bold" fill="%230f2b5c">Maghfur M. Alfin</text></svg>`;
@@ -70,6 +80,8 @@ interface MaterialRequestTUG6ViewProps {
   onClearAutoOpenMRId?: () => void;
   signatures?: DigitalSignature[];
   vessels?: Vessel[];
+  criticalParts?: CriticalSparePart[];
+  tug5Requests?: MaterialRequest[];
 }
 
 export default function MaterialRequestTUG6View({
@@ -86,7 +98,9 @@ export default function MaterialRequestTUG6View({
   autoOpenMRId,
   onClearAutoOpenMRId,
   signatures = [],
-  vessels = []
+  vessels = [],
+  criticalParts = [],
+  tug5Requests = []
 }: MaterialRequestTUG6ViewProps) {
   const [selectedMRId, setSelectedMRId] = useState<string | null>(null);
   const [activeActionId, setActiveActionId] = useState<string | null>(null);
@@ -119,6 +133,135 @@ export default function MaterialRequestTUG6View({
   // Selected request IDs state for Bulk Delete Checklist
   const [selectedMRIds, setSelectedMRIds] = useState<string[]>([]);
   const [isBulkDeleting, setIsBulkDeleting] = useState<boolean>(false);
+
+  // Critical Items Modal State
+  const [isCriticalModalOpen, setIsCriticalModalOpen] = useState(false);
+  const [selectedSPKForCritical, setSelectedSPKForCritical] = useState<string>("");
+  const [criticalSearchQuery, setCriticalSearchQuery] = useState("");
+  const [criticalFilterTab, setCriticalFilterTab] = useState<"all" | "unfulfilled" | "partial" | "fulfilled">("all");
+
+  // Available SPKs from TUG 6, TUG 5, and spkList
+  const availableSPKList = useMemo(() => {
+    const map = new Map<string, { spk: string; vessel: string; port?: string; hasCritical: boolean; criticalCount: number }>();
+
+    // Scan TUG 6
+    requests.forEach(r => {
+      const spk = (r.spk_number || r.work_order_ref || "").trim();
+      if (!spk) return;
+      let critCount = 0;
+      (r.items || []).forEach(item => {
+        if (checkIsCriticalPart(item, criticalParts).isCritical) critCount++;
+      });
+
+      if (!map.has(spk)) {
+        map.set(spk, { spk, vessel: r.vessel_name || "-", port: r.destination_port, hasCritical: critCount > 0, criticalCount: critCount });
+      } else {
+        const item = map.get(spk)!;
+        item.criticalCount += critCount;
+        if (critCount > 0) item.hasCritical = true;
+      }
+    });
+
+    // Scan TUG 5
+    (tug5Requests || []).forEach(r => {
+      const spk = (r.spk_number || r.work_order_ref || "").trim();
+      if (!spk) return;
+      let critCount = 0;
+      (r.items || []).forEach(item => {
+        if (checkIsCriticalPart(item, criticalParts).isCritical) critCount++;
+      });
+
+      if (!map.has(spk)) {
+        map.set(spk, { spk, vessel: r.vessel_name || "-", port: r.destination_port, hasCritical: critCount > 0, criticalCount: critCount });
+      } else {
+        const item = map.get(spk)!;
+        item.criticalCount += critCount;
+        if (critCount > 0) item.hasCritical = true;
+      }
+    });
+
+    // Scan spkList
+    (spkList || []).forEach(s => {
+      const spk = (s.spk_number || "").trim();
+      if (!spk) return;
+      if (!map.has(spk)) {
+        let critCount = 0;
+        (s.vessels || []).forEach(v => {
+          (v.items || []).forEach(it => {
+            if (checkIsCriticalPart({ spare_part_name: it.spare_part_name, part_number: it.part_number }, criticalParts).isCritical) {
+              critCount++;
+            }
+          });
+        });
+        map.set(spk, { spk, vessel: s.vessel_name || s.vessels?.[0]?.vessel_name || "-", port: s.target_port, hasCritical: critCount > 0, criticalCount: critCount });
+      }
+    });
+
+    const arr = Array.from(map.values());
+    // Sort: SPKs with critical items first
+    arr.sort((a, b) => {
+      if (a.hasCritical && !b.hasCritical) return -1;
+      if (!a.hasCritical && b.hasCritical) return 1;
+      return b.criticalCount - a.criticalCount;
+    });
+    return arr;
+  }, [requests, tug5Requests, spkList, criticalParts]);
+
+  // Total Critical in all TUG 6 documents
+  const totalCriticalInTUG6Count = useMemo(() => {
+    let count = 0;
+    requests.forEach(r => {
+      (r.items || []).forEach(item => {
+        if (checkIsCriticalPart(item, criticalParts).isCritical) count++;
+      });
+    });
+    return count;
+  }, [requests, criticalParts]);
+
+  // Helper to count critical items in a single TUG 6 request
+  const getRequestCriticalCount = (mr: MaterialRequest): number => {
+    let count = 0;
+    (mr.items || []).forEach(item => {
+      if (checkIsCriticalPart(item, criticalParts).isCritical) count++;
+    });
+    return count;
+  };
+
+  // Compare & Match items for currently selected SPK
+  const matchedSPKCriticalItems = useMemo(() => {
+    if (!selectedSPKForCritical) return [];
+    return matchCriticalPartsForSPK(
+      selectedSPKForCritical,
+      tug5Requests || [],
+      requests || [],
+      criticalParts || []
+    );
+  }, [selectedSPKForCritical, tug5Requests, requests, criticalParts]);
+
+  // Filtered comparison items in modal
+  const filteredSPKCriticalItems = useMemo(() => {
+    return matchedSPKCriticalItems.filter(item => {
+      const q = criticalSearchQuery.toLowerCase();
+      const matchSearch =
+        item.part_name.toLowerCase().includes(q) ||
+        item.part_number.toLowerCase().includes(q) ||
+        (item.critical_info.category && item.critical_info.category.toLowerCase().includes(q)) ||
+        (item.critical_info.equipment && item.critical_info.equipment.toLowerCase().includes(q));
+
+      if (!matchSearch) return false;
+
+      if (criticalFilterTab === "all") return true;
+      if (criticalFilterTab === "unfulfilled") return item.fulfillment_status === "UNFULFILLED";
+      if (criticalFilterTab === "partial") return item.fulfillment_status === "PARTIAL";
+      if (criticalFilterTab === "fulfilled") return item.fulfillment_status === "FULFILLED";
+      return true;
+    });
+  }, [matchedSPKCriticalItems, criticalSearchQuery, criticalFilterTab]);
+
+  // Selected SPK Details
+  const selectedSPKMeta = useMemo(() => {
+    return availableSPKList.find(s => s.spk === selectedSPKForCritical);
+  }, [availableSPKList, selectedSPKForCritical]);
 
   React.useEffect(() => {
     setTugPage(1);
@@ -580,6 +723,24 @@ export default function MaterialRequestTUG6View({
         
         <div className="flex flex-col sm:flex-row gap-2.5 shrink-0">
           <button
+            type="button"
+            onClick={() => {
+              const initial = availableSPKList.find(s => s.hasCritical)?.spk || availableSPKList[0]?.spk || "";
+              setSelectedSPKForCritical(initial);
+              setIsCriticalModalOpen(true);
+            }}
+            className="px-4 py-3 bg-gradient-to-r from-rose-600 to-rose-700 hover:from-rose-500 hover:to-rose-600 text-white font-bold text-xs uppercase rounded-lg flex items-center justify-center gap-2 transition-all shadow-xs cursor-pointer hover:scale-[1.01]"
+          >
+            <AlertOctagon className="w-4 h-4 text-rose-200" />
+            <span>Cek Item Critical (SPK &amp; TUG 5)</span>
+            {totalCriticalInTUG6Count > 0 && (
+              <span className="bg-white text-rose-700 px-1.5 py-0.5 rounded-full text-[9px] font-black leading-none ml-1">
+                {totalCriticalInTUG6Count}
+              </span>
+            )}
+          </button>
+
+          <button
             onClick={() => setIsBatchZipModalOpen(true)}
             className="px-4 py-3 bg-indigo-50 border border-indigo-200 hover:bg-indigo-100 text-indigo-700 font-bold text-xs uppercase rounded-lg flex items-center justify-center gap-2 transition-all shadow-xs cursor-pointer"
           >
@@ -759,10 +920,33 @@ export default function MaterialRequestTUG6View({
                       <td className="py-4.5 px-6 text-slate-900 font-bold font-sans">{mr.vessel_name}</td>
                       <td className="py-4.5 px-6 text-slate-700 font-semibold">{mr.requester_name}</td>
                       <td className="py-4.5 px-6 text-center font-mono font-bold">
-                        <span className="inline-flex items-center gap-1.5 bg-rose-50 px-3 py-1.5 rounded-full border border-rose-200 text-rose-700 text-[10px] font-bold">
-                          <span className="w-1.5 h-1.5 rounded-full bg-rose-500 animate-pulse"></span>
-                          {(mr.items || []).length} Item Kritis
-                        </span>
+                        {(() => {
+                          const critCount = getRequestCriticalCount(mr);
+                          const totalItems = (mr.items || []).length;
+                          if (critCount > 0) {
+                            return (
+                              <button
+                                type="button"
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  setSelectedSPKForCritical(mr.spk_number || mr.work_order_ref || "");
+                                  setIsCriticalModalOpen(true);
+                                }}
+                                className="inline-flex items-center gap-1.5 bg-rose-100 hover:bg-rose-200 text-rose-800 border border-rose-300 px-2.5 py-1 rounded-full text-[10px] font-black font-mono transition-colors shadow-2xs cursor-pointer"
+                                title="Klik untuk membuka analisis item critical untuk SPK ini"
+                              >
+                                <span className="w-1.5 h-1.5 rounded-full bg-rose-600 animate-pulse"></span>
+                                <span>{critCount} Critical</span>
+                                <span className="text-rose-400 font-normal">/ {totalItems}</span>
+                              </button>
+                            );
+                          }
+                          return (
+                            <span className="inline-flex items-center gap-1 bg-slate-100 text-slate-600 px-2.5 py-1 rounded-full text-[10px] font-mono">
+                              {totalItems} Item
+                            </span>
+                          );
+                        })()}
                       </td>
                       <td className="py-4.5 px-6 font-mono text-rose-600 font-bold text-[11.5px]">{mr.work_order_ref || "-"}</td>
                       <td className="py-4.5 px-6">{renderApprovalStatus(mr)}</td>
@@ -990,6 +1174,20 @@ export default function MaterialRequestTUG6View({
                                       <span>Cetak TUG 6 (PDF)</span>
                                     </button>
 
+                                    <button
+                                      type="button"
+                                      onClick={(e) => {
+                                        e.stopPropagation();
+                                        setActiveActionId(null);
+                                        setSelectedSPKForCritical(mr.spk_number || mr.work_order_ref || "");
+                                        setIsCriticalModalOpen(true);
+                                      }}
+                                      className="w-full px-2.5 py-2 text-xs font-bold hover:bg-rose-50 text-rose-800 rounded-lg flex items-center gap-2.5 cursor-pointer transition-colors text-left"
+                                    >
+                                      <AlertOctagon className="w-4 h-4 text-rose-600 shrink-0" />
+                                      <span>Cek Item Critical (SPK &amp; TUG 5)</span>
+                                    </button>
+
                                     {["Draft", "Rejected"].includes(mr.status) && (
                                       <button
                                         type="button"
@@ -1155,12 +1353,26 @@ export default function MaterialRequestTUG6View({
                   </p>
                 </div>
               </div>
-              <button 
-                onClick={() => setIsDetailsOpen(false)}
-                className="p-1 text-slate-400 hover:text-slate-600 hover:bg-slate-100 rounded-full"
-              >
-                <X className="w-5 h-5" />
-              </button>
+              <div className="flex items-center gap-2">
+                <button 
+                  type="button"
+                  onClick={() => {
+                    setSelectedSPKForCritical(activeMR.spk_number || activeMR.work_order_ref || "");
+                    setIsCriticalModalOpen(true);
+                  }}
+                  className="px-3 py-1.5 bg-rose-50 hover:bg-rose-100 text-rose-700 font-bold border border-rose-200 rounded-lg text-xs flex items-center gap-1.5 transition-colors cursor-pointer"
+                  title="Cek perbandingan spare part critical SPK ini antara TUG 5 dan TUG 6"
+                >
+                  <AlertOctagon className="w-3.5 h-3.5 text-rose-600" />
+                  <span>Cek Item Critical SPK Ini</span>
+                </button>
+                <button 
+                  onClick={() => setIsDetailsOpen(false)}
+                  className="p-1 text-slate-400 hover:text-slate-600 hover:bg-slate-100 rounded-full"
+                >
+                  <X className="w-5 h-5" />
+                </button>
+              </div>
             </div>
 
             {/* Modal Body */}
@@ -2171,6 +2383,369 @@ export default function MaterialRequestTUG6View({
         onClose={() => setIsBatchZipModalOpen(false)}
         onPrintEmptyReport={(emptyReq) => onPreviewTUG6(emptyReq)}
       />
+
+      {/* ========================================================= */}
+      {/* 5. MODAL: CEK & FILTER ITEM CRITICAL TUG 6 (CROSS-CHECK TUG 5 BERDASARKAN SPK) */}
+      {/* ========================================================= */}
+      {isCriticalModalOpen && (
+        <div className="fixed inset-0 z-50 bg-slate-900/70 backdrop-blur-xs flex items-center justify-center p-3 sm:p-5 overflow-y-auto no-print animate-in fade-in duration-200">
+          <div className="bg-white border border-slate-200 rounded-2xl shadow-2xl max-w-6xl w-full font-sans overflow-hidden my-4 flex flex-col max-h-[92vh]">
+            
+            {/* Modal Header */}
+            <div className="p-5 border-b border-slate-200 bg-gradient-to-r from-rose-900 via-rose-800 to-slate-900 text-white flex justify-between items-start shrink-0">
+              <div className="flex items-start gap-3.5">
+                <div className="p-2.5 bg-rose-500/20 border border-rose-400/30 rounded-xl text-rose-300 shrink-0">
+                  <AlertOctagon className="w-6 h-6 text-rose-300 animate-pulse" />
+                </div>
+                <div>
+                  <div className="flex items-center gap-2 flex-wrap">
+                    <span className="px-2 py-0.5 rounded text-[10px] font-black uppercase tracking-wider bg-rose-500/30 text-rose-200 border border-rose-400/40">
+                      CRITICAL MONITORING
+                    </span>
+                    <span className="text-xs text-rose-200 font-mono">
+                      CROSS-CHECK TUG 5 &bull; REALISASI TUG 6
+                    </span>
+                  </div>
+                  <h2 className="text-lg font-black font-display tracking-tight text-white mt-1">
+                    Pusat Analisis &amp; Filter Item Critical TUG 6
+                  </h2>
+                  <p className="text-xs text-rose-100/90 font-medium mt-0.5">
+                    Memfilter suku cadang berstatus <span className="text-rose-200 font-bold">CRITICAL</span> yang diminta pada dokumen TUG 5 dan membandingkan realisasi pengeluarannya di form TUG 6 berdasarkan nomor SPK.
+                  </p>
+                </div>
+              </div>
+              <button
+                type="button"
+                onClick={() => setIsCriticalModalOpen(false)}
+                className="p-1.5 text-rose-200 hover:text-white hover:bg-white/10 rounded-full transition-colors cursor-pointer"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            {/* Modal Sub-Header: SPK Selector & Meta Banner */}
+            <div className="p-4 bg-slate-50 border-b border-slate-200 flex flex-col md:flex-row items-center justify-between gap-3 shrink-0">
+              <div className="flex-1 w-full md:w-auto flex flex-col sm:flex-row items-center gap-3">
+                <div className="w-full sm:w-80">
+                  <label className="block text-[10px] font-mono font-bold text-slate-500 uppercase tracking-wider mb-1">
+                    PILIH NOMOR SPK WORK ORDER:
+                  </label>
+                  <select
+                    value={selectedSPKForCritical}
+                    onChange={(e) => setSelectedSPKForCritical(e.target.value)}
+                    className="w-full p-2.5 bg-white border border-slate-300 rounded-xl font-bold font-mono text-xs text-slate-800 focus:outline-none focus:ring-2 focus:ring-rose-500 focus:border-rose-500 shadow-2xs cursor-pointer"
+                  >
+                    <option value="">-- Pilih Nomor SPK --</option>
+                    {availableSPKList.map(s => (
+                      <option key={s.spk} value={s.spk}>
+                        {s.hasCritical ? "🔴 " : "⚪ "}
+                        {s.spk} &bull; {s.vessel} ({s.criticalCount} Item Critical)
+                      </option>
+                    ))}
+                  </select>
+                </div>
+
+                {selectedSPKMeta && (
+                  <div className="flex items-center gap-2 pt-1 sm:pt-4 text-xs">
+                    <span className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-white border border-slate-250 text-slate-700 font-semibold shadow-2xs">
+                      <Anchor className="w-3.5 h-3.5 text-blue-600" />
+                      <span>{selectedSPKMeta.vessel}</span>
+                    </span>
+                    {selectedSPKMeta.port && (
+                      <span className="inline-flex items-center gap-1 px-3 py-1.5 rounded-lg bg-white border border-slate-250 text-slate-650 font-medium shadow-2xs">
+                        <MapPin className="w-3.5 h-3.5 text-emerald-600" />
+                        <span>{selectedSPKMeta.port}</span>
+                      </span>
+                    )}
+                  </div>
+                )}
+              </div>
+
+              {/* Quick Search inside modal */}
+              <div className="relative w-full md:w-64">
+                <input
+                  type="text"
+                  placeholder="Cari part number / nama item..."
+                  value={criticalSearchQuery}
+                  onChange={(e) => setCriticalSearchQuery(e.target.value)}
+                  className="w-full bg-white border border-slate-300 text-slate-800 p-2 pl-8 text-xs rounded-xl outline-none focus:ring-2 focus:ring-rose-500 focus:border-rose-500 font-medium shadow-2xs"
+                />
+                <Search className="w-3.5 h-3.5 text-slate-400 absolute left-2.5 top-3" />
+              </div>
+            </div>
+
+            {/* Modal Body */}
+            <div className="flex-1 overflow-y-auto p-5 space-y-5 bg-slate-100/50">
+              
+              {!selectedSPKForCritical ? (
+                <div className="bg-white border border-dashed border-slate-300 rounded-2xl p-12 text-center text-slate-500">
+                  <AlertOctagon className="w-12 h-12 text-rose-300 mx-auto mb-3" />
+                  <h3 className="text-base font-bold text-slate-800">Silakan Pilih Nomor SPK</h3>
+                  <p className="text-xs text-slate-500 max-w-md mx-auto mt-1">
+                    Pilih salah satu nomor SPK dari dropdown di atas untuk melihat analisis perbandingan spare part critical antara permintaan TUG 5 dan realisasi TUG 6.
+                  </p>
+                </div>
+              ) : (
+                <>
+                  {/* KPI Summary Cards */}
+                  <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+                    <div className="bg-white p-3.5 rounded-xl border border-slate-200 shadow-2xs">
+                      <div className="text-[10px] font-mono font-bold uppercase text-slate-400">Total Item Critical</div>
+                      <div className="text-2xl font-black font-display text-rose-600 mt-1">
+                        {matchedSPKCriticalItems.length}
+                      </div>
+                      <div className="text-[10px] text-slate-500 font-medium mt-0.5">Suku cadang tergolong kritis</div>
+                    </div>
+
+                    <div className="bg-white p-3.5 rounded-xl border border-slate-200 shadow-2xs">
+                      <div className="text-[10px] font-mono font-bold uppercase text-slate-400">Terpenuhi Lengkap</div>
+                      <div className="text-2xl font-black font-display text-emerald-600 mt-1">
+                        {matchedSPKCriticalItems.filter(i => i.fulfillment_status === "FULFILLED").length}
+                      </div>
+                      <div className="text-[10px] text-emerald-600 font-medium mt-0.5">Qty TUG 6 &ge; Qty TUG 5</div>
+                    </div>
+
+                    <div className="bg-white p-3.5 rounded-xl border border-slate-200 shadow-2xs">
+                      <div className="text-[10px] font-mono font-bold uppercase text-slate-400">Sebagian / Selisih</div>
+                      <div className="text-2xl font-black font-display text-amber-600 mt-1">
+                        {matchedSPKCriticalItems.filter(i => i.fulfillment_status === "PARTIAL").length}
+                      </div>
+                      <div className="text-[10px] text-amber-600 font-medium mt-0.5">Qty TUG 6 &lt; Qty TUG 5</div>
+                    </div>
+
+                    <div className="bg-white p-3.5 rounded-xl border border-slate-200 shadow-2xs">
+                      <div className="text-[10px] font-mono font-bold uppercase text-slate-400">Belum Keluar di TUG 6</div>
+                      <div className="text-2xl font-black font-display text-rose-600 mt-1">
+                        {matchedSPKCriticalItems.filter(i => i.fulfillment_status === "UNFULFILLED").length}
+                      </div>
+                      <div className="text-[10px] text-rose-600 font-medium mt-0.5">Ada di TUG 5, nihil TUG 6</div>
+                    </div>
+                  </div>
+
+                  {/* Filter Pills */}
+                  <div className="flex items-center justify-between gap-2 flex-wrap bg-white p-2.5 rounded-xl border border-slate-200 shadow-2xs">
+                    <div className="flex items-center gap-1.5 flex-wrap">
+                      <span className="text-[10px] font-mono font-bold text-slate-400 uppercase mr-1 flex items-center gap-1">
+                        <Filter className="w-3 h-3 text-slate-400" /> Filter:
+                      </span>
+                      {[
+                        { id: "all", label: "Semua Item Critical", count: matchedSPKCriticalItems.length },
+                        { id: "unfulfilled", label: "❌ Belum Keluar di TUG 6", count: matchedSPKCriticalItems.filter(i => i.fulfillment_status === "UNFULFILLED").length },
+                        { id: "partial", label: "⚠️ Sebagian / Selisih", count: matchedSPKCriticalItems.filter(i => i.fulfillment_status === "PARTIAL").length },
+                        { id: "fulfilled", label: "✅ Lengkap di TUG 6", count: matchedSPKCriticalItems.filter(i => i.fulfillment_status === "FULFILLED").length }
+                      ].map(tab => (
+                        <button
+                          key={tab.id}
+                          type="button"
+                          onClick={() => setCriticalFilterTab(tab.id as any)}
+                          className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all cursor-pointer ${
+                            criticalFilterTab === tab.id
+                              ? "bg-rose-600 text-white shadow-xs"
+                              : "bg-slate-100 hover:bg-slate-200 text-slate-700"
+                          }`}
+                        >
+                          {tab.label} ({tab.count})
+                        </button>
+                      ))}
+                    </div>
+
+                    <div className="text-[11px] font-mono font-bold text-slate-500">
+                      Menampilkan <span className="text-slate-900 font-black">{filteredSPKCriticalItems.length}</span> item
+                    </div>
+                  </div>
+
+                  {/* Comparison Table */}
+                  <div className="bg-white border border-slate-200 rounded-xl overflow-hidden shadow-xs">
+                    <div className="overflow-x-auto">
+                      <table className="w-full text-left text-xs border-collapse">
+                        <thead>
+                          <tr className="bg-slate-900 text-white font-mono text-[10px] uppercase tracking-wider">
+                            <th className="py-3 px-3 text-center w-12 font-black">NO</th>
+                            <th className="py-3 px-4 font-black">SUKU CADANG &amp; PART NUMBER</th>
+                            <th className="py-3 px-3 font-semibold">KATEGORI &amp; MESIN</th>
+                            <th className="py-3 px-3 text-center font-semibold bg-blue-950/60 border-l border-blue-900">
+                              PERMINTAAN TUG 5
+                            </th>
+                            <th className="py-3 px-3 text-center font-semibold bg-rose-950/60 border-l border-rose-900">
+                              REALISASI TUG 6
+                            </th>
+                            <th className="py-3 px-3 text-center font-semibold">SATUAN</th>
+                            <th className="py-3 px-4 text-center font-semibold">STATUS PEMENUHAN</th>
+                            <th className="py-3 px-4 font-semibold">ALASAN KRITIS / CATATAN</th>
+                          </tr>
+                        </thead>
+                        <tbody className="divide-y divide-slate-100 text-slate-700 font-sans">
+                          {filteredSPKCriticalItems.length === 0 ? (
+                            <tr>
+                              <td colSpan={8} className="py-12 text-center text-slate-400 font-mono text-xs">
+                                <div className="flex flex-col items-center justify-center gap-1.5">
+                                  <AlertOctagon className="w-6 h-6 text-slate-300" />
+                                  <span>Tidak ada item critical yang sesuai dengan filter ini pada SPK {selectedSPKForCritical}.</span>
+                                </div>
+                              </td>
+                            </tr>
+                          ) : (
+                            filteredSPKCriticalItems.map((item, idx) => {
+                              return (
+                                <tr key={`${item.part_name}-${item.part_number}-${idx}`} className="hover:bg-slate-50/80 transition-colors">
+                                  <td className="py-3 px-3 text-center font-mono font-bold text-slate-400">
+                                    {idx + 1}
+                                  </td>
+                                  
+                                  {/* Suku Cadang & Part Number */}
+                                  <td className="py-3 px-4">
+                                    <div className="font-bold text-slate-900 leading-snug">
+                                      {item.part_name}
+                                    </div>
+                                    <div className="flex items-center gap-2 mt-0.5">
+                                      <span className="font-mono text-[10px] text-slate-500 bg-slate-100 px-1.5 py-0.5 rounded font-bold">
+                                        P/N: {item.part_number || "-"}
+                                      </span>
+                                      <span className="inline-flex items-center gap-1 px-1.5 py-0.2 rounded text-[9px] font-black uppercase font-mono bg-rose-100 text-rose-700 border border-rose-200">
+                                        <AlertOctagon className="w-2.5 h-2.5 text-rose-600" />
+                                        CRITICAL
+                                      </span>
+                                    </div>
+                                  </td>
+
+                                  {/* Kategori & Mesin */}
+                                  <td className="py-3 px-3">
+                                    <div className="font-semibold text-slate-800 text-[11px]">
+                                      {item.critical_info.category || "General Critical"}
+                                    </div>
+                                    <div className="text-[10px] text-slate-500 font-mono">
+                                      {item.critical_info.equipment || "-"}
+                                    </div>
+                                  </td>
+
+                                  {/* Permintaan TUG 5 */}
+                                  <td className="py-3 px-3 text-center bg-blue-50/40 border-l border-blue-100">
+                                    <div className="font-mono text-sm font-black text-blue-900">
+                                      {item.tug5_qty}
+                                    </div>
+                                    <div className="text-[9.5px] font-mono text-blue-700 truncate max-w-[120px]" title={item.tug5_request_number}>
+                                      {item.tug5_request_number || "Tidak Ada"}
+                                    </div>
+                                    {item.tug5_status && (
+                                      <span className="inline-block mt-0.5 px-1 py-0.2 rounded text-[8.5px] font-mono font-bold bg-blue-100 text-blue-800">
+                                        {item.tug5_status}
+                                      </span>
+                                    )}
+                                  </td>
+
+                                  {/* Realisasi TUG 6 */}
+                                  <td className="py-3 px-3 text-center bg-rose-50/30 border-l border-rose-100">
+                                    <div className={`font-mono text-sm font-black ${item.tug6_qty > 0 ? "text-emerald-700" : "text-rose-600"}`}>
+                                      {item.tug6_qty}
+                                    </div>
+                                    <div className="text-[9.5px] font-mono text-slate-600 truncate max-w-[120px]" title={item.tug6_request_number}>
+                                      {item.tug6_request_number || "Belum Dikeluarkan"}
+                                    </div>
+                                    {item.tug6_status && (
+                                      <span className="inline-block mt-0.5 px-1 py-0.2 rounded text-[8.5px] font-mono font-bold bg-slate-200 text-slate-800">
+                                        {item.tug6_status}
+                                      </span>
+                                    )}
+                                  </td>
+
+                                  {/* Satuan */}
+                                  <td className="py-3 px-3 text-center font-mono font-bold text-slate-600">
+                                    {item.unit || "PCS"}
+                                  </td>
+
+                                  {/* Status Pemenuhan */}
+                                  <td className="py-3 px-4 text-center">
+                                    {item.fulfillment_status === "FULFILLED" ? (
+                                      <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-[10px] font-black uppercase tracking-wider bg-emerald-100 text-emerald-800 border border-emerald-300 shadow-2xs">
+                                        <CheckCircle2 className="w-3.5 h-3.5 text-emerald-600" />
+                                        <span>Lengkap (100%)</span>
+                                      </span>
+                                    ) : item.fulfillment_status === "PARTIAL" ? (
+                                      <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-[10px] font-black uppercase tracking-wider bg-amber-100 text-amber-800 border border-amber-300 shadow-2xs">
+                                        <AlertTriangle className="w-3.5 h-3.5 text-amber-600" />
+                                        <span>Kurang ({item.tug5_qty - item.tug6_qty})</span>
+                                      </span>
+                                    ) : (
+                                      <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-[10px] font-black uppercase tracking-wider bg-rose-100 text-rose-800 border border-rose-300 shadow-2xs animate-pulse-subtle">
+                                        <XCircle className="w-3.5 h-3.5 text-rose-600" />
+                                        <span>Belum Keluar TUG 6</span>
+                                      </span>
+                                    )}
+                                  </td>
+
+                                  {/* Alasan Kritis / Justifikasi */}
+                                  <td className="py-3 px-4 text-slate-600 text-[11px] leading-relaxed max-w-xs">
+                                    {item.critical_info.reason || "Komponen vital operasional kapal & sistem armada maritim."}
+                                  </td>
+                                </tr>
+                              );
+                            })
+                          )}
+                        </tbody>
+                      </table>
+                    </div>
+                  </div>
+                </>
+              )}
+
+            </div>
+
+            {/* Modal Footer */}
+            <div className="p-4 bg-white border-t border-slate-200 flex flex-col sm:flex-row items-center justify-between gap-3 shrink-0">
+              <div className="text-[11px] text-slate-500 font-mono flex items-center gap-2">
+                <span className="w-2 h-2 rounded-full bg-emerald-500"></span>
+                <span>Database Sinkron &bull; Data Terfilter Otomatis dari TUG 5 &amp; TUG 6</span>
+              </div>
+
+              <div className="flex items-center gap-2 w-full sm:w-auto justify-end">
+                {selectedSPKForCritical && filteredSPKCriticalItems.length > 0 && (
+                  <button
+                    type="button"
+                    onClick={() => {
+                      const headers = ["No", "Suku Cadang", "Part Number", "Kategori", "Mesin", "Qty TUG 5", "No TUG 5", "Qty TUG 6", "No TUG 6", "Satuan", "Status Pemenuhan", "Alasan Kritis"];
+                      const rows = filteredSPKCriticalItems.map((item, idx) => [
+                        idx + 1,
+                        `"${item.part_name.replace(/"/g, '""')}"`,
+                        `"${item.part_number.replace(/"/g, '""')}"`,
+                        `"${(item.critical_info.category || "").replace(/"/g, '""')}"`,
+                        `"${(item.critical_info.equipment || "").replace(/"/g, '""')}"`,
+                        item.tug5_qty,
+                        `"${item.tug5_request_number || ""}"`,
+                        item.tug6_qty,
+                        `"${item.tug6_request_number || ""}"`,
+                        `"${item.unit}"`,
+                        `"${item.fulfillment_status}"`,
+                        `"${(item.critical_info.reason || "").replace(/"/g, '""')}"`
+                      ]);
+                      const csvContent = "data:text/csv;charset=utf-8," + [headers.join(","), ...rows.map(e => e.join(","))].join("\n");
+                      const encodedUri = encodeURI(csvContent);
+                      const link = document.createElement("a");
+                      link.setAttribute("href", encodedUri);
+                      link.setAttribute("download", `Laporan_Critical_SPK_${selectedSPKForCritical.replace(/[^a-zA-Z0-9_-]/g, "_")}.csv`);
+                      document.body.appendChild(link);
+                      link.click();
+                      document.body.removeChild(link);
+                    }}
+                    className="px-3.5 py-2 bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold rounded-xl text-xs flex items-center gap-2 transition-colors cursor-pointer"
+                  >
+                    <Download className="w-3.5 h-3.5 text-slate-600" />
+                    <span>Export CSV Critical</span>
+                  </button>
+                )}
+
+                <button
+                  type="button"
+                  onClick={() => setIsCriticalModalOpen(false)}
+                  className="px-5 py-2 bg-slate-900 hover:bg-slate-800 text-white font-bold rounded-xl text-xs transition-colors cursor-pointer"
+                >
+                  Tutup
+                </button>
+              </div>
+            </div>
+
+          </div>
+        </div>
+      )}
 
     </div>
   );

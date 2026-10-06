@@ -57,6 +57,9 @@ import PublicSparePartView from "./components/PublicSparePartView.js";
 import MaintenanceScreen from "./components/MaintenanceScreen.js";
 import MaintenanceAdminView from "./components/MaintenanceAdminView.js";
 import LoginAndLogsView from "./components/LoginAndLogsView.js";
+import CriticalSparePartsAdminView from "./components/CriticalSparePartsAdminView.js";
+import { CriticalSparePart } from "./types.js";
+import { loadCriticalSpareParts } from "./utils/criticalSpareParts.js";
 
 import { AlertCircle, RefreshCw, Layers, Wrench } from "lucide-react";
 
@@ -100,6 +103,7 @@ export default function App() {
   const [materialReturns, setMaterialReturns] = useState<MaterialReturn[]>([]);
   const [signatures, setSignatures] = useState<DigitalSignature[]>([]);
   const [vessels, setVessels] = useState<Vessel[]>([]);
+  const [criticalParts, setCriticalParts] = useState<CriticalSparePart[]>(() => loadCriticalSpareParts());
   
   // Dashboard summary combined calculations
   const [summary, setSummary] = useState<any>({
@@ -1387,6 +1391,8 @@ export default function App() {
               spkList={spkList}
               signatures={signatures}
               vessels={vessels}
+              criticalParts={criticalParts}
+              tug5Requests={materialRequests}
             />
           )}
 
@@ -1459,6 +1465,15 @@ export default function App() {
               currentUser={currentUser}
               onUpdateConfig={handleUpdateMaintenance}
               onRefresh={syncAllTables}
+            />
+          )}
+
+          {/* Database Sparepart Critical TUG 6 (Super Admin only) */}
+          {currentTab === "critical-spareparts" && isSuperAdmin && (
+            <CriticalSparePartsAdminView 
+              currentUser={currentUser!}
+              criticalParts={criticalParts}
+              onUpdateCriticalParts={setCriticalParts}
             />
           )}
 

@@ -556,5 +556,20 @@ export interface MaintenanceLog {
   details?: string;
 }
 
+export interface CriticalSparePart {
+  id: string;
+  part_name: string;
+  part_no: string;
+  category?: string; // e.g. "Engine Component", "Bearing", "Gasket & Seal", "Piston & Ring", "Fuel Injection", etc.
+  equipment?: string; // e.g. "Main Engine", "Auxiliary Engine", "Generator", "Piping & Valves"
+  criticality_level?: "CRITICAL" | "HIGH" | "MEDIUM";
+  min_stock?: number;
+  unit?: string;
+  notes?: string;
+  created_at?: string;
+  created_by?: string;
+  updated_at?: string;
+}
+
 
 

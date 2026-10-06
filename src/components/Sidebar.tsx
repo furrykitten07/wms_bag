@@ -22,7 +22,8 @@ import {
   FileSignature,
   Ship,
   Wrench,
-  Activity
+  Activity,
+  AlertOctagon
 } from "lucide-react";
 import { UserRole, User } from "../types.js";
 
@@ -302,6 +303,23 @@ export default function Sidebar({
         {/* Khusus Role Super Admin: Login & Activity Logs & Mode Maintenance */}
         {(currentUser?.role === UserRole.SUPER_ADMIN || currentUser?.username?.toLowerCase() === "superadmin") && (
           <>
+            <button
+              onClick={() => setCurrentTab("critical-spareparts")}
+              className={`flex items-center justify-between px-3 py-2.5 rounded-md text-xs font-semibold tracking-tight transition-all duration-150 ${
+                currentTab === "critical-spareparts" 
+                  ? "bg-white text-rose-600 border border-slate-200 shadow-xs font-bold" 
+                  : "text-slate-650 hover:bg-slate-200/70 hover:text-slate-900"
+              }`}
+            >
+              <div className="flex items-center gap-2.5">
+                <AlertOctagon className={`w-4 h-4 ${currentTab === "critical-spareparts" ? "text-rose-500" : "text-slate-400"} shrink-0`} />
+                <span>Critical Spare Parts TUG 6</span>
+              </div>
+              <span className="bg-rose-100 text-rose-700 px-1.5 py-0.5 rounded text-[8.5px] font-mono font-bold uppercase">
+                CRITICAL
+              </span>
+            </button>
+
             <button
               onClick={() => setCurrentTab("login-logs")}
               className={`flex items-center justify-between px-3 py-2.5 rounded-md text-xs font-semibold tracking-tight transition-all duration-150 ${
