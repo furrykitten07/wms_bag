@@ -474,10 +474,17 @@ function ensureSparePartsFromInboundItems(
 }
 export function loadLocalMaterialRequestsTUG6(): MaterialRequest[] {
   try {
-    const saved = localStorage.getItem("wms_local_material_requests_tug6");
+    const saved = localStorage.getItem("wms_local_material_requests_tug6_v2");
     if (saved) {
       const parsed = JSON.parse(saved);
-      if (Array.isArray(parsed) && parsed.length > 0) return parsed;
+      if (Array.isArray(parsed) && parsed.length > 0) {
+        return parsed.filter(r => 
+          (r.tug_type === "TUG6" || r.request_number?.startsWith("MR6-") || r.tug6_number?.startsWith("TUG6-")) &&
+          !r.request_number?.startsWith("MR-2026-000") &&
+          Array.isArray(r.items) && 
+          r.items.some(it => isItemCritical(it) || it.is_critical)
+        );
+      }
     }
   } catch (e) {}
   return [];
@@ -485,22 +492,16 @@ export function loadLocalMaterialRequestsTUG6(): MaterialRequest[] {
 
 export function saveLocalMaterialRequestsTUG6(data: MaterialRequest[]) {
   try {
-    localStorage.setItem("wms_local_material_requests_tug6", JSON.stringify(data));
+    localStorage.setItem("wms_local_material_requests_tug6_v2", JSON.stringify(data));
   } catch (e) {}
 }
 
 let localSPKs: SPKWorkOrder[] = [...demoSPKs];
 let localMaterialRequests: MaterialRequest[] = [...demoMaterialRequests];
 
-const initialSavedTUG6 = loadLocalMaterialRequestsTUG6();
-const initialDerivedTUG6 = deriveTUG6FromTUG5(localMaterialRequests);
-const initialCombinedTUG6 = [...initialSavedTUG6];
-for (const d of initialDerivedTUG6) {
-  if (!initialCombinedTUG6.some(c => c.id === d.id || c.request_number === d.request_number || (c.tug6_number && c.tug6_number === d.tug6_number))) {
-    initialCombinedTUG6.push(d);
-  }
-}
-let localMaterialRequestsTUG6: MaterialRequest[] = initialCombinedTUG6;
+// USER DIRECTIVE: Start TUG 6 empty! It is only filled when the user fills it,
+// and it must strictly contain only requests with detected critical spare parts.
+let localMaterialRequestsTUG6: MaterialRequest[] = loadLocalMaterialRequestsTUG6();
 let localDispatches: OutboundDispatch[] = loadLocalDispatches();
 let localReceiving: InboundReceiving[] = loadLocalReceiving();
 let localMaterialReturns: MaterialReturn[] = [...demoMaterialReturns];
@@ -930,16 +931,23 @@ function getLocalFallbackData<T>(url: string, options: RequestInit = {}): T {
     saveLocalMaterialRequestsTUG6(localMaterialRequestsTUG6);
     return { success: true, id } as any;
   }
-  if (path.startsWith("/api/material-requests-tug6")) {
-    const saved = loadLocalMaterialRequestsTUG6();
-    const derived = deriveTUG6FromTUG5(localMaterialRequests);
-    const combined = [...saved];
-    for (const d of derived) {
-      if (!combined.some(c => c.id === d.id || c.request_number === d.request_number || (c.tug6_number && c.tug6_number === d.tug6_number))) {
-        combined.push(d);
-      }
+  if (path === "/api/material-requests-tug6/clear-all" && (options.method === "POST" || options.method === "DELETE")) {
+    localMaterialRequestsTUG6 = [];
+    saveLocalMaterialRequestsTUG6([]);
+    if (typeof window !== "undefined") {
+      localStorage.removeItem("wms_local_material_requests_tug6");
+      localStorage.removeItem("wms_local_material_requests_tug6_v2");
     }
-    localMaterialRequestsTUG6 = combined;
+    return { success: true, count: 0 } as any;
+  }
+  if (path.startsWith("/api/material-requests-tug6")) {
+    const valid = localMaterialRequestsTUG6.filter(r => 
+      (r.tug_type === "TUG6" || r.request_number?.startsWith("MR6-") || r.tug6_number?.startsWith("TUG6-")) &&
+      !r.request_number?.startsWith("MR-2026-000") &&
+      Array.isArray(r.items) && 
+      r.items.some(it => isItemCritical(it) || it.is_critical)
+    );
+    localMaterialRequestsTUG6 = valid;
     return localMaterialRequestsTUG6 as any;
   }
   if (path.startsWith("/api/material-requests")) return localMaterialRequests as any;
@@ -1222,45 +1230,60 @@ async function fetcher<T>(url: string, options: RequestInit = {}): Promise<T> {
       }
 
       // --- 2. MATERIAL REQUESTS (TUG 6) ---
+      if (path === "/api/material-requests-tug6/clear-all" && (method === "POST" || method === "DELETE")) {
+        localMaterialRequestsTUG6 = [];
+        saveLocalMaterialRequestsTUG6([]);
+        if (typeof window !== "undefined") {
+          localStorage.removeItem("wms_local_material_requests_tug6");
+          localStorage.removeItem("wms_local_material_requests_tug6_v2");
+        }
+        try {
+          await supabase.from("material_requests").delete().eq("tug_type", "TUG6");
+        } catch (e) {
+          console.warn("Supabase TUG 6 clear warning:", e);
+        }
+        return { success: true, count: 0 } as any;
+      }
       if (path === "/api/material-requests-tug6" && method === "GET") {
-        const { data, error } = await supabase.from("material_requests").select("*").order("request_date", { ascending: false }).order("request_number", { ascending: false });
-        if (!error && data && data.length > 0) {
-          const directTUG6 = (data as MaterialRequest[]).filter(r => 
-            r.tug_type === "TUG6" || 
-            (r.request_number && (r.request_number.startsWith("MR6-") || r.request_number.startsWith("MR-2026-"))) || 
-            (r.tug6_number && r.tug6_number.startsWith("TUG6-"))
-          );
-          const tug5List = (data as MaterialRequest[]).filter(r => 
-            r.tug_type !== "TUG6" && 
-            !r.request_number?.startsWith("MR6-") && 
-            !r.request_number?.startsWith("MR-2026-") &&
-            !r.tug6_number?.startsWith("TUG6-")
-          );
-          const derived = deriveTUG6FromTUG5(tug5List);
-          
-          const combined = [...directTUG6];
-          for (const d of derived) {
-            if (!combined.some(c => c.id === d.id || c.request_number === d.request_number || (c.tug6_number && c.tug6_number === d.tug6_number))) {
-              combined.push(d);
-            }
+        let supabaseTUG6: MaterialRequest[] = [];
+        try {
+          const { data, error } = await supabase
+            .from("material_requests")
+            .select("*")
+            .eq("tug_type", "TUG6")
+            .order("request_date", { ascending: false })
+            .order("request_number", { ascending: false });
+
+          if (!error && data && data.length > 0) {
+            supabaseTUG6 = (data as MaterialRequest[]).filter(r => 
+              (r.tug_type === "TUG6" || r.request_number?.startsWith("MR6-") || r.tug6_number?.startsWith("TUG6-")) &&
+              !r.request_number?.startsWith("MR-2026-000") &&
+              Array.isArray(r.items) && 
+              r.items.some(it => isItemCritical(it) || it.is_critical)
+            );
           }
-          // Merge local cache if any
-          for (const loc of loadLocalMaterialRequestsTUG6()) {
-            if (!combined.some(c => c.id === loc.id || c.request_number === loc.request_number)) {
-              combined.unshift(loc);
-            }
-          }
-          localMaterialRequestsTUG6 = combined;
-          return localMaterialRequestsTUG6 as any;
+        } catch (e) {
+          console.warn("Supabase TUG 6 query warning:", e);
         }
-        const derived = deriveTUG6FromTUG5(localMaterialRequests);
-        const combined = [...loadLocalMaterialRequestsTUG6()];
-        for (const d of derived) {
-          if (!combined.some(c => c.id === d.id || c.request_number === d.request_number)) {
-            combined.push(d);
+
+        const validLocal = loadLocalMaterialRequestsTUG6().filter(r => 
+          (r.tug_type === "TUG6" || r.request_number?.startsWith("MR6-") || r.tug6_number?.startsWith("TUG6-")) &&
+          !r.request_number?.startsWith("MR-2026-000") &&
+          Array.isArray(r.items) && 
+          r.items.some(it => isItemCritical(it) || it.is_critical)
+        );
+
+        const combined = [...supabaseTUG6];
+        for (const loc of validLocal) {
+          if (!combined.some(c => c.id === loc.id || c.request_number === loc.request_number)) {
+            combined.unshift(loc);
           }
         }
-        localMaterialRequestsTUG6 = combined;
+
+        localMaterialRequestsTUG6 = combined.filter(r => 
+          Array.isArray(r.items) && r.items.some(it => isItemCritical(it) || it.is_critical)
+        );
+        saveLocalMaterialRequestsTUG6(localMaterialRequestsTUG6);
         return localMaterialRequestsTUG6 as any;
       }
       if (path === "/api/material-requests-tug6" && method === "POST") {
@@ -2680,6 +2703,12 @@ export const api = {
 
   async deleteMaterialRequestTUG6(id: string): Promise<{ success: boolean; id: string }> {
     return fetcher<{ success: boolean; id: string }>(`/api/material-requests-tug6/${id}`, {
+      method: "DELETE",
+    });
+  },
+
+  async clearAllMaterialRequestsTUG6(): Promise<{ success: boolean; count: number }> {
+    return fetcher<{ success: boolean; count: number }>("/api/material-requests-tug6/clear-all", {
       method: "DELETE",
     });
   },

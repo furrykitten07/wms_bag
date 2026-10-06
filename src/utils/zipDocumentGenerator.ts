@@ -914,7 +914,8 @@ export async function generateTUGPDFArrayBuffer(
     pdf.setFont("courier", "bold");
     pdf.setFontSize(7.2);
     pdf.setTextColor(isNihil ? 148 : 15, isNihil ? 163 : 23, isNihil ? 184 : 42);
-    pdf.text(String(item.unit || "(-)").toUpperCase(), colX[3] + colWidths[3] / 2, midY, { align: "center", baseline: "middle" });
+    const unitText = (!item.spare_part_name && !item.requested_qty) ? "" : String(item.unit || "(-)").toUpperCase();
+    pdf.text(unitText, colX[3] + colWidths[3] / 2, midY, { align: "center", baseline: "middle" });
 
     // Col 4: Banyaknya (Diberikan)
     pdf.setFont("courier", "bold");
@@ -922,6 +923,8 @@ export async function generateTUGPDFArrayBuffer(
     if (isNihil) {
       pdf.setTextColor(148, 163, 184);
       pdf.text("(-)", colX[4] + colWidths[4] / 2, midY, { align: "center", baseline: "middle" });
+    } else if (!item.spare_part_name && !item.requested_qty) {
+      // Blank template form row (ready to be filled)
     } else {
       pdf.setTextColor(30, 58, 138);
       pdf.text(String(item.requested_qty || "(-)"), colX[4] + colWidths[4] / 2, midY, { align: "center", baseline: "middle" });
@@ -1129,6 +1132,36 @@ export async function convertHtmlToPdfArrayBuffer(htmlString: string): Promise<A
       document.body.removeChild(container);
     }
   }
+}
+
+export function createOfficialBlankTUGRequest(type: "tug5" | "tug6"): MaterialRequest {
+  const d = new Date();
+  const year = d.getFullYear();
+  const docNum = `${type.toUpperCase()}-${year}-001`;
+  return {
+    id: `blank-${type}-${Date.now()}`,
+    request_number: docNum,
+    tug5_number: type === "tug5" ? docNum : undefined,
+    tug6_number: type === "tug6" ? docNum : undefined,
+    vessel_name: "MV. KARTINI BARUNA",
+    requester_name: "CHIEF ENGINEER",
+    requested_by: "CHIEF ENGINEER",
+    request_date: d.toISOString().slice(0, 10),
+    delivery_address: "Pelabuhan Merak, Cilegon, Banten",
+    work_order_ref: `WO-${year}-001`,
+    spk_number: `SPK-${year}-001`,
+    account_code: "BPP",
+    function_code: "ARMADA",
+    status: "Approved" as any,
+    remarks: `Formulir Resmi Pengajuan Barang ${type.toUpperCase()} PT. Pelayaran Bahtera Adhiguna`,
+    items: [
+      { spare_part_name: "", part_number: "", unit: "PCS", requested_qty: 0, notes: "" },
+      { spare_part_name: "", part_number: "", unit: "PCS", requested_qty: 0, notes: "" },
+      { spare_part_name: "", part_number: "", unit: "PCS", requested_qty: 0, notes: "" },
+      { spare_part_name: "", part_number: "", unit: "PCS", requested_qty: 0, notes: "" },
+      { spare_part_name: "", part_number: "", unit: "PCS", requested_qty: 0, notes: "" },
+    ],
+  } as any;
 }
 
 export function createEmptyTUGReportRequest(
