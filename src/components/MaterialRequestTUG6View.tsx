@@ -398,6 +398,142 @@ export default function MaterialRequestTUG6View({
     }
   };
 
+  const handleCreateTUG6FromCriticalModal = () => {
+    if (!selectedSPKForCritical) {
+      alert("Harap pilih Nomor SPK terlebih dahulu.");
+      return;
+    }
+
+    const cleanTargetSPK = selectedSPKForCritical.trim().toLowerCase();
+
+    // 1. Find all TUG 5 documents for this SPK
+    const matchedTUG5Docs = (tug5Requests || []).filter(r => {
+      const rSPK = (r.spk_number || r.work_order_ref || "").trim().toLowerCase();
+      const rRemarks = (r.remarks || "").toLowerCase();
+      return rSPK === cleanTargetSPK || (cleanTargetSPK.length >= 6 && (rSPK.includes(cleanTargetSPK) || rRemarks.includes(cleanTargetSPK)));
+    });
+
+    // 2. Find matching SPK in spkList (if any)
+    const matchedSPKObj = (spkList || []).find(s => {
+      const sNum = (s.spk_number || "").trim().toLowerCase();
+      return sNum === cleanTargetSPK || (cleanTargetSPK.length >= 6 && sNum.includes(cleanTargetSPK));
+    });
+
+    // Gather all items from TUG 5 (or fallback to SPK)
+    let rawItems: any[] = [];
+    let detectedVessel = "";
+    let detectedAddress = "";
+    let detectedAccountCode = "BPP";
+    let detectedFunctionCode = "ARMADA";
+    let detectedRemarks = "";
+
+    if (matchedTUG5Docs.length > 0) {
+      const primaryDoc = matchedTUG5Docs[0];
+      detectedVessel = primaryDoc.vessel_name || "";
+      detectedAddress = primaryDoc.delivery_address || "";
+      detectedAccountCode = primaryDoc.account_code || "BPP";
+      detectedFunctionCode = primaryDoc.function_code || "ARMADA";
+      detectedRemarks = primaryDoc.remarks || "";
+
+      // Collect all items across matched TUG 5 documents for this SPK
+      matchedTUG5Docs.forEach(doc => {
+        (doc.items || []).forEach(it => {
+          rawItems.push({
+            spare_part_id: it.spare_part_id,
+            spare_part_name: it.spare_part_name,
+            part_number: it.part_number,
+            unit: it.unit || "PCS",
+            avg_monthly_usage: it.avg_monthly_usage ?? 1,
+            remaining_stock: it.remaining_stock ?? 0,
+            requested_qty: Number(it.requested_qty) || 1,
+            notes: it.notes || "",
+            item_status: "Pending"
+          });
+        });
+      });
+    } else if (matchedSPKObj) {
+      detectedVessel = matchedSPKObj.vessel_name || matchedSPKObj.vessels?.[0]?.vessel_name || "";
+      detectedAddress = `Pelabuhan Target: ${matchedSPKObj.target_port || "Pelabuhan Merak Mas, Cilegon"}`;
+      detectedRemarks = `Pembuatan Form TUG 6 Dari SPK: ${matchedSPKObj.spk_number}`;
+
+      (matchedSPKObj.vessels || []).forEach(v => {
+        (v.items || []).forEach(it => {
+          rawItems.push({
+            spare_part_id: it.spare_part_id,
+            spare_part_name: it.spare_part_name,
+            part_number: it.part_number,
+            unit: it.unit || "PCS",
+            avg_monthly_usage: 1,
+            remaining_stock: 0,
+            requested_qty: Number(it.qty_to_pick) || 1,
+            notes: `SPK ${matchedSPKObj.spk_number} (${v.vessel_name})`,
+            item_status: "Pending"
+          });
+        });
+      });
+    }
+
+    if (rawItems.length === 0) {
+      alert(`Tidak ditemukan data suku cadang untuk SPK ${selectedSPKForCritical} pada dokumen TUG 5 maupun SPK.`);
+      return;
+    }
+
+    // Include ALL spare parts in the SPK, and for critical items append [ITEM CRITICAL] in notes!
+    let criticalCount = 0;
+    const finalFormItems: Partial<MaterialRequestItem>[] = rawItems.map((item, idx) => {
+      const matchedPart = parts.find(p => p.id === item.spare_part_id || (p.part_number && item.part_number && p.part_number.trim().toLowerCase() === item.part_number.trim().toLowerCase()));
+      const checkCrit = checkIsCriticalPart(item, criticalParts);
+      
+      let itemNotes = item.notes ? item.notes.trim() : "";
+      
+      if (checkCrit.isCritical) {
+        criticalCount++;
+        // Prepend "[ITEM CRITICAL]" to notes if not already present
+        if (!itemNotes.toUpperCase().includes("[ITEM CRITICAL]")) {
+          const critTag = `[ITEM CRITICAL]`;
+          itemNotes = itemNotes ? `${critTag} ${itemNotes}` : `${critTag} Komponen suku cadang kritis armada kapal`;
+        }
+      }
+
+      return {
+        spare_part_id: matchedPart?.id || item.spare_part_id || `item-crit-${Date.now()}-${idx}`,
+        spare_part_name: matchedPart?.part_name || item.spare_part_name,
+        part_number: matchedPart?.part_number || item.part_number || "-",
+        unit: matchedPart?.unit || item.unit || "PCS",
+        avg_monthly_usage: item.avg_monthly_usage ?? 1,
+        remaining_stock: matchedPart?.current_stock ?? item.remaining_stock ?? 0,
+        requested_qty: Number(item.requested_qty) || 1,
+        notes: itemNotes,
+        item_status: "Pending"
+      };
+    });
+
+    // Populate TUG 6 Create Form fields
+    resetForm();
+    setRequestDate(new Date().toISOString().split("T")[0]);
+    if (detectedVessel) {
+      setVesselName(detectedVessel);
+    } else if (selectedSPKMeta?.vessel) {
+      setVesselName(selectedSPKMeta.vessel);
+    }
+    setWarehouseName("Gudang Merak");
+    setDeliveryAddress(detectedAddress || (selectedSPKMeta?.port ? `Pelabuhan: ${selectedSPKMeta.port}` : ""));
+    setWorkOrderRef(selectedSPKForCritical);
+    setAccountCode(detectedAccountCode || "BPP");
+    setFunctionCode(detectedFunctionCode || "ARMADA");
+    setRemarks(
+      detectedRemarks 
+        ? `${detectedRemarks} (TUG 6 - SPK ${selectedSPKForCritical}${criticalCount > 0 ? ` [${criticalCount} Item Critical]` : ""})`
+        : `Permintaan Pengeluaran Barang TUG 6 untuk SPK ${selectedSPKForCritical}${criticalCount > 0 ? ` (Memuat ${criticalCount} Item Critical)` : ""}`
+    );
+    setFormItems(finalFormItems);
+
+    // Close Critical Modal & Open TUG 6 Create Modal
+    setIsCriticalModalOpen(false);
+    setIsCreating(true);
+    setIsEditing(false);
+  };
+
   const handleStartCreate = () => {
     resetForm();
     setIsCreating(true);
@@ -2160,52 +2296,68 @@ export default function MaterialRequestTUG6View({
                           </td>
                         </tr>
                       ) : (
-                        formItems.map((itm, idx) => (
-                          <tr key={idx} className="hover:bg-slate-50/50">
-                            <td className="py-2 px-4 text-center font-mono text-slate-400 font-bold">{idx + 1}</td>
-                            <td className="py-2 px-3 text-slate-900 font-bold">{itm.spare_part_name}</td>
-                            <td className="py-2 px-3 font-mono text-slate-600">{itm.part_number}</td>
-                            <td className="py-2 px-3 text-center font-mono uppercase">{itm.unit}</td>
-                            <td className="py-2 px-3 text-center font-mono font-semibold text-slate-550">{itm.avg_monthly_usage}</td>
-                            <td className="py-2 px-3 text-center font-mono font-semibold text-slate-500">{itm.remaining_stock}</td>
-                            <td className="py-2 px-3 text-center font-mono font-bold text-indigo-600 bg-indigo-50/20 text-xs border-x border-slate-100">{itm.requested_qty}</td>
-                            <td className="py-2 px-3 text-center">
-                              <select
-                                value={itm.item_status || "Arrived"}
-                                onChange={(e) => handleUpdateFormItemStatus(idx, e.target.value as any)}
-                                className={`text-[11px] font-bold rounded-md px-2 py-1 focus:outline-none focus:ring-1 border cursor-pointer ${
-                                  itm.item_status === "Pending"
-                                    ? "bg-amber-50 text-amber-800 border-amber-200 focus:ring-amber-500"
-                                    : itm.item_status === "Returned"
-                                      ? "bg-rose-50 text-rose-800 border-rose-200 focus:ring-rose-500"
-                                      : "bg-emerald-50 text-emerald-800 border-emerald-200 focus:ring-emerald-500"
-                                }`}
-                              >
-                                <option value="Arrived">Sudah Datang</option>
-                                <option value="Pending">Belum Datang</option>
-                                <option value="Returned">Diretur</option>
-                              </select>
-                            </td>
-                            <td className="py-2 px-3">
-                              <input
-                                type="text"
-                                value={itm.notes || ""}
-                                onChange={(e) => handleUpdateFormItemNotes(idx, e.target.value)}
-                                placeholder="Tulis catatan (opsional)..."
-                                className="w-full bg-slate-50 border border-slate-200 hover:border-slate-300 rounded px-2.5 py-1 text-xs text-slate-800 focus:ring-1 focus:ring-blue-500 outline-none"
-                              />
-                            </td>
-                            <td className="py-2 px-3 text-center">
-                              <button
-                                type="button"
-                                onClick={() => handleRemoveFormItem(idx)}
-                                className="p-1 hover:bg-rose-50 text-rose-600 rounded-md transition-colors cursor-pointer"
-                              >
-                                <Trash2 className="w-4 h-4 ml-auto mr-auto" />
-                              </button>
-                            </td>
-                          </tr>
-                        ))
+                        formItems.map((itm, idx) => {
+                          const isItemCrit = itm.notes?.includes("[ITEM CRITICAL]");
+                          return (
+                            <tr key={idx} className={isItemCrit ? "bg-rose-50/30 hover:bg-rose-50/60 transition-colors" : "hover:bg-slate-50/50 transition-colors"}>
+                              <td className="py-2 px-4 text-center font-mono text-slate-400 font-bold">{idx + 1}</td>
+                              <td className="py-2 px-3 text-slate-900 font-bold">
+                                <div className="flex items-center gap-1.5 flex-wrap">
+                                  <span>{itm.spare_part_name}</span>
+                                  {isItemCrit && (
+                                    <span className="px-1.5 py-0.5 rounded text-[9px] font-mono font-black uppercase tracking-wider bg-rose-100 text-rose-700 border border-rose-300 shadow-2xs">
+                                      CRITICAL
+                                    </span>
+                                  )}
+                                </div>
+                              </td>
+                              <td className="py-2 px-3 font-mono text-slate-600">{itm.part_number}</td>
+                              <td className="py-2 px-3 text-center font-mono uppercase">{itm.unit}</td>
+                              <td className="py-2 px-3 text-center font-mono font-semibold text-slate-550">{itm.avg_monthly_usage}</td>
+                              <td className="py-2 px-3 text-center font-mono font-semibold text-slate-500">{itm.remaining_stock}</td>
+                              <td className="py-2 px-3 text-center font-mono font-bold text-indigo-600 bg-indigo-50/20 text-xs border-x border-slate-100">{itm.requested_qty}</td>
+                              <td className="py-2 px-3 text-center">
+                                <select
+                                  value={itm.item_status || "Arrived"}
+                                  onChange={(e) => handleUpdateFormItemStatus(idx, e.target.value as any)}
+                                  className={`text-[11px] font-bold rounded-md px-2 py-1 focus:outline-none focus:ring-1 border cursor-pointer ${
+                                    itm.item_status === "Pending"
+                                      ? "bg-amber-50 text-amber-800 border-amber-200 focus:ring-amber-500"
+                                      : itm.item_status === "Returned"
+                                        ? "bg-rose-50 text-rose-800 border-rose-200 focus:ring-rose-500"
+                                        : "bg-emerald-50 text-emerald-800 border-emerald-200 focus:ring-emerald-500"
+                                  }`}
+                                >
+                                  <option value="Arrived">Sudah Datang</option>
+                                  <option value="Pending">Belum Datang</option>
+                                  <option value="Returned">Diretur</option>
+                                </select>
+                              </td>
+                              <td className="py-2 px-3">
+                                <input
+                                  type="text"
+                                  value={itm.notes || ""}
+                                  onChange={(e) => handleUpdateFormItemNotes(idx, e.target.value)}
+                                  placeholder="Tulis catatan (opsional)..."
+                                  className={`w-full rounded px-2.5 py-1 text-xs outline-none focus:ring-1 ${
+                                    isItemCrit 
+                                      ? "bg-rose-50/60 border border-rose-300 text-rose-950 font-medium focus:ring-rose-500" 
+                                      : "bg-slate-50 border border-slate-200 hover:border-slate-300 text-slate-800 focus:ring-blue-500"
+                                  }`}
+                                />
+                              </td>
+                              <td className="py-2 px-3 text-center">
+                                <button
+                                  type="button"
+                                  onClick={() => handleRemoveFormItem(idx)}
+                                  className="p-1 hover:bg-rose-50 text-rose-600 rounded-md transition-colors cursor-pointer"
+                                >
+                                  <Trash2 className="w-4 h-4 ml-auto mr-auto" />
+                                </button>
+                              </td>
+                            </tr>
+                          );
+                        })
                       )}
                     </tbody>
                   </table>
@@ -2449,7 +2601,7 @@ export default function MaterialRequestTUG6View({
                 </div>
 
                 {selectedSPKMeta && (
-                  <div className="flex items-center gap-2 pt-1 sm:pt-4 text-xs">
+                  <div className="flex items-center gap-2 pt-1 sm:pt-4 text-xs flex-wrap">
                     <span className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-white border border-slate-250 text-slate-700 font-semibold shadow-2xs">
                       <Anchor className="w-3.5 h-3.5 text-blue-600" />
                       <span>{selectedSPKMeta.vessel}</span>
@@ -2460,6 +2612,15 @@ export default function MaterialRequestTUG6View({
                         <span>{selectedSPKMeta.port}</span>
                       </span>
                     )}
+                    <button
+                      type="button"
+                      onClick={handleCreateTUG6FromCriticalModal}
+                      className="inline-flex items-center gap-1.5 px-3.5 py-1.5 rounded-lg bg-gradient-to-r from-rose-600 to-indigo-600 hover:from-rose-500 hover:to-indigo-500 text-white font-bold text-xs shadow-xs hover:shadow transition-all cursor-pointer active:scale-95 whitespace-nowrap"
+                      title="Ambil seluruh suku cadang dari SPK ini ke Form TUG 6"
+                    >
+                      <Sparkles className="w-3.5 h-3.5 text-rose-200" />
+                      <span>Buat Form TUG 6</span>
+                    </button>
                   </div>
                 )}
               </div>
@@ -2500,9 +2661,19 @@ export default function MaterialRequestTUG6View({
                     <p className="text-xs text-slate-500 max-w-lg mx-auto mt-1.5 leading-relaxed font-sans">
                       Seluruh suku cadang yang diminta pada dokumen TUG 5 untuk SPK <strong className="text-slate-800 font-mono font-bold">{selectedSPKForCritical}</strong> merupakan suku cadang reguler (tidak terdaftar dalam <strong>Master Database Critical Spare Parts TUG 6</strong>).
                     </p>
-                    <div className="mt-4 inline-flex items-center gap-2 px-3 py-1.5 rounded-xl bg-slate-50 border border-slate-250 text-slate-600 text-[11px] font-mono">
-                      <span>Database Master Acuan:</span>
-                      <strong className="text-slate-900">{criticalParts.length} Item Kritis Terdaftar</strong>
+                    <div className="mt-4 flex items-center justify-center gap-3 flex-wrap">
+                      <div className="inline-flex items-center gap-2 px-3 py-1.5 rounded-xl bg-slate-50 border border-slate-250 text-slate-600 text-[11px] font-mono">
+                        <span>Database Master Acuan:</span>
+                        <strong className="text-slate-900">{criticalParts.length} Item Kritis Terdaftar</strong>
+                      </div>
+                      <button
+                        type="button"
+                        onClick={handleCreateTUG6FromCriticalModal}
+                        className="inline-flex items-center gap-1.5 px-3.5 py-1.5 rounded-xl bg-indigo-600 hover:bg-indigo-700 text-white font-bold text-xs shadow-xs transition-all cursor-pointer active:scale-95"
+                      >
+                        <FileText className="w-3.5 h-3.5" />
+                        <span>Tetap Buat Form TUG 6 (Reguler)</span>
+                      </button>
                     </div>
                   </div>
                 </div>
@@ -2718,7 +2889,19 @@ export default function MaterialRequestTUG6View({
                 <span>Database Sinkron &bull; Data Terfilter Otomatis dari TUG 5 &amp; TUG 6</span>
               </div>
 
-              <div className="flex items-center gap-2 w-full sm:w-auto justify-end">
+              <div className="flex items-center gap-2 w-full sm:w-auto justify-end flex-wrap">
+                {selectedSPKForCritical && (
+                  <button
+                    type="button"
+                    onClick={handleCreateTUG6FromCriticalModal}
+                    className="px-4 py-2 bg-gradient-to-r from-rose-600 via-rose-500 to-indigo-600 hover:from-rose-500 hover:to-indigo-500 text-white font-bold rounded-xl text-xs flex items-center gap-2 shadow-md hover:shadow-lg transition-all cursor-pointer active:scale-95"
+                    title="Ambil seluruh suku cadang dari SPK ini ke Form TUG 6 (item critical otomatis ditandai [ITEM CRITICAL] pada kolom keterangan)"
+                  >
+                    <FileText className="w-4 h-4 text-rose-100" />
+                    <span>Buat Form TUG 6 Dari SPK Ini</span>
+                  </button>
+                )}
+
                 {selectedSPKForCritical && filteredSPKCriticalItems.length > 0 && (
                   <button
                     type="button"
