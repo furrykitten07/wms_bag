@@ -472,9 +472,35 @@ function ensureSparePartsFromInboundItems(
 
   return { syncedParts: createdOrUpdatedParts, updatedItems };
 }
+export function loadLocalMaterialRequestsTUG6(): MaterialRequest[] {
+  try {
+    const saved = localStorage.getItem("wms_local_material_requests_tug6");
+    if (saved) {
+      const parsed = JSON.parse(saved);
+      if (Array.isArray(parsed) && parsed.length > 0) return parsed;
+    }
+  } catch (e) {}
+  return [];
+}
+
+export function saveLocalMaterialRequestsTUG6(data: MaterialRequest[]) {
+  try {
+    localStorage.setItem("wms_local_material_requests_tug6", JSON.stringify(data));
+  } catch (e) {}
+}
+
 let localSPKs: SPKWorkOrder[] = [...demoSPKs];
 let localMaterialRequests: MaterialRequest[] = [...demoMaterialRequests];
-let localMaterialRequestsTUG6: MaterialRequest[] = deriveTUG6FromTUG5(localMaterialRequests);
+
+const initialSavedTUG6 = loadLocalMaterialRequestsTUG6();
+const initialDerivedTUG6 = deriveTUG6FromTUG5(localMaterialRequests);
+const initialCombinedTUG6 = [...initialSavedTUG6];
+for (const d of initialDerivedTUG6) {
+  if (!initialCombinedTUG6.some(c => c.id === d.id || c.request_number === d.request_number || (c.tug6_number && c.tug6_number === d.tug6_number))) {
+    initialCombinedTUG6.push(d);
+  }
+}
+let localMaterialRequestsTUG6: MaterialRequest[] = initialCombinedTUG6;
 let localDispatches: OutboundDispatch[] = loadLocalDispatches();
 let localReceiving: InboundReceiving[] = loadLocalReceiving();
 let localMaterialReturns: MaterialReturn[] = [...demoMaterialReturns];
@@ -819,8 +845,103 @@ function getLocalFallbackData<T>(url: string, options: RequestInit = {}): T {
   if (path.startsWith("/api/requests")) return [] as any;
   if (path.startsWith("/api/approvals")) return [] as any;
   if (path.startsWith("/api/ledger")) return localLedger as any;
-  if (path.startsWith("/api/audit")) return [] as any;
-  if (path.startsWith("/api/material-requests-tug6")) return deriveTUG6FromTUG5(localMaterialRequests) as any;
+  // TUG 6 Material Requests (CRUD in localFetch)
+  if (path === "/api/material-requests-tug6" && options.method === "POST") {
+    const currentYear = new Date().getFullYear();
+    const sameYearMRs = localMaterialRequestsTUG6.filter(m => m.request_number?.startsWith(`MR6-${currentYear}`));
+    let nextSeqStr = "000001";
+    if (sameYearMRs.length > 0) {
+      const seqs = sameYearMRs.map(m => {
+        const partsNum = m.request_number.split("-");
+        return Number(partsNum[partsNum.length - 1] || 0);
+      });
+      const maxSeq = Math.max(...seqs);
+      nextSeqStr = String(maxSeq + 1).padStart(6, "0");
+    }
+    const reqNum = body.request_number || `MR6-${currentYear}-${nextSeqStr}`;
+    const tug6Num = body.tug6_number || `TUG6-${currentYear}-${nextSeqStr.slice(-3)}`;
+    const newMR: MaterialRequest = {
+      id: body.id || `mr6-${Date.now()}`,
+      request_number: reqNum,
+      tug6_number: tug6Num,
+      tug_type: "TUG6",
+      request_date: body.request_date || new Date().toISOString().split("T")[0],
+      requester_name: body.requester_name || "Chief Engineer",
+      vessel_name: body.vessel_name || "MV. KARTINI BARUNA",
+      warehouse_name: body.warehouse_name || "Gudang Merak",
+      delivery_address: body.delivery_address || "",
+      work_order_ref: body.work_order_ref || "",
+      account_code: body.account_code || "BPP",
+      function_code: body.function_code || "ARMADA",
+      remarks: body.remarks || "",
+      status: body.status || "Submitted",
+      items: body.items || [],
+      created_at: new Date().toISOString(),
+      updated_at: new Date().toISOString()
+    };
+    localMaterialRequestsTUG6 = [newMR, ...localMaterialRequestsTUG6.filter(r => r.id !== newMR.id)];
+    saveLocalMaterialRequestsTUG6(localMaterialRequestsTUG6);
+    return newMR as any;
+  }
+  if (path === "/api/material-requests-tug6/batch" && options.method === "POST") {
+    const currentYear = new Date().getFullYear();
+    const rows = (Array.isArray(body) ? body : [body]).map((b: any, idx: number) => {
+      const nextSeqStr = String(Math.floor(100000 + Math.random() * 900000));
+      return {
+        id: b.id || `mr6-${Date.now()}-${idx}`,
+        request_number: b.request_number || `MR6-${currentYear}-${nextSeqStr}`,
+        tug6_number: b.tug6_number || `TUG6-${currentYear}-${nextSeqStr.slice(-3)}`,
+        tug_type: "TUG6" as const,
+        request_date: b.request_date || new Date().toISOString().split("T")[0],
+        requester_name: b.requester_name || "Chief Engineer",
+        vessel_name: b.vessel_name || "MV. KARTINI BARUNA",
+        warehouse_name: b.warehouse_name || "Gudang Merak",
+        delivery_address: b.delivery_address || "",
+        work_order_ref: b.work_order_ref || "",
+        account_code: b.account_code || "BPP",
+        function_code: b.function_code || "ARMADA",
+        remarks: b.remarks || "",
+        status: b.status || "Submitted",
+        items: b.items || [],
+        created_at: new Date().toISOString(),
+        updated_at: new Date().toISOString()
+      };
+    });
+    localMaterialRequestsTUG6 = [...rows, ...localMaterialRequestsTUG6];
+    saveLocalMaterialRequestsTUG6(localMaterialRequestsTUG6);
+    return rows as any;
+  }
+  if (path.startsWith("/api/material-requests-tug6/") && options.method === "PUT") {
+    const id = path.split("/").pop();
+    const idx = localMaterialRequestsTUG6.findIndex(r => r.id === id);
+    if (idx !== -1) {
+      localMaterialRequestsTUG6[idx] = {
+        ...localMaterialRequestsTUG6[idx],
+        ...body,
+        updated_at: new Date().toISOString()
+      };
+      saveLocalMaterialRequestsTUG6(localMaterialRequestsTUG6);
+      return localMaterialRequestsTUG6[idx] as any;
+    }
+  }
+  if (path.startsWith("/api/material-requests-tug6/") && options.method === "DELETE") {
+    const id = path.split("/").pop();
+    localMaterialRequestsTUG6 = localMaterialRequestsTUG6.filter(r => r.id !== id);
+    saveLocalMaterialRequestsTUG6(localMaterialRequestsTUG6);
+    return { success: true, id } as any;
+  }
+  if (path.startsWith("/api/material-requests-tug6")) {
+    const saved = loadLocalMaterialRequestsTUG6();
+    const derived = deriveTUG6FromTUG5(localMaterialRequests);
+    const combined = [...saved];
+    for (const d of derived) {
+      if (!combined.some(c => c.id === d.id || c.request_number === d.request_number || (c.tug6_number && c.tug6_number === d.tug6_number))) {
+        combined.push(d);
+      }
+    }
+    localMaterialRequestsTUG6 = combined;
+    return localMaterialRequestsTUG6 as any;
+  }
   if (path.startsWith("/api/material-requests")) return localMaterialRequests as any;
   if (path === "/api/material-returns" && options.method === "POST") {
     const currentYear = new Date().getFullYear();
@@ -1104,22 +1225,54 @@ async function fetcher<T>(url: string, options: RequestInit = {}): Promise<T> {
       if (path === "/api/material-requests-tug6" && method === "GET") {
         const { data, error } = await supabase.from("material_requests").select("*").order("request_date", { ascending: false }).order("request_number", { ascending: false });
         if (!error && data && data.length > 0) {
-          const derived = deriveTUG6FromTUG5(data as MaterialRequest[]);
-          localMaterialRequestsTUG6 = derived.length > 0 ? derived : deriveTUG6FromTUG5(localMaterialRequests);
+          const directTUG6 = (data as MaterialRequest[]).filter(r => 
+            r.tug_type === "TUG6" || 
+            (r.request_number && (r.request_number.startsWith("MR6-") || r.request_number.startsWith("MR-2026-"))) || 
+            (r.tug6_number && r.tug6_number.startsWith("TUG6-"))
+          );
+          const tug5List = (data as MaterialRequest[]).filter(r => 
+            r.tug_type !== "TUG6" && 
+            !r.request_number?.startsWith("MR6-") && 
+            !r.request_number?.startsWith("MR-2026-") &&
+            !r.tug6_number?.startsWith("TUG6-")
+          );
+          const derived = deriveTUG6FromTUG5(tug5List);
+          
+          const combined = [...directTUG6];
+          for (const d of derived) {
+            if (!combined.some(c => c.id === d.id || c.request_number === d.request_number || (c.tug6_number && c.tug6_number === d.tug6_number))) {
+              combined.push(d);
+            }
+          }
+          // Merge local cache if any
+          for (const loc of loadLocalMaterialRequestsTUG6()) {
+            if (!combined.some(c => c.id === loc.id || c.request_number === loc.request_number)) {
+              combined.unshift(loc);
+            }
+          }
+          localMaterialRequestsTUG6 = combined;
           return localMaterialRequestsTUG6 as any;
         }
-        localMaterialRequestsTUG6 = deriveTUG6FromTUG5(localMaterialRequests);
+        const derived = deriveTUG6FromTUG5(localMaterialRequests);
+        const combined = [...loadLocalMaterialRequestsTUG6()];
+        for (const d of derived) {
+          if (!combined.some(c => c.id === d.id || c.request_number === d.request_number)) {
+            combined.push(d);
+          }
+        }
+        localMaterialRequestsTUG6 = combined;
         return localMaterialRequestsTUG6 as any;
       }
       if (path === "/api/material-requests-tug6" && method === "POST") {
         const newId = body.id || `mr6-${Date.now()}`;
-        const reqNum = body.request_number || `MR-2026-${String(Math.floor(100000 + Math.random() * 900000))}`;
+        const reqNum = body.request_number || `MR6-2026-${String(Math.floor(100000 + Math.random() * 900000))}`;
         const tug6Num = body.tug6_number || `TUG6-2026-${String(Math.floor(100 + Math.random() * 900))}`;
         const rec = {
           ...body,
           id: newId,
           request_number: reqNum,
           tug6_number: tug6Num,
+          tug_type: "TUG6",
           request_date: body.request_date ? String(body.request_date).split("T")[0] : now.split("T")[0],
           requester_name: body.requester_name || "Chief Engineer",
           vessel_name: body.vessel_name || "MV. KARTINI BARUNA",
@@ -1130,21 +1283,29 @@ async function fetcher<T>(url: string, options: RequestInit = {}): Promise<T> {
           updated_at: now
         };
         const cleanRec = sanitizeRecord(rec, VALID_MR_COLUMNS);
-        const { data, error } = await supabase.from("material_requests").insert([cleanRec]).select().single();
-        if (error) {
-          console.error("Supabase TUG6 insert error:", error);
-          throw new Error(error.message);
+        let savedResult = rec;
+        try {
+          const { data, error } = await supabase.from("material_requests").insert([cleanRec]).select().single();
+          if (!error && data) {
+            savedResult = { ...rec, ...data };
+          } else if (error) {
+            console.warn("Supabase TUG6 insert warning, falling back to local persistence:", error);
+          }
+        } catch (e) {
+          console.warn("Supabase TUG6 insert exception, falling back to local persistence:", e);
         }
-        localMaterialRequestsTUG6 = [data, ...localMaterialRequestsTUG6.filter(r => r.id !== data.id)];
-        return data as any;
+        localMaterialRequestsTUG6 = [savedResult, ...localMaterialRequestsTUG6.filter(r => r.id !== savedResult.id)];
+        saveLocalMaterialRequestsTUG6(localMaterialRequestsTUG6);
+        return savedResult as any;
       }
       if (path === "/api/material-requests-tug6/batch" && method === "POST") {
         const rows = (Array.isArray(body) ? body : [body]).map((b: any, idx: number) => {
           const rec = {
             ...b,
             id: b.id || `mr6-${Date.now()}-${idx}`,
-            request_number: b.request_number || `MR-2026-${String(Math.floor(100000 + Math.random() * 900000))}`,
+            request_number: b.request_number || `MR6-2026-${String(Math.floor(100000 + Math.random() * 900000))}`,
             tug6_number: b.tug6_number || `TUG6-2026-${String(Math.floor(100 + Math.random() * 900))}`,
+            tug_type: "TUG6" as const,
             request_date: b.request_date ? String(b.request_date).split("T")[0] : now.split("T")[0],
             requester_name: b.requester_name || "Chief Engineer",
             vessel_name: b.vessel_name || "MV. KARTINI BARUNA",
@@ -1154,17 +1315,21 @@ async function fetcher<T>(url: string, options: RequestInit = {}): Promise<T> {
             created_at: now,
             updated_at: now
           };
-          return sanitizeRecord(rec, VALID_MR_COLUMNS);
+          return rec;
         });
-        const { data, error } = await supabase.from("material_requests").upsert(rows).select();
-        if (error) {
-          console.error("Supabase TUG6 batch insert error:", error);
-          throw new Error(error.message);
+        const cleanRows = rows.map(r => sanitizeRecord(r, VALID_MR_COLUMNS));
+        let savedRows = rows;
+        try {
+          const { data, error } = await supabase.from("material_requests").upsert(cleanRows).select();
+          if (!error && data) {
+            savedRows = data;
+          }
+        } catch (e) {
+          console.warn("Supabase TUG6 batch upsert warning:", e);
         }
-        if (data) {
-          localMaterialRequestsTUG6 = [...data, ...localMaterialRequestsTUG6.filter(r => !data.some(d => d.id === r.id))];
-        }
-        return data as any;
+        localMaterialRequestsTUG6 = [...savedRows, ...localMaterialRequestsTUG6.filter(r => !savedRows.some(d => d.id === r.id))];
+        saveLocalMaterialRequestsTUG6(localMaterialRequestsTUG6);
+        return savedRows as any;
       }
       if (path.startsWith("/api/material-requests-tug6/") && method === "PUT") {
         const id = path.split("/").pop();
@@ -1173,22 +1338,28 @@ async function fetcher<T>(url: string, options: RequestInit = {}): Promise<T> {
           payload.request_date = String(payload.request_date).split("T")[0];
         }
         const cleanUpdate = sanitizeRecord(payload, VALID_MR_COLUMNS);
-        const { data, error } = await supabase.from("material_requests").update(cleanUpdate).eq("id", id).select().single();
-        if (error) {
-          console.error("Supabase TUG6 update error:", error);
-          throw new Error(error.message);
+        let updatedResult = { ...payload, id };
+        try {
+          const { data, error } = await supabase.from("material_requests").update(cleanUpdate).eq("id", id).select().single();
+          if (!error && data) {
+            updatedResult = data;
+          }
+        } catch (e) {
+          console.warn("Supabase TUG6 update warning:", e);
         }
-        localMaterialRequestsTUG6 = localMaterialRequestsTUG6.map(r => r.id === id ? data : r);
-        return data as any;
+        localMaterialRequestsTUG6 = localMaterialRequestsTUG6.map(r => r.id === id ? { ...r, ...updatedResult } : r);
+        saveLocalMaterialRequestsTUG6(localMaterialRequestsTUG6);
+        return updatedResult as any;
       }
       if (path.startsWith("/api/material-requests-tug6/") && method === "DELETE") {
         const id = path.split("/").pop();
-        const { error } = await supabase.from("material_requests").delete().eq("id", id);
-        if (error) {
-          console.error("Supabase TUG6 delete error:", error);
-          throw new Error(error.message);
+        try {
+          await supabase.from("material_requests").delete().eq("id", id);
+        } catch (e) {
+          console.warn("Supabase TUG6 delete warning:", e);
         }
         localMaterialRequestsTUG6 = localMaterialRequestsTUG6.filter(r => r.id !== id);
+        saveLocalMaterialRequestsTUG6(localMaterialRequestsTUG6);
         return { success: true, id } as any;
       }
 
