@@ -35,11 +35,12 @@ import {
   Archive,
   ShieldCheck,
   CheckCircle2,
-  SlidersHorizontal,
   AlertOctagon,
   ShieldAlert,
   Sparkles,
-  ExternalLink
+  ExternalLink,
+  Plus,
+  Package
 } from "lucide-react";
 import { 
   User as UserType, 
@@ -2033,15 +2034,26 @@ export default function MaterialRequestTUG6View({
       {/* 5. MODAL POPUP: CREATE / EDIT TRANSACTION FORM */}
       {/* ========================================================= */}
       {(isCreating || isEditing) && (
-        <div className="fixed inset-0 z-40 bg-slate-900/60 backdrop-blur-xs flex items-center justify-center p-4 overflow-y-auto no-print">
-          <div className="bg-white border border-slate-205 rounded-xl shadow-2xl max-w-5xl w-full font-sans overflow-hidden my-8 flex flex-col max-h-[90vh]">
+        <div className="fixed inset-0 z-40 bg-slate-900/60 backdrop-blur-xs flex items-center justify-center p-3 sm:p-5 overflow-y-auto no-print animate-fade-in">
+          <div className="bg-white border border-slate-200/90 rounded-2xl shadow-2xl max-w-5xl w-full font-sans overflow-hidden my-4 sm:my-8 flex flex-col max-h-[92vh]">
             
             {/* Modal Form Header */}
-            <div className="p-5 border-b border-slate-205 bg-slate-50 flex justify-between items-center shrink-0">
-              <div className="flex items-center gap-2">
-                <h3 className="text-sm font-black font-display text-slate-950 tracking-wide uppercase">
-                  {isCreating ? "Isi Data Permintaan Barang Baru (TUG 6)" : `Edit Dokumen TUG 6 — ${activeMR?.request_number}`}
-                </h3>
+            <div className="px-6 py-4.5 border-b border-slate-100 bg-gradient-to-r from-slate-50 via-white to-indigo-50/30 flex justify-between items-center shrink-0">
+              <div className="flex items-center gap-3">
+                <div className="w-10 h-10 rounded-xl bg-indigo-600/10 text-indigo-600 flex items-center justify-center font-bold shadow-2xs">
+                  <FileSpreadsheet className="w-5 h-5" />
+                </div>
+                <div>
+                  <h3 className="text-base font-bold text-slate-900 tracking-tight flex items-center gap-2">
+                    <span>{isCreating ? "Isi Data Permintaan Barang Baru (TUG 6)" : `Edit Dokumen TUG 6 — ${activeMR?.request_number}`}</span>
+                    <span className="text-[10px] font-semibold uppercase tracking-wider bg-indigo-100 text-indigo-700 px-2 py-0.5 rounded-full">
+                      TUG 6 Requisition
+                    </span>
+                  </h3>
+                  <p className="text-xs text-slate-500 font-medium">
+                    Formulir permintaan pengeluaran material & suku cadang logistik kapal
+                  </p>
+                </div>
               </div>
               <button
                 onClick={() => {
@@ -2049,62 +2061,79 @@ export default function MaterialRequestTUG6View({
                   setIsEditing(false);
                   resetForm();
                 }}
-                className="p-1 text-slate-400 hover:text-slate-600 hover:bg-slate-100 rounded-full"
+                className="p-2 text-slate-400 hover:text-slate-700 hover:bg-slate-100 rounded-xl transition-all cursor-pointer"
+                title="Tutup Form"
               >
                 <X className="w-5 h-5" />
               </button>
             </div>
 
             {/* Modal Form Body */}
-            <div className="flex-1 overflow-y-auto p-6 space-y-6">
+            <div className="flex-1 overflow-y-auto p-5 sm:p-6 space-y-6">
               
               {/* Form Segment 1: Header metadata */}
-              <div className="bg-slate-50 border border-slate-200 p-5 rounded-xl space-y-4">
-                <h4 className="text-[10px] font-black font-mono uppercase tracking-widest text-slate-500 border-b border-slate-200 pb-1.5 flex items-center gap-1">
-                  <span>1. TUG 6 MATERIAL REQUISITION HEADER</span>
-                </h4>
+              <div className="bg-slate-50/70 border border-slate-200/80 p-5 rounded-2xl space-y-4">
+                <div className="flex items-center justify-between border-b border-slate-200/80 pb-3">
+                  <div className="flex items-center gap-2.5">
+                    <span className="w-6 h-6 rounded-lg bg-indigo-600 text-white flex items-center justify-center text-xs font-bold shadow-xs">
+                      1
+                    </span>
+                    <h4 className="text-xs font-bold text-slate-800 uppercase tracking-wider">
+                      Informasi Dokumen & Pemohon
+                    </h4>
+                  </div>
+                  <span className="text-[11px] text-slate-400 font-medium">Data Header Requisition</span>
+                </div>
 
                 <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
                   {/* Col 1 */}
-                  <div className="space-y-3">
+                  <div className="space-y-3.5">
                     <div>
-                      <label className="text-[10px] font-bold text-slate-500 uppercase tracking-wider block mb-1">Chief Engineer / Pemohon</label>
+                      <label className="text-xs font-semibold text-slate-700 block mb-1.5">
+                        Chief Engineer / Pemohon
+                      </label>
                       <input
                         type="text"
                         disabled
                         value={currentUser.name}
-                        className="w-full bg-slate-100 border border-slate-250 rounded-lg text-xs px-3 py-2 font-bold text-slate-600 focus:outline-none"
+                        className="w-full bg-slate-100/90 border border-slate-200 rounded-xl text-xs px-3.5 py-2.5 font-semibold text-slate-700 focus:outline-none"
                       />
                     </div>
                     <div>
-                      <label className="text-[10px] font-bold text-slate-500 uppercase tracking-wider block mb-1">Tanggal Permintaan</label>
+                      <label className="text-xs font-semibold text-slate-700 block mb-1.5">
+                        Tanggal Permintaan
+                      </label>
                       <input
                         type="date"
                         value={requestDate}
                         onChange={(e) => setRequestDate(e.target.value)}
-                        className="w-full bg-white border border-slate-250 rounded-lg text-xs px-3 py-2 font-mono text-slate-800 focus:outline-none focus:ring-1 focus:ring-indigo-500 focus:border-indigo-500"
+                        className="w-full bg-white border border-slate-250 rounded-xl text-xs px-3.5 py-2.5 text-slate-800 shadow-2xs focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 transition-all"
                       />
                     </div>
                   </div>
 
                   {/* Col 2 */}
-                  <div className="space-y-3">
+                  <div className="space-y-3.5">
                     <div>
-                      <label className="text-[10px] font-bold text-slate-505 uppercase tracking-wider block mb-1">Depo Logistik (Gudang)</label>
+                      <label className="text-xs font-semibold text-slate-700 block mb-1.5">
+                        Depo Logistik (Gudang)
+                      </label>
                       <input
                         type="text"
                         value={warehouseName}
                         onChange={(e) => setWarehouseName(e.target.value)}
-                        placeholder="Jakarta HQ Depot"
-                        className="w-full bg-white border border-slate-250 rounded-lg text-xs px-3 py-2 font-semibold text-slate-800 focus:outline-none focus:ring-1 focus:ring-indigo-500"
+                        placeholder="Contoh: Gudang Merak"
+                        className="w-full bg-white border border-slate-250 rounded-xl text-xs px-3.5 py-2.5 font-medium text-slate-800 shadow-2xs focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 transition-all placeholder:text-slate-400"
                       />
                     </div>
                     <div>
-                      <label className="text-[10px] font-bold text-slate-505 uppercase tracking-wider block mb-1">Nama Kapal (Vessel Destination) *</label>
+                      <label className="text-xs font-semibold text-slate-700 block mb-1.5">
+                        Nama Kapal (Vessel Destination) <span className="text-rose-500">*</span>
+                      </label>
                       <select
                         value={vesselName}
                         onChange={(e) => setVesselName(e.target.value)}
-                        className="w-full bg-white border border-slate-250 rounded-lg text-xs px-3 py-2 font-bold text-slate-800 focus:outline-none focus:ring-1 focus:ring-indigo-500 cursor-pointer"
+                        className="w-full bg-white border border-slate-250 rounded-xl text-xs px-3.5 py-2.5 font-semibold text-slate-800 shadow-2xs focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 transition-all cursor-pointer"
                       >
                         {vesselOptions.map(v => (
                           <option key={v} value={v}>{v}</option>
@@ -2114,9 +2143,12 @@ export default function MaterialRequestTUG6View({
                   </div>
 
                   {/* Col 3 */}
-                  <div className="space-y-3 bg-blue-50/20 p-3 rounded-lg border border-blue-100/50">
+                  <div className="space-y-3.5 bg-indigo-50/50 p-3.5 rounded-xl border border-indigo-100/80">
                     <div>
-                      <label className="text-[10px] font-bold text-slate-500 uppercase tracking-wider block mb-1">No. Perintah Kerja (Work Order)</label>
+                      <label className="text-xs font-semibold text-indigo-950 flex items-center justify-between mb-1.5">
+                        <span>Work Order (SPK WMS)</span>
+                        <span className="text-[10px] text-indigo-600 font-normal">Opsional</span>
+                      </label>
                       <select
                         value={workOrderRef}
                         onChange={(e) => {
@@ -2132,9 +2164,9 @@ export default function MaterialRequestTUG6View({
                             }
                           }
                         }}
-                        className="w-full bg-white border border-slate-250 rounded-lg text-xs px-3 py-2 font-mono text-rose-600 font-bold focus:outline-none focus:ring-1 focus:ring-indigo-500 cursor-pointer"
+                        className="w-full bg-white border border-indigo-200 rounded-xl text-xs px-3 py-2 text-indigo-900 font-semibold focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 shadow-2xs cursor-pointer"
                       >
-                        <option value="">-- HUBUNGKAN DENGAN SPK WMS --</option>
+                        <option value="">-- Hubungkan dengan SPK WMS --</option>
                         {spkList.map(s => (
                           <option key={s.id} value={s.spk_number}>
                             {s.spk_number} &bull; {s.target_port} ({s.status})
@@ -2146,8 +2178,8 @@ export default function MaterialRequestTUG6View({
                         const matchedSPK = spkList.find(s => s.spk_number === workOrderRef);
                         if (!matchedSPK) return null;
                         return (
-                          <div className="mt-2 p-2 bg-blue-50 border border-blue-200 rounded text-center">
-                            <span className="text-[9px] font-bold text-blue-800 block mb-1 uppercase tracking-tight">
+                          <div className="mt-2.5 p-2.5 bg-white border border-indigo-200/90 rounded-xl shadow-xs text-center space-y-1.5">
+                            <span className="text-[10px] font-bold text-indigo-800 block uppercase tracking-tight">
                               ✓ Terdeteksi SPK Aktif!
                             </span>
                             <button
@@ -2177,36 +2209,37 @@ export default function MaterialRequestTUG6View({
                                 setFormItems(loadedItems);
                               }
                               }}
-                              className="w-full py-1.5 px-3 bg-indigo-650 hover:bg-indigo-700 text-white font-bold rounded text-[10px] uppercase tracking-wider transition-all shadow-xs cursor-pointer"
+                              className="w-full py-1.5 px-3 bg-indigo-600 hover:bg-indigo-700 text-white font-bold rounded-lg text-xs transition-all shadow-xs cursor-pointer flex items-center justify-center gap-1.5"
                             >
-                              ✨ Muat Suku Cadang Dari SPK
+                              <Sparkles className="w-3.5 h-3.5" />
+                              <span>Muat Suku Cadang Dari SPK</span>
                             </button>
-                            <span className="text-[8px] text-slate-500 block mt-1 leading-tight">
-                              Kapal yang ada dalam SPK: {matchedSPK.vessels.map(v => v.vessel_name).join(", ")}
+                            <span className="text-[9px] text-slate-500 block leading-tight">
+                              Kapal dalam SPK: {matchedSPK.vessels.map(v => v.vessel_name).join(", ")}
                             </span>
                           </div>
                         );
                       })()}
                     </div>
-                    <div className="grid grid-cols-2 gap-2 pb-1">
+                    <div className="grid grid-cols-2 gap-2">
                       <div>
-                        <label className="text-[10px] font-bold text-slate-500 uppercase tracking-wider block mb-1">Kode Akun</label>
+                        <label className="text-xs font-semibold text-slate-700 block mb-1">Kode Akun</label>
                         <input
                           type="text"
                           value={accountCode}
                           onChange={(e) => setAccountCode(e.target.value)}
-                          placeholder="e.g. ACC-5400"
-                          className="w-full bg-white border border-slate-250 rounded-lg text-xs px-2.5 py-2 font-mono text-slate-700 focus:outline-none"
+                          placeholder="e.g. BPP"
+                          className="w-full bg-white border border-slate-200 rounded-lg text-xs px-2.5 py-1.5 font-medium text-slate-700 focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500"
                         />
                       </div>
                       <div>
-                        <label className="text-[10px] font-bold text-slate-500 uppercase tracking-wider block mb-1">Fungsi</label>
+                        <label className="text-xs font-semibold text-slate-700 block mb-1">Fungsi</label>
                         <input
                           type="text"
                           value={functionCode}
                           onChange={(e) => setFunctionCode(e.target.value)}
-                          placeholder="e.g. FNC-DEPT"
-                          className="w-full bg-white border border-slate-250 rounded-lg text-xs px-2.5 py-2 font-mono text-slate-700 focus:outline-none"
+                          placeholder="e.g. ARMADA"
+                          className="w-full bg-white border border-slate-200 rounded-lg text-xs px-2.5 py-1.5 font-medium text-slate-700 focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500"
                         />
                       </div>
                     </div>
@@ -2214,48 +2247,63 @@ export default function MaterialRequestTUG6View({
 
                 </div>
 
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-4 pt-2 border-t border-slate-200">
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4 pt-3 border-t border-slate-200/80">
                   <div>
-                    <label className="text-[10px] font-bold text-slate-500 uppercase tracking-wider block mb-1">Alamat Pengantaran Logistik</label>
+                    <label className="text-xs font-semibold text-slate-700 block mb-1.5">
+                      Alamat Pengantaran Logistik
+                    </label>
                     <textarea
                       rows={2}
                       value={deliveryAddress}
                       onChange={(e) => setDeliveryAddress(e.target.value)}
                       placeholder="Masukkan dermaga, pelabuhan, agen logistik, dsb..."
-                      className="w-full bg-white border border-slate-250 p-2.5 text-xs rounded-lg text-slate-800 focus:outline-none focus:ring-1 focus:ring-indigo-500 font-sans"
+                      className="w-full bg-white border border-slate-250 p-3 text-xs rounded-xl text-slate-800 focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 transition-all font-sans placeholder:text-slate-400"
                     />
                   </div>
                   <div>
-                    <label className="text-[10px] font-bold text-slate-500 uppercase tracking-wider block mb-1">Catatan Tambahan / Urgensi Operasional</label>
+                    <label className="text-xs font-semibold text-slate-700 block mb-1.5">
+                      Catatan Tambahan / Urgensi Operasional
+                    </label>
                     <textarea
                       rows={2}
                       value={remarks}
                       onChange={(e) => setRemarks(e.target.value)}
                       placeholder="Catatan tambahan TUG 6, instruksi loading cargo dsb..."
-                      className="w-full bg-white border border-slate-250 p-2.5 text-xs rounded-lg text-slate-800 focus:outline-none focus:ring-1 focus:ring-indigo-500 font-sans"
+                      className="w-full bg-white border border-slate-250 p-3 text-xs rounded-xl text-slate-800 focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 transition-all font-sans placeholder:text-slate-400"
                     />
                   </div>
                 </div>
               </div>
 
               {/* Form Segment 2: Spare Parts selector inputs */}
-              <div className="bg-slate-50 border border-slate-200 p-5 rounded-xl space-y-3">
-                <h4 className="text-[10px] font-black font-mono uppercase tracking-widest text-slate-505 border-b border-slate-200 pb-1.5 flex justify-between items-center">
-                  <span>2. PILIH SUKU CADANG (SPARE PARTS TUG 6)</span>
-                  <span className="text-slate-400 font-medium italic lowercase text-[9px]">live inventory synchronizer</span>
-                </h4>
+              <div className="bg-slate-50/70 border border-slate-200/80 p-5 rounded-2xl space-y-3.5">
+                <div className="flex items-center justify-between border-b border-slate-200/80 pb-3">
+                  <div className="flex items-center gap-2.5">
+                    <span className="w-6 h-6 rounded-lg bg-indigo-600 text-white flex items-center justify-center text-xs font-bold shadow-xs">
+                      2
+                    </span>
+                    <h4 className="text-xs font-bold text-slate-800 uppercase tracking-wider">
+                      Pilih Suku Cadang (Spare Parts TUG 6)
+                    </h4>
+                  </div>
+                  <span className="text-[11px] text-indigo-700 bg-indigo-50 px-2.5 py-0.5 rounded-full font-medium border border-indigo-100 flex items-center gap-1">
+                    <Sparkles className="w-3 h-3 text-indigo-500" /> Live Inventory Synchronizer
+                  </span>
+                </div>
 
                 <div className="grid grid-cols-1 md:grid-cols-12 gap-3 items-end">
                   
                   <div className="md:col-span-5">
-                    <label className="text-[10px] font-bold text-slate-500 uppercase tracking-wider block mb-1">Pilih Suku Cadang</label>
+                    <label className="text-xs font-semibold text-slate-700 block mb-1.5">
+                      Pilih Suku Cadang Dari Gudang
+                    </label>
                     <select
                       value={selectedPartId}
                       onChange={(e) => {
                         setSelectedPartId(e.target.value);
                         setItemUsage(1);
                       }}
-                      className="w-full bg-white border border-slate-250 text-xs rounded-lg px-2.5 py-2 font-semibold text-slate-800 focus:outline-none cursor-pointer"
+                      className="w-full bg-white border border-slate-250 text-xs rounded-xl px-3 py-2.5 font-medium text-slate-800 focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 shadow-2xs cursor-pointer"
                     >
                       <option value="">-- Pilih Suku Cadang --</option>
                       {parts.map(p => (
@@ -2267,35 +2315,41 @@ export default function MaterialRequestTUG6View({
                   </div>
 
                   <div className="md:col-span-2">
-                    <label className="text-[10px] font-bold text-slate-500 uppercase tracking-wider block mb-1">Kebutuhan (Qty)</label>
+                    <label className="text-xs font-semibold text-slate-700 block mb-1.5">
+                      Kebutuhan (Qty)
+                    </label>
                     <input
                       type="number"
                       min={1}
                       value={itemQty}
                       onChange={(e) => setItemQty(Math.max(1, Number(e.target.value)))}
-                      className="w-full bg-white border border-slate-250 rounded-lg text-xs px-3 py-2 font-mono text-slate-800 focus:outline-none focus:ring-1 focus:ring-indigo-500"
+                      className="w-full bg-white border border-slate-250 rounded-xl text-xs px-3 py-2.5 font-semibold text-slate-800 focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 shadow-2xs"
                     />
                   </div>
 
                   <div className="md:col-span-2">
-                    <label className="text-[10px] font-bold text-slate-500 uppercase tracking-wider block mb-1">Rata2/Bulan</label>
+                    <label className="text-xs font-semibold text-slate-700 block mb-1.5">
+                      Rata2 / Bulan
+                    </label>
                     <input
                       type="number"
                       min={0}
                       value={itemUsage}
                       onChange={(e) => setItemUsage(Math.max(0, Number(e.target.value)))}
-                      className="w-full bg-white border border-slate-250 rounded-lg text-xs px-3 py-2 font-mono text-slate-800 focus:outline-none focus:ring-1 focus:ring-indigo-500"
+                      className="w-full bg-white border border-slate-250 rounded-xl text-xs px-3 py-2.5 font-semibold text-slate-800 focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 shadow-2xs"
                     />
                   </div>
 
                   <div className="md:col-span-2">
-                    <label className="text-[10px] font-bold text-slate-500 uppercase tracking-wider block mb-1">Keterangan Item</label>
+                    <label className="text-xs font-semibold text-slate-700 block mb-1.5">
+                      Keterangan Item
+                    </label>
                     <input
                       type="text"
                       placeholder="e.g. Kritis / Overhaul"
                       value={itemNotes}
                       onChange={(e) => setItemNotes(e.target.value)}
-                      className="w-full bg-white border border-slate-250 rounded-lg text-xs px-3 py-2 font-sans text-slate-800 focus:outline-none"
+                      className="w-full bg-white border border-slate-250 rounded-xl text-xs px-3 py-2.5 font-sans text-slate-800 focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 shadow-2xs placeholder:text-slate-400"
                     />
                   </div>
 
@@ -2304,9 +2358,10 @@ export default function MaterialRequestTUG6View({
                       type="button"
                       onClick={handleAddFormItem}
                       disabled={!selectedPartId}
-                      className="w-full py-2 bg-indigo-900 hover:bg-indigo-800 text-white border border-indigo-900 rounded-lg text-xs font-mono font-bold disabled:opacity-40 select-none cursor-pointer text-center"
+                      className="w-full py-2.5 bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl text-xs font-bold disabled:opacity-40 disabled:hover:bg-indigo-600 select-none cursor-pointer text-center transition-all shadow-xs hover:shadow flex items-center justify-center gap-1"
                     >
-                      ADD
+                      <Plus className="w-3.5 h-3.5" />
+                      Tambah
                     </button>
                   </div>
 
@@ -2314,134 +2369,166 @@ export default function MaterialRequestTUG6View({
               </div>
 
               {/* Form Segment 3: Items Table representation */}
-              <div className="space-y-2">
-                <h4 className="text-[10px] font-black font-mono uppercase tracking-widest text-slate-500 block">
-                  DAFTAR GRID ITEM TUG 6 YANG AKAN DISIMPAN
-                </h4>
+              <div className="space-y-3">
+                <div className="flex items-center justify-between pb-1">
+                  <div className="flex items-center gap-2.5">
+                    <span className="w-6 h-6 rounded-lg bg-indigo-600 text-white flex items-center justify-center text-xs font-bold shadow-xs">
+                      3
+                    </span>
+                    <h4 className="text-xs font-bold text-slate-800 uppercase tracking-wider">
+                      Daftar Grid Item Suku Cadang TUG 6
+                    </h4>
+                  </div>
+                  <span className="text-xs font-semibold text-slate-600 bg-slate-100 border border-slate-200 px-3 py-1 rounded-full">
+                    Total: <span className="text-indigo-600 font-bold">{formItems.length}</span> item
+                  </span>
+                </div>
 
-                <div className="border border-slate-205 rounded-xl overflow-hidden shadow-xs">
-                  <table className="w-full text-left border-collapse">
-                    <thead>
-                      <tr className="bg-slate-50 text-slate-700 text-[10px] font-mono uppercase tracking-wider border-b border-slate-200">
-                        <th className="py-2.5 px-4 font-black w-12 text-center">No</th>
-                        <th className="py-2.5 px-3 font-semibold">Nama Barang (Ditulis Lengkap)</th>
-                        <th className="py-2.5 px-3 font-semibold">Nomor Part / SKU Reference</th>
-                        <th className="py-2.5 px-3 w-20 text-center font-semibold">Satuan</th>
-                        <th className="py-2.5 px-3 w-32 text-center font-semibold text-slate-500">Rerata Guna/Bln</th>
-                        <th className="py-2.5 px-3 w-32 text-center font-semibold text-slate-500">Sisa Stok Depo</th>
-                        <th className="py-2.5 px-3 w-32 text-center font-black text-indigo-600 bg-indigo-50/25 border-x border-slate-200">Kebutuhan</th>
-                        <th className="py-2.5 px-3 w-40 font-semibold text-center text-blue-800">Status Kedatangan</th>
-                        <th className="py-2.5 px-3 font-semibold">Keterangan Khusus</th>
-                        <th className="py-2.5 px-3 w-16 text-center text-rose-600 font-semibold">Hapus</th>
-                      </tr>
-                    </thead>
-                    <tbody className="divide-y divide-slate-100 text-xs">
-                      {formItems.length === 0 ? (
-                        <tr>
-                          <td colSpan={10} className="py-8 px-4 text-center text-slate-450 font-mono italic">
-                            Belum ada suku cadang ditambahkan. Pilih dan masukkan parts di atas.
-                          </td>
+                <div className="border border-slate-200/90 rounded-2xl overflow-hidden shadow-xs bg-white">
+                  <div className="overflow-x-auto">
+                    <table className="w-full text-left border-collapse min-w-[980px]">
+                      <thead>
+                        <tr className="bg-slate-50/80 text-slate-600 text-[11px] font-semibold border-b border-slate-200">
+                          <th className="py-3 px-3 w-12 text-center text-slate-400">No</th>
+                          <th className="py-3 px-3.5 min-w-[170px]">Nama Barang</th>
+                          <th className="py-3 px-3 min-w-[120px]">No. Part / SKU</th>
+                          <th className="py-3 px-3 w-20 text-center">Satuan</th>
+                          <th className="py-3 px-3 w-24 text-center text-slate-500">Rerata/Bln</th>
+                          <th className="py-3 px-3 w-24 text-center text-slate-500">Stok Depo</th>
+                          <th className="py-3 px-3 w-28 text-center font-bold text-indigo-900 bg-indigo-50/60 border-x border-indigo-100">Kebutuhan</th>
+                          <th className="py-3 px-3 min-w-[150px] text-center">Status Kedatangan</th>
+                          <th className="py-3 px-3 min-w-[220px]">Keterangan Khusus</th>
+                          <th className="py-3 px-3 w-16 text-center text-slate-400">Aksi</th>
                         </tr>
-                      ) : (
-                        formItems.map((itm, idx) => {
-                          const isItemCrit = itm.notes?.includes("[ITEM CRITICAL]");
-                          return (
-                            <tr key={idx} className={isItemCrit ? "bg-rose-50/30 hover:bg-rose-50/60 transition-colors" : "hover:bg-slate-50/50 transition-colors"}>
-                              <td className="py-2 px-4 text-center font-mono text-slate-400 font-bold">{idx + 1}</td>
-                              <td className="py-2 px-3 text-slate-900 font-bold">
-                                <div className="flex items-center gap-1.5 flex-wrap">
-                                  <span>{itm.spare_part_name}</span>
-                                  {isItemCrit && (
-                                    <span className="px-1.5 py-0.5 rounded text-[9px] font-mono font-black uppercase tracking-wider bg-rose-100 text-rose-700 border border-rose-300 shadow-2xs">
-                                      CRITICAL
-                                    </span>
-                                  )}
+                      </thead>
+                      <tbody className="divide-y divide-slate-100 text-xs">
+                        {formItems.length === 0 ? (
+                          <tr>
+                            <td colSpan={10} className="py-12 px-4 text-center">
+                              <div className="max-w-sm mx-auto flex flex-col items-center">
+                                <div className="w-12 h-12 rounded-full bg-slate-100 flex items-center justify-center text-slate-400 mb-2">
+                                  <Package className="w-6 h-6" />
                                 </div>
-                              </td>
-                              <td className="py-2 px-3 font-mono text-slate-600">{itm.part_number}</td>
-                              <td className="py-2 px-3 text-center font-mono uppercase">{itm.unit}</td>
-                              <td className="py-2 px-3 text-center font-mono font-semibold text-slate-550">{itm.avg_monthly_usage}</td>
-                              <td className="py-2 px-3 text-center font-mono font-semibold text-slate-500">{itm.remaining_stock}</td>
-                              <td className="py-2 px-3 text-center font-mono font-bold text-indigo-600 bg-indigo-50/20 text-xs border-x border-slate-100">{itm.requested_qty}</td>
-                              <td className="py-2 px-3 text-center">
-                                <select
-                                  value={itm.item_status || "Arrived"}
-                                  onChange={(e) => handleUpdateFormItemStatus(idx, e.target.value as any)}
-                                  className={`text-[11px] font-bold rounded-md px-2 py-1 focus:outline-none focus:ring-1 border cursor-pointer ${
-                                    itm.item_status === "Pending"
-                                      ? "bg-amber-50 text-amber-800 border-amber-200 focus:ring-amber-500"
-                                      : itm.item_status === "Returned"
-                                        ? "bg-rose-50 text-rose-800 border-rose-200 focus:ring-rose-500"
-                                        : "bg-emerald-50 text-emerald-800 border-emerald-200 focus:ring-emerald-500"
-                                  }`}
-                                >
-                                  <option value="Arrived">Sudah Datang</option>
-                                  <option value="Pending">Belum Datang</option>
-                                  <option value="Returned">Diretur</option>
-                                </select>
-                              </td>
-                              <td className="py-2 px-3">
-                                <input
-                                  type="text"
-                                  value={itm.notes || ""}
-                                  onChange={(e) => handleUpdateFormItemNotes(idx, e.target.value)}
-                                  placeholder="Tulis catatan (opsional)..."
-                                  className={`w-full rounded px-2.5 py-1 text-xs outline-none focus:ring-1 ${
-                                    isItemCrit 
-                                      ? "bg-rose-50/60 border border-rose-300 text-rose-950 font-medium focus:ring-rose-500" 
-                                      : "bg-slate-50 border border-slate-200 hover:border-slate-300 text-slate-800 focus:ring-blue-500"
-                                  }`}
-                                />
-                              </td>
-                              <td className="py-2 px-3 text-center">
-                                <button
-                                  type="button"
-                                  onClick={() => handleRemoveFormItem(idx)}
-                                  className="p-1 hover:bg-rose-50 text-rose-600 rounded-md transition-colors cursor-pointer"
-                                >
-                                  <Trash2 className="w-4 h-4 ml-auto mr-auto" />
-                                </button>
-                              </td>
-                            </tr>
-                          );
-                        })
-                      )}
-                    </tbody>
-                  </table>
+                                <p className="text-xs font-semibold text-slate-600">Belum ada suku cadang ditambahkan</p>
+                                <p className="text-[11px] text-slate-400 mt-0.5">Pilih suku cadang dari form di atas atau muat otomatis dari SPK WMS.</p>
+                              </div>
+                            </td>
+                          </tr>
+                        ) : (
+                          formItems.map((itm, idx) => {
+                            const isItemCrit = itm.notes?.includes("[ITEM CRITICAL]");
+                            return (
+                              <tr key={idx} className={isItemCrit ? "bg-rose-50/30 hover:bg-rose-50/60 transition-colors" : "hover:bg-slate-50/60 transition-colors"}>
+                                <td className="py-3 px-3 text-center text-slate-400 font-semibold">{idx + 1}</td>
+                                <td className="py-3 px-3.5 text-slate-900 font-bold">
+                                  <div className="flex items-center gap-1.5 flex-wrap">
+                                    <span>{itm.spare_part_name}</span>
+                                    {isItemCrit && (
+                                      <span className="px-2 py-0.5 rounded-full text-[9px] font-bold uppercase tracking-wider bg-rose-100 text-rose-700 border border-rose-250 shadow-2xs">
+                                        CRITICAL
+                                      </span>
+                                    )}
+                                  </div>
+                                </td>
+                                <td className="py-3 px-3">
+                                  <span className="font-mono text-xs text-slate-600 bg-slate-100/80 px-2 py-0.5 rounded-md inline-block">
+                                    {itm.part_number}
+                                  </span>
+                                </td>
+                                <td className="py-3 px-3 text-center uppercase font-medium text-slate-600">{itm.unit}</td>
+                                <td className="py-3 px-3 text-center font-medium text-slate-600">{itm.avg_monthly_usage}</td>
+                                <td className="py-3 px-3 text-center font-semibold text-slate-700">{itm.remaining_stock}</td>
+                                <td className="py-3 px-3 text-center border-x border-indigo-50/80 bg-indigo-50/30">
+                                  <span className="inline-block bg-indigo-100/80 text-indigo-700 font-bold px-3 py-1 rounded-lg text-xs">
+                                    {itm.requested_qty}
+                                  </span>
+                                </td>
+                                <td className="py-3 px-3 text-center">
+                                  <select
+                                    value={itm.item_status || "Arrived"}
+                                    onChange={(e) => handleUpdateFormItemStatus(idx, e.target.value as any)}
+                                    className={`text-xs font-semibold rounded-lg px-2.5 py-1.5 focus:outline-none transition-all border cursor-pointer ${
+                                      itm.item_status === "Pending"
+                                        ? "bg-amber-50 text-amber-800 border-amber-200/90 focus:ring-2 focus:ring-amber-500/20"
+                                        : itm.item_status === "Returned"
+                                          ? "bg-rose-50 text-rose-800 border-rose-200/90 focus:ring-2 focus:ring-rose-500/20"
+                                          : "bg-emerald-50 text-emerald-800 border-emerald-200/90 focus:ring-2 focus:ring-emerald-500/20"
+                                    }`}
+                                  >
+                                    <option value="Arrived">Sudah Datang</option>
+                                    <option value="Pending">Belum Datang</option>
+                                    <option value="Returned">Diretur</option>
+                                  </select>
+                                </td>
+                                <td className="py-3 px-3">
+                                  <input
+                                    type="text"
+                                    value={itm.notes || ""}
+                                    onChange={(e) => handleUpdateFormItemNotes(idx, e.target.value)}
+                                    placeholder="Tulis catatan (opsional)..."
+                                    className={`w-full rounded-xl px-3 py-1.5 text-xs outline-none transition-all ${
+                                      isItemCrit 
+                                        ? "bg-rose-50 border border-rose-300 text-rose-950 font-medium focus:ring-2 focus:ring-rose-500/20" 
+                                        : "bg-white border border-slate-200 hover:border-slate-300 text-slate-800 focus:border-indigo-500 focus:ring-2 focus:ring-indigo-100 shadow-2xs"
+                                    }`}
+                                  />
+                                </td>
+                                <td className="py-3 px-3 text-center">
+                                  <button
+                                    type="button"
+                                    onClick={() => handleRemoveFormItem(idx)}
+                                    className="p-1.5 hover:bg-rose-50 text-slate-400 hover:text-rose-600 rounded-lg transition-colors cursor-pointer"
+                                    title="Hapus baris item"
+                                  >
+                                    <Trash2 className="w-4 h-4 ml-auto mr-auto" />
+                                  </button>
+                                </td>
+                              </tr>
+                            );
+                          })
+                        )}
+                      </tbody>
+                    </table>
+                  </div>
                 </div>
               </div>
 
             </div>
 
             {/* Modal Form Bottom Footer Panel */}
-            <div className="p-4 bg-slate-50 border-t border-slate-205 flex justify-end gap-3 shrink-0">
-              <button
-                type="button"
-                onClick={() => {
-                  setIsCreating(false);
-                  setIsEditing(false);
-                  resetForm();
-                }}
-                className="px-4 py-2 bg-white border border-slate-300 text-slate-705 text-xs font-bold uppercase rounded-lg hover:bg-slate-55 transition-colors cursor-pointer"
-              >
-                Batalkan
-              </button>
-              <button
-                type="button"
-                onClick={() => handleSaveRequest("Draft")}
-                className="px-4 py-2 bg-slate-250 border border-slate-350 hover:bg-slate-300 text-slate-800 text-xs font-bold uppercase rounded-lg transition-colors cursor-pointer flex items-center gap-1.5"
-              >
-                <Save className="w-3.5 h-3.5" />
-                Simpan Draft TUG 6
-              </button>
-              <button
-                type="button"
-                onClick={() => handleSaveRequest("Submitted")}
-                className="px-4 py-2 bg-indigo-600 hover:bg-indigo-505 text-white text-xs font-black uppercase rounded-lg transition-all shadow-md shadow-indigo-100 cursor-pointer flex items-center gap-1.5"
-              >
-                <Send className="w-3.5 h-3.5" />
-                Submit Permintaan TUG 6
-              </button>
+            <div className="p-4 sm:px-6 bg-slate-50/80 border-t border-slate-200/80 flex flex-col sm:flex-row items-center justify-between gap-3 shrink-0">
+              <span className="text-xs text-slate-500 hidden sm:inline">
+                Pastikan data kebutuhan logistik kapal telah dicek sebelum disimpan.
+              </span>
+              <div className="flex items-center gap-2.5 w-full sm:w-auto justify-end">
+                <button
+                  type="button"
+                  onClick={() => {
+                    setIsCreating(false);
+                    setIsEditing(false);
+                    resetForm();
+                  }}
+                  className="px-4 py-2.5 bg-white border border-slate-250 text-slate-700 text-xs font-semibold rounded-xl hover:bg-slate-100 hover:text-slate-900 transition-all cursor-pointer shadow-2xs"
+                >
+                  Batalkan
+                </button>
+                <button
+                  type="button"
+                  onClick={() => handleSaveRequest("Draft")}
+                  className="px-4 py-2.5 bg-white border border-slate-300 hover:bg-slate-50 text-slate-800 text-xs font-semibold rounded-xl transition-all shadow-2xs hover:shadow-xs cursor-pointer flex items-center gap-2"
+                >
+                  <Save className="w-4 h-4 text-slate-500" />
+                  Simpan Draft TUG 6
+                </button>
+                <button
+                  type="button"
+                  onClick={() => handleSaveRequest("Submitted")}
+                  className="px-5 py-2.5 bg-gradient-to-r from-indigo-600 to-blue-600 hover:from-indigo-700 hover:to-blue-700 text-white text-xs font-bold rounded-xl transition-all shadow-md shadow-indigo-200 hover:shadow-lg hover:shadow-indigo-300 cursor-pointer flex items-center gap-2"
+                >
+                  <Send className="w-4 h-4" />
+                  Submit Permintaan TUG 6
+                </button>
+              </div>
             </div>
 
           </div>
