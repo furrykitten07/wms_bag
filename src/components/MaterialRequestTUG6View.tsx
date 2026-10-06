@@ -886,13 +886,6 @@ export default function MaterialRequestTUG6View({
           </button>
 
           <button
-            onClick={handleStartCreate}
-            className="px-4 py-3 font-bold text-xs uppercase rounded-lg flex items-center justify-center gap-2 transition-all shadow-sm bg-indigo-600 hover:bg-indigo-500 text-white cursor-pointer"
-          >
-            <PlusCircle className="w-4 h-4" />
-            <span>Buat TUG 6 Baru</span>
-          </button>
-          <button
             onClick={handleSyncSPK}
             disabled={isSyncing}
             className={`px-4 py-3 font-bold text-xs uppercase rounded-lg flex items-center justify-center gap-2 transition-all shadow-sm border cursor-pointer text-center relative ${
