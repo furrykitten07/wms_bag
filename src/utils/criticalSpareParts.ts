@@ -115,64 +115,82 @@ export function checkIsCriticalPart(
   const rawItemName = String(item.spare_part_name || "").trim().toUpperCase();
   const rawItemPn = String(item.part_number || "").trim().toUpperCase();
   const cleanItemPn = rawItemPn.replace(/[^A-Z0-9]/g, "");
+  const hasItemPn = cleanItemPn !== "" && cleanItemPn !== "-";
 
   for (const crit of criticalParts) {
     const rawCritName = String(crit.part_name || "").trim().toUpperCase();
     const rawCritPn = String(crit.part_no || "").trim().toUpperCase();
     const cleanCritPn = rawCritPn.replace(/[^A-Z0-9]/g, "");
+    const hasCritPn = cleanCritPn !== "" && cleanCritPn !== "-";
 
-    // 1. Part Number Matching
-    if (cleanCritPn && cleanCritPn !== "-") {
-      // Direct exact match of alphanumeric PN
-      if (cleanCritPn === cleanItemPn && cleanCritPn.length > 0) {
-        return { isCritical: true, matchedCritical: crit, matchReason: `Part No: ${crit.part_no}` };
-      }
-      // If PN is at least 4 alphanumeric chars, check if one contains the other
-      if (cleanCritPn.length >= 4 && cleanItemPn.length >= 4) {
-        if (cleanItemPn.includes(cleanCritPn) || cleanCritPn.includes(cleanItemPn)) {
-          return { isCritical: true, matchedCritical: crit, matchReason: `Ref Part No: ${crit.part_no}` };
+    // -------------------------------------------------------------
+    // CRITERIA 1: Master item has a Part Number defined
+    // -------------------------------------------------------------
+    if (hasCritPn) {
+      const isShortPn = cleanCritPn.length <= 3; // e.g. drawing/position number like "1", "9", "12", "84", "92", "106", "127", "155", "902"
+
+      if (isShortPn) {
+        // If master has a short index number (e.g. PN "9" for O-RING or "84" for PISTON RING):
+        // It requires BOTH the Part Number to match cleanCritPn AND the name to match!
+        // This ensures an item like O-RING with PN 3803-6419-00 will NEVER match O-RING PN 9!
+        if (cleanItemPn === cleanCritPn && cleanItemPn.length > 0) {
+          if (
+            rawItemName === rawCritName ||
+            rawItemName.includes(rawCritName) ||
+            rawCritName.includes(rawItemName)
+          ) {
+            return {
+              isCritical: true,
+              matchedCritical: crit,
+              matchReason: `Part No: ${crit.part_no} (${crit.part_name})`
+            };
+          }
+        }
+      } else {
+        // Specific alphanumeric Part Number (e.g. "00047-001", "E245200090A", "746623-51403", "24316-000210", "Z565002700ZZ", etc.)
+        if (hasItemPn) {
+          // Exact alphanumeric match
+          if (cleanItemPn === cleanCritPn) {
+            return {
+              isCritical: true,
+              matchedCritical: crit,
+              matchReason: `Part No: ${crit.part_no}`
+            };
+          }
+          // Substring match for long specific part numbers (>= 5 chars)
+          if (cleanCritPn.length >= 5 && cleanItemPn.length >= 5) {
+            if (cleanItemPn.includes(cleanCritPn) || cleanCritPn.includes(cleanItemPn)) {
+              return {
+                isCritical: true,
+                matchedCritical: crit,
+                matchReason: `Ref Part No: ${crit.part_no}`
+              };
+            }
+          }
         }
       }
-    }
-
-    // 2. Part Name Matching
-    if (rawCritName && rawItemName) {
-      // Direct exact match
-      if (rawItemName === rawCritName) {
-        return { isCritical: true, matchedCritical: crit, matchReason: `Nama Komponen: ${crit.part_name}` };
-      }
-
-      // Specific critical engineering keywords that are unique
-      const keyPhrases = [
-        "CYLINDER LINER",
-        "CONNECTING ROD",
-        "CYLINDER COVER",
-        "PISTON RING",
-        "PISTON ROD",
-        "PISTON CROWN",
-        "FUEL INJECTION PUMP",
-        "INJECTION PUMP ASSY",
-        "MAIN BEARING",
-        "THRUST BEARING",
-        "MAIN & THRUST BEARING",
-        "PACKING P.21",
-        "PACKING P.24",
-        "PACKING P.28",
-        "PACKING P.35",
-        "PACKING P.9.0",
-        "ORING CYL"
-      ];
-
-      for (const kp of keyPhrases) {
-        if (rawCritName.includes(kp) && rawItemName.includes(kp)) {
-          return { isCritical: true, matchedCritical: crit, matchReason: `Kategori Kritis: ${kp}` };
+    } else {
+      // -------------------------------------------------------------
+      // CRITERIA 2: Master item has NO Part Number (part_no is "-" or empty)
+      // Example in FIKRI.xlsx: "PISTON CROWN" with part_no "-"
+      // -------------------------------------------------------------
+      if (rawCritName && rawItemName) {
+        // Exact name match or normalized alphanumeric match
+        if (rawItemName === rawCritName) {
+          return {
+            isCritical: true,
+            matchedCritical: crit,
+            matchReason: `Master Component: ${crit.part_name}`
+          };
         }
-      }
-
-      // Check name inclusion for names longer than 6 chars (avoiding generic "GASKET" or "O-RING" by itself)
-      if (rawCritName.length > 6 && !["GASKET", "O-RING", "PACKING"].includes(rawCritName)) {
-        if (rawItemName.includes(rawCritName)) {
-          return { isCritical: true, matchedCritical: crit, matchReason: `Nama Kritis: ${crit.part_name}` };
+        const normItem = rawItemName.replace(/[^A-Z0-9]/g, "");
+        const normCrit = rawCritName.replace(/[^A-Z0-9]/g, "");
+        if (normItem === normCrit && normCrit.length >= 6) {
+          return {
+            isCritical: true,
+            matchedCritical: crit,
+            matchReason: `Master Component: ${crit.part_name}`
+          };
         }
       }
     }
@@ -238,9 +256,7 @@ export function matchCriticalPartsForSPK(
     (tug5.items || []).forEach(item => {
       const { isCritical, matchedCritical, matchReason } = checkIsCriticalPart(item, criticalParts);
       if (isCritical && matchedCritical) {
-        const key = (item.part_number && item.part_number.trim() !== "-" 
-          ? item.part_number.trim().toLowerCase().replace(/[^a-z0-9]/g, "") 
-          : item.spare_part_name.trim().toLowerCase());
+        const key = matchedCritical.id || `${matchedCritical.part_name}-${matchedCritical.part_no}`;
 
         const existing = criticalMap.get(key);
         const reqQty = Number(item.requested_qty) || 0;
@@ -253,9 +269,9 @@ export function matchCriticalPartsForSPK(
         } else {
           criticalMap.set(key, {
             id: `crit-item-${key}`,
-            part_name: item.spare_part_name,
-            part_number: item.part_number || "-",
-            unit: item.unit || "PCS",
+            part_name: matchedCritical.part_name || item.spare_part_name,
+            part_number: matchedCritical.part_no && matchedCritical.part_no !== "-" ? matchedCritical.part_no : (item.part_number || "-"),
+            unit: item.unit || matchedCritical.unit || "PCS",
             critical_info: matchedCritical,
             match_reason: matchReason || "Critical Match",
             tug5_qty: reqQty,
@@ -277,9 +293,7 @@ export function matchCriticalPartsForSPK(
     (tug6.items || []).forEach(item => {
       const { isCritical, matchedCritical, matchReason } = checkIsCriticalPart(item, criticalParts);
       if (isCritical && matchedCritical) {
-        const key = (item.part_number && item.part_number.trim() !== "-" 
-          ? item.part_number.trim().toLowerCase().replace(/[^a-z0-9]/g, "") 
-          : item.spare_part_name.trim().toLowerCase());
+        const key = matchedCritical.id || `${matchedCritical.part_name}-${matchedCritical.part_no}`;
 
         const existing = criticalMap.get(key);
         const issuedQty = Number(item.approved_qty ?? item.requested_qty) || 0;
@@ -295,9 +309,9 @@ export function matchCriticalPartsForSPK(
         } else {
           criticalMap.set(key, {
             id: `crit-item-${key}`,
-            part_name: item.spare_part_name,
-            part_number: item.part_number || "-",
-            unit: item.unit || "PCS",
+            part_name: matchedCritical.part_name || item.spare_part_name,
+            part_number: matchedCritical.part_no && matchedCritical.part_no !== "-" ? matchedCritical.part_no : (item.part_number || "-"),
+            unit: item.unit || matchedCritical.unit || "PCS",
             critical_info: matchedCritical,
             match_reason: matchReason || "Critical Match",
             tug5_qty: 0,

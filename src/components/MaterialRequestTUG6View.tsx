@@ -2405,12 +2405,15 @@ export default function MaterialRequestTUG6View({
                     <span className="text-xs text-rose-200 font-mono">
                       CROSS-CHECK TUG 5 &bull; REALISASI TUG 6
                     </span>
+                    <span className="px-2 py-0.5 rounded text-[10px] font-bold font-mono bg-white/10 text-rose-200 border border-white/20">
+                      Acuan: Master Critical Spare Parts ({criticalParts.length} Item)
+                    </span>
                   </div>
                   <h2 className="text-lg font-black font-display tracking-tight text-white mt-1">
                     Pusat Analisis &amp; Filter Item Critical TUG 6
                   </h2>
                   <p className="text-xs text-rose-100/90 font-medium mt-0.5">
-                    Memfilter suku cadang berstatus <span className="text-rose-200 font-bold">CRITICAL</span> yang diminta pada dokumen TUG 5 dan membandingkan realisasi pengeluarannya di form TUG 6 berdasarkan nomor SPK.
+                    Memfilter suku cadang dari dokumen <strong className="text-white">TUG 5</strong> yang terdaftar dalam Master Database <strong className="text-white font-mono">Critical Spare Parts TUG 6</strong> dan membandingkan realisasi pengeluarannya di form <strong className="text-white">TUG 6</strong> berdasarkan nomor SPK.
                   </p>
                 </div>
               </div>
@@ -2482,8 +2485,26 @@ export default function MaterialRequestTUG6View({
                   <AlertOctagon className="w-12 h-12 text-rose-300 mx-auto mb-3" />
                   <h3 className="text-base font-bold text-slate-800">Silakan Pilih Nomor SPK</h3>
                   <p className="text-xs text-slate-500 max-w-md mx-auto mt-1">
-                    Pilih salah satu nomor SPK dari dropdown di atas untuk melihat analisis perbandingan spare part critical antara permintaan TUG 5 dan realisasi TUG 6.
+                    Pilih salah satu nomor SPK dari dropdown di atas untuk melihat analisis perbandingan suku cadang critical yang diminta pada TUG 5 terhadap bukti pengeluaran TUG 6.
                   </p>
+                </div>
+              ) : matchedSPKCriticalItems.length === 0 ? (
+                <div className="bg-white border border-slate-250 rounded-2xl p-10 text-center text-slate-600 shadow-2xs space-y-3">
+                  <div className="w-14 h-14 bg-emerald-50 text-emerald-600 rounded-2xl flex items-center justify-center mx-auto border border-emerald-200/80 shadow-2xs">
+                    <CheckCircle2 className="w-7 h-7 text-emerald-600" />
+                  </div>
+                  <div>
+                    <h3 className="text-base font-bold text-slate-900">
+                      Tidak Ditemukan Item Critical pada SPK Ini
+                    </h3>
+                    <p className="text-xs text-slate-500 max-w-lg mx-auto mt-1.5 leading-relaxed font-sans">
+                      Seluruh suku cadang yang diminta pada dokumen TUG 5 untuk SPK <strong className="text-slate-800 font-mono font-bold">{selectedSPKForCritical}</strong> merupakan suku cadang reguler (tidak terdaftar dalam <strong>Master Database Critical Spare Parts TUG 6</strong>).
+                    </p>
+                    <div className="mt-4 inline-flex items-center gap-2 px-3 py-1.5 rounded-xl bg-slate-50 border border-slate-250 text-slate-600 text-[11px] font-mono">
+                      <span>Database Master Acuan:</span>
+                      <strong className="text-slate-900">{criticalParts.length} Item Kritis Terdaftar</strong>
+                    </div>
+                  </div>
                 </div>
               ) : (
                 <>
@@ -2494,7 +2515,7 @@ export default function MaterialRequestTUG6View({
                       <div className="text-2xl font-black font-display text-rose-600 mt-1">
                         {matchedSPKCriticalItems.length}
                       </div>
-                      <div className="text-[10px] text-slate-500 font-medium mt-0.5">Suku cadang tergolong kritis</div>
+                      <div className="text-[10px] text-slate-500 font-medium mt-0.5">Suku cadang terdaftar di Master</div>
                     </div>
 
                     <div className="bg-white p-3.5 rounded-xl border border-slate-200 shadow-2xs">
