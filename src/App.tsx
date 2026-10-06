@@ -1368,6 +1368,7 @@ export default function App() {
               onClearAutoOpenMRId={() => setAutoOpenMRId(null)}
               signatures={signatures}
               vessels={vessels}
+              returns={materialReturns}
             />
           )}
 

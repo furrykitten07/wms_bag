@@ -61,7 +61,8 @@ import {
   DigitalSignature,
   InboundReceiving,
   ReceivingStatus,
-  Vessel
+  Vessel,
+  MaterialReturn
 } from "../types.js";
 import { api } from "../api.js";
 import { FLEET_VESSELS } from "./ReceivingView.js";
@@ -87,6 +88,7 @@ interface MaterialRequestViewProps {
   onClearAutoOpenMRId?: () => void;
   signatures?: DigitalSignature[];
   vessels?: Vessel[];
+  returns?: MaterialReturn[];
 }
 
 export default function MaterialRequestView({
@@ -104,7 +106,8 @@ export default function MaterialRequestView({
   autoOpenMRId,
   onClearAutoOpenMRId,
   signatures = [],
-  vessels = []
+  vessels = [],
+  returns = []
 }: MaterialRequestViewProps) {
   const [selectedMRId, setSelectedMRId] = useState<string | null>(null);
   const [activeActionId, setActiveActionId] = useState<string | null>(null);
@@ -227,9 +230,9 @@ export default function MaterialRequestView({
   const [pendingSyncList, setPendingSyncList] = useState<SPKWorkOrder[]>([]);
   const [selectedSyncIds, setSelectedSyncIds] = useState<string[]>([]);
 
-  // Inbound Sync & Import Modal State
+  // Inbound & TUG 10 Return Sync & Import Modal State
   const [isInboundSyncModalOpen, setIsInboundSyncModalOpen] = useState(false);
-  const [inboundModalTab, setInboundModalTab] = useState<"review_inbound" | "batch_sync">("review_inbound");
+  const [inboundModalTab, setInboundModalTab] = useState<"review_inbound" | "review_tug10" | "batch_sync">("review_inbound");
   const [selectedInboundId, setSelectedInboundId] = useState<string | null>(null);
   const [inboundSearchTerm, setInboundSearchTerm] = useState<string>("");
   const [inboundFilterStatus, setInboundFilterStatus] = useState<"all" | "sesuai" | "partial" | "unlinked">("all");
@@ -241,6 +244,13 @@ export default function MaterialRequestView({
   const [inboundSyncNotes, setInboundSyncNotes] = useState<string>("");
   const [isProcessingInboundSync, setIsProcessingInboundSync] = useState(false);
   const [targetSingleMR, setTargetSingleMR] = useState<MaterialRequest | null>(null);
+
+  // TUG 10 Return specific states
+  const [selectedTUG10Id, setSelectedTUG10Id] = useState<string | null>(null);
+  const [tug10SearchTerm, setTug10SearchTerm] = useState<string>("");
+  const [tug10FilterStatus, setTug10FilterStatus] = useState<"all" | "approved" | "submitted" | "draft" | "unlinked">("all");
+  const [targetTUG5OptionForTUG10, setTargetTUG5OptionForTUG10] = useState<"matched" | "existing" | "new">("matched");
+  const [selectedTargetMRIdForTUG10, setSelectedTargetMRIdForTUG10] = useState<string>("");
 
   const handleOpenSingleInboundSync = (mr: MaterialRequest) => {
     setTargetSingleMR(mr);
@@ -274,8 +284,13 @@ export default function MaterialRequestView({
     setInboundModalTab("review_inbound");
     setTargetTUG5Option("matched");
     setSelectedTargetMRId("");
+    setTargetTUG5OptionForTUG10("matched");
+    setSelectedTargetMRIdForTUG10("");
     if (receivingList.length > 0 && !selectedInboundId) {
       setSelectedInboundId(receivingList[0].id);
+    }
+    if (returns.length > 0 && !selectedTUG10Id) {
+      setSelectedTUG10Id(returns[0].id);
     }
     setIsInboundSyncModalOpen(true);
   };
@@ -448,6 +463,77 @@ export default function MaterialRequestView({
     return null;
   }, [selectedInbound, requests]);
 
+  // Filtered TUG 10 Returns list for modal
+  const filteredTUG10List = useMemo(() => {
+    return (returns || []).filter(r => {
+      // 1. Filter Status
+      if (tug10FilterStatus === "approved" && r.status !== "Approved") return false;
+      if (tug10FilterStatus === "submitted" && r.status !== "Submitted") return false;
+      if (tug10FilterStatus === "draft" && r.status !== "Draft") return false;
+      if (tug10FilterStatus === "unlinked") {
+        const isLinked = requests.some(mr => 
+          (mr.remarks && mr.remarks.includes(r.return_number)) ||
+          (mr.spk_number && r.spk_number && mr.spk_number.trim().toLowerCase() === r.spk_number.trim().toLowerCase())
+        );
+        if (isLinked) return false;
+      }
+
+      // 2. Search Query
+      const q = tug10SearchTerm.trim().toLowerCase();
+      if (!q) return true;
+
+      const numMatch = (r.return_number || "").toLowerCase().includes(q);
+      const vMatch = (r.vessel_name || "").toLowerCase().includes(q);
+      const spkMatch = (r.spk_number || "").toLowerCase().includes(q);
+      const reasonMatch = (r.return_reason || "").toLowerCase().includes(q);
+      const notesMatch = (r.notes || "").toLowerCase().includes(q);
+      const itemMatch = (r.items || []).some(itm => 
+        (itm.part_name && itm.part_name.toLowerCase().includes(q)) ||
+        (itm.part_number && itm.part_number.toLowerCase().includes(q))
+      );
+
+      return numMatch || vMatch || spkMatch || reasonMatch || notesMatch || itemMatch;
+    });
+  }, [returns, tug10FilterStatus, tug10SearchTerm, requests]);
+
+  // Selected TUG 10 Record to review
+  const selectedTUG10 = useMemo(() => {
+    if (selectedTUG10Id) {
+      const found = (returns || []).find(r => r.id === selectedTUG10Id);
+      if (found) return found;
+    }
+    return filteredTUG10List[0] || (returns && returns.length > 0 ? returns[0] : null);
+  }, [returns, selectedTUG10Id, filteredTUG10List]);
+
+  // Detect matching TUG 5 for selected TUG 10
+  const matchedTUG5ForSelectedTUG10 = useMemo(() => {
+    if (!selectedTUG10) return null;
+    const vName = (selectedTUG10.vessel_name || "").trim().toLowerCase();
+    const spk = (selectedTUG10.spk_number || "").trim().toLowerCase();
+
+    // 1. Direct match by remarks / notes containing return number
+    let match = requests.find(r => r.remarks && r.remarks.includes(selectedTUG10.return_number));
+    if (match) return match;
+
+    // 2. Match by SPK number
+    if (spk && spk !== "manual" && spk !== "no-spk") {
+      match = requests.find(r => {
+        const rSpk = (r.work_order_ref || r.spk_number || "").trim().toLowerCase();
+        return rSpk && (rSpk === spk || rSpk.includes(spk) || spk.includes(rSpk));
+      });
+      if (match) return match;
+    }
+
+    // 3. Match by vessel name
+    if (vName) {
+      const vMatches = requests.filter(r => (r.vessel_name || "").trim().toLowerCase() === vName);
+      if (vMatches.length === 1) return vMatches[0];
+      if (vMatches.length > 1) return vMatches[0];
+    }
+
+    return null;
+  }, [selectedTUG10, requests]);
+
   // Execute Import of Selected Inbound Items into TUG 5
   const handleApplySelectedInboundToTUG5 = async () => {
     if (!selectedInbound) {
@@ -600,6 +686,120 @@ export default function MaterialRequestView({
     } catch (err: any) {
       console.error("Error applying inbound to TUG 5:", err);
       alert("Gagal memasukkan data Inbound ke TUG 5: " + (err.message || err));
+    } finally {
+      setIsProcessingInboundSync(false);
+    }
+  };
+
+  // Execute Import of Selected TUG 10 Return Items into TUG 5
+  const handleApplySelectedTUG10ToTUG5 = async () => {
+    if (!selectedTUG10) {
+      alert("Pilih salah satu dokumen pengembalian TUG 10 terlebih dahulu.");
+      return;
+    }
+
+    if (!selectedTUG10.items || selectedTUG10.items.length === 0) {
+      alert("Dokumen TUG 10 terpilih tidak memiliki daftar suku cadang/item barang.");
+      return;
+    }
+
+    setIsProcessingInboundSync(true);
+
+    try {
+      const now = new Date().toISOString();
+      const completionDate = now;
+
+      // 1. Map items from TUG 10 to MaterialRequestItem format
+      const importedItems: MaterialRequestItem[] = (selectedTUG10.items || []).map((itm, idx) => ({
+        spare_part_id: itm.spare_part_id || `sp-tug10-${Date.now()}-${idx}`,
+        spare_part_name: itm.part_name,
+        part_number: itm.part_number || "-",
+        unit: itm.unit || "PCS",
+        requested_qty: Number(itm.qty_returned || itm.qty_used || 1),
+        approved_qty: Number(itm.qty_returned || itm.qty_used || 1),
+        item_status: "Arrived" as const,
+        notes: `Pengembalian TUG 10 [${selectedTUG10.return_number}] - Alasan: ${selectedTUG10.return_reason || 'Leftover'}${itm.notes ? ` (${itm.notes})` : ''}`
+      }));
+
+      // 2. Resolve destination TUG 5
+      let targetMR: MaterialRequest | null = null;
+      if (targetSingleMR) {
+        targetMR = targetSingleMR;
+      } else if (targetTUG5OptionForTUG10 === "matched" && matchedTUG5ForSelectedTUG10) {
+        targetMR = matchedTUG5ForSelectedTUG10;
+      } else if (targetTUG5OptionForTUG10 === "existing" && selectedTargetMRIdForTUG10) {
+        targetMR = requests.find(r => r.id === selectedTargetMRIdForTUG10) || null;
+      }
+
+      if (targetMR && targetTUG5OptionForTUG10 !== "new") {
+        // Merge or append to existing TUG 5
+        const currentItems = [...(targetMR.items || [])];
+        const mergedItems = [...currentItems];
+
+        importedItems.forEach(retItm => {
+          const foundIdx = mergedItems.findIndex(m =>
+            (m.part_number && retItm.part_number && retItm.part_number !== "-" && m.part_number.toLowerCase() === retItm.part_number.toLowerCase()) ||
+            (m.spare_part_name && retItm.spare_part_name && m.spare_part_name.toLowerCase() === retItm.spare_part_name.toLowerCase())
+          );
+
+          if (foundIdx >= 0) {
+            mergedItems[foundIdx] = {
+              ...mergedItems[foundIdx],
+              item_status: "Arrived",
+              approved_qty: Math.max(mergedItems[foundIdx].approved_qty || 0, retItm.approved_qty),
+              notes: `${mergedItems[foundIdx].notes || ''} [TUG 10 Retur: ${retItm.approved_qty} ${retItm.unit}]`.trim()
+            };
+          } else {
+            mergedItems.push(retItm);
+          }
+        });
+
+        const updatedMR: Partial<MaterialRequest> = {
+          ...targetMR,
+          id: targetMR.id,
+          items: mergedItems,
+          status: targetMR.status === "Draft" ? "Submitted" : targetMR.status,
+          remarks: targetMR.remarks 
+            ? `${targetMR.remarks} [SUMBER TUG 10: ${selectedTUG10.return_number} - ${selectedTUG10.vessel_name}]`
+            : `[SUMBER TUG 10: ${selectedTUG10.return_number} - ${selectedTUG10.vessel_name}]`
+        };
+
+        await onUpdateRequest(targetMR.id, updatedMR);
+        alert(`✓ Berhasil! Data dari Pengembalian TUG 10 ${selectedTUG10.return_number} (${importedItems.length} item) telah berhasil dimasukkan ke Dokumen TUG 5 ${targetMR.request_number} (${targetMR.vessel_name})! Sistem mencatat transaksi permintaan/pengembalian barang.`);
+      } else {
+        // Create brand new TUG 5 document from TUG 10
+        const newMRNumber = `TUG5-${new Date().getFullYear()}-${Date.now().toString().slice(-5)}`;
+
+        const newMR: Partial<MaterialRequest> = {
+          id: `mr-${Date.now()}`,
+          request_number: newMRNumber,
+          tug5_number: newMRNumber,
+          vessel_name: selectedTUG10.vessel_name || "MV. KARTINI BARUNA",
+          warehouse_name: selectedTUG10.warehouse_name || "Gudang Merak",
+          requester_name: currentUser.name || "Petugas Gudang",
+          request_date: selectedTUG10.return_date || now.split("T")[0],
+          completion_date: completionDate,
+          work_order_ref: selectedTUG10.spk_number || "",
+          spk_number: selectedTUG10.spk_number || "",
+          account_code: "BPP",
+          function_code: "ARMADA",
+          status: "Approved",
+          items: importedItems,
+          aldi_signed: true,
+          aldi_signed_at: now,
+          aldi_signature_url: ALDI_SIGNATURE_URL,
+          remarks: `Diimpor otomatis dari Pengembalian Suku Cadang TUG 10: ${selectedTUG10.return_number} (${selectedTUG10.vessel_name}) - Alasan: ${selectedTUG10.return_reason || 'Leftover'}`
+        };
+
+        await onCreateRequest(newMR);
+        alert(`✓ Berhasil! Dokumen TUG 5 baru (${newMRNumber} - ${newMR.vessel_name}) telah berhasil dibuat dan diisi ${importedItems.length} item dari Pengembalian TUG 10 ${selectedTUG10.return_number}! Sistem mencatat transaksi pengembalian material.`);
+      }
+
+      setIsInboundSyncModalOpen(false);
+      setTargetSingleMR(null);
+    } catch (err: any) {
+      console.error("Error applying TUG 10 to TUG 5:", err);
+      alert("Gagal memasukkan data TUG 10 ke TUG 5: " + (err.message || err));
     } finally {
       setIsProcessingInboundSync(false);
     }
@@ -1259,11 +1459,11 @@ export default function MaterialRequestView({
         <div className="flex flex-col sm:flex-row gap-2.5 shrink-0">
           <button
             onClick={handleOpenGeneralInboundModal}
-            className="px-4 py-3 bg-gradient-to-r from-emerald-600 to-teal-700 hover:from-emerald-500 hover:to-teal-600 text-white font-bold text-xs uppercase rounded-lg flex items-center justify-center gap-2 transition-all shadow-sm cursor-pointer"
-            title="Ambil data dari Inbound Receiving untuk direview dan dimasukkan ke TUG 5"
+            className="px-4 py-3 bg-gradient-to-r from-emerald-600 via-teal-700 to-indigo-700 hover:from-emerald-500 hover:to-indigo-600 text-white font-bold text-xs uppercase rounded-lg flex items-center justify-center gap-2 transition-all shadow-sm cursor-pointer"
+            title="Ambil data dari Inbound Receiving atau TUG 10 Return untuk direview dan dimasukkan ke TUG 5"
           >
             <ArrowDownToLine className="w-4 h-4 text-emerald-100" />
-            <span>📥 Ambil Data Dari Inbound</span>
+            <span>📥 Ambil Data Inbound / TUG 10</span>
           </button>
 
           <button
@@ -3246,17 +3446,17 @@ export default function MaterialRequestView({
           <div className="bg-white border border-slate-200 rounded-2xl shadow-2xl max-w-5xl w-full font-sans overflow-hidden my-4 flex flex-col max-h-[94vh] animate-in fade-in zoom-in-95 duration-150">
             
             {/* Modal Header */}
-            <div className="px-6 py-4 bg-gradient-to-r from-teal-800 via-emerald-800 to-teal-900 border-b border-teal-700 text-white flex items-center justify-between shrink-0">
+            <div className="px-6 py-4 bg-gradient-to-r from-teal-800 via-emerald-800 to-indigo-900 border-b border-teal-700 text-white flex items-center justify-between shrink-0">
               <div className="flex items-center gap-3">
                 <div className="w-10 h-10 rounded-xl bg-white/10 flex items-center justify-center border border-white/20">
                   <ArrowDownToLine className="w-5 h-5 text-emerald-300" />
                 </div>
                 <div>
                   <h3 className="text-base font-black font-display tracking-wide uppercase text-white flex items-center gap-2">
-                    <span>Ambil Data Dari Inbound (Receiving)</span>
+                    <span>Ambil Data Transaksi ke TUG 5 (Inbound &amp; TUG 10 Return)</span>
                   </h3>
                   <p className="text-xs text-teal-100 font-sans mt-0.5">
-                    Pilih penerimaan dari menu Inbound Receiving, review daftar itemnya, lalu masukkan ke dokumen TUG 5
+                    Pilih sumber data dari Penerimaan Inbound atau Pengembalian Suku Cadang TUG 10, review daftar itemnya, lalu masukkan ke dokumen TUG 5
                   </p>
                 </div>
               </div>
@@ -3273,30 +3473,42 @@ export default function MaterialRequestView({
             </div>
 
             {/* Mode Tabs */}
-            <div className="flex border-b border-slate-200 bg-slate-50 px-6 pt-2.5 shrink-0 gap-2">
+            <div className="flex border-b border-slate-200 bg-slate-50 px-6 pt-2.5 shrink-0 gap-2 overflow-x-auto">
               <button
                 type="button"
                 onClick={() => setInboundModalTab("review_inbound")}
-                className={`pb-2.5 px-4 text-xs font-black uppercase tracking-wider flex items-center gap-2 border-b-2 transition-all cursor-pointer ${
+                className={`pb-2.5 px-4 text-xs font-black uppercase tracking-wider flex items-center gap-2 border-b-2 transition-all cursor-pointer whitespace-nowrap ${
                   inboundModalTab === "review_inbound"
                     ? "border-emerald-600 text-emerald-900 bg-white rounded-t-xl border-t border-x border-slate-200 shadow-2xs font-extrabold"
                     : "border-transparent text-slate-500 hover:text-slate-800"
                 }`}
               >
                 <PackageCheck className="w-4 h-4 text-emerald-600" />
-                <span>1. Pilih Inbound & Review Item ({receivingList.length})</span>
+                <span>1. Sumber Inbound ({receivingList.length})</span>
+              </button>
+              <button
+                type="button"
+                onClick={() => setInboundModalTab("review_tug10")}
+                className={`pb-2.5 px-4 text-xs font-black uppercase tracking-wider flex items-center gap-2 border-b-2 transition-all cursor-pointer whitespace-nowrap ${
+                  inboundModalTab === "review_tug10"
+                    ? "border-indigo-600 text-indigo-900 bg-white rounded-t-xl border-t border-x border-slate-200 shadow-2xs font-extrabold"
+                    : "border-transparent text-slate-500 hover:text-slate-800"
+                }`}
+              >
+                <RotateCcw className="w-4 h-4 text-indigo-600" />
+                <span>2. Sumber Retur TUG 10 ({returns.length})</span>
               </button>
               <button
                 type="button"
                 onClick={() => setInboundModalTab("batch_sync")}
-                className={`pb-2.5 px-4 text-xs font-black uppercase tracking-wider flex items-center gap-2 border-b-2 transition-all cursor-pointer ${
+                className={`pb-2.5 px-4 text-xs font-black uppercase tracking-wider flex items-center gap-2 border-b-2 transition-all cursor-pointer whitespace-nowrap ${
                   inboundModalTab === "batch_sync"
-                    ? "border-emerald-600 text-emerald-900 bg-white rounded-t-xl border-t border-x border-slate-200 shadow-2xs font-extrabold"
+                    ? "border-teal-600 text-teal-900 bg-white rounded-t-xl border-t border-x border-slate-200 shadow-2xs font-extrabold"
                     : "border-transparent text-slate-500 hover:text-slate-800"
                 }`}
               >
                 <SlidersHorizontal className="w-4 h-4 text-teal-600" />
-                <span>2. Sinkronisasi Otomatis TUG 5 Massal</span>
+                <span>3. Sinkronisasi Otomatis TUG 5 Massal</span>
               </button>
             </div>
 
@@ -3744,7 +3956,427 @@ export default function MaterialRequestView({
               </div>
             )}
 
-            {/* TAB 2: OTOMASI MASSAL SEMUA DOKUMEN TUG 5 */}
+            {/* TAB 2: PILIH RETUR TUG 10 & REVIEW ITEM */}
+            {inboundModalTab === "review_tug10" && (
+              <div className="flex-1 overflow-hidden flex flex-col">
+                {(!returns || returns.length === 0) ? (
+                  <div className="p-12 text-center text-slate-500 space-y-3 my-auto">
+                    <RotateCcw className="w-12 h-12 text-slate-300 mx-auto" />
+                    <h4 className="font-bold text-slate-700 text-sm">Belum Ada Data Pengembalian Suku Cadang TUG 10</h4>
+                    <p className="text-xs text-slate-500 max-w-md mx-auto">
+                      Belum ada dokumen pengembalian suku cadang di menu TUG 10. Tambahkan form retur di menu Pengembalian Barang terlebih dahulu.
+                    </p>
+                  </div>
+                ) : (
+                  <div className="flex-1 overflow-hidden grid grid-cols-12 divide-x divide-slate-200">
+                    
+                    {/* Panel Kiri: Daftar TUG 10 (col-span-5) */}
+                    <div className="col-span-12 lg:col-span-5 flex flex-col overflow-hidden bg-slate-50/50">
+                      
+                      {/* Search & Filter Toolbar */}
+                      <div className="p-3 border-b border-slate-200 bg-white space-y-2 shrink-0">
+                        <div className="relative">
+                          <Search className="w-4 h-4 absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
+                          <input
+                            type="text"
+                            placeholder="Cari No TUG 10, kapal, SPK, barang..."
+                            value={tug10SearchTerm}
+                            onChange={(e) => setTug10SearchTerm(e.target.value)}
+                            className="w-full pl-9 pr-8 py-1.5 bg-slate-50 border border-slate-200 rounded-lg text-xs focus:bg-white focus:outline-none focus:border-indigo-500 transition-colors"
+                          />
+                          {tug10SearchTerm && (
+                            <button
+                              type="button"
+                              onClick={() => setTug10SearchTerm("")}
+                              className="absolute right-2.5 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600"
+                            >
+                              <X className="w-3.5 h-3.5" />
+                            </button>
+                          )}
+                        </div>
+
+                        {/* Filter Status Chips */}
+                        <div className="flex gap-1.5 overflow-x-auto pb-0.5 text-[10px] font-bold font-mono">
+                          <button
+                            type="button"
+                            onClick={() => setTug10FilterStatus("all")}
+                            className={`px-2 py-1 rounded-md transition-colors whitespace-nowrap cursor-pointer ${
+                              tug10FilterStatus === "all"
+                                ? "bg-indigo-600 text-white"
+                                : "bg-slate-100 text-slate-600 hover:bg-slate-200"
+                            }`}
+                          >
+                            Semua ({returns.length})
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => setTug10FilterStatus("approved")}
+                            className={`px-2 py-1 rounded-md transition-colors whitespace-nowrap cursor-pointer ${
+                              tug10FilterStatus === "approved"
+                                ? "bg-emerald-600 text-white"
+                                : "bg-emerald-50 text-emerald-700 hover:bg-emerald-100"
+                            }`}
+                          >
+                            Approved
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => setTug10FilterStatus("submitted")}
+                            className={`px-2 py-1 rounded-md transition-colors whitespace-nowrap cursor-pointer ${
+                              tug10FilterStatus === "submitted"
+                                ? "bg-amber-600 text-white"
+                                : "bg-amber-50 text-amber-700 hover:bg-amber-100"
+                            }`}
+                          >
+                            Submitted
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => setTug10FilterStatus("unlinked")}
+                            className={`px-2 py-1 rounded-md transition-colors whitespace-nowrap cursor-pointer ${
+                              tug10FilterStatus === "unlinked"
+                                ? "bg-purple-600 text-white"
+                                : "bg-purple-50 text-purple-700 hover:bg-purple-100"
+                            }`}
+                          >
+                            Belum di TUG 5
+                          </button>
+                        </div>
+                      </div>
+
+                      {/* List Items */}
+                      <div className="flex-1 overflow-y-auto p-2 space-y-2">
+                        {filteredTUG10List.length === 0 ? (
+                          <div className="p-8 text-center text-slate-400 text-xs font-mono">
+                            Tidak ada data TUG 10 yang sesuai filter.
+                          </div>
+                        ) : (
+                          filteredTUG10List.map((ret) => {
+                            const isSelected = selectedTUG10?.id === ret.id;
+                            const itemsCount = (ret.items || []).length;
+                            const totalQtyRet = (ret.items || []).reduce((acc, i) => acc + (Number(i.qty_returned) || 0), 0);
+                            const linkedMR = requests.find(r => 
+                              (r.remarks && r.remarks.includes(ret.return_number)) ||
+                              (r.spk_number && ret.spk_number && r.spk_number.trim().toLowerCase() === ret.spk_number.trim().toLowerCase())
+                            );
+
+                            return (
+                              <div
+                                key={ret.id}
+                                onClick={() => setSelectedTUG10Id(ret.id)}
+                                className={`p-3 rounded-xl border text-left transition-all cursor-pointer ${
+                                  isSelected
+                                    ? "bg-white border-indigo-500 shadow-md ring-2 ring-indigo-500/20"
+                                    : "bg-white border-slate-200 hover:border-slate-300 hover:bg-slate-50/80 shadow-2xs"
+                                }`}
+                              >
+                                <div className="flex items-start justify-between gap-2">
+                                  <div className="flex items-center gap-1.5">
+                                    <RotateCcw className={`w-3.5 h-3.5 ${isSelected ? "text-indigo-600" : "text-slate-400"}`} />
+                                    <span className="font-mono font-bold text-xs text-slate-900">
+                                      {ret.return_number}
+                                    </span>
+                                  </div>
+                                  <span
+                                    className={`px-1.5 py-0.5 rounded text-[9px] font-black uppercase font-mono ${
+                                      ret.status === "Approved"
+                                        ? "bg-emerald-100 text-emerald-800 border border-emerald-200"
+                                        : ret.status === "Submitted"
+                                        ? "bg-amber-100 text-amber-800 border border-amber-200"
+                                        : "bg-slate-100 text-slate-700 border border-slate-200"
+                                    }`}
+                                  >
+                                    {ret.status || "Draft"}
+                                  </span>
+                                </div>
+
+                                <div className="text-xs font-semibold text-slate-800 mt-1 flex items-center gap-1.5">
+                                  <span>⚓</span>
+                                  <span>{ret.vessel_name || "Gudang Merak"}</span>
+                                </div>
+
+                                {ret.spk_number && (
+                                  <div className="text-[10.5px] font-mono text-slate-500 mt-0.5">
+                                    SPK: {ret.spk_number}
+                                  </div>
+                                )}
+
+                                <div className="text-[10px] text-slate-500 mt-1 line-clamp-1 italic">
+                                  Alasan: {ret.return_reason || "Leftover / Tidak Terpakai"}
+                                </div>
+
+                                <div className="mt-2 pt-2 border-t border-slate-100 flex items-center justify-between text-[10px] font-mono">
+                                  <div className="flex items-center gap-2">
+                                    <span className="text-slate-600 font-bold">
+                                      {itemsCount} Suku Cadang ({totalQtyRet} Qty)
+                                    </span>
+                                    <span className="text-slate-400">•</span>
+                                    <span className="text-slate-500">
+                                      {ret.return_date || "-"}
+                                    </span>
+                                  </div>
+                                  {linkedMR ? (
+                                    <span className="text-emerald-700 bg-emerald-50 px-1.5 py-0.2 rounded font-bold border border-emerald-200 text-[9px]">
+                                      ✓ Ada di TUG 5
+                                    </span>
+                                  ) : (
+                                    <span className="text-slate-400 text-[9px]">
+                                      Belum di TUG 5
+                                    </span>
+                                  )}
+                                </div>
+                              </div>
+                            );
+                          })
+                        )}
+                      </div>
+                    </div>
+
+                    {/* Panel Kanan: Review Rincian TUG 10 & Tujuan TUG 5 (col-span-7) */}
+                    <div className="col-span-12 lg:col-span-7 flex flex-col overflow-hidden bg-white">
+                      {selectedTUG10 ? (
+                        <>
+                          {/* Top Detail Card */}
+                          <div className="p-4 border-b border-slate-200 bg-gradient-to-r from-slate-50 via-indigo-50/20 to-slate-50 shrink-0 space-y-3">
+                            <div className="flex items-center justify-between">
+                              <div>
+                                <span className="text-[10px] font-mono uppercase tracking-wider text-slate-400 font-bold block">
+                                  Dokumen Pengembalian TUG 10 Terpilih
+                                </span>
+                                <h4 className="font-mono font-black text-sm text-slate-900 flex items-center gap-2 mt-0.5">
+                                  <RotateCcw className="w-4 h-4 text-indigo-600" />
+                                  <span>{selectedTUG10.return_number}</span>
+                                </h4>
+                              </div>
+                              <span
+                                className={`px-2 py-0.5 rounded text-[10px] font-black uppercase font-mono ${
+                                  selectedTUG10.status === "Approved"
+                                    ? "bg-emerald-100 text-emerald-800 border border-emerald-200"
+                                    : selectedTUG10.status === "Submitted"
+                                    ? "bg-amber-100 text-amber-800 border border-amber-200"
+                                    : "bg-slate-100 text-slate-700 border border-slate-200"
+                                }`}
+                              >
+                                Status: {selectedTUG10.status || "Draft"}
+                              </span>
+                            </div>
+
+                            <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 text-xs">
+                              <div className="p-2 bg-white rounded-lg border border-slate-200">
+                                <span className="text-[10px] text-slate-400 font-mono block">Kapal Pengirim</span>
+                                <span className="font-bold text-slate-800 text-[11px] truncate block">{selectedTUG10.vessel_name || "-"}</span>
+                              </div>
+                              <div className="p-2 bg-white rounded-lg border border-slate-200">
+                                <span className="text-[10px] text-slate-400 font-mono block">SPK Ref</span>
+                                <span className="font-bold text-slate-800 text-[11px] truncate block">{selectedTUG10.spk_number || "Manual"}</span>
+                              </div>
+                              <div className="p-2 bg-white rounded-lg border border-slate-200">
+                                <span className="text-[10px] text-slate-400 font-mono block">Tgl Retur</span>
+                                <span className="font-bold text-slate-800 text-[11px] truncate block">{selectedTUG10.return_date || "-"}</span>
+                              </div>
+                              <div className="p-2 bg-white rounded-lg border border-slate-200">
+                                <span className="text-[10px] text-slate-400 font-mono block">Alasan Retur</span>
+                                <span className="font-bold text-indigo-700 text-[11px] truncate block">{selectedTUG10.return_reason || "Leftover"}</span>
+                              </div>
+                            </div>
+
+                            {selectedTUG10.notes && (
+                              <div className="text-[11px] text-slate-600 bg-amber-50/70 p-2 rounded-lg border border-amber-200/80">
+                                <span className="font-bold text-amber-900">Catatan Retur:</span> {selectedTUG10.notes}
+                              </div>
+                            )}
+                          </div>
+
+                          {/* Items Table */}
+                          <div className="flex-1 overflow-y-auto p-4 space-y-3">
+                            <div className="flex items-center justify-between">
+                              <h5 className="text-xs font-bold text-slate-900 font-mono uppercase tracking-wider flex items-center gap-1.5">
+                                <span>📋</span>
+                                <span>Daftar Suku Cadang TUG 10 ({(selectedTUG10.items || []).length} Item):</span>
+                              </h5>
+                              <span className="text-[11px] text-indigo-700 font-bold bg-indigo-50 px-2 py-0.5 rounded border border-indigo-200">
+                                Total Retur: {(selectedTUG10.items || []).reduce((acc, i) => acc + (Number(i.qty_returned) || 0), 0)} Qty
+                              </span>
+                            </div>
+
+                            <div className="border border-slate-200 rounded-xl overflow-hidden shadow-2xs">
+                              <table className="w-full text-xs text-left">
+                                <thead className="bg-slate-100/90 text-slate-700 font-mono font-bold text-[10px] uppercase border-b border-slate-200">
+                                  <tr>
+                                    <th className="py-2.5 px-3 w-10 text-center">No</th>
+                                    <th className="py-2.5 px-3">Nama Suku Cadang & Part Number</th>
+                                    <th className="py-2.5 px-2 text-center w-20">Qty Pakai</th>
+                                    <th className="py-2.5 px-2 text-center w-24 bg-indigo-50/80 text-indigo-900">Qty Retur</th>
+                                    <th className="py-2.5 px-2 text-center w-16">Satuan</th>
+                                    <th className="py-2.5 px-3 w-28">Kondisi</th>
+                                  </tr>
+                                </thead>
+                                <tbody className="divide-y divide-slate-100">
+                                  {(selectedTUG10.items || []).map((itm, idx) => (
+                                    <tr key={idx} className="hover:bg-slate-50/80 transition-colors">
+                                      <td className="py-2.5 px-3 text-center font-mono text-slate-400 font-bold text-[11px]">
+                                        {idx + 1}
+                                      </td>
+                                      <td className="py-2.5 px-3">
+                                        <div className="font-bold text-slate-900">{itm.part_name}</div>
+                                        <div className="font-mono text-[10px] text-slate-500">{itm.part_number || "-"}</div>
+                                        {itm.notes && (
+                                          <div className="text-[10px] text-amber-700 italic mt-0.5">Ket: {itm.notes}</div>
+                                        )}
+                                      </td>
+                                      <td className="py-2.5 px-2 text-center font-mono text-slate-600 font-medium">
+                                        {itm.qty_used}
+                                      </td>
+                                      <td className="py-2.5 px-2 text-center font-mono font-black text-indigo-700 bg-indigo-50/50">
+                                        {itm.qty_returned}
+                                      </td>
+                                      <td className="py-2.5 px-2 text-center font-mono text-slate-500 uppercase text-[10px]">
+                                        {itm.unit || "PCS"}
+                                      </td>
+                                      <td className="py-2.5 px-3 font-mono text-[11px]">
+                                        <span className={`px-2 py-0.5 rounded text-[10px] font-bold ${
+                                          itm.condition === "Good" 
+                                            ? "bg-emerald-100 text-emerald-800" 
+                                            : itm.condition === "Damaged" 
+                                            ? "bg-rose-100 text-rose-800" 
+                                            : "bg-slate-100 text-slate-700"
+                                        }`}>
+                                          {itm.condition || "Good"}
+                                        </span>
+                                      </td>
+                                    </tr>
+                                  ))}
+                                </tbody>
+                              </table>
+                            </div>
+
+                            {/* Target TUG 5 Options */}
+                            <div className="pt-3 border-t border-slate-200 space-y-2">
+                              <label className="block text-xs font-bold text-slate-800 uppercase tracking-wider font-mono">
+                                Masukkan / Sinkronkan ke Dokumen TUG 5:
+                              </label>
+
+                              {targetSingleMR ? (
+                                <div className="p-3 bg-indigo-50/70 border border-indigo-300 rounded-xl flex items-center justify-between">
+                                  <div>
+                                    <span className="text-[10px] font-mono text-indigo-700 font-bold block">Tujuan Dokumen TUG 5 (Terkunci):</span>
+                                    <span className="font-mono font-bold text-slate-900 text-xs">{targetSingleMR.request_number}</span>
+                                    <span className="text-slate-600 text-xs ml-2">({targetSingleMR.vessel_name})</span>
+                                  </div>
+                                  <span className="text-[10px] font-mono font-bold bg-white text-indigo-700 px-2 py-1 rounded border border-indigo-200">
+                                    {(targetSingleMR.items || []).length} Barang
+                                  </span>
+                                </div>
+                              ) : (
+                                <div className="space-y-2">
+                                  {matchedTUG5ForSelectedTUG10 && (
+                                    <label
+                                      className={`p-3 rounded-xl border flex items-start gap-3 cursor-pointer transition-all ${
+                                        targetTUG5OptionForTUG10 === "matched"
+                                          ? "bg-indigo-50/80 border-indigo-500 ring-2 ring-indigo-500/20"
+                                          : "bg-white border-slate-200 hover:bg-slate-50"
+                                      }`}
+                                    >
+                                      <input
+                                        type="radio"
+                                        name="targetTUG5OptionForTUG10"
+                                        checked={targetTUG5OptionForTUG10 === "matched"}
+                                        onChange={() => setTargetTUG5OptionForTUG10("matched")}
+                                        className="mt-0.5 text-indigo-600 focus:ring-indigo-500 cursor-pointer"
+                                      />
+                                      <div className="flex-1">
+                                        <div className="flex items-center gap-2">
+                                          <span className="font-bold text-xs text-indigo-950">
+                                            Update TUG 5 Terkait Yang Cocok (Rekomendasi)
+                                          </span>
+                                          <span className="px-1.5 py-0.2 bg-indigo-100 text-indigo-800 text-[9px] font-mono font-bold rounded">
+                                            Terdeteksi Cocok
+                                          </span>
+                                        </div>
+                                        <div className="text-[11px] text-slate-600 font-mono mt-0.5">
+                                          Dokumen: <span className="font-bold text-slate-900">{matchedTUG5ForSelectedTUG10.request_number}</span> ({matchedTUG5ForSelectedTUG10.vessel_name})
+                                        </div>
+                                      </div>
+                                    </label>
+                                  )}
+
+                                  <label
+                                    className={`p-3 rounded-xl border flex items-start gap-3 cursor-pointer transition-all ${
+                                      targetTUG5OptionForTUG10 === "existing"
+                                        ? "bg-indigo-50/80 border-indigo-500 ring-2 ring-indigo-500/20"
+                                        : "bg-white border-slate-200 hover:bg-slate-50"
+                                    }`}
+                                  >
+                                    <input
+                                      type="radio"
+                                      name="targetTUG5OptionForTUG10"
+                                      checked={targetTUG5OptionForTUG10 === "existing"}
+                                      onChange={() => setTargetTUG5OptionForTUG10("existing")}
+                                      className="mt-0.5 text-indigo-600 focus:ring-indigo-500 cursor-pointer"
+                                    />
+                                    <div className="flex-1 space-y-1.5">
+                                      <div className="font-bold text-xs text-slate-900">
+                                        Pilih Dari Daftar Dokumen TUG 5 yang Sudah Ada:
+                                      </div>
+                                      {targetTUG5OptionForTUG10 === "existing" && (
+                                        <select
+                                          value={selectedTargetMRIdForTUG10}
+                                          onChange={(e) => setSelectedTargetMRIdForTUG10(e.target.value)}
+                                          className="w-full p-2 text-xs bg-slate-50 border border-slate-300 rounded-lg focus:bg-white focus:outline-none focus:border-indigo-500 font-mono"
+                                        >
+                                          <option value="">-- Pilih Dokumen TUG 5 Tujuan --</option>
+                                          {requests.map(r => (
+                                            <option key={r.id} value={r.id}>
+                                              {r.request_number} - {r.vessel_name} ({(r.items || []).length} Barang) - {r.status}
+                                            </option>
+                                          ))}
+                                        </select>
+                                      )}
+                                    </div>
+                                  </label>
+
+                                  <label
+                                    className={`p-3 rounded-xl border flex items-start gap-3 cursor-pointer transition-all ${
+                                      targetTUG5OptionForTUG10 === "new"
+                                        ? "bg-indigo-50/80 border-indigo-500 ring-2 ring-indigo-500/20"
+                                        : "bg-white border-slate-200 hover:bg-slate-50"
+                                    }`}
+                                  >
+                                    <input
+                                      type="radio"
+                                      name="targetTUG5OptionForTUG10"
+                                      checked={targetTUG5OptionForTUG10 === "new"}
+                                      onChange={() => setTargetTUG5OptionForTUG10("new")}
+                                      className="mt-0.5 text-indigo-600 focus:ring-indigo-500 cursor-pointer"
+                                    />
+                                    <div className="flex-1">
+                                      <div className="font-bold text-xs text-slate-900">
+                                        ✨ Buat Dokumen TUG 5 Baru Dari TUG 10 Ini
+                                      </div>
+                                      <div className="text-[11px] text-slate-500 mt-0.5">
+                                        Sistem akan membuat nomor form TUG 5 baru untuk kapal {selectedTUG10.vessel_name} dan mengimpor seluruh {(selectedTUG10.items || []).length} suku cadang retur ke dalamnya dengan status Arrived (Tiba).
+                                      </div>
+                                    </div>
+                                  </label>
+                                </div>
+                              )}
+                            </div>
+
+                          </div>
+                        </>
+                      ) : (
+                        <div className="p-12 text-center text-slate-400 font-mono text-xs my-auto">
+                          Pilih salah satu dokumen pengembalian TUG 10 di panel sebelah kiri untuk melihat rincian barang.
+                        </div>
+                      )}
+                    </div>
+
+                  </div>
+                )}
+              </div>
+            )}
+
+            {/* TAB 3: OTOMASI MASSAL SEMUA DOKUMEN TUG 5 */}
             {inboundModalTab === "batch_sync" && (
               <div className="p-6 space-y-5 overflow-y-auto text-xs text-slate-700 flex-1">
                 {/* Highlight / Explanation Box */}
@@ -4003,6 +4635,63 @@ export default function MaterialRequestView({
                       ) : (
                         <>
                           <ArrowDownToLine className="w-4 h-4" />
+                          <span>📥 Masukkan Data ke TUG 5</span>
+                        </>
+                      )}
+                    </button>
+                  </div>
+                </>
+              ) : inboundModalTab === "review_tug10" ? (
+                <>
+                  <div className="flex items-center gap-2 text-[11px] font-mono text-slate-500">
+                    <span className="font-bold text-slate-700">TUG 10 Terpilih:</span>
+                    {selectedTUG10 ? (
+                      <span className="bg-indigo-50 text-indigo-700 px-2 py-0.5 rounded border border-indigo-200 font-bold flex items-center gap-1.5">
+                        <RotateCcw className="w-3 h-3 text-indigo-600" />
+                        <span>{selectedTUG10.return_number} ({(selectedTUG10.items || []).length} Suku Cadang)</span>
+                        <span className="text-slate-400">→</span>
+                        <span className="text-slate-900 underline">
+                          {targetSingleMR 
+                            ? `TUG 5: ${targetSingleMR.request_number}` 
+                            : targetTUG5OptionForTUG10 === "matched" && matchedTUG5ForSelectedTUG10 
+                            ? `TUG 5: ${matchedTUG5ForSelectedTUG10.request_number}` 
+                            : targetTUG5OptionForTUG10 === "existing" && selectedTargetMRIdForTUG10 
+                            ? `TUG 5 Terpilih` 
+                            : "TUG 5 Baru"}
+                        </span>
+                      </span>
+                    ) : (
+                      <span>Pilih dokumen TUG 10 terlebih dahulu</span>
+                    )}
+                  </div>
+                  <div className="flex items-center gap-2.5">
+                    <button
+                      type="button"
+                      disabled={isProcessingInboundSync}
+                      onClick={() => {
+                        setIsInboundSyncModalOpen(false);
+                        setTargetSingleMR(null);
+                      }}
+                      className="px-4 py-2 border border-slate-300 hover:bg-slate-100 text-slate-700 font-bold rounded-lg cursor-pointer transition-colors text-xs"
+                    >
+                      Batal
+                    </button>
+                    <button
+                      type="button"
+                      disabled={isProcessingInboundSync || !selectedTUG10}
+                      onClick={handleApplySelectedTUG10ToTUG5}
+                      className={`px-5 py-2 bg-gradient-to-r from-indigo-600 via-purple-600 to-teal-700 hover:from-indigo-500 hover:to-teal-600 text-white font-bold rounded-lg flex items-center gap-2 shadow-sm cursor-pointer transition-all text-xs ${
+                        isProcessingInboundSync || !selectedTUG10 ? "opacity-60 cursor-not-allowed" : ""
+                      }`}
+                    >
+                      {isProcessingInboundSync ? (
+                        <>
+                          <span className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin"></span>
+                          <span>Memasukkan ke TUG 5...</span>
+                        </>
+                      ) : (
+                        <>
+                          <RotateCcw className="w-4 h-4" />
                           <span>📥 Masukkan Data ke TUG 5</span>
                         </>
                       )}
