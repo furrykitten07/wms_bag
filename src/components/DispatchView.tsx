@@ -268,9 +268,10 @@ export default function DispatchView({
   const [partialDetailModalItem, setPartialDetailModalItem] = useState<OutboundDispatch | null>(null);
 
   const vesselOptions = useMemo(() => {
-    const list = (vessels && vessels.length > 0)
-      ? vessels.map(v => v.name.trim().toUpperCase())
-      : FLEET_VESSELS;
+    const fromProps = (vessels && vessels.length > 0) ? vessels.map(v => v.name.trim()) : [];
+    const list = [...fromProps, ...FLEET_VESSELS]
+      .filter(n => Boolean(n && n.trim()))
+      .map(n => n.startsWith("Gudang") ? n : n.toUpperCase());
     return Array.from(new Set(list));
   }, [vessels]);
   const [cName, setCName] = useState("Internal Cargo");
@@ -2340,16 +2341,10 @@ export default function DispatchView({
                           onChange={(e) => setEditVesselName(e.target.value)}
                           className="flex-1 bg-white border border-slate-300 p-1.5 rounded text-xs font-bold text-slate-900 focus:outline-none focus:ring-1 focus:ring-blue-500 cursor-pointer"
                         >
-                          {vessels && vessels.length > 0 ? (
-                            vessels.map(v => (
-                              <option key={v.id || v.name} value={v.name}>{v.name}</option>
-                            ))
-                          ) : (
-                            FLEET_VESSELS.map(v => (
-                              <option key={v} value={v}>{v}</option>
-                            ))
-                          )}
-                          {!((vessels || []).some(v => v.name === editVesselName) || FLEET_VESSELS.includes(editVesselName as any)) && editVesselName && (
+                          {vesselOptions.map(v => (
+                            <option key={v} value={v}>{v}</option>
+                          ))}
+                          {!vesselOptions.includes(editVesselName) && editVesselName && (
                             <option value={editVesselName}>{editVesselName}</option>
                           )}
                         </select>

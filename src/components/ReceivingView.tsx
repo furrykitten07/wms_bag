@@ -67,7 +67,8 @@ export const FLEET_VESSELS = [
   "MV. SRIKANDI BARUNA 2202",
   "MV. SRIKANDI BARUNA 2204",
   "MV. SRIKANDI BARUNA 2205",
-  "Gudang Logistik / Stok Cadangan (Non-Kapal)"
+  "Gudang Logistik / Stok Cadangan (Non-Kapal)",
+  "MV. RASUNA BARUNA"
 ];
 
 interface ReceivingViewProps {
@@ -129,12 +130,9 @@ export default function ReceivingView({
       ? vessels.map(v => v.name.trim())
       : FLEET_VESSELS;
 
-    // Filter out un-capitalized duplicates (e.g. Srikandi Baruna 2202, Intan Baruna, etc.) and enforce uppercase
-    const cleanList = masterList.filter(name => {
-      if (!name) return false;
-      const isNonCapsDuplicate = /^[A-Z][a-z]+(\s+[A-Za-z0-9]+)*$/.test(name) && !name.startsWith("MV.") && !name.startsWith("Gudang");
-      return !isNonCapsDuplicate;
-    }).map(n => n.startsWith("Gudang") ? n : n.toUpperCase());
+    const cleanList = masterList
+      .filter(name => Boolean(name && name.trim()))
+      .map(n => n.startsWith("Gudang") ? n : n.toUpperCase());
 
     // Ensure MV. ARIMBI BARUNA is always included
     if (!cleanList.includes("MV. ARIMBI BARUNA")) {

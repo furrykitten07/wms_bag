@@ -75,10 +75,11 @@ export default function SPKView({
   ]);
 
   const vesselOptions = useMemo(() => {
-    const fromList = (vesselsList && vesselsList.length > 0)
-      ? vesselsList.map(v => v.name.trim().toUpperCase())
-      : FLEET_VESSELS;
-    return Array.from(new Set(fromList));
+    const fromList = (vesselsList && vesselsList.length > 0) ? vesselsList.map(v => v.name.trim()) : [];
+    const list = [...fromList, ...FLEET_VESSELS]
+      .filter(n => Boolean(n && n.trim()))
+      .map(n => n.startsWith("Gudang") ? n : n.toUpperCase());
+    return Array.from(new Set(list));
   }, [vesselsList]);
 
   const handleOpenCreateModal = () => {

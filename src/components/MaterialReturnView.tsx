@@ -123,9 +123,10 @@ export default function MaterialReturnView({
   const [dispatchReference, setDispatchReference] = useState<string>("");
 
   const vesselOptions = useMemo(() => {
-    const list = (vessels && vessels.length > 0)
-      ? vessels.map(v => v.name.trim().toUpperCase())
-      : FLEET_VESSELS;
+    const fromProps = (vessels && vessels.length > 0) ? vessels.map(v => v.name.trim()) : [];
+    const list = [...fromProps, ...FLEET_VESSELS]
+      .filter(n => Boolean(n && n.trim()))
+      .map(n => n.startsWith("Gudang") ? n : n.toUpperCase());
     return Array.from(new Set(list));
   }, [vessels]);
   const [returnReason, setReturnReason] = useState<string>("Broken");

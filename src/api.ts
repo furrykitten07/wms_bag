@@ -196,7 +196,8 @@ export const DEFAULT_VESSELS: Vessel[] = [
   { id: "vsl-13", name: "MV. SRIKANDI BARUNA 2202", code: "VSL-SRK-2202", vessel_type: "Tug & Barge Set", capacity: "10,000 DWT", flag: "Indonesia", status: "Active", notes: "Tongkang Curah Batubara" },
   { id: "vsl-14", name: "MV. SRIKANDI BARUNA 2204", code: "VSL-SRK-2204", vessel_type: "Tug & Barge Set", capacity: "10,000 DWT", flag: "Indonesia", status: "Active", notes: "Tongkang Curah Batubara" },
   { id: "vsl-15", name: "MV. SRIKANDI BARUNA 2205", code: "VSL-SRK-2205", vessel_type: "Tug & Barge Set", capacity: "10,000 DWT", flag: "Indonesia", status: "Active", notes: "Tongkang Curah Batubara" },
-  { id: "vsl-16", name: "Gudang Logistik / Stok Cadangan (Non-Kapal)", code: "NON-VESSEL", vessel_type: "Warehouse Buffer", capacity: "-", flag: "Indonesia", status: "Active", notes: "Alokasi Persediaan Non-Armada / Gudang Penyangga" }
+  { id: "vsl-16", name: "Gudang Logistik / Stok Cadangan (Non-Kapal)", code: "NON-VESSEL", vessel_type: "Warehouse Buffer", capacity: "-", flag: "Indonesia", status: "Active", notes: "Alokasi Persediaan Non-Armada / Gudang Penyangga" },
+  { id: "vsl-17", name: "MV. RASUNA BARUNA", code: "VSL-R-13", vessel_type: "Bulk Carrier (Supramax)", capacity: "58,000 DWT", flag: "Indonesia", status: "Active", notes: "Armada Angkutan Batubara / Bulk Carrier" }
 ];
 
 export function loadLocalVessels(): Vessel[] {
@@ -211,9 +212,7 @@ export function loadLocalVessels(): Vessel[] {
         parsed.forEach((v: any) => {
           if (!v || !v.name) return;
           const rawName = String(v.name).trim();
-          // Filter out un-capitalized / non-capital ship duplicates (e.g. Srikandi Baruna 2202, Intan Baruna, etc.)
-          const isNonCapsDuplicate = /^[A-Z][a-z]+(\s+[A-Za-z0-9]+)*$/.test(rawName) && !rawName.startsWith("MV.") && !rawName.startsWith("Gudang");
-          if (isNonCapsDuplicate) return;
+          if (!rawName) return;
 
           const upperName = rawName.startsWith("Gudang") ? rawName : rawName.toUpperCase();
           if (!seenNames.has(upperName)) {
@@ -225,9 +224,12 @@ export function loadLocalVessels(): Vessel[] {
           }
         });
 
-        // Ensure MV. ARIMBI BARUNA is in the list
-        if (!cleaned.some(v => v.name === "MV. ARIMBI BARUNA")) {
-          cleaned.splice(1, 0, DEFAULT_VESSELS[1]);
+        // Ensure default vessels are available
+        for (const def of DEFAULT_VESSELS) {
+          if (!seenNames.has(def.name.toUpperCase())) {
+            seenNames.add(def.name.toUpperCase());
+            cleaned.push(def);
+          }
         }
 
         saveLocalVessels(cleaned);
@@ -1824,8 +1826,9 @@ async function fetcher<T>(url: string, options: RequestInit = {}): Promise<T> {
       if (path.startsWith("/api/signatures") && method === "GET") {
         const { data, error } = await supabase.from("digital_signatures").select("*");
         if (!error && data && data.length > 0) {
-          saveLocalSignatures(data as any);
-          return data as any;
+          const realSignatures = data.filter((s: any) => !s.id?.startsWith("sys-") && !s.role_title?.startsWith("__SYSTEM_"));
+          saveLocalSignatures(realSignatures as any);
+          return realSignatures as any;
         }
         return loadLocalSignatures() as any;
       }
@@ -1868,9 +1871,20 @@ async function fetcher<T>(url: string, options: RequestInit = {}): Promise<T> {
       if (path === "/api/vessels/reset" && method === "POST") {
         localVessels = [...DEFAULT_VESSELS];
         saveLocalVessels(localVessels);
+        try {
+          await supabase.from("digital_signatures").upsert({
+            id: "sys-master-vessels-registry",
+            role_title: "__SYSTEM_CONFIG_VESSELS__",
+            user_name: "SYSTEM_FLEET_REGISTRY",
+            signature_url: JSON.stringify(localVessels),
+            notes: "Master fleet vessel registry synced across all browsers and users",
+            updated_at: now
+          });
+        } catch (e) {}
         return localVessels as any;
       }
       if (path.startsWith("/api/vessels") && method === "GET") {
+        // 1. Try dedicated vessels table if it exists
         try {
           const { data, error } = await supabase.from("vessels").select("*").order("name", { ascending: true });
           if (!error && data && data.length > 0) {
@@ -1882,8 +1896,35 @@ async function fetcher<T>(url: string, options: RequestInit = {}): Promise<T> {
             return mapped as any;
           }
         } catch (err) {
-          console.warn("Supabase vessels table error, falling back to local vessels:", err);
+          // fall through to persistent registry
         }
+
+        // 2. Fetch from cloud persistent registry (works across all browsers & devices)
+        try {
+          const { data: regData, error: regErr } = await supabase
+            .from("digital_signatures")
+            .select("*")
+            .eq("id", "sys-master-vessels-registry")
+            .single();
+
+          if (!regErr && regData && regData.signature_url) {
+            const parsed = JSON.parse(regData.signature_url);
+            if (Array.isArray(parsed) && parsed.length > 0) {
+              const combined: Vessel[] = [...parsed];
+              for (const def of DEFAULT_VESSELS) {
+                if (!combined.some(v => v.name.toUpperCase() === def.name.toUpperCase())) {
+                  combined.push(def);
+                }
+              }
+              localVessels = combined;
+              saveLocalVessels(combined);
+              return combined as any;
+            }
+          }
+        } catch (regErr) {
+          console.warn("Supabase vessel registry read error:", regErr);
+        }
+
         return loadLocalVessels() as any;
       }
       if (path === "/api/vessels" && method === "POST") {
@@ -1904,17 +1945,30 @@ async function fetcher<T>(url: string, options: RequestInit = {}): Promise<T> {
         };
         const cleanVessel = sanitizeRecord(newVessel, VALID_VESSEL_COLUMNS);
         try {
-          const { data, error } = await supabase.from("vessels").insert([cleanVessel]).select().single();
-          if (!error && data) {
-            localVessels = [...localVessels.filter(v => v.id !== data.id), data];
-            saveLocalVessels(localVessels);
-            return data as any;
-          }
+          await supabase.from("vessels").insert([cleanVessel]);
         } catch (err) {
-          console.warn("Supabase vessel insert failed, saving locally:", err);
+          // Ignore if vessels table does not exist
         }
-        localVessels = [...localVessels.filter(v => v.id !== newVessel.id), newVessel];
+
+        // Ensure local list contains this vessel
+        const currentList = loadLocalVessels();
+        localVessels = [...currentList.filter(v => v.id !== newVessel.id && v.name !== upperName), newVessel];
         saveLocalVessels(localVessels);
+
+        // ALWAYS SYNC TO SUPABASE REGISTRY FOR CROSS-BROWSER PERSISTENCE
+        try {
+          await supabase.from("digital_signatures").upsert({
+            id: "sys-master-vessels-registry",
+            role_title: "__SYSTEM_CONFIG_VESSELS__",
+            user_name: "SYSTEM_FLEET_REGISTRY",
+            signature_url: JSON.stringify(localVessels),
+            notes: "Master fleet vessel registry synced across all browsers and users",
+            updated_at: now
+          });
+        } catch (syncErr) {
+          console.warn("Failed to sync vessels to Supabase registry:", syncErr);
+        }
+
         return newVessel as any;
       }
       if (path.startsWith("/api/vessels/") && method === "PUT") {
@@ -1929,32 +1983,59 @@ async function fetcher<T>(url: string, options: RequestInit = {}): Promise<T> {
         };
         const cleanUpdate = sanitizeRecord(payload, VALID_VESSEL_COLUMNS);
         try {
-          const { data, error } = await supabase.from("vessels").update(cleanUpdate).eq("id", id).select().single();
-          if (!error && data) {
-            const idx = localVessels.findIndex(v => v.id === id);
-            if (idx !== -1) localVessels[idx] = data;
-            saveLocalVessels(localVessels);
-            return data as any;
-          }
-        } catch (err) {
-          console.warn("Supabase vessel update failed, updating locally:", err);
-        }
-        const idx = localVessels.findIndex(v => v.id === id);
+          await supabase.from("vessels").update(cleanUpdate).eq("id", id);
+        } catch (err) {}
+
+        const currentList = loadLocalVessels();
+        const idx = currentList.findIndex(v => v.id === id);
         if (idx !== -1) {
-          localVessels[idx] = { ...localVessels[idx], ...payload };
-          saveLocalVessels(localVessels);
-          return localVessels[idx] as any;
+          currentList[idx] = { ...currentList[idx], ...payload };
+        } else {
+          currentList.push({ id, ...payload } as any);
         }
+        localVessels = currentList;
+        saveLocalVessels(localVessels);
+
+        // ALWAYS SYNC TO SUPABASE REGISTRY FOR CROSS-BROWSER PERSISTENCE
+        try {
+          await supabase.from("digital_signatures").upsert({
+            id: "sys-master-vessels-registry",
+            role_title: "__SYSTEM_CONFIG_VESSELS__",
+            user_name: "SYSTEM_FLEET_REGISTRY",
+            signature_url: JSON.stringify(localVessels),
+            notes: "Master fleet vessel registry synced across all browsers and users",
+            updated_at: now
+          });
+        } catch (syncErr) {
+          console.warn("Failed to sync vessels to Supabase registry:", syncErr);
+        }
+
+        return (localVessels.find(v => v.id === id) || payload) as any;
       }
       if (path.startsWith("/api/vessels/") && method === "DELETE") {
         const id = path.split("/").pop();
         try {
           await supabase.from("vessels").delete().eq("id", id);
-        } catch (err) {
-          console.warn("Supabase vessel delete failed, removing locally:", err);
-        }
-        localVessels = localVessels.filter(v => v.id !== id);
+        } catch (err) {}
+
+        const currentList = loadLocalVessels();
+        localVessels = currentList.filter(v => v.id !== id);
         saveLocalVessels(localVessels);
+
+        // ALWAYS SYNC TO SUPABASE REGISTRY FOR CROSS-BROWSER PERSISTENCE
+        try {
+          await supabase.from("digital_signatures").upsert({
+            id: "sys-master-vessels-registry",
+            role_title: "__SYSTEM_CONFIG_VESSELS__",
+            user_name: "SYSTEM_FLEET_REGISTRY",
+            signature_url: JSON.stringify(localVessels),
+            notes: "Master fleet vessel registry synced across all browsers and users",
+            updated_at: now
+          });
+        } catch (syncErr) {
+          console.warn("Failed to sync vessels to Supabase registry:", syncErr);
+        }
+
         return { success: true, id } as any;
       }
 

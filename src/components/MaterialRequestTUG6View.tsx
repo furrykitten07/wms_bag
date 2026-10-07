@@ -316,9 +316,10 @@ export default function MaterialRequestTUG6View({
   const [formItems, setFormItems] = useState<Partial<MaterialRequestItem>[]>([]);
 
   const vesselOptions = useMemo(() => {
-    const list = (vessels && vessels.length > 0)
-      ? vessels.map(v => v.name.trim().toUpperCase())
-      : FLEET_VESSELS;
+    const fromProps = (vessels && vessels.length > 0) ? vessels.map(v => v.name.trim()) : [];
+    const list = [...fromProps, ...FLEET_VESSELS]
+      .filter(n => Boolean(n && n.trim()))
+      .map(n => n.startsWith("Gudang") ? n : n.toUpperCase());
     return Array.from(new Set(list));
   }, [vessels]);
 
