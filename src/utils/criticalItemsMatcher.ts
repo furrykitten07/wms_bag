@@ -65,22 +65,37 @@ export const CRITICAL_EXACT_SET = new Set<string>(
  */
 export function isItemCritical(item: Partial<MaterialRequestItem> | null | undefined): boolean {
   if (!item) return false;
+  if (item.is_critical) return true;
+  if (item.notes && item.notes.includes("[ITEM CRITICAL]")) return true;
 
   const rawName = item.spare_part_name;
   const rawPartNo = item.part_number;
 
-  if (!rawName || rawPartNo === undefined || rawPartNo === null) {
+  if (!rawName && !rawPartNo) {
     return false;
   }
 
-  const nameUpper = String(rawName).trim().toUpperCase();
-  const partNoUpper = String(rawPartNo).trim().toUpperCase();
+  const nameUpper = String(rawName || "").trim().toUpperCase();
+  const partNoUpper = String(rawPartNo || "").trim().toUpperCase();
 
-  if (!nameUpper || !partNoUpper) {
-    return false;
+  if (nameUpper && partNoUpper && CRITICAL_EXACT_SET.has(`${nameUpper}|||${partNoUpper}`)) {
+    return true;
   }
 
-  return CRITICAL_EXACT_SET.has(`${nameUpper}|||${partNoUpper}`);
+  // Also match normalized part numbers from critical list
+  if (partNoUpper) {
+    const normPartNo = partNoUpper.replace(/[^A-Z0-9]/g, "");
+    if (normPartNo) {
+      for (const entry of CRITICAL_PARTS_SHEET_DATA) {
+        const entryPartNorm = entry.part_no.toUpperCase().replace(/[^A-Z0-9]/g, "");
+        if (entryPartNorm && normPartNo === entryPartNorm) {
+          return true;
+        }
+      }
+    }
+  }
+
+  return false;
 }
 
 /**

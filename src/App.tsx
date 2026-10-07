@@ -753,7 +753,10 @@ export default function App() {
   // Material Request (TUG 6) Event Handlers
   const handleCreateMaterialRequestTUG6 = async (data: Partial<MaterialRequest>) => {
     try {
-      await api.createMaterialRequestTUG6(data);
+      const created = await api.createMaterialRequestTUG6(data);
+      if (created) {
+        setMaterialRequestsTUG6(prev => [created, ...(prev || []).filter(r => r.id !== created.id)]);
+      }
       await syncAllTables();
     } catch (err: any) {
       console.error(err);
@@ -763,7 +766,10 @@ export default function App() {
 
   const handleCreateMaterialRequestTUG6Batch = async (data: Partial<MaterialRequest>[]) => {
     try {
-      await api.createMaterialRequestTUG6Batch(data);
+      const createdRows = await api.createMaterialRequestTUG6Batch(data);
+      if (Array.isArray(createdRows) && createdRows.length > 0) {
+        setMaterialRequestsTUG6(prev => [...createdRows, ...(prev || []).filter(r => !createdRows.some(c => c.id === r.id))]);
+      }
       await syncAllTables();
     } catch (err: any) {
       console.error(err);
@@ -773,7 +779,10 @@ export default function App() {
 
   const handleUpdateMaterialRequestTUG6 = async (id: string, data: Partial<MaterialRequest>) => {
     try {
-      await api.updateMaterialRequestTUG6(id, data);
+      const updated = await api.updateMaterialRequestTUG6(id, data);
+      if (updated) {
+        setMaterialRequestsTUG6(prev => (prev || []).map(r => r.id === id ? { ...r, ...updated } : r));
+      }
       await syncAllTables();
     } catch (err: any) {
       console.error(err);
@@ -784,6 +793,7 @@ export default function App() {
   const handleDeleteMaterialRequestTUG6 = async (id: string) => {
     try {
       await api.deleteMaterialRequestTUG6(id);
+      setMaterialRequestsTUG6(prev => (prev || []).filter(r => r.id !== id));
       await syncAllTables();
     } catch (err: any) {
       console.error(err);

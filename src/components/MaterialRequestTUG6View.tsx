@@ -609,11 +609,28 @@ export default function MaterialRequestTUG6View({
 
   const handleSaveRequest = async (status: MaterialRequestStatus) => {
     if (formItems.length === 0) {
-      alert("Harap masukkan setidaknya 1 item kargo yang diminta.");
+      alert("Harap masukkan setidaknya 1 item suku cadang yang diminta.");
       return;
     }
 
+    const currentYear = new Date().getFullYear();
+    const sameYearMRs = (requests || []).filter(m => m && m.request_number?.startsWith(`MR6-${currentYear}`));
+    let nextSeqStr = "000001";
+    if (sameYearMRs.length > 0) {
+      const seqs = sameYearMRs.map(m => {
+        const partsNum = (m.request_number || "").split("-");
+        return Number(partsNum[partsNum.length - 1] || 0);
+      });
+      const maxSeq = Math.max(...seqs);
+      nextSeqStr = String(maxSeq + 1).padStart(6, "0");
+    }
+
+    const generatedReqNum = activeMR?.request_number || `MR6-${currentYear}-${nextSeqStr}`;
+    const generatedTug6Num = activeMR?.tug6_number || `TUG6-${currentYear}-${nextSeqStr.slice(-3)}`;
+
     const reqData = {
+      request_number: generatedReqNum,
+      tug6_number: generatedTug6Num,
       request_date: requestDate,
       requester_name: currentUser.name,
       vessel_name: vesselName,
@@ -624,7 +641,10 @@ export default function MaterialRequestTUG6View({
       function_code: functionCode,
       remarks,
       status,
-      items: formItems as MaterialRequestItem[],
+      items: formItems.map(itm => ({
+        ...itm,
+        is_critical: itm.is_critical || itm.notes?.includes("[ITEM CRITICAL]") || isItemCritical(itm)
+      })) as MaterialRequestItem[],
       tug_type: "TUG6" as const
     };
 

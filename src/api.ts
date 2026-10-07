@@ -474,15 +474,12 @@ function ensureSparePartsFromInboundItems(
 }
 export function loadLocalMaterialRequestsTUG6(): MaterialRequest[] {
   try {
-    const saved = localStorage.getItem("wms_local_material_requests_tug6_v2");
+    const saved = localStorage.getItem("wms_local_material_requests_tug6_v2") || localStorage.getItem("wms_local_material_requests_tug6");
     if (saved) {
       const parsed = JSON.parse(saved);
       if (Array.isArray(parsed) && parsed.length > 0) {
         return parsed.filter(r => 
-          (r.tug_type === "TUG6" || r.request_number?.startsWith("MR6-") || r.tug6_number?.startsWith("TUG6-")) &&
-          !r.request_number?.startsWith("MR-2026-000") &&
-          Array.isArray(r.items) && 
-          r.items.some(it => isItemCritical(it) || it.is_critical)
+          r && (r.tug_type === "TUG6" || r.request_number?.startsWith("MR6-") || Boolean(r.tug6_number))
         );
       }
     }
@@ -942,12 +939,16 @@ function getLocalFallbackData<T>(url: string, options: RequestInit = {}): T {
   }
   if (path.startsWith("/api/material-requests-tug6")) {
     const valid = localMaterialRequestsTUG6.filter(r => 
-      (r.tug_type === "TUG6" || r.request_number?.startsWith("MR6-") || r.tug6_number?.startsWith("TUG6-")) &&
-      !r.request_number?.startsWith("MR-2026-000") &&
-      Array.isArray(r.items) && 
-      r.items.some(it => isItemCritical(it) || it.is_critical)
+      r && (r.tug_type === "TUG6" || r.request_number?.startsWith("MR6-") || Boolean(r.tug6_number))
     );
+    const derived = deriveTUG6FromTUG5(localMaterialRequests || []);
+    for (const d of derived) {
+      if (!valid.some(v => v.id === d.id || v.request_number === d.request_number || (v.tug6_number && d.tug6_number && v.tug6_number === d.tug6_number))) {
+        valid.push(d);
+      }
+    }
     localMaterialRequestsTUG6 = valid;
+    saveLocalMaterialRequestsTUG6(localMaterialRequestsTUG6);
     return localMaterialRequestsTUG6 as any;
   }
   if (path.startsWith("/api/material-requests")) return localMaterialRequests as any;
@@ -1142,9 +1143,12 @@ async function fetcher<T>(url: string, options: RequestInit = {}): Promise<T> {
       // --- 1. MATERIAL REQUESTS (TUG 5) ---
       if (path === "/api/material-requests" && method === "GET") {
         const { data, error } = await supabase.from("material_requests").select("*").order("request_date", { ascending: false }).order("request_number", { ascending: false });
-        if (!error && data) {
-          localMaterialRequests = data as any;
-          return data as any;
+        if (!error && Array.isArray(data)) {
+          const tug5Only = data.filter(r => 
+            r && r.tug_type !== "TUG6" && !r.request_number?.startsWith("MR6-") && !(r.tug6_number && !r.tug5_number)
+          );
+          localMaterialRequests = tug5Only as any;
+          return tug5Only as any;
         }
         return localMaterialRequests as any;
       }
@@ -1238,7 +1242,7 @@ async function fetcher<T>(url: string, options: RequestInit = {}): Promise<T> {
           localStorage.removeItem("wms_local_material_requests_tug6_v2");
         }
         try {
-          await supabase.from("material_requests").delete().eq("tug_type", "TUG6");
+          await supabase.from("material_requests").delete().like("request_number", "MR6-%");
         } catch (e) {
           console.warn("Supabase TUG 6 clear warning:", e);
         }
@@ -1250,47 +1254,57 @@ async function fetcher<T>(url: string, options: RequestInit = {}): Promise<T> {
           const { data, error } = await supabase
             .from("material_requests")
             .select("*")
-            .eq("tug_type", "TUG6")
             .order("request_date", { ascending: false })
             .order("request_number", { ascending: false });
 
-          if (!error && data && data.length > 0) {
-            supabaseTUG6 = (data as MaterialRequest[]).filter(r => 
-              (r.tug_type === "TUG6" || r.request_number?.startsWith("MR6-") || r.tug6_number?.startsWith("TUG6-")) &&
-              !r.request_number?.startsWith("MR-2026-000") &&
-              Array.isArray(r.items) && 
-              r.items.some(it => isItemCritical(it) || it.is_critical)
-            );
+          if (!error && Array.isArray(data) && data.length > 0) {
+            supabaseTUG6 = (data as MaterialRequest[])
+              .filter(r => r && (r.tug_type === "TUG6" || r.request_number?.startsWith("MR6-") || Boolean(r.tug6_number)))
+              .map(r => ({ ...r, tug_type: "TUG6" as const }));
           }
         } catch (e) {
           console.warn("Supabase TUG 6 query warning:", e);
         }
 
         const validLocal = loadLocalMaterialRequestsTUG6().filter(r => 
-          (r.tug_type === "TUG6" || r.request_number?.startsWith("MR6-") || r.tug6_number?.startsWith("TUG6-")) &&
-          !r.request_number?.startsWith("MR-2026-000") &&
-          Array.isArray(r.items) && 
-          r.items.some(it => isItemCritical(it) || it.is_critical)
+          r && (r.tug_type === "TUG6" || r.request_number?.startsWith("MR6-") || Boolean(r.tug6_number))
         );
 
         const combined = [...supabaseTUG6];
         for (const loc of validLocal) {
-          if (!combined.some(c => c.id === loc.id || c.request_number === loc.request_number)) {
+          if (!combined.some(c => c.id === loc.id || c.request_number === loc.request_number || (c.tug6_number && loc.tug6_number && c.tug6_number === loc.tug6_number))) {
             combined.unshift(loc);
           }
         }
 
-        localMaterialRequestsTUG6 = combined.filter(r => 
-          Array.isArray(r.items) && r.items.some(it => isItemCritical(it) || it.is_critical)
-        );
+        // Also merge any derived from TUG 5
+        const derived = deriveTUG6FromTUG5(localMaterialRequests || []);
+        for (const d of derived) {
+          if (!combined.some(c => c.id === d.id || c.request_number === d.request_number || (c.tug6_number && d.tug6_number && c.tug6_number === d.tug6_number))) {
+            combined.push(d);
+          }
+        }
+
+        localMaterialRequestsTUG6 = combined;
         saveLocalMaterialRequestsTUG6(localMaterialRequestsTUG6);
         return localMaterialRequestsTUG6 as any;
       }
       if (path === "/api/material-requests-tug6" && method === "POST") {
+        const currentYear = new Date().getFullYear();
+        const sameYearMRs = localMaterialRequestsTUG6.filter(m => m.request_number?.startsWith(`MR6-${currentYear}`));
+        let nextSeqStr = "000001";
+        if (sameYearMRs.length > 0) {
+          const seqs = sameYearMRs.map(m => {
+            const partsNum = m.request_number.split("-");
+            return Number(partsNum[partsNum.length - 1] || 0);
+          });
+          const maxSeq = Math.max(...seqs);
+          nextSeqStr = String(maxSeq + 1).padStart(6, "0");
+        }
         const newId = body.id || `mr6-${Date.now()}`;
-        const reqNum = body.request_number || `MR6-2026-${String(Math.floor(100000 + Math.random() * 900000))}`;
-        const tug6Num = body.tug6_number || `TUG6-2026-${String(Math.floor(100 + Math.random() * 900))}`;
-        const rec = {
+        const reqNum = body.request_number || `MR6-${currentYear}-${nextSeqStr}`;
+        const tug6Num = body.tug6_number || `TUG6-${currentYear}-${nextSeqStr.slice(-3)}`;
+        const rec: MaterialRequest = {
           ...body,
           id: newId,
           request_number: reqNum,
@@ -1310,7 +1324,7 @@ async function fetcher<T>(url: string, options: RequestInit = {}): Promise<T> {
         try {
           const { data, error } = await supabase.from("material_requests").insert([cleanRec]).select().single();
           if (!error && data) {
-            savedResult = { ...rec, ...data };
+            savedResult = { ...rec, ...data, tug_type: "TUG6" as const };
           } else if (error) {
             console.warn("Supabase TUG6 insert warning, falling back to local persistence:", error);
           }
