@@ -915,15 +915,6 @@ export default function MaterialRequestTUG6View({
         <div className="flex flex-col sm:flex-row gap-2.5 shrink-0 flex-wrap items-center">
           <button
             type="button"
-            onClick={handleStartCreate}
-            className="px-4 py-3 bg-gradient-to-r from-indigo-600 to-blue-600 hover:from-indigo-700 hover:to-blue-700 text-white font-bold text-xs uppercase rounded-lg flex items-center justify-center gap-2 transition-all shadow-md shadow-indigo-100 cursor-pointer hover:scale-[1.01]"
-          >
-            <Plus className="w-4 h-4" />
-            <span>+ Buat TUG 6 Manual</span>
-          </button>
-
-          <button
-            type="button"
             onClick={() => {
               const initial = availableSPKList.find(s => s.hasCritical)?.spk || availableSPKList[0]?.spk || "";
               setSelectedSPKForCritical(initial);
@@ -1086,17 +1077,9 @@ export default function MaterialRequestTUG6View({
                         Belum Ada Dokumen Permintaan Barang (TUG 6)
                       </span>
                       <p className="text-slate-500 text-xs font-sans leading-relaxed">
-                        Data TUG 6 telah dikosongkan. Anda dapat membuat formulir dokumen TUG 6 secara manual melalui tombol di bawah.
+                        Data TUG 6 saat ini telah dikosongkan.
                       </p>
                       <div className="flex items-center gap-2.5 mt-2">
-                        <button
-                          type="button"
-                          onClick={handleStartCreate}
-                          className="px-4 py-2.5 bg-indigo-600 hover:bg-indigo-700 text-white text-xs font-bold font-sans rounded-xl shadow-md shadow-indigo-100 flex items-center gap-2 transition-all cursor-pointer"
-                        >
-                          <Plus className="w-4 h-4" />
-                          <span>+ Buat TUG 6 Manual</span>
-                        </button>
                         <button
                           type="button"
                           onClick={() => onPreviewTUG6(createEmptyTUGReportRequest("tug6"))}
