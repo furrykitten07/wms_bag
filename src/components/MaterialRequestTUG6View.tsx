@@ -40,7 +40,8 @@ import {
   Sparkles,
   ExternalLink,
   Plus,
-  Package
+  Package,
+  SlidersHorizontal
 } from "lucide-react";
 import { 
   User as UserType, 
