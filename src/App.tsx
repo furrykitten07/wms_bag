@@ -58,6 +58,7 @@ import MaintenanceScreen from "./components/MaintenanceScreen.js";
 import MaintenanceAdminView from "./components/MaintenanceAdminView.js";
 import LoginAndLogsView from "./components/LoginAndLogsView.js";
 import CriticalSparePartsAdminView from "./components/CriticalSparePartsAdminView.js";
+import ErrorBoundary from "./components/ErrorBoundary.js";
 import { CriticalSparePart } from "./types.js";
 import { loadCriticalSpareParts } from "./utils/criticalSpareParts.js";
 
@@ -1388,22 +1389,27 @@ export default function App() {
 
           {/* Material Requests TUG 6 Form Generator */}
           {currentTab === "material-requests-tug6" && (
-            <MaterialRequestTUG6View 
-              requests={materialRequestsTUG6}
-              parts={parts}
-              currentUser={currentUser!}
-              onCreateRequest={handleCreateMaterialRequestTUG6}
-              onCreateRequestBatch={handleCreateMaterialRequestTUG6Batch}
-              onUpdateRequest={handleUpdateMaterialRequestTUG6}
-              onDeleteRequest={handleDeleteMaterialRequestTUG6}
-              onLogMRAction={handleLogMR6Action}
-              onPreviewTUG6={handlePreviewTUG6}
-              spkList={spkList}
-              signatures={signatures}
-              vessels={vessels}
-              criticalParts={criticalParts}
-              tug5Requests={materialRequests}
-            />
+            <ErrorBoundary 
+              fallbackTitle="Terjadi Kendala Memuat Permintaan Barang (TUG 6)" 
+              onReset={() => setCurrentTab("dashboard")}
+            >
+              <MaterialRequestTUG6View 
+                requests={materialRequestsTUG6 || []}
+                parts={parts || []}
+                currentUser={currentUser!}
+                onCreateRequest={handleCreateMaterialRequestTUG6}
+                onCreateRequestBatch={handleCreateMaterialRequestTUG6Batch}
+                onUpdateRequest={handleUpdateMaterialRequestTUG6}
+                onDeleteRequest={handleDeleteMaterialRequestTUG6}
+                onLogMRAction={handleLogMR6Action}
+                onPreviewTUG6={handlePreviewTUG6}
+                spkList={spkList || []}
+                signatures={signatures || []}
+                vessels={vessels || []}
+                criticalParts={criticalParts || []}
+                tug5Requests={materialRequests || []}
+              />
+            </ErrorBoundary>
           )}
 
           {/* Material Returns (TUG 10 Form Generator) */}

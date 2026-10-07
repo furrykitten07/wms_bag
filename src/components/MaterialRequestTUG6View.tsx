@@ -87,8 +87,8 @@ interface MaterialRequestTUG6ViewProps {
 }
 
 export default function MaterialRequestTUG6View({
-  requests,
-  parts,
+  requests = [],
+  parts = [],
   currentUser,
   onCreateRequest,
   onCreateRequestBatch,
@@ -115,8 +115,8 @@ export default function MaterialRequestTUG6View({
 
   React.useEffect(() => {
     if (autoOpenMRId) {
-      const target = requests.find(
-        r => r.id === autoOpenMRId || r.request_number === autoOpenMRId || r.tug6_number === autoOpenMRId || r.tug5_number === autoOpenMRId
+      const target = (requests || []).find(
+        r => r && (r.id === autoOpenMRId || r.request_number === autoOpenMRId || r.tug6_number === autoOpenMRId || r.tug5_number === autoOpenMRId)
       );
       if (target) {
         setSelectedMRId(target.id);
@@ -147,12 +147,14 @@ export default function MaterialRequestTUG6View({
     const map = new Map<string, { spk: string; vessel: string; port?: string; hasCritical: boolean; criticalCount: number }>();
 
     // Scan TUG 6
-    requests.forEach(r => {
+    (requests || []).forEach(r => {
+      if (!r) return;
       const spk = (r.spk_number || r.work_order_ref || "").trim();
       if (!spk) return;
       let critCount = 0;
       (r.items || []).forEach(item => {
-        if (checkIsCriticalPart(item, criticalParts).isCritical) critCount++;
+        if (!item) return;
+        if (checkIsCriticalPart(item, criticalParts || []).isCritical) critCount++;
       });
 
       if (!map.has(spk)) {
@@ -166,11 +168,13 @@ export default function MaterialRequestTUG6View({
 
     // Scan TUG 5
     (tug5Requests || []).forEach(r => {
+      if (!r) return;
       const spk = (r.spk_number || r.work_order_ref || "").trim();
       if (!spk) return;
       let critCount = 0;
       (r.items || []).forEach(item => {
-        if (checkIsCriticalPart(item, criticalParts).isCritical) critCount++;
+        if (!item) return;
+        if (checkIsCriticalPart(item, criticalParts || []).isCritical) critCount++;
       });
 
       if (!map.has(spk)) {
@@ -184,13 +188,16 @@ export default function MaterialRequestTUG6View({
 
     // Scan spkList
     (spkList || []).forEach(s => {
+      if (!s) return;
       const spk = (s.spk_number || "").trim();
       if (!spk) return;
       if (!map.has(spk)) {
         let critCount = 0;
         (s.vessels || []).forEach(v => {
+          if (!v) return;
           (v.items || []).forEach(it => {
-            if (checkIsCriticalPart({ spare_part_name: it.spare_part_name, part_number: it.part_number }, criticalParts).isCritical) {
+            if (!it) return;
+            if (checkIsCriticalPart({ spare_part_name: it.spare_part_name, part_number: it.part_number }, criticalParts || []).isCritical) {
               critCount++;
             }
           });
@@ -212,9 +219,11 @@ export default function MaterialRequestTUG6View({
   // Total Critical in all TUG 6 documents
   const totalCriticalInTUG6Count = useMemo(() => {
     let count = 0;
-    requests.forEach(r => {
+    (requests || []).forEach(r => {
+      if (!r) return;
       (r.items || []).forEach(item => {
-        if (checkIsCriticalPart(item, criticalParts).isCritical) count++;
+        if (!item) return;
+        if (checkIsCriticalPart(item, criticalParts || []).isCritical) count++;
       });
     });
     return count;
@@ -222,9 +231,11 @@ export default function MaterialRequestTUG6View({
 
   // Helper to count critical items in a single TUG 6 request
   const getRequestCriticalCount = (mr: MaterialRequest): number => {
+    if (!mr) return 0;
     let count = 0;
     (mr.items || []).forEach(item => {
-      if (checkIsCriticalPart(item, criticalParts).isCritical) count++;
+      if (!item) return;
+      if (checkIsCriticalPart(item, criticalParts || []).isCritical) count++;
     });
     return count;
   };
@@ -272,7 +283,7 @@ export default function MaterialRequestTUG6View({
 
   // Create form state
   const [requestDate, setRequestDate] = useState<string>(new Date().toISOString().split("T")[0]);
-  const [vesselName, setVesselName] = useState<string>(currentUser.vesselName || "MV. KARTINI BARUNA");
+  const [vesselName, setVesselName] = useState<string>(currentUser?.vesselName || "MV. KARTINI BARUNA");
   const [warehouseName, setWarehouseName] = useState<string>("Gudang Merak");
   const [deliveryAddress, setDeliveryAddress] = useState<string>("");
   const [workOrderRef, setWorkOrderRef] = useState<string>("");
@@ -294,10 +305,10 @@ export default function MaterialRequestTUG6View({
   const [itemUsage, setItemUsage] = useState<number>(1);
   const [itemNotes, setItemNotes] = useState<string>("");
 
-  const activeMR = requests.find(r => r.id === selectedMRId) || null;
+  const activeMR = (requests || []).find(r => r && r.id === selectedMRId) || null;
 
-  const uLower = (currentUser.username || "").toLowerCase();
-  const rLower = (currentUser.role || "").toLowerCase();
+  const uLower = (currentUser?.username || "").toLowerCase();
+  const rLower = (currentUser?.role || "").toLowerCase();
 
   const isAldiRole = uLower.includes("aldi") || rLower.includes("petugas") || rLower.includes("staff") || rLower.includes("gudang") || uLower.includes("superadmin") || rLower.includes("super");
   const isAlfinRole = uLower.includes("alfin") || rLower.includes("kepala") || uLower.includes("superadmin") || rLower.includes("super");
@@ -306,7 +317,7 @@ export default function MaterialRequestTUG6View({
 
   const resetForm = () => {
     setRequestDate(new Date().toISOString().split("T")[0]);
-    setVesselName(currentUser.vesselName || "MV. KARTINI BARUNA");
+    setVesselName(currentUser?.vesselName || "MV. KARTINI BARUNA");
     setWarehouseName("Gudang Merak");
     setDeliveryAddress("");
     setWorkOrderRef("");
@@ -326,8 +337,8 @@ export default function MaterialRequestTUG6View({
   const [selectedSyncIds, setSelectedSyncIds] = useState<string[]>([]);
 
   const handleSyncSPK = () => {
-    const unmatchedSPKs = spkList.filter(spk => {
-      return !requests.some(req => req.work_order_ref === spk.spk_number);
+    const unmatchedSPKs = (spkList || []).filter(spk => {
+      return !(requests || []).some(req => req && req.work_order_ref === spk.spk_number);
     });
 
     if (unmatchedSPKs.length === 0) {
@@ -633,7 +644,7 @@ export default function MaterialRequestTUG6View({
       request_number: generatedReqNum,
       tug6_number: generatedTug6Num,
       request_date: requestDate,
-      requester_name: currentUser.name,
+      requester_name: currentUser?.name || "Petugas Logistik",
       vessel_name: vesselName,
       warehouse_name: warehouseName,
       delivery_address: deliveryAddress,
@@ -644,7 +655,7 @@ export default function MaterialRequestTUG6View({
       status,
       items: formItems.map(itm => ({
         ...itm,
-        is_critical: itm.is_critical || itm.notes?.includes("[ITEM CRITICAL]") || isItemCritical(itm)
+        is_critical: itm.is_critical || itm.notes?.includes("[ITEM CRITICAL]") || checkIsCriticalPart(itm, criticalParts).isCritical
       })) as MaterialRequestItem[],
       tug_type: "TUG6" as const
     };
@@ -749,7 +760,7 @@ export default function MaterialRequestTUG6View({
     return mr.status === statusFilter && matchesSearch;
   });
 
-  const unmatchedCount = spkList.filter(spk => !requests.some(req => req.work_order_ref === spk.spk_number)).length;
+  const unmatchedCount = (spkList || []).filter(spk => !(requests || []).some(req => req && req.work_order_ref === spk.spk_number)).length;
 
   // Computed TUG 6 pagination values
   const tugTotalPages = Math.ceil(filteredRequests.length / tugPerPage);
@@ -1059,11 +1070,21 @@ export default function MaterialRequestTUG6View({
                 </tr>
               ) : (
                 paginatedRequests.map((mr, idx) => {
-                  const dateStr = mr.request_date ? new Date(mr.request_date).toLocaleDateString("id-ID", { 
-                    day: "numeric", 
-                    month: "long", 
-                    year: "numeric" 
-                  }) : "-";
+                  let dateStr = "-";
+                  try {
+                    if (mr.request_date) {
+                      const d = new Date(mr.request_date);
+                      if (!isNaN(d.getTime())) {
+                        dateStr = d.toLocaleDateString("id-ID", { 
+                          day: "numeric", 
+                          month: "long", 
+                          year: "numeric" 
+                        });
+                      }
+                    }
+                  } catch (e) {
+                    dateStr = mr.request_date || "-";
+                  }
                   const isSelected = selectedMRIds.includes(mr.id);
                   return (
                     <tr 
