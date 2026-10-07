@@ -1955,80 +1955,108 @@ export default function MaterialRequestTUG6View({
               )}
 
               {/* Items List inside Modal */}
-              <div className="space-y-2">
-                <div className="p-3 bg-rose-50/70 border border-rose-200/80 rounded-xl flex items-center justify-between gap-3 text-xs">
-                  <div className="flex items-center gap-2">
-                    <span className="w-2.5 h-2.5 rounded-full bg-rose-500 animate-ping"></span>
-                    <span className="font-bold text-rose-900">
-                      FILTER DATA: Sesuai Sheet CRITICAL data/FIKRI.xlsx (Exact Match PART_NAME + PART_NO)
-                    </span>
+              {(() => {
+                const items = activeMR.items || [];
+                const critItems = items.filter(itm => Boolean(itm.is_critical || itm.notes?.includes("[ITEM CRITICAL]") || checkIsCriticalPart(itm, criticalParts).isCritical));
+                const critCount = critItems.length;
+                const totalCount = items.length;
+
+                return (
+                  <div className="space-y-2">
+                    <div className={`p-3 rounded-xl flex items-center justify-between gap-3 text-xs border ${
+                      critCount > 0 ? "bg-rose-50/70 border-rose-200/80" : "bg-slate-50 border-slate-200"
+                    }`}>
+                      <div className="flex items-center gap-2">
+                        <span className={`w-2.5 h-2.5 rounded-full ${critCount > 0 ? "bg-rose-500 animate-pulse" : "bg-emerald-500"}`}></span>
+                        <span className={`font-bold ${critCount > 0 ? "text-rose-900" : "text-slate-800"}`}>
+                          {critCount > 0 
+                            ? `Status Material: Memuat ${critCount} Suku Cadang Critical dari total ${totalCount} item (Sesuai Master Critical FIKRI.xlsx)` 
+                            : `Seluruh ${totalCount} item suku cadang merupakan suku cadang standar / reguler`}
+                        </span>
+                      </div>
+                      <span className={`font-mono font-bold text-[10px] px-2.5 py-0.5 rounded-full ${
+                        critCount > 0 ? "bg-rose-200/80 text-rose-900 border border-rose-300" : "bg-slate-200 text-slate-700"
+                      }`}>
+                        {critCount} DARI {totalCount} ITEM CRITICAL
+                      </span>
+                    </div>
+
+                    <h4 className="text-[10px] font-black font-mono uppercase tracking-widest text-slate-500 flex items-center justify-between">
+                      <span>RINCIAN DAFTAR MATERIAL SUKU CADANG (TUG 6)</span>
+                      <span className="bg-indigo-50 border border-indigo-200 px-2.5 py-0.5 rounded-full font-bold text-indigo-800 text-[9.5px]">
+                        Total {totalCount} Item ({critCount} Critical)
+                      </span>
+                    </h4>
+
+                    <div className="border border-slate-200 rounded-xl overflow-hidden">
+                      <table className="w-full text-left border-collapse">
+                        <thead>
+                          <tr className="bg-slate-50 text-slate-700 text-[10px] font-mono uppercase tracking-wider border-b border-slate-200">
+                            <th className="py-2.5 px-4 font-black w-12 text-center">No</th>
+                            <th className="py-2.5 px-3 font-semibold">Nama Suku Cadang Kapal</th>
+                            <th className="py-2.5 px-3 font-semibold">Part Number / SKU</th>
+                            <th className="py-2.5 px-3 w-20 text-center font-semibold">Satuan</th>
+                            <th className="py-2.5 px-3 w-32 text-center font-semibold text-slate-500">Rata2 Pemakaian</th>
+                            <th className="py-2.5 px-3 w-32 text-center font-semibold text-slate-500">Sisa Stok Sedia</th>
+                            <th className="py-2.5 px-3 w-32 text-center font-bold text-blue-800 bg-blue-50/30">Requested Qty</th>
+                            <th className="py-2.5 px-3 w-36 text-center font-semibold">Status Barang</th>
+                            <th className="py-2.5 px-3 font-semibold">Keterangan / Notes</th>
+                          </tr>
+                        </thead>
+                        <tbody className="divide-y divide-slate-100 text-xs text-slate-800">
+                          {items.map((itm, idx) => {
+                            const isCrit = Boolean(
+                              itm.is_critical ||
+                              (itm.notes && itm.notes.includes("[ITEM CRITICAL]")) ||
+                              checkIsCriticalPart(itm, criticalParts).isCritical
+                            );
+                            return (
+                              <tr key={idx} className={isCrit ? "bg-rose-50/30 hover:bg-rose-50/50" : "hover:bg-slate-50/50"}>
+                                <td className="py-2.5 px-4 text-center font-mono text-slate-400 font-bold">{idx + 1}</td>
+                                <td className="py-2.5 px-3 text-slate-900 font-bold">
+                                  <div className="flex items-center gap-1.5 flex-wrap">
+                                    <span>{itm.spare_part_name}</span>
+                                    {isCrit && (
+                                      <span className="inline-flex items-center gap-0.5 px-1.5 py-0.5 rounded text-[8.5px] font-black bg-rose-100 text-rose-700 border border-rose-200 shadow-2xs">
+                                        🔴 ITEM CRITICAL
+                                      </span>
+                                    )}
+                                  </div>
+                                </td>
+                                <td className="py-2.5 px-3 font-mono text-slate-650 font-bold">{itm.part_number}</td>
+                                <td className="py-2.5 px-3 text-center uppercase font-mono">{itm.unit}</td>
+                                <td className="py-2.5 px-3 text-center font-mono">{itm.avg_monthly_usage !== undefined ? itm.avg_monthly_usage : 1}</td>
+                                <td className="py-2.5 px-3 text-center font-mono">{itm.remaining_stock !== undefined ? itm.remaining_stock : 0}</td>
+                                <td className="py-2.5 px-3 text-center font-mono font-black text-blue-850 bg-blue-50/10 text-xs">{itm.requested_qty}</td>
+                                <td className="py-2.5 px-3 text-center">
+                                  <span className={`px-2 py-0.5 rounded-full font-bold text-[9px] uppercase border inline-block ${
+                                    itm.item_status === "Pending"
+                                      ? "bg-amber-50 text-amber-700 border-amber-200"
+                                      : itm.item_status === "Returned"
+                                        ? "bg-rose-50 text-rose-700 border-rose-200"
+                                        : "bg-emerald-50 text-emerald-700 border-emerald-200"
+                                  }`}>
+                                    {itm.item_status === "Pending" ? "Belum Datang" : itm.item_status === "Returned" ? "Diretur" : "Sudah Datang"}
+                                  </span>
+                                </td>
+                                <td className="py-2.5 px-3">
+                                  <span className={`inline-block px-2 py-1 rounded text-[11px] font-medium leading-snug ${
+                                    isCrit 
+                                      ? "bg-rose-50 text-rose-900 border border-rose-200 font-semibold" 
+                                      : "bg-slate-50 text-slate-700 border border-slate-200"
+                                  }`}>
+                                    {itm.notes || "-"}
+                                  </span>
+                                </td>
+                              </tr>
+                            );
+                          })}
+                        </tbody>
+                      </table>
+                    </div>
                   </div>
-                  <span className="bg-rose-200/80 text-rose-900 font-mono font-bold text-[10px] px-2 py-0.5 rounded">
-                    {(activeMR.items || []).length} ITEM CRITICAL
-                  </span>
-                </div>
-
-                <h4 className="text-[10px] font-black font-mono uppercase tracking-widest text-slate-500 flex items-center justify-between">
-                  <span>RINCIAN DAFTAR MATERIAL SUKU CADANG (TUG 6 CODES)</span>
-                  <span className="bg-indigo-50 border border-indigo-200 px-2.5 py-0.5 rounded-full font-bold text-indigo-800 text-[9.5px]">
-                    Daftar {(activeMR.items || []).length} Barang Kritis
-                  </span>
-                </h4>
-
-                <div className="border border-slate-200 rounded-xl overflow-hidden">
-                  <table className="w-full text-left border-collapse">
-                    <thead>
-                      <tr className="bg-slate-50 text-slate-700 text-[10px] font-mono uppercase tracking-wider border-b border-slate-200">
-                        <th className="py-2.5 px-4 font-black w-12 text-center">No</th>
-                        <th className="py-2.5 px-3 font-semibold">Nama Suku Cadang Kapal</th>
-                        <th className="py-2.5 px-3 font-semibold">Part Number / SKU</th>
-                        <th className="py-2.5 px-3 w-20 text-center font-semibold">Satuan</th>
-                        <th className="py-2.5 px-3 w-32 text-center font-semibold text-slate-500">Rata2 Pemakaian</th>
-                        <th className="py-2.5 px-3 w-32 text-center font-semibold text-slate-500">Sisa Stok Sedia</th>
-                        <th className="py-2.5 px-3 w-32 text-center font-bold text-blue-800 bg-blue-50/30">Requested Qty</th>
-                        <th className="py-2.5 px-3 w-36 text-center font-semibold">Status Barang</th>
-                        <th className="py-2.5 px-3 font-semibold">Keterangan / Notes</th>
-                      </tr>
-                    </thead>
-                    <tbody className="divide-y divide-slate-100 text-xs text-slate-800">
-                      {(activeMR.items || []).map((itm, idx) => (
-                        <tr key={idx} className="hover:bg-slate-50/50">
-                          <td className="py-2.5 px-4 text-center font-mono text-slate-400 font-bold">{idx + 1}</td>
-                          <td className="py-2.5 px-3 text-slate-900 font-bold">
-                            <div className="flex items-center gap-1.5 flex-wrap">
-                              <span>{itm.spare_part_name}</span>
-                              <span className="inline-flex items-center gap-0.5 px-1.5 py-0.5 rounded text-[8.5px] font-black bg-rose-100 text-rose-700 border border-rose-200">
-                                🔴 ITEM CRITICAL
-                              </span>
-                            </div>
-                          </td>
-                          <td className="py-2.5 px-3 font-mono text-slate-650 font-bold">{itm.part_number}</td>
-                          <td className="py-2.5 px-3 text-center uppercase font-mono">{itm.unit}</td>
-                          <td className="py-2.5 px-3 text-center font-mono">{itm.avg_monthly_usage !== undefined ? itm.avg_monthly_usage : 1}</td>
-                          <td className="py-2.5 px-3 text-center font-mono">{itm.remaining_stock !== undefined ? itm.remaining_stock : 0}</td>
-                          <td className="py-2.5 px-3 text-center font-mono font-black text-blue-850 bg-blue-50/10 text-xs">{itm.requested_qty}</td>
-                          <td className="py-2.5 px-3 text-center">
-                            <span className={`px-2 py-0.5 rounded-full font-bold text-[9px] uppercase border inline-block ${
-                              itm.item_status === "Pending"
-                                ? "bg-amber-50 text-amber-700 border-amber-200"
-                                : itm.item_status === "Returned"
-                                  ? "bg-rose-50 text-rose-700 border-rose-200"
-                                  : "bg-emerald-50 text-emerald-700 border-emerald-200"
-                            }`}>
-                              {itm.item_status === "Pending" ? "Belum Datang" : itm.item_status === "Returned" ? "Diretur" : "Sudah Datang"}
-                            </span>
-                          </td>
-                          <td className="py-2.5 px-3">
-                            <span className="inline-block bg-amber-50 text-amber-900 border border-amber-200/80 px-2 py-1 rounded text-[11px] font-medium leading-snug">
-                              {itm.notes || "[ITEM CRITICAL]"}
-                            </span>
-                          </td>
-                        </tr>
-                      ))}
-                    </tbody>
-                  </table>
-                </div>
-              </div>
+                );
+              })()}
 
             </div>
 
@@ -2410,7 +2438,11 @@ export default function MaterialRequestTUG6View({
                           </tr>
                         ) : (
                           formItems.map((itm, idx) => {
-                            const isItemCrit = itm.notes?.includes("[ITEM CRITICAL]");
+                            const isItemCrit = Boolean(
+                              itm.is_critical || 
+                              (itm.notes && itm.notes.includes("[ITEM CRITICAL]")) || 
+                              checkIsCriticalPart(itm, criticalParts).isCritical
+                            );
                             return (
                               <tr key={idx} className={isItemCrit ? "bg-rose-50/30 hover:bg-rose-50/60 transition-colors" : "hover:bg-slate-50/60 transition-colors"}>
                                 <td className="py-3 px-3 text-center text-slate-400 font-semibold">{idx + 1}</td>
