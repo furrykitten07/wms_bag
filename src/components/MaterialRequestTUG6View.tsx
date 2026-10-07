@@ -41,7 +41,8 @@ import {
   ExternalLink,
   Plus,
   Package,
-  SlidersHorizontal
+  SlidersHorizontal,
+  Check
 } from "lucide-react";
 import { 
   User as UserType, 
@@ -141,6 +142,8 @@ export default function MaterialRequestTUG6View({
   // Critical Items Modal State
   const [isCriticalModalOpen, setIsCriticalModalOpen] = useState(false);
   const [selectedSPKForCritical, setSelectedSPKForCritical] = useState<string>("");
+  const [isSPKPickerOpen, setIsSPKPickerOpen] = useState(false);
+  const [spkSearchQuery, setSpkSearchQuery] = useState("");
   const [criticalSearchQuery, setCriticalSearchQuery] = useState("");
   const [criticalFilterTab, setCriticalFilterTab] = useState<"all" | "unfulfilled" | "partial" | "fulfilled">("all");
 
@@ -209,13 +212,11 @@ export default function MaterialRequestTUG6View({
     });
 
     const arr = Array.from(map.values());
-    // Sort: SPKs with critical items first
-    arr.sort((a, b) => {
-      if (a.hasCritical && !b.hasCritical) return -1;
-      if (!a.hasCritical && b.hasCritical) return 1;
-      return b.criticalCount - a.criticalCount;
-    });
-    return arr;
+    // Filter HANYA SPK yang memuat suku cadang critical (criticalCount > 0)
+    const criticalOnly = arr.filter(s => s.hasCritical && s.criticalCount > 0);
+    // Sort: SPK dengan jumlah item critical terbanyak di posisi teratas
+    criticalOnly.sort((a, b) => b.criticalCount - a.criticalCount);
+    return criticalOnly;
   }, [requests, tug5Requests, spkList, criticalParts]);
 
   // Total Critical in all TUG 6 documents
@@ -273,10 +274,25 @@ export default function MaterialRequestTUG6View({
     });
   }, [matchedSPKCriticalItems, criticalSearchQuery, criticalFilterTab]);
 
-  // Selected SPK Details
-  const selectedSPKMeta = useMemo(() => {
-    return availableSPKList.find(s => s.spk === selectedSPKForCritical);
-  }, [availableSPKList, selectedSPKForCritical]);
+  // Filter available SPKs dynamically by spkSearchQuery for the picker
+  const filteredAvailableSPKs = useMemo(() => {
+    const q = spkSearchQuery.toLowerCase().trim();
+    if (!q) return availableSPKList;
+    return availableSPKList.filter(s =>
+      s.spk.toLowerCase().includes(q) ||
+      s.vessel.toLowerCase().includes(q) ||
+      (s.port && s.port.toLowerCase().includes(q))
+    );
+  }, [availableSPKList, spkSearchQuery]);
+
+  // Automatically pre-select first SPK when opening Critical Modal
+  React.useEffect(() => {
+    if (isCriticalModalOpen && availableSPKList.length > 0) {
+      if (!selectedSPKForCritical || !availableSPKList.some(s => s.spk === selectedSPKForCritical)) {
+        setSelectedSPKForCritical(availableSPKList[0].spk);
+      }
+    }
+  }, [isCriticalModalOpen, availableSPKList, selectedSPKForCritical]);
 
   React.useEffect(() => {
     setTugPage(1);
@@ -2778,36 +2794,166 @@ export default function MaterialRequestTUG6View({
               </button>
             </div>
 
-            {/* Modal Sub-Header: SPK Selector & Meta Banner */}
-            <div className="p-4 bg-slate-50 border-b border-slate-200 flex flex-col md:flex-row items-center justify-between gap-3 shrink-0">
-              <div className="flex-1 w-full md:w-auto flex flex-col sm:flex-row items-center gap-3">
-                <div className="w-full sm:w-80">
-                  <label className="block text-[10px] font-mono font-bold text-slate-500 uppercase tracking-wider mb-1">
-                    PILIH NOMOR SPK WORK ORDER:
-                  </label>
-                  <select
-                    value={selectedSPKForCritical}
-                    onChange={(e) => setSelectedSPKForCritical(e.target.value)}
-                    className="w-full p-2.5 bg-white border border-slate-300 rounded-xl font-bold font-mono text-xs text-slate-800 focus:outline-none focus:ring-2 focus:ring-rose-500 focus:border-rose-500 shadow-2xs cursor-pointer"
+            {/* Modal Sub-Header: Searchable SPK Selector & Meta Banner */}
+            <div className="p-4 bg-slate-50/90 border-b border-slate-200 flex flex-col md:flex-row items-stretch md:items-center justify-between gap-3 shrink-0">
+              <div className="flex-1 flex flex-col sm:flex-row items-stretch sm:items-center gap-3">
+                
+                {/* Modern Custom Searchable SPK Combobox */}
+                <div className="relative w-full sm:w-96">
+                  <div className="flex items-center justify-between mb-1">
+                    <label className="block text-[10px] font-mono font-bold text-slate-500 uppercase tracking-wider">
+                      NOMOR SPK BER-ITEM CRITICAL:
+                    </label>
+                    <span className="text-[10px] font-mono font-bold text-rose-600 bg-rose-50 border border-rose-200/80 px-2 py-0.5 rounded-full">
+                      {availableSPKList.length} SPK Ditemukan
+                    </span>
+                  </div>
+
+                  {/* Trigger Button */}
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setIsSPKPickerOpen(!isSPKPickerOpen);
+                      setSpkSearchQuery("");
+                    }}
+                    className={`w-full p-2.5 bg-white border rounded-xl font-mono text-xs text-left flex items-center justify-between gap-2 transition-all shadow-2xs cursor-pointer ${
+                      isSPKPickerOpen 
+                        ? "border-rose-500 ring-2 ring-rose-500/20 shadow-md" 
+                        : "border-slate-300 hover:border-slate-400"
+                    }`}
                   >
-                    <option value="">-- Pilih Nomor SPK --</option>
-                    {availableSPKList.map(s => (
-                      <option key={s.spk} value={s.spk}>
-                        {s.hasCritical ? "🔴 " : "⚪ "}
-                        {s.spk} &bull; {s.vessel} ({s.criticalCount} Item Critical)
-                      </option>
-                    ))}
-                  </select>
+                    {selectedSPKMeta ? (
+                      <div className="flex items-center gap-2 truncate min-w-0">
+                        <span className="w-2.5 h-2.5 rounded-full bg-rose-600 shrink-0 animate-pulse"></span>
+                        <div className="truncate min-w-0">
+                          <span className="font-bold text-slate-900 block truncate leading-tight">
+                            {selectedSPKMeta.spk}
+                          </span>
+                          <span className="text-[10px] font-sans text-slate-500 flex items-center gap-1.5 truncate">
+                            <span className="font-semibold text-slate-700">{selectedSPKMeta.vessel}</span>
+                            <span className="text-rose-600 font-bold bg-rose-50 px-1.5 py-0.2 rounded font-mono text-[9.5px]">
+                              {selectedSPKMeta.criticalCount} Critical
+                            </span>
+                          </span>
+                        </div>
+                      </div>
+                    ) : (
+                      <div className="flex items-center gap-2 text-slate-400 font-sans text-xs">
+                        <Search className="w-4 h-4 text-slate-400" />
+                        <span>Pilih nomor SPK critical...</span>
+                      </div>
+                    )}
+                    <ChevronDown className={`w-4 h-4 text-slate-400 transition-transform duration-200 shrink-0 ${isSPKPickerOpen ? "rotate-180 text-rose-600" : ""}`} />
+                  </button>
+
+                  {/* Floating Searchable Popover Menu */}
+                  {isSPKPickerOpen && (
+                    <>
+                      {/* Click-outside backdrop */}
+                      <div 
+                        className="fixed inset-0 z-30" 
+                        onClick={() => setIsSPKPickerOpen(false)}
+                      />
+
+                      <div className="absolute left-0 top-full mt-1.5 w-full sm:w-[440px] bg-white border border-slate-200 rounded-2xl shadow-2xl z-40 overflow-hidden animate-in fade-in zoom-in-95 duration-150">
+                        {/* Search Bar inside Popover */}
+                        <div className="p-3 border-b border-slate-100 bg-slate-50/80">
+                          <div className="relative">
+                            <input
+                              type="text"
+                              autoFocus
+                              placeholder="Cari no. SPK, nama kapal, atau target port..."
+                              value={spkSearchQuery}
+                              onChange={(e) => setSpkSearchQuery(e.target.value)}
+                              className="w-full bg-white border border-slate-300 text-slate-800 py-2 pl-8.5 pr-8 text-xs rounded-xl outline-none focus:ring-2 focus:ring-rose-500 focus:border-rose-500 font-sans shadow-2xs"
+                            />
+                            <Search className="w-4 h-4 text-slate-400 absolute left-2.5 top-2.5" />
+                            {spkSearchQuery && (
+                              <button
+                                type="button"
+                                onClick={() => setSpkSearchQuery("")}
+                                className="p-1 text-slate-400 hover:text-slate-600 absolute right-2 top-2 rounded-md hover:bg-slate-100"
+                              >
+                                <X className="w-3.5 h-3.5" />
+                              </button>
+                            )}
+                          </div>
+                          <div className="flex items-center justify-between mt-2 px-1 text-[10px] font-mono text-slate-400">
+                            <span>SPK DENGAN SPAREPART CRITICAL</span>
+                            <span>{filteredAvailableSPKs.length} dari {availableSPKList.length}</span>
+                          </div>
+                        </div>
+
+                        {/* SPK List Items */}
+                        <div className="max-h-72 overflow-y-auto divide-y divide-slate-100 p-1">
+                          {filteredAvailableSPKs.length === 0 ? (
+                            <div className="p-6 text-center text-slate-400 text-xs font-sans">
+                              <AlertOctagon className="w-8 h-8 text-slate-300 mx-auto mb-2" />
+                              <span>Tidak ada SPK critical yang cocok.</span>
+                            </div>
+                          ) : (
+                            filteredAvailableSPKs.map((s) => {
+                              const isSelected = s.spk === selectedSPKForCritical;
+                              return (
+                                <button
+                                  key={s.spk}
+                                  type="button"
+                                  onClick={() => {
+                                    setSelectedSPKForCritical(s.spk);
+                                    setIsSPKPickerOpen(false);
+                                  }}
+                                  className={`w-full p-2.5 rounded-xl text-left flex items-center justify-between gap-3 transition-colors cursor-pointer ${
+                                    isSelected 
+                                      ? "bg-rose-50/80 text-rose-950 font-bold border border-rose-200" 
+                                      : "hover:bg-slate-50 text-slate-700"
+                                  }`}
+                                >
+                                  <div className="flex items-start gap-2.5 min-w-0">
+                                    <span className="w-2 h-2 rounded-full bg-rose-600 shrink-0 mt-1.5 animate-pulse"></span>
+                                    <div className="min-w-0">
+                                      <span className="font-mono text-xs font-bold text-slate-900 block truncate">
+                                        {s.spk}
+                                      </span>
+                                      <div className="flex items-center gap-2 text-[10.5px] text-slate-500 font-sans mt-0.5">
+                                        <span className="flex items-center gap-1 font-semibold text-slate-700 truncate">
+                                          <Anchor className="w-3 h-3 text-blue-600 shrink-0" />
+                                          <span className="truncate">{s.vessel}</span>
+                                        </span>
+                                        {s.port && (
+                                          <span className="text-slate-400 flex items-center gap-0.5 truncate">
+                                            &bull; {s.port}
+                                          </span>
+                                        )}
+                                      </div>
+                                    </div>
+                                  </div>
+
+                                  <div className="flex items-center gap-2 shrink-0">
+                                    <span className="px-2 py-0.5 rounded-full text-[10px] font-mono font-bold bg-rose-100 text-rose-800 border border-rose-300/80">
+                                      {s.criticalCount} Critical
+                                    </span>
+                                    {isSelected && (
+                                      <Check className="w-4 h-4 text-rose-600" />
+                                    )}
+                                  </div>
+                                </button>
+                              );
+                            })
+                          )}
+                        </div>
+                      </div>
+                    </>
+                  )}
                 </div>
 
                 {selectedSPKMeta && (
-                  <div className="flex items-center gap-2 pt-1 sm:pt-4 text-xs flex-wrap">
-                    <span className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-white border border-slate-250 text-slate-700 font-semibold shadow-2xs">
+                  <div className="flex items-center gap-2 pt-1 sm:pt-5 text-xs flex-wrap">
+                    <span className="inline-flex items-center gap-1.5 px-3 py-2 rounded-xl bg-white border border-slate-250 text-slate-700 font-semibold shadow-2xs">
                       <Anchor className="w-3.5 h-3.5 text-blue-600" />
                       <span>{selectedSPKMeta.vessel}</span>
                     </span>
                     {selectedSPKMeta.port && (
-                      <span className="inline-flex items-center gap-1 px-3 py-1.5 rounded-lg bg-white border border-slate-250 text-slate-650 font-medium shadow-2xs">
+                      <span className="inline-flex items-center gap-1 px-3 py-2 rounded-xl bg-white border border-slate-250 text-slate-650 font-medium shadow-2xs">
                         <MapPin className="w-3.5 h-3.5 text-emerald-600" />
                         <span>{selectedSPKMeta.port}</span>
                       </span>
@@ -2815,26 +2961,26 @@ export default function MaterialRequestTUG6View({
                     <button
                       type="button"
                       onClick={handleCreateTUG6FromCriticalModal}
-                      className="inline-flex items-center gap-1.5 px-3.5 py-1.5 rounded-lg bg-gradient-to-r from-rose-600 to-indigo-600 hover:from-rose-500 hover:to-indigo-500 text-white font-bold text-xs shadow-xs hover:shadow transition-all cursor-pointer active:scale-95 whitespace-nowrap"
+                      className="inline-flex items-center gap-1.5 px-4 py-2 rounded-xl bg-gradient-to-r from-rose-600 to-indigo-600 hover:from-rose-500 hover:to-indigo-500 text-white font-bold text-xs shadow-xs hover:shadow transition-all cursor-pointer active:scale-95 whitespace-nowrap"
                       title="Ambil seluruh suku cadang dari SPK ini ke Form TUG 6"
                     >
                       <Sparkles className="w-3.5 h-3.5 text-rose-200" />
-                      <span>Buat Form TUG 6</span>
+                      <span>Buat Form TUG 6 Dari SPK Ini</span>
                     </button>
                   </div>
                 )}
               </div>
 
               {/* Quick Search inside modal */}
-              <div className="relative w-full md:w-64">
+              <div className="relative w-full md:w-64 pt-0 sm:pt-5">
                 <input
                   type="text"
                   placeholder="Cari part number / nama item..."
                   value={criticalSearchQuery}
                   onChange={(e) => setCriticalSearchQuery(e.target.value)}
-                  className="w-full bg-white border border-slate-300 text-slate-800 p-2 pl-8 text-xs rounded-xl outline-none focus:ring-2 focus:ring-rose-500 focus:border-rose-500 font-medium shadow-2xs"
+                  className="w-full bg-white border border-slate-300 text-slate-800 p-2.5 pl-8.5 text-xs rounded-xl outline-none focus:ring-2 focus:ring-rose-500 focus:border-rose-500 font-medium shadow-2xs"
                 />
-                <Search className="w-3.5 h-3.5 text-slate-400 absolute left-2.5 top-3" />
+                <Search className="w-3.5 h-3.5 text-slate-400 absolute left-2.5 top-8" />
               </div>
             </div>
 
