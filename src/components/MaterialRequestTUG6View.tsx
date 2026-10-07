@@ -2362,105 +2362,12 @@ export default function MaterialRequestTUG6View({
                 </div>
               </div>
 
-              {/* Form Segment 2: Spare Parts selector inputs */}
-              <div className="bg-slate-50/70 border border-slate-200/80 p-5 rounded-2xl space-y-3.5">
-                <div className="flex items-center justify-between border-b border-slate-200/80 pb-3">
-                  <div className="flex items-center gap-2.5">
-                    <span className="w-6 h-6 rounded-lg bg-indigo-600 text-white flex items-center justify-center text-xs font-bold shadow-xs">
-                      2
-                    </span>
-                    <h4 className="text-xs font-bold text-slate-800 uppercase tracking-wider">
-                      Pilih Suku Cadang (Spare Parts TUG 6)
-                    </h4>
-                  </div>
-                  <span className="text-[11px] text-indigo-700 bg-indigo-50 px-2.5 py-0.5 rounded-full font-medium border border-indigo-100 flex items-center gap-1">
-                    <Sparkles className="w-3 h-3 text-indigo-500" /> Live Inventory Synchronizer
-                  </span>
-                </div>
-
-                <div className="grid grid-cols-1 md:grid-cols-12 gap-3 items-end">
-                  
-                  <div className="md:col-span-5">
-                    <label className="text-xs font-semibold text-slate-700 block mb-1.5">
-                      Pilih Suku Cadang Dari Gudang
-                    </label>
-                    <select
-                      value={selectedPartId}
-                      onChange={(e) => {
-                        setSelectedPartId(e.target.value);
-                        setItemUsage(1);
-                      }}
-                      className="w-full bg-white border border-slate-250 text-xs rounded-xl px-3 py-2.5 font-medium text-slate-800 focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 shadow-2xs cursor-pointer"
-                    >
-                      <option value="">-- Pilih Suku Cadang --</option>
-                      {parts.map(p => (
-                        <option key={p.id} value={p.id}>
-                          {p.part_name} &bull; SKU: {p.sku} (Part No: {p.part_number}) &mdash; Tersedia: {p.current_stock} {p.unit}
-                        </option>
-                      ))}
-                    </select>
-                  </div>
-
-                  <div className="md:col-span-2">
-                    <label className="text-xs font-semibold text-slate-700 block mb-1.5">
-                      Kebutuhan (Qty)
-                    </label>
-                    <input
-                      type="number"
-                      min={1}
-                      value={itemQty}
-                      onChange={(e) => setItemQty(Math.max(1, Number(e.target.value)))}
-                      className="w-full bg-white border border-slate-250 rounded-xl text-xs px-3 py-2.5 font-semibold text-slate-800 focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 shadow-2xs"
-                    />
-                  </div>
-
-                  <div className="md:col-span-2">
-                    <label className="text-xs font-semibold text-slate-700 block mb-1.5">
-                      Rata2 / Bulan
-                    </label>
-                    <input
-                      type="number"
-                      min={0}
-                      value={itemUsage}
-                      onChange={(e) => setItemUsage(Math.max(0, Number(e.target.value)))}
-                      className="w-full bg-white border border-slate-250 rounded-xl text-xs px-3 py-2.5 font-semibold text-slate-800 focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 shadow-2xs"
-                    />
-                  </div>
-
-                  <div className="md:col-span-2">
-                    <label className="text-xs font-semibold text-slate-700 block mb-1.5">
-                      Keterangan Item
-                    </label>
-                    <input
-                      type="text"
-                      placeholder="e.g. Kritis / Overhaul"
-                      value={itemNotes}
-                      onChange={(e) => setItemNotes(e.target.value)}
-                      className="w-full bg-white border border-slate-250 rounded-xl text-xs px-3 py-2.5 font-sans text-slate-800 focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 shadow-2xs placeholder:text-slate-400"
-                    />
-                  </div>
-
-                  <div className="md:col-span-1">
-                    <button
-                      type="button"
-                      onClick={handleAddFormItem}
-                      disabled={!selectedPartId}
-                      className="w-full py-2.5 bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl text-xs font-bold disabled:opacity-40 disabled:hover:bg-indigo-600 select-none cursor-pointer text-center transition-all shadow-xs hover:shadow flex items-center justify-center gap-1"
-                    >
-                      <Plus className="w-3.5 h-3.5" />
-                      Tambah
-                    </button>
-                  </div>
-
-                </div>
-              </div>
-
-              {/* Form Segment 3: Items Table representation */}
+              {/* Form Segment 2: Items Table representation */}
               <div className="space-y-3">
                 <div className="flex items-center justify-between pb-1">
                   <div className="flex items-center gap-2.5">
                     <span className="w-6 h-6 rounded-lg bg-indigo-600 text-white flex items-center justify-center text-xs font-bold shadow-xs">
-                      3
+                      2
                     </span>
                     <h4 className="text-xs font-bold text-slate-800 uppercase tracking-wider">
                       Daftar Grid Item Suku Cadang TUG 6
@@ -2497,7 +2404,7 @@ export default function MaterialRequestTUG6View({
                                   <Package className="w-6 h-6" />
                                 </div>
                                 <p className="text-xs font-semibold text-slate-600">Belum ada suku cadang ditambahkan</p>
-                                <p className="text-[11px] text-slate-400 mt-0.5">Pilih suku cadang dari form di atas atau muat otomatis dari SPK WMS.</p>
+                                <p className="text-[11px] text-slate-400 mt-0.5">Suku cadang otomatis terisi sesuai dengan SPK WMS yang dipilih.</p>
                               </div>
                             </td>
                           </tr>
