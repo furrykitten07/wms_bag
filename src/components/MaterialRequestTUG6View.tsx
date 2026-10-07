@@ -285,6 +285,11 @@ export default function MaterialRequestTUG6View({
     );
   }, [availableSPKList, spkSearchQuery]);
 
+  // Selected SPK Details
+  const selectedSPKMeta = useMemo(() => {
+    return availableSPKList.find(s => s.spk === selectedSPKForCritical) || null;
+  }, [availableSPKList, selectedSPKForCritical]);
+
   // Automatically pre-select first SPK when opening Critical Modal
   React.useEffect(() => {
     if (isCriticalModalOpen && availableSPKList.length > 0) {
