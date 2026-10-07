@@ -77,6 +77,7 @@ interface MaterialRequestTUG6ViewProps {
   onDeleteRequest: (id: string) => Promise<void>;
   onLogMRAction: (id: string, action: "Printed" | "Downloaded") => Promise<void>;
   onPreviewTUG6: (request: MaterialRequest) => void;
+  onClearAllRequests?: () => Promise<void> | void;
   spkList?: SPKWorkOrder[];
   autoOpenMRId?: string | null;
   onClearAutoOpenMRId?: () => void;
@@ -96,6 +97,7 @@ export default function MaterialRequestTUG6View({
   onDeleteRequest,
   onLogMRAction,
   onPreviewTUG6,
+  onClearAllRequests,
   spkList = [],
   autoOpenMRId,
   onClearAutoOpenMRId,
@@ -910,7 +912,16 @@ export default function MaterialRequestTUG6View({
           </p>
         </div>
         
-        <div className="flex flex-col sm:flex-row gap-2.5 shrink-0">
+        <div className="flex flex-col sm:flex-row gap-2.5 shrink-0 flex-wrap items-center">
+          <button
+            type="button"
+            onClick={handleStartCreate}
+            className="px-4 py-3 bg-gradient-to-r from-indigo-600 to-blue-600 hover:from-indigo-700 hover:to-blue-700 text-white font-bold text-xs uppercase rounded-lg flex items-center justify-center gap-2 transition-all shadow-md shadow-indigo-100 cursor-pointer hover:scale-[1.01]"
+          >
+            <Plus className="w-4 h-4" />
+            <span>+ Buat TUG 6 Manual</span>
+          </button>
+
           <button
             type="button"
             onClick={() => {
@@ -955,6 +966,18 @@ export default function MaterialRequestTUG6View({
               </span>
             )}
           </button>
+
+          {onClearAllRequests && (requests || []).length > 0 && (
+            <button
+              type="button"
+              onClick={onClearAllRequests}
+              className="px-3.5 py-3 bg-white border border-rose-200 hover:bg-rose-50 text-rose-600 font-bold text-xs uppercase rounded-lg flex items-center justify-center gap-1.5 transition-all shadow-xs cursor-pointer"
+              title="Kosongkan seluruh data TUG 6 saat ini"
+            >
+              <Trash2 className="w-3.5 h-3.5 text-rose-500" />
+              <span>Kosongkan Data</span>
+            </button>
+          )}
         </div>
       </div>
 
@@ -1054,17 +1077,35 @@ export default function MaterialRequestTUG6View({
             <tbody className="divide-y divide-slate-100 text-xs">
               {filteredRequests.length === 0 ? (
                 <tr>
-                  <td colSpan={10} className="py-14 text-center text-slate-400 font-mono text-[11px]">
-                    <div className="flex flex-col items-center justify-center gap-3">
-                      <span>Tidak ada dokumen permintaan barang TUG 6 yang terekam pada filter ini.</span>
-                      <button
-                        type="button"
-                        onClick={() => onPreviewTUG6(createEmptyTUGReportRequest("tug6"))}
-                        className="px-4 py-2 bg-slate-800 hover:bg-slate-900 text-white text-xs font-sans font-bold rounded-lg shadow-xs flex items-center gap-2 transition-all cursor-pointer"
-                      >
-                        <Printer className="w-3.5 h-3.5" />
-                        <span>Cetak Dokumen Laporan Kosong / Nihil (A4)</span>
-                      </button>
+                  <td colSpan={10} className="py-16 text-center text-slate-400 font-mono text-[11px]">
+                    <div className="flex flex-col items-center justify-center gap-3 max-w-md mx-auto">
+                      <div className="w-14 h-14 rounded-2xl bg-indigo-50 text-indigo-600 flex items-center justify-center mb-1">
+                        <Package className="w-7 h-7" />
+                      </div>
+                      <span className="text-slate-700 font-bold text-sm font-sans">
+                        Belum Ada Dokumen Permintaan Barang (TUG 6)
+                      </span>
+                      <p className="text-slate-500 text-xs font-sans leading-relaxed">
+                        Data TUG 6 telah dikosongkan. Anda dapat membuat formulir dokumen TUG 6 secara manual melalui tombol di bawah.
+                      </p>
+                      <div className="flex items-center gap-2.5 mt-2">
+                        <button
+                          type="button"
+                          onClick={handleStartCreate}
+                          className="px-4 py-2.5 bg-indigo-600 hover:bg-indigo-700 text-white text-xs font-bold font-sans rounded-xl shadow-md shadow-indigo-100 flex items-center gap-2 transition-all cursor-pointer"
+                        >
+                          <Plus className="w-4 h-4" />
+                          <span>+ Buat TUG 6 Manual</span>
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => onPreviewTUG6(createEmptyTUGReportRequest("tug6"))}
+                          className="px-4 py-2.5 bg-slate-800 hover:bg-slate-900 text-white text-xs font-sans font-bold rounded-xl shadow-xs flex items-center gap-2 transition-all cursor-pointer"
+                        >
+                          <Printer className="w-3.5 h-3.5" />
+                          <span>Cetak Dokumen Kosong / Nihil</span>
+                        </button>
+                      </div>
                     </div>
                   </td>
                 </tr>

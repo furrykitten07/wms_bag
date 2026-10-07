@@ -95,7 +95,7 @@ let materialRequests: MaterialRequest[] = demoMaterialRequests.map(mr => ({
   sumbono_signed_at: undefined,
   sumbono_signature_url: undefined
 }));
-let materialRequestsTUG6: MaterialRequest[] = demoMaterialRequestsTUG6;
+let materialRequestsTUG6: MaterialRequest[] = [];
 let dispatch: OutboundDispatch[] = [];
 let receiving: InboundReceiving[] = demoReceiving;
 let materialReturns: MaterialReturn[] = demoMaterialReturns;
@@ -1801,15 +1801,7 @@ app.post("/api/material-requests/:id/action-log", (req, res) => {
 
 // --- MATERIAL REQUESTS TUG 6 ENDPOINTS ---
 app.get("/api/material-requests-tug6", (req, res) => {
-  // USER DIRECTIVE: TUG 6 is derived from TUG 5 based on sheet 'CRITICAL' in data/FIKRI.xlsx
-  const derivedTUG6 = deriveTUG6FromTUG5(materialRequests || []);
-  const combined = [...materialRequestsTUG6];
-  for (const d of derivedTUG6) {
-    if (!combined.some(c => c.id === d.id || c.request_number === d.request_number || (c.tug6_number && c.tug6_number === d.tug6_number))) {
-      combined.push(d);
-    }
-  }
-  res.json(combined);
+  res.json(materialRequestsTUG6);
 });
 
 app.post("/api/material-requests-tug6", (req, res) => {

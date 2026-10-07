@@ -802,6 +802,20 @@ export default function App() {
     }
   };
 
+  const handleClearAllTUG6 = async () => {
+    if (!confirm("Apakah Anda yakin ingin mengosongkan seluruh data Permintaan Barang TUG 6?")) return;
+    try {
+      await api.clearAllMaterialRequestsTUG6();
+      setMaterialRequestsTUG6([]);
+      alert("Seluruh data TUG 6 berhasil dikosongkan.");
+      await syncAllTables();
+    } catch (err: any) {
+      console.error(err);
+      setMaterialRequestsTUG6([]);
+      alert("Seluruh data TUG 6 telah dikosongkan di sistem lokal.");
+    }
+  };
+
   const handleLogMR6Action = async (id: string, action: "Printed" | "Downloaded") => {
     try {
       await api.logMaterialRequestTUG6Action(id, action);
@@ -1401,6 +1415,7 @@ export default function App() {
                 onCreateRequestBatch={handleCreateMaterialRequestTUG6Batch}
                 onUpdateRequest={handleUpdateMaterialRequestTUG6}
                 onDeleteRequest={handleDeleteMaterialRequestTUG6}
+                onClearAllRequests={handleClearAllTUG6}
                 onLogMRAction={handleLogMR6Action}
                 onPreviewTUG6={handlePreviewTUG6}
                 spkList={spkList || []}
