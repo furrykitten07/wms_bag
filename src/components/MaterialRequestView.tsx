@@ -142,8 +142,15 @@ export default function MaterialRequestView({
   const formatMonthName = (ym: string) => {
     try {
       const [year, month] = ym.split("-");
-      const d = new Date(parseInt(year, 10), parseInt(month, 10) - 1, 1);
-      return d.toLocaleDateString("id-ID", { month: "long", year: "numeric" });
+      const monthNames = [
+        "Januari", "Februari", "Maret", "April", "Mei", "Juni",
+        "Juli", "Agustus", "September", "Oktober", "November", "Desember"
+      ];
+      const mIdx = parseInt(month, 10) - 1;
+      if (mIdx >= 0 && mIdx < 12) {
+        return `${monthNames[mIdx]} ${year}`;
+      }
+      return ym;
     } catch {
       return ym;
     }
@@ -1618,47 +1625,40 @@ export default function MaterialRequestView({
         <div className="flex flex-col xl:flex-row xl:items-center justify-between gap-3 pt-2.5 border-t border-slate-100">
           {/* Left: Quick Month Presets & Custom Date Picker */}
           <div className="flex flex-wrap items-center gap-2">
-            <span className="text-slate-500 uppercase tracking-wider flex items-center gap-1.5 mr-1 text-[10px] font-extrabold font-mono">
-              <Calendar className="w-3.5 h-3.5 text-emerald-600" /> PERIODE TANGGAL:
-            </span>
+            {/* Month & Year Dropdown Filter */}
+            <div className="flex items-center gap-1.5">
+              <span className="text-slate-500 uppercase tracking-wider flex items-center gap-1.5 mr-1 text-[10px] font-extrabold font-mono">
+                <Calendar className="w-3.5 h-3.5 text-emerald-600" /> PERIODE BULAN & TAHUN:
+              </span>
 
-            {/* Quick Month Buttons */}
-            <div className="flex flex-wrap items-center gap-1.5">
-              <button
-                type="button"
-                onClick={() => { setDatePreset("ALL"); setStartDate(""); setEndDate(""); }}
-                className={`px-2.5 py-1 rounded-lg border text-[10px] font-bold cursor-pointer transition-all ${
-                  datePreset === "ALL" && !startDate && !endDate
-                    ? "bg-emerald-600 border-emerald-600 text-white shadow-xs"
-                    : "bg-white border-slate-200 text-slate-600 hover:bg-slate-50 hover:text-slate-900"
-                }`}
-              >
-                Semua ({requests.length})
-              </button>
-
-              {availableMonths.map(([ym, count]) => {
-                const label = formatMonthName(ym);
-                const isActive = datePreset === ym && !startDate && !endDate;
-                return (
-                  <button
-                    key={ym}
-                    type="button"
-                    onClick={() => { setDatePreset(ym); setStartDate(""); setEndDate(""); }}
-                    className={`px-2.5 py-1 rounded-lg border text-[10px] font-bold cursor-pointer transition-all flex items-center gap-1.5 ${
-                      isActive
-                        ? "bg-emerald-600 border-emerald-600 text-white shadow-xs"
-                        : "bg-white border-slate-200 text-slate-600 hover:bg-slate-50 hover:text-slate-900"
-                    }`}
-                  >
-                    <span>{label}</span>
-                    <span className={`px-1.5 py-0.2 rounded-full text-[9px] font-mono font-black ${
-                      isActive ? "bg-emerald-700 text-emerald-100" : "bg-slate-100 text-slate-600"
-                    }`}>
-                      {count}
-                    </span>
-                  </button>
-                );
-              })}
+              <div className="relative flex items-center">
+                <select
+                  value={datePreset}
+                  onChange={(e) => {
+                    const val = e.target.value;
+                    setDatePreset(val);
+                    if (val !== "CUSTOM") {
+                      setStartDate("");
+                      setEndDate("");
+                    }
+                  }}
+                  className="bg-white hover:bg-slate-50 border border-slate-300 text-slate-800 text-xs font-bold font-sans rounded-lg pl-3 pr-8 py-1.5 shadow-xs focus:outline-none focus:ring-2 focus:ring-emerald-500 focus:border-emerald-500 transition-all cursor-pointer appearance-none"
+                  title="Pilih Bulan & Tahun Periode Permintaan TUG 5"
+                >
+                  <option value="ALL">Semua Periode ({requests.length} Data)</option>
+                  {availableMonths.map(([ym, count]) => (
+                    <option key={ym} value={ym}>
+                      {formatMonthName(ym)} ({count} Data)
+                    </option>
+                  ))}
+                  {datePreset === "CUSTOM" && (
+                    <option value="CUSTOM">Rentang Tanggal Kustom</option>
+                  )}
+                </select>
+                <div className="pointer-events-none absolute inset-y-0 right-0 flex items-center pr-2.5 text-slate-400">
+                  <ChevronDown className="w-3.5 h-3.5" />
+                </div>
+              </div>
             </div>
 
             {/* Date Range Inputs */}
