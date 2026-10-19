@@ -45,7 +45,8 @@ import {
   Edit3,
   Save,
   Ship,
-  ChevronDown
+  ChevronDown,
+  SlidersHorizontal
 } from "lucide-react";
 import { InboundReceiving, ReceivingStatus, SparePart, UserRole, SPKWorkOrder, WarehouseLocation, Vessel, User, normalizeUserRole } from "../types.js";
 import { demoSPKs } from "../demoSeedData.js";
@@ -2055,54 +2056,133 @@ export default function ReceivingView({
                           )}
                         </span>
                       </td>
-                      <td className="p-3.5 text-right no-print relative">
-                        <div className="flex items-center justify-end gap-2 flex-wrap">
-                          {/* Push to Master & Catalog button for Superadmin */}
-                          {isSuperAdmin && (
-                            <button
-                              type="button"
-                              disabled={pushingRecId === item.id}
-                              onClick={() => handlePushReceivingToMasterAndCatalog(item)}
-                              className="px-3 py-1.5 bg-gradient-to-r from-indigo-600 via-indigo-600 to-blue-600 hover:from-indigo-500 hover:to-blue-500 disabled:opacity-50 text-white rounded-lg text-[11px] font-extrabold flex items-center gap-1.5 transition-all cursor-pointer shadow-md hover:shadow-lg active:scale-95 tracking-wide shrink-0 border border-indigo-400/40"
-                              title="Push semua barang masuk ini ke Catalog Sparepart & Spare Part Master (Superadmin)"
-                            >
-                              <UploadCloud className="w-3.5 h-3.5 text-white" />
-                              <span>{pushingRecId === item.id ? "Pushing..." : "Push"}</span>
-                            </button>
-                          )}
-
+                      <td className="p-3.5 text-right no-print relative" onClick={(e) => e.stopPropagation()}>
+                        <div className="relative inline-block text-left">
                           <button
                             type="button"
-                            onClick={() => handleOpenVerifyModal(item)}
-                            className="px-3 py-1.5 bg-blue-50 hover:bg-blue-100 text-blue-700 border border-blue-200 rounded-lg text-[11px] font-bold flex items-center gap-1 transition-all cursor-pointer shadow-2xs hover:shadow-xs"
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              setActiveActionId(activeActionId === item.id ? null : item.id);
+                            }}
+                            className={`inline-flex items-center justify-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-sans font-bold transition-all duration-200 cursor-pointer shadow-xs active:scale-95 border ${
+                              activeActionId === item.id
+                                ? "bg-blue-600 border-blue-600 text-white shadow-md ring-2 ring-blue-500/20"
+                                : "bg-white border-slate-300 hover:border-slate-400 text-slate-700 hover:bg-slate-50 hover:text-slate-900"
+                            }`}
+                            title="Pilihan Aksi & Detail Penerimaan"
                           >
-                            <Eye className="w-3.5 h-3.5 text-blue-600" />
-                            <span>Lihat Detail Audit</span>
+                            <SlidersHorizontal className={`w-3.5 h-3.5 ${activeActionId === item.id ? "text-white" : "text-blue-600"}`} />
+                            <span>Aksi</span>
+                            <ChevronDown className={`w-3.5 h-3.5 transition-transform duration-200 ${activeActionId === item.id ? 'rotate-180 text-white' : 'text-slate-400'}`} />
                           </button>
 
-                          <button
-                            type="button"
-                            onClick={() => handleOpenEditModal(item)}
-                            className="px-3 py-1.5 bg-amber-50 hover:bg-amber-100 text-amber-800 border border-amber-300 rounded-lg text-[11px] font-bold flex items-center gap-1.5 transition-all cursor-pointer shadow-2xs hover:shadow-xs active:scale-95"
-                            title="Edit Data & Ganti Foto Penerimaan"
-                          >
-                            <Pencil className="w-3.5 h-3.5 text-amber-600" />
-                            <span>Edit</span>
-                          </button>
+                          {activeActionId === item.id && (
+                            <>
+                              <div 
+                                className="fixed inset-0 z-20 cursor-default" 
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  setActiveActionId(null);
+                                }}
+                              />
+                              <div className={`absolute right-0 ${idx >= paginatedRec.length - 2 && idx >= 2 ? "bottom-full mb-2" : "top-full mt-1.5"} w-64 bg-white border border-slate-200 rounded-xl shadow-2xl z-30 overflow-hidden text-left py-1 text-slate-700 animate-in fade-in zoom-in-95 duration-100 ring-1 ring-slate-900/10`}>
+                                {/* Header Info */}
+                                <div className="px-3.5 py-2.5 bg-slate-50 border-b border-slate-100">
+                                  <div className="text-[9.5px] font-mono font-bold text-slate-400 uppercase tracking-wider">Aksi Dokumen Inbound</div>
+                                  <div className="text-xs font-black text-slate-800 truncate font-mono mt-0.5">
+                                    {item.spk_number || item.purchase_order_num || "Penerimaan Barang"}
+                                  </div>
+                                  {item.delivery_note_num && (
+                                    <div className="text-[10px] text-slate-500 font-mono truncate">
+                                      SJ: {item.delivery_note_num}
+                                    </div>
+                                  )}
+                                </div>
 
-                          {onDeleteReceiving && (
-                            <button
-                              type="button"
-                              onClick={async () => {
-                                if (confirm(`Apakah Anda yakin ingin menghapus data Penerimaan Barang [${item.spk_number || item.purchase_order_num}]?`)) {
-                                  await onDeleteReceiving(item.id);
-                                }
-                              }}
-                              className="p-1.5 text-rose-500 hover:text-rose-700 hover:bg-rose-50 rounded-lg border border-slate-200 transition-colors cursor-pointer"
-                              title="Hapus Data Penerimaan"
-                            >
-                              <Trash2 className="w-3.5 h-3.5" />
-                            </button>
+                                <div className="p-1.5 space-y-1">
+                                  {/* 1. Push to Master & Catalog for Superadmin */}
+                                  {isSuperAdmin && (
+                                    <button
+                                      type="button"
+                                      disabled={pushingRecId === item.id}
+                                      onClick={(e) => {
+                                        e.stopPropagation();
+                                        setActiveActionId(null);
+                                        handlePushReceivingToMasterAndCatalog(item);
+                                      }}
+                                      className="w-full px-3 py-2 text-xs font-bold rounded-lg bg-indigo-50/70 hover:bg-indigo-100 text-indigo-700 flex items-center gap-2 cursor-pointer transition-colors text-left disabled:opacity-50 border border-indigo-200/60"
+                                      title="Push semua barang masuk ini ke Catalog Sparepart & Spare Part Master (Superadmin)"
+                                    >
+                                      <UploadCloud className="w-4 h-4 text-indigo-600 shrink-0" />
+                                      <div className="truncate">
+                                        <div className="leading-tight font-extrabold">{pushingRecId === item.id ? "Sedang Push..." : "Push ke Master & Catalog"}</div>
+                                        <div className="text-[9.5px] text-indigo-500 font-normal font-sans">Sync sparepart & catalog master</div>
+                                      </div>
+                                    </button>
+                                  )}
+
+                                  {/* 2. Lihat Detail Audit */}
+                                  <button
+                                    type="button"
+                                    onClick={(e) => {
+                                      e.stopPropagation();
+                                      setActiveActionId(null);
+                                      handleOpenVerifyModal(item);
+                                    }}
+                                    className="w-full px-3 py-2 text-xs font-bold rounded-lg hover:bg-blue-50 text-blue-700 flex items-center gap-2 cursor-pointer transition-colors text-left"
+                                  >
+                                    <Eye className="w-4 h-4 text-blue-600 shrink-0" />
+                                    <div className="truncate">
+                                      <div className="leading-tight">Lihat Detail Audit</div>
+                                      <div className="text-[9.5px] text-slate-400 font-normal font-sans">Verifikasi QTY & detail fisik</div>
+                                    </div>
+                                  </button>
+
+                                  {/* 3. Edit Data & Ganti Foto */}
+                                  <button
+                                    type="button"
+                                    onClick={(e) => {
+                                      e.stopPropagation();
+                                      setActiveActionId(null);
+                                      handleOpenEditModal(item);
+                                    }}
+                                    className="w-full px-3 py-2 text-xs font-bold rounded-lg hover:bg-amber-50 text-amber-800 flex items-center gap-2 cursor-pointer transition-colors text-left"
+                                    title="Edit Data & Ganti Foto Penerimaan"
+                                  >
+                                    <Pencil className="w-4 h-4 text-amber-600 shrink-0" />
+                                    <div className="truncate">
+                                      <div className="leading-tight">Edit Penerimaan</div>
+                                      <div className="text-[9.5px] text-slate-400 font-normal font-sans">Ubah data & ganti bukti foto</div>
+                                    </div>
+                                  </button>
+
+                                  {/* 4. Hapus Penerimaan */}
+                                  {onDeleteReceiving && (
+                                    <>
+                                      <div className="border-t border-slate-100 my-1" />
+                                      <button
+                                        type="button"
+                                        onClick={async (e) => {
+                                          e.stopPropagation();
+                                          setActiveActionId(null);
+                                          if (confirm(`Apakah Anda yakin ingin menghapus data Penerimaan Barang [${item.spk_number || item.purchase_order_num}]?`)) {
+                                            await onDeleteReceiving(item.id);
+                                          }
+                                        }}
+                                        className="w-full px-3 py-2 text-xs font-bold rounded-lg hover:bg-rose-50 text-rose-600 flex items-center gap-2 cursor-pointer transition-colors text-left"
+                                        title="Hapus Data Penerimaan"
+                                      >
+                                        <Trash2 className="w-4 h-4 text-rose-500 shrink-0" />
+                                        <div className="truncate">
+                                          <div className="leading-tight">Hapus Data</div>
+                                          <div className="text-[9.5px] text-rose-400 font-normal font-sans">Hapus riwayat penerimaan ini</div>
+                                        </div>
+                                      </button>
+                                    </>
+                                  )}
+                                </div>
+                              </div>
+                            </>
                           )}
                         </div>
                       </td>
