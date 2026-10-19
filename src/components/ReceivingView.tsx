@@ -1115,6 +1115,221 @@ export default function ReceivingView({
     }
   }, [barcodePrintReceiving, barcodePrintMode, parts]);
 
+  const handlePrintAllBarcodes = () => {
+    const gridEl = document.getElementById("barcode-printable-grid-content");
+    if (!gridEl) {
+      window.print();
+      return;
+    }
+
+    const docNumber = barcodePrintReceiving?.spk_number || barcodePrintReceiving?.purchase_order_num || "-";
+    const vessel = barcodePrintReceiving?.vessel_name || "Semua Armada Kapal";
+    const printDate = new Date().toLocaleDateString("id-ID");
+    const totalCount = printItemsList.length;
+
+    const printHtml = `<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <title>Label QR Code Suku Cadang - ${docNumber}</title>
+  <style>
+    @page {
+      size: A4 portrait;
+      margin: 8mm 6mm;
+    }
+    * {
+      box-sizing: border-box;
+      margin: 0;
+      padding: 0;
+    }
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+      background: #ffffff;
+      color: #0f172a;
+      padding: 0;
+      margin: 0;
+      -webkit-print-color-adjust: exact;
+      print-color-adjust: exact;
+    }
+    .print-header {
+      text-align: center;
+      margin-bottom: 12px;
+      padding-bottom: 6px;
+      border-bottom: 2px solid #0f172a;
+    }
+    .print-header h1 {
+      font-size: 13px;
+      font-weight: 900;
+      text-transform: uppercase;
+      letter-spacing: 0.05em;
+      color: #0f172a;
+    }
+    .print-header p {
+      font-size: 9.5px;
+      font-family: monospace;
+      color: #475569;
+      margin-top: 2px;
+    }
+    .barcode-printable-grid {
+      display: grid !important;
+      grid-template-columns: repeat(4, 1fr) !important;
+      gap: 8px !important;
+      width: 100% !important;
+    }
+    .barcode-printable-card {
+      border: 1.5px dashed #475569 !important;
+      border-radius: 8px !important;
+      padding: 8px 6px !important;
+      background: #ffffff !important;
+      display: flex !important;
+      flex-direction: column !important;
+      align-items: center !important;
+      justify-content: space-between !important;
+      text-align: center !important;
+      position: relative !important;
+      page-break-inside: avoid !important;
+      break-inside: avoid !important;
+      min-height: 155px !important;
+      box-sizing: border-box !important;
+    }
+    .cut-guide {
+      position: absolute !important;
+      top: 3px !important;
+      left: 5px !important;
+      font-size: 8px !important;
+      color: #94a3b8 !important;
+      font-family: monospace !important;
+      display: flex !important;
+      align-items: center !important;
+      gap: 2px !important;
+    }
+    .cut-guide svg {
+      width: 10px;
+      height: 10px;
+      display: inline-block;
+    }
+    .part-title {
+      font-size: 9.5px !important;
+      font-weight: 900 !important;
+      text-transform: uppercase !important;
+      color: #0f172a !important;
+      line-height: 1.15 !important;
+      margin-top: 4px !important;
+      margin-bottom: 4px !important;
+      width: 100% !important;
+      padding: 0 2px !important;
+      display: -webkit-box !important;
+      -webkit-line-clamp: 2 !important;
+      -webkit-box-orient: vertical !important;
+      overflow: hidden !important;
+      max-height: 24px !important;
+    }
+    .part-pn {
+      font-size: 8.5px !important;
+      font-family: monospace !important;
+      font-weight: 800 !important;
+      color: #334155 !important;
+      background: #f1f5f9 !important;
+      border: 1px solid #cbd5e1 !important;
+      padding: 1px 4px !important;
+      border-radius: 4px !important;
+      display: inline-block !important;
+      max-width: 100% !important;
+      white-space: nowrap !important;
+      overflow: hidden !important;
+      text-overflow: ellipsis !important;
+      margin-bottom: 4px !important;
+    }
+    .qr-container {
+      margin-top: auto !important;
+      display: flex !important;
+      flex-direction: column !important;
+      align-items: center !important;
+      justify-content: center !important;
+      width: 100% !important;
+    }
+    .qr-box {
+      background: #ffffff !important;
+      border: 1px solid #cbd5e1 !important;
+      border-radius: 6px !important;
+      padding: 4px !important;
+      display: flex !important;
+      align-items: center !important;
+      justify-content: center !important;
+    }
+    .qr-box svg {
+      width: 76px !important;
+      height: 76px !important;
+      max-width: 76px !important;
+      display: block !important;
+    }
+    .barcode-text {
+      font-size: 8px !important;
+      font-family: monospace !important;
+      font-weight: 800 !important;
+      color: #1e293b !important;
+      margin-top: 3px !important;
+      letter-spacing: 0.05em !important;
+      display: block !important;
+    }
+  </style>
+</head>
+<body>
+  <div class="print-header">
+    <h1>LABEL QR CODE SUKU CADANG INBOUND</h1>
+    <p>Dokumen: ${docNumber} • Kapal: ${vessel} • Total: ${totalCount} Label • Tanggal Cetak: ${printDate}</p>
+  </div>
+  <div class="barcode-printable-grid">
+    ${gridEl.innerHTML}
+  </div>
+</body>
+</html>`;
+
+    // Remove existing print iframe if any
+    const existingIframe = document.getElementById("barcode-print-iframe");
+    if (existingIframe) {
+      try { existingIframe.remove(); } catch {}
+    }
+
+    const iframe = document.createElement("iframe");
+    iframe.id = "barcode-print-iframe";
+    iframe.style.position = "fixed";
+    iframe.style.right = "0";
+    iframe.style.bottom = "0";
+    iframe.style.width = "0";
+    iframe.style.height = "0";
+    iframe.style.border = "0";
+    iframe.style.opacity = "0";
+    iframe.style.pointerEvents = "none";
+    document.body.appendChild(iframe);
+
+    const frameDoc = iframe.contentWindow?.document;
+    if (!frameDoc) {
+      window.print();
+      return;
+    }
+
+    frameDoc.open();
+    frameDoc.write(printHtml);
+    frameDoc.close();
+
+    setTimeout(() => {
+      try {
+        iframe.contentWindow?.focus();
+        iframe.contentWindow?.print();
+      } catch (err) {
+        console.error("Iframe print error, falling back to window.print():", err);
+        window.print();
+      } finally {
+        setTimeout(() => {
+          try {
+            document.body.removeChild(iframe);
+          } catch {}
+        }, 4000);
+      }
+    }, 250);
+  };
+
   const handleOpenEditModal = (rec: InboundReceiving) => {
     setEditingReceiving(rec);
     setEditPoNum(rec.purchase_order_num || "");
@@ -4642,7 +4857,7 @@ export default function ReceivingView({
 
                 <button
                   type="button"
-                  onClick={() => window.print()}
+                  onClick={handlePrintAllBarcodes}
                   className="px-4 py-2 bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-bold rounded-lg flex items-center gap-1.5 transition-colors shadow-xs cursor-pointer active:scale-95"
                   title="Cetak label ke printer (Ctrl + P)"
                 >
@@ -4662,7 +4877,7 @@ export default function ReceivingView({
             </div>
 
             {/* Printable Body Content */}
-            <div id="printable-area" className="p-6 overflow-y-auto flex-1 bg-slate-50 print:bg-white print:p-0">
+            <div id="barcode-printable-area" className="p-6 overflow-y-auto flex-1 bg-slate-50 print:bg-white print:p-0">
               
               {/* Guidance for user on screen (Hidden on Print) */}
               <div className="bg-emerald-50 border border-emerald-200 text-emerald-950 rounded-xl p-3 text-xs mb-5 flex items-center justify-between no-print shadow-2xs">
@@ -4686,7 +4901,10 @@ export default function ReceivingView({
               </div>
 
               {/* Grid of Barcode / QR Cards (Exactly 4 per row) */}
-              <div className="grid grid-cols-2 sm:grid-cols-4 print:grid-cols-4 gap-2 print:gap-2">
+              <div 
+                id="barcode-printable-grid-content"
+                className="grid grid-cols-2 sm:grid-cols-4 print:grid-cols-4 gap-2 print:gap-2 barcode-printable-grid"
+              >
                 {printItemsList.map((itm: any, idx: number) => {
                   const pName = itm.spare_part_name || itm.part_name || "Suku Cadang";
                   const pNum = itm.part_number !== undefined && itm.part_number !== null ? String(itm.part_number).trim() : "-";
@@ -4696,32 +4914,32 @@ export default function ReceivingView({
                   return (
                     <div
                       key={itm.uniqueKey || idx}
-                      className="border-2 border-dashed border-slate-300 print:border-slate-800 rounded-lg p-2 bg-white flex flex-col items-center justify-between text-center relative break-inside-avoid print:break-inside-avoid no-print-break"
+                      className="barcode-printable-card border-2 border-dashed border-slate-300 print:border-slate-800 rounded-lg p-2 bg-white flex flex-col items-center justify-between text-center relative break-inside-avoid print:break-inside-avoid no-print-break"
                       style={{ minHeight: "155px", WebkitPrintColorAdjust: "exact", printColorAdjust: "exact" }}
                     >
                       {/* Cut guide indicator */}
-                      <div className="absolute top-1 left-1.5 text-[8px] text-slate-400 print:text-slate-500 font-mono flex items-center gap-0.5 select-none opacity-80">
+                      <div className="cut-guide absolute top-1 left-1.5 text-[8px] text-slate-400 print:text-slate-500 font-mono flex items-center gap-0.5 select-none opacity-80">
                         <Scissors className="w-2.5 h-2.5" />
                         <span>✂</span>
                       </div>
 
                       {/* 1. Nama Sparepart */}
-                      <div className="w-full mt-0.5 mb-1 px-0.5">
+                      <div className="part-title w-full mt-0.5 mb-1 px-0.5">
                         <div className="text-[9.5px] font-black uppercase text-slate-900 leading-tight line-clamp-2" title={pName}>
                           {pName}
                         </div>
                       </div>
 
                       {/* 2. Part Number */}
-                      <div className="mb-1">
+                      <div className="part-pn mb-1">
                         <span className="inline-block text-[8.5px] font-mono font-black text-slate-700 bg-slate-100 border border-slate-200 px-1.5 py-0.5 rounded max-w-full truncate">
                           PN: {pNum || "-"}
                         </span>
                       </div>
 
                       {/* 3. QR Code Graphic matching Catalog Sparepart */}
-                      <div className="w-full flex flex-col items-center justify-center mt-auto">
-                        <div className="p-1 bg-white border border-slate-200 rounded-lg shadow-2xs flex items-center justify-center">
+                      <div className="qr-container w-full flex flex-col items-center justify-center mt-auto">
+                        <div className="qr-box p-1 bg-white border border-slate-200 rounded-lg shadow-2xs flex items-center justify-center">
                           <QRCode
                             value={targetUrl}
                             size={76}
@@ -4729,7 +4947,7 @@ export default function ReceivingView({
                             viewBox="0 0 256 256"
                           />
                         </div>
-                        <span className="text-[8px] font-mono font-bold text-slate-800 tracking-wider block mt-1">
+                        <span className="barcode-text text-[8px] font-mono font-bold text-slate-800 tracking-wider block mt-1">
                           #{bc}
                         </span>
                       </div>

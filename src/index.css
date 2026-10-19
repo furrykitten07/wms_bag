@@ -106,6 +106,39 @@ body {
     border-radius: 0 !important;
     display: block !important;
   }
+  #barcode-printable-area {
+    position: static !important;
+    overflow: visible !important;
+    max-height: none !important;
+    height: auto !important;
+    min-height: auto !important;
+    padding: 0 !important;
+    margin: 0 !important;
+    background: white !important;
+    display: block !important;
+    width: 100% !important;
+  }
+  .barcode-printable-grid {
+    display: grid !important;
+    grid-template-columns: repeat(4, 1fr) !important;
+    gap: 8px !important;
+    width: 100% !important;
+    background: white !important;
+  }
+  .barcode-printable-card {
+    display: flex !important;
+    flex-direction: column !important;
+    align-items: center !important;
+    justify-content: space-between !important;
+    border: 1.5px dashed #475569 !important;
+    border-radius: 8px !important;
+    padding: 8px 6px !important;
+    min-height: 155px !important;
+    page-break-inside: avoid !important;
+    break-inside: avoid !important;
+    background: white !important;
+    box-sizing: border-box !important;
+  }
   .print-document-overlay > div {
     position: static !important;
     border: none !important;
