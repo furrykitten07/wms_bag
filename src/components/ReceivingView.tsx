@@ -4,6 +4,7 @@
  */
 
 import React, { useState, useRef, useEffect, useMemo } from "react";
+import { createPortal } from "react-dom";
 import { 
   FileText, 
   Search, 
@@ -1027,6 +1028,18 @@ export default function ReceivingView({
   // Print Barcode Stickers State
   const [barcodePrintReceiving, setBarcodePrintReceiving] = useState<InboundReceiving | null>(null);
   const [barcodePrintMode, setBarcodePrintMode] = useState<"single" | "qty">("single");
+
+  useEffect(() => {
+    if (typeof document === "undefined") return;
+    if (barcodePrintReceiving) {
+      document.body.classList.add("printing-barcode-active");
+    } else {
+      document.body.classList.remove("printing-barcode-active");
+    }
+    return () => {
+      document.body.classList.remove("printing-barcode-active");
+    };
+  }, [barcodePrintReceiving]);
 
   // Helper to resolve barcode for an item from all sources (direct, parts master, barcode cache, catalog)
   const getItemBarcode = (itm: any): string => {
@@ -4582,8 +4595,8 @@ export default function ReceivingView({
       )}
 
       {/* MODAL CETAK SEMUA BARCODE ITEM INBOUND (UNTUK DIGUNTING) */}
-      {barcodePrintReceiving && (
-        <div className="fixed inset-0 bg-slate-950/75 backdrop-blur-xs flex items-center justify-center z-[80] p-4 print:p-0 print:bg-white print:static print:inset-auto print-document-overlay">
+      {barcodePrintReceiving && typeof document !== "undefined" && createPortal(
+        <div className="fixed inset-0 bg-slate-950/75 backdrop-blur-xs flex items-center justify-center z-[9999] p-4 print:p-0 print:bg-white print:static print:inset-auto barcode-print-modal">
           <div className="bg-white rounded-2xl shadow-2xl border border-slate-200 w-full max-w-5xl max-h-[92vh] flex flex-col overflow-hidden print:border-none print:shadow-none print:max-w-none print:max-h-none print:w-full print:rounded-none">
             
             {/* Modal Top Header (Hidden on Print) */}
@@ -4665,15 +4678,15 @@ export default function ReceivingView({
               </div>
 
               {/* Print Document Title Header (Only Visible on Print) */}
-              <div className="hidden print:block mb-4 pb-2 border-b-2 border-slate-800 text-center">
-                <div className="text-[14px] font-black tracking-wider uppercase">LABEL QR CODE SUKU CADANG INBOUND</div>
-                <div className="text-[10px] font-mono text-slate-600">
-                  Dokumen: {barcodePrintReceiving.spk_number || barcodePrintReceiving.purchase_order_num} • Kapal: {barcodePrintReceiving.vessel_name || "Semua Kapal"} • Tanggal Cetak: {new Date().toLocaleDateString("id-ID")}
+              <div className="hidden print:block mb-3 pb-2 border-b-2 border-slate-800 text-center">
+                <div className="text-[13px] font-black tracking-wider uppercase">LABEL QR CODE SUKU CADANG INBOUND</div>
+                <div className="text-[9.5px] font-mono text-slate-600">
+                  Dokumen: {barcodePrintReceiving.spk_number || barcodePrintReceiving.purchase_order_num} • Kapal: {barcodePrintReceiving.vessel_name || "Semua Kapal"} • Total: {printItemsList.length} Label • Tanggal Cetak: {new Date().toLocaleDateString("id-ID")}
                 </div>
               </div>
 
               {/* Grid of Barcode / QR Cards (Exactly 4 per row) */}
-              <div className="grid grid-cols-2 sm:grid-cols-4 print:grid-cols-4 gap-2.5 print:gap-2.5">
+              <div className="grid grid-cols-2 sm:grid-cols-4 print:grid-cols-4 gap-2 print:gap-2">
                 {printItemsList.map((itm: any, idx: number) => {
                   const pName = itm.spare_part_name || itm.part_name || "Suku Cadang";
                   const pNum = itm.part_number !== undefined && itm.part_number !== null ? String(itm.part_number).trim() : "-";
@@ -4683,40 +4696,40 @@ export default function ReceivingView({
                   return (
                     <div
                       key={itm.uniqueKey || idx}
-                      className="border-2 border-dashed border-slate-300 print:border-slate-800 rounded-lg p-2.5 bg-white flex flex-col items-center justify-between text-center relative break-inside-avoid print:break-inside-avoid no-print-break"
-                      style={{ minHeight: "175px", WebkitPrintColorAdjust: "exact", printColorAdjust: "exact" }}
+                      className="border-2 border-dashed border-slate-300 print:border-slate-800 rounded-lg p-2 bg-white flex flex-col items-center justify-between text-center relative break-inside-avoid print:break-inside-avoid no-print-break"
+                      style={{ minHeight: "155px", WebkitPrintColorAdjust: "exact", printColorAdjust: "exact" }}
                     >
                       {/* Cut guide indicator */}
-                      <div className="absolute top-1 left-1.5 text-[8.5px] text-slate-400 print:text-slate-500 font-mono flex items-center gap-0.5 select-none opacity-80">
+                      <div className="absolute top-1 left-1.5 text-[8px] text-slate-400 print:text-slate-500 font-mono flex items-center gap-0.5 select-none opacity-80">
                         <Scissors className="w-2.5 h-2.5" />
                         <span>✂</span>
                       </div>
 
                       {/* 1. Nama Sparepart */}
-                      <div className="w-full mt-1 mb-1 px-0.5">
-                        <div className="text-[10px] font-black uppercase text-slate-900 leading-tight line-clamp-2" title={pName}>
+                      <div className="w-full mt-0.5 mb-1 px-0.5">
+                        <div className="text-[9.5px] font-black uppercase text-slate-900 leading-tight line-clamp-2" title={pName}>
                           {pName}
                         </div>
                       </div>
 
                       {/* 2. Part Number */}
                       <div className="mb-1">
-                        <span className="inline-block text-[9px] font-mono font-black text-slate-700 bg-slate-100 border border-slate-200 px-1.5 py-0.5 rounded max-w-full truncate">
+                        <span className="inline-block text-[8.5px] font-mono font-black text-slate-700 bg-slate-100 border border-slate-200 px-1.5 py-0.5 rounded max-w-full truncate">
                           PN: {pNum || "-"}
                         </span>
                       </div>
 
                       {/* 3. QR Code Graphic matching Catalog Sparepart */}
                       <div className="w-full flex flex-col items-center justify-center mt-auto">
-                        <div className="p-1.5 bg-white border border-slate-200 rounded-lg shadow-2xs flex items-center justify-center">
+                        <div className="p-1 bg-white border border-slate-200 rounded-lg shadow-2xs flex items-center justify-center">
                           <QRCode
                             value={targetUrl}
-                            size={82}
-                            style={{ height: "82px", width: "82px", maxWidth: "82px" }}
+                            size={76}
+                            style={{ height: "76px", width: "76px", maxWidth: "76px" }}
                             viewBox="0 0 256 256"
                           />
                         </div>
-                        <span className="text-[8.5px] font-mono font-bold text-slate-800 tracking-wider block mt-1">
+                        <span className="text-[8px] font-mono font-bold text-slate-800 tracking-wider block mt-1">
                           #{bc}
                         </span>
                       </div>
@@ -4740,7 +4753,8 @@ export default function ReceivingView({
             </div>
 
           </div>
-        </div>
+        </div>,
+        document.body
       )}
 
     </div>
