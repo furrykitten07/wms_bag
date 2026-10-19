@@ -44,7 +44,8 @@ import {
   Pencil,
   Edit3,
   Save,
-  Ship
+  Ship,
+  ChevronDown
 } from "lucide-react";
 import { InboundReceiving, ReceivingStatus, SparePart, UserRole, SPKWorkOrder, WarehouseLocation, Vessel, User, normalizeUserRole } from "../types.js";
 import { demoSPKs } from "../demoSeedData.js";
@@ -103,8 +104,44 @@ export default function ReceivingView({
   onDeleteReceiving
 }: ReceivingViewProps) {
   const [search, setSearch] = useState("");
+  const [datePreset, setDatePreset] = useState<string>("ALL"); // "ALL" | "YYYY-MM" | "CUSTOM"
+  const [startDate, setStartDate] = useState<string>("");
+  const [endDate, setEndDate] = useState<string>("");
   const [activeActionId, setActiveActionId] = useState<string | null>(null);
   
+  // Extract all available months dynamically from receivingList
+  const availableMonths = useMemo(() => {
+    const monthMap = new Map<string, number>();
+    (receivingList || []).forEach(r => {
+      if (!r) return;
+      const d = (r.received_date || (r as any).completion_date || (r as any).created_at || "").trim();
+      if (d.length >= 7) {
+        const ym = d.substring(0, 7); // "YYYY-MM"
+        if (/^\d{4}-\d{2}/.test(ym)) {
+          monthMap.set(ym, (monthMap.get(ym) || 0) + 1);
+        }
+      }
+    });
+    return Array.from(monthMap.entries()).sort((a, b) => b[0].localeCompare(a[0]));
+  }, [receivingList]);
+
+  const formatMonthName = (ym: string) => {
+    try {
+      const [year, month] = ym.split("-");
+      const monthNames = [
+        "Januari", "Februari", "Maret", "April", "Mei", "Juni",
+        "Juli", "Agustus", "September", "Oktober", "November", "Desember"
+      ];
+      const mIdx = parseInt(month, 10) - 1;
+      if (mIdx >= 0 && mIdx < 12) {
+        return `${monthNames[mIdx]} ${year}`;
+      }
+      return ym;
+    } catch {
+      return ym;
+    }
+  };
+
   // Inbound Pagination states
   const [recPage, setRecPage] = useState(1);
   const [recPerPage, setRecPerPage] = useState<number>(10);
@@ -116,7 +153,7 @@ export default function ReceivingView({
   useEffect(() => {
     setRecPage(1);
     setSelectedRecIds([]);
-  }, [search]);
+  }, [search, datePreset, startDate, endDate]);
 
   const [activeReceiving, setActiveReceiving] = useState<InboundReceiving | null>(null);
   const [isNewRecOpen, setIsNewRecOpen] = useState(false);
@@ -1522,17 +1559,32 @@ export default function ReceivingView({
     }
   };
 
-  const filtered = (receivingList || []).filter(r => {
-    if (!r) return false;
-    const poNum = r.purchase_order_num || "";
-    const spkNum = r.spk_number || "";
-    const dnNum = r.delivery_note_num || "";
-    const vName = r.vendor_name || "";
-    return poNum.toLowerCase().includes(search.toLowerCase()) || 
-           spkNum.toLowerCase().includes(search.toLowerCase()) ||
-           dnNum.toLowerCase().includes(search.toLowerCase()) || 
-           vName.toLowerCase().includes(search.toLowerCase());
-  });
+  const filtered = useMemo(() => {
+    return (receivingList || []).filter(r => {
+      if (!r) return false;
+
+      // Date Filter
+      const recDate = (r.received_date || (r as any).completion_date || (r as any).created_at || "").trim();
+      if (datePreset !== "ALL" && datePreset !== "CUSTOM") {
+        if (!recDate.startsWith(datePreset)) return false;
+      }
+      if (startDate && recDate && recDate < startDate) return false;
+      if (endDate && recDate && recDate > endDate) return false;
+
+      if (!search.trim()) return true;
+      const q = search.toLowerCase();
+      const poNum = r.purchase_order_num || "";
+      const spkNum = r.spk_number || "";
+      const dnNum = r.delivery_note_num || "";
+      const vName = r.vendor_name || "";
+      const vesName = r.vessel_name || "";
+      return poNum.toLowerCase().includes(q) || 
+             spkNum.toLowerCase().includes(q) ||
+             dnNum.toLowerCase().includes(q) || 
+             vName.toLowerCase().includes(q) ||
+             vesName.toLowerCase().includes(q);
+    });
+  }, [receivingList, search, datePreset, startDate, endDate]);
 
   const recTotalPages = Math.ceil(filtered.length / recPerPage);
   const paginatedRec = filtered.slice((recPage - 1) * recPerPage, recPage * recPerPage);
@@ -1635,20 +1687,101 @@ export default function ReceivingView({
       </div>
 
       {/* Advanced Search & Filter Bar */}
-      <section className="bg-white border-b border-slate-200 px-6 py-4 flex flex-col sm:flex-row gap-3 items-center shrink-0 shadow-xs no-print">
-        <div className="relative w-full sm:w-80">
-          <input
-            type="text"
-            placeholder="Cari No. SPK, No. PO, Surat Jalan, atau nama vendor..."
-            value={search}
-            onChange={(e) => setSearch(e.target.value)}
-            className="w-full bg-slate-50 border border-slate-250 text-slate-800 p-2.5 pl-9 text-xs rounded-lg outline-none focus:border-blue-600 focus:bg-white placeholder:text-slate-450 font-sans font-medium"
-          />
-          <Search className="w-4 h-4 text-slate-400 absolute left-3 top-3.5" />
+      <section className="bg-white border-b border-slate-200 px-6 py-4 flex flex-col gap-3 shrink-0 shadow-xs no-print">
+        {/* Row 1: Search and Counter */}
+        <div className="flex flex-col sm:flex-row gap-3 items-center justify-between">
+          <div className="relative w-full sm:w-80">
+            <input
+              type="text"
+              placeholder="Cari No. SPK, No. PO, Surat Jalan, atau nama vendor..."
+              value={search}
+              onChange={(e) => setSearch(e.target.value)}
+              className="w-full bg-slate-50 border border-slate-250 text-slate-800 p-2.5 pl-9 text-xs rounded-lg outline-none focus:border-blue-600 focus:bg-white placeholder:text-slate-450 font-sans font-medium"
+            />
+            <Search className="w-4 h-4 text-slate-400 absolute left-3 top-3.5" />
+          </div>
+          <div className="ml-auto text-[10px] text-slate-500 font-mono tracking-wider font-extrabold uppercase flex items-center gap-2">
+            <Boxes className="w-4 h-4 text-blue-600" />
+            <span>Menampilkan <strong className="text-slate-900 font-black">{filtered.length}</strong> dari {(receivingList || []).length} Data Penerimaan</span>
+          </div>
         </div>
-        <div className="ml-auto text-[10px] text-slate-500 font-mono tracking-wider font-extrabold uppercase flex items-center gap-2">
-          <Boxes className="w-4 h-4 text-blue-600" />
-          <span>{filtered.length} Total Data Penerimaan Logistik</span>
+
+        {/* Row 2: Periode Bulan & Tahun + Custom Date Picker */}
+        <div className="flex flex-wrap items-center justify-between gap-3 pt-2.5 border-t border-slate-100">
+          <div className="flex flex-wrap items-center gap-2">
+            <div className="flex items-center gap-1.5">
+              <span className="text-slate-500 uppercase tracking-wider flex items-center gap-1.5 mr-1 text-[10px] font-extrabold font-mono">
+                <Calendar className="w-3.5 h-3.5 text-emerald-600" /> PERIODE BULAN & TAHUN:
+              </span>
+
+              <div className="relative flex items-center">
+                <select
+                  value={datePreset}
+                  onChange={(e) => {
+                    const val = e.target.value;
+                    setDatePreset(val);
+                    if (val !== "CUSTOM") {
+                      setStartDate("");
+                      setEndDate("");
+                    }
+                  }}
+                  className="bg-white hover:bg-slate-50 border border-slate-300 text-slate-800 text-xs font-bold font-sans rounded-lg pl-3 pr-8 py-1.5 shadow-xs focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-all cursor-pointer appearance-none"
+                  title="Pilih Bulan & Tahun Periode Penerimaan Inbound"
+                >
+                  <option value="ALL">Semua Periode ({(receivingList || []).length} Data)</option>
+                  {availableMonths.map(([ym, count]) => (
+                    <option key={ym} value={ym}>
+                      {formatMonthName(ym)} ({count} Data)
+                    </option>
+                  ))}
+                  {datePreset === "CUSTOM" && (
+                    <option value="CUSTOM">Rentang Tanggal Kustom</option>
+                  )}
+                </select>
+                <div className="pointer-events-none absolute inset-y-0 right-0 flex items-center pr-2.5 text-slate-400">
+                  <ChevronDown className="w-3.5 h-3.5" />
+                </div>
+              </div>
+            </div>
+
+            {/* Date Range Inputs */}
+            <div className="flex items-center gap-1.5 ml-1 bg-slate-50 p-1 rounded-lg border border-slate-200">
+              <input
+                type="date"
+                value={startDate}
+                onChange={(e) => {
+                  setStartDate(e.target.value);
+                  setDatePreset("CUSTOM");
+                }}
+                className="bg-white border border-slate-200 rounded px-2 py-1 text-[11px] font-mono font-semibold text-slate-700 focus:outline-none focus:border-blue-500"
+                title="Tanggal Penerimaan Dari"
+              />
+              <span className="text-[10px] font-bold text-slate-400 font-mono">s/d</span>
+              <input
+                type="date"
+                value={endDate}
+                onChange={(e) => {
+                  setEndDate(e.target.value);
+                  setDatePreset("CUSTOM");
+                }}
+                className="bg-white border border-slate-200 rounded px-2 py-1 text-[11px] font-mono font-semibold text-slate-700 focus:outline-none focus:border-blue-500"
+                title="Tanggal Penerimaan Sampai"
+              />
+            </div>
+
+            {/* Reset Button */}
+            {(datePreset !== "ALL" || startDate || endDate) && (
+              <button
+                type="button"
+                onClick={() => { setDatePreset("ALL"); setStartDate(""); setEndDate(""); }}
+                className="px-2.5 py-1 bg-rose-50 hover:bg-rose-100 border border-rose-200 text-rose-700 rounded-lg text-[10px] font-bold cursor-pointer transition-all flex items-center gap-1"
+                title="Reset Filter Tanggal"
+              >
+                <X className="w-3 h-3" />
+                <span>Reset Tanggal</span>
+              </button>
+            )}
+          </div>
         </div>
       </section>
 

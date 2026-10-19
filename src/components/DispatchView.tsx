@@ -10,6 +10,7 @@ import {
   MapPin, 
   Eye, 
   Box, 
+  Boxes,
   CheckSquare, 
   Truck, 
   UserCheck, 
@@ -161,10 +162,52 @@ export default function DispatchView({
   const isSumbonoRole = role === UserRole.VP_RENDALHAR || role === UserRole.SUPER_ADMIN;
 
   // Date/Time Filter states for Outbound Dispatch (TUG 8)
-  const [timePreset, setTimePreset] = useState<"all" | "week" | "month" | "july2026" | "custom">("all");
-  const [selectedMonth, setSelectedMonth] = useState<string>("ALL");
+  const [datePreset, setDatePreset] = useState<string>("ALL"); // "ALL" | "YYYY-MM" | "CUSTOM"
   const [dateFrom, setDateFrom] = useState<string>("");
   const [dateTo, setDateTo] = useState<string>("");
+
+  // Extract all available months dynamically from dispatchList and requests
+  const availableMonths = useMemo(() => {
+    const monthMap = new Map<string, number>();
+    (dispatchList || []).forEach(d => {
+      if (!d) return;
+      const dateVal = ((d as any).dispatch_date || (d.created_at ? d.created_at.split("T")[0] : "") || d.created_at || "").trim();
+      if (dateVal.length >= 7) {
+        const ym = dateVal.substring(0, 7);
+        if (/^\d{4}-\d{2}/.test(ym)) {
+          monthMap.set(ym, (monthMap.get(ym) || 0) + 1);
+        }
+      }
+    });
+    (requests || []).forEach(r => {
+      if (!r) return;
+      const dateVal = (r.request_date || (r.created_at ? r.created_at.split("T")[0] : "") || "").trim();
+      if (dateVal.length >= 7) {
+        const ym = dateVal.substring(0, 7);
+        if (/^\d{4}-\d{2}/.test(ym) && !monthMap.has(ym)) {
+          monthMap.set(ym, 0);
+        }
+      }
+    });
+    return Array.from(monthMap.entries()).sort((a, b) => b[0].localeCompare(a[0]));
+  }, [dispatchList, requests]);
+
+  const formatMonthName = (ym: string) => {
+    try {
+      const [year, month] = ym.split("-");
+      const monthNames = [
+        "Januari", "Februari", "Maret", "April", "Mei", "Juni",
+        "Juli", "Agustus", "September", "Oktober", "November", "Desember"
+      ];
+      const mIdx = parseInt(month, 10) - 1;
+      if (mIdx >= 0 && mIdx < 12) {
+        return `${monthNames[mIdx]} ${year}`;
+      }
+      return ym;
+    } catch {
+      return ym;
+    }
+  };
 
   // Outbound Pagination states
   const [dspPage, setDspPage] = useState(1);
@@ -177,7 +220,7 @@ export default function DispatchView({
   React.useEffect(() => {
     setDspPage(1);
     setSelectedDspIds([]);
-  }, [search, statusFilter, vesselFilter, activeTab, timePreset, selectedMonth, dateFrom, dateTo]);
+  }, [search, statusFilter, vesselFilter, activeTab, datePreset, dateFrom, dateTo]);
 
   const [selectedDispatch, setSelectedDispatch] = useState<OutboundDispatch | null>(null);
 
@@ -1007,27 +1050,14 @@ export default function DispatchView({
     }
   };
 
-  // Helper to match item dates against current timePreset / date filters
+  // Helper to match item dates against current datePreset / date filters
   const isDateInFilter = (dateStr?: string) => {
     if (!dateStr) return true;
-    if (timePreset === "all") return true;
-    const currentYYYYMM = new Date().toISOString().substring(0, 7);
-    if (timePreset === "july2026" || selectedMonth === "2026-07") {
-      return dateStr.startsWith("2026-07") || dateStr.startsWith(currentYYYYMM);
+    if (datePreset !== "ALL" && datePreset !== "CUSTOM") {
+      if (!dateStr.startsWith(datePreset)) return false;
     }
-    if (timePreset === "week") {
-      const now = new Date().getTime();
-      const dTime = new Date(dateStr).getTime();
-      return isNaN(dTime) || (now - dTime) <= 7 * 24 * 60 * 60 * 1000;
-    }
-    if (timePreset === "month" && selectedMonth !== "ALL") {
-      return dateStr.startsWith(selectedMonth) || dateStr.startsWith(currentYYYYMM);
-    }
-    if (timePreset === "custom") {
-      if (dateFrom && dateStr < dateFrom) return false;
-      if (dateTo && dateStr > dateTo) return false;
-      return true;
-    }
+    if (dateFrom && dateStr < dateFrom) return false;
+    if (dateTo && dateStr > dateTo) return false;
     return true;
   };
 
@@ -1042,13 +1072,13 @@ export default function DispatchView({
       const dateVal = r.request_date || (r.created_at ? r.created_at.split("T")[0] : "");
       const matchesSearch = search === "" || 
         reqNum.toLowerCase().includes(search.toLowerCase()) || 
-        tug5Num.toLowerCase().includes(search.toLowerCase()) ||
-        vName.toLowerCase().includes(search.toLowerCase()) ||
+        tug5Num.toLowerCase().includes(search.toLowerCase()) || 
+        vName.toLowerCase().includes(search.toLowerCase()) || 
         woRef.toLowerCase().includes(search.toLowerCase());
       const matchesVessel = vesselFilter === "All" || vName === vesselFilter;
       return matchesSearch && matchesVessel && isDateInFilter(dateVal);
     });
-  }, [requests, search, vesselFilter, timePreset, selectedMonth, dateFrom, dateTo]);
+  }, [requests, search, vesselFilter, datePreset, dateFrom, dateTo]);
 
   // Filtered TUG 6 requests
   const filteredTug6List = React.useMemo(() => {
@@ -1063,14 +1093,14 @@ export default function DispatchView({
       const dateVal = r.request_date || (r.created_at ? r.created_at.split("T")[0] : "");
       const matchesSearch = search === "" || 
         reqNum.toLowerCase().includes(search.toLowerCase()) || 
-        tug6Num.toLowerCase().includes(search.toLowerCase()) ||
-        tug5Num.toLowerCase().includes(search.toLowerCase()) ||
-        vName.toLowerCase().includes(search.toLowerCase()) ||
+        tug6Num.toLowerCase().includes(search.toLowerCase()) || 
+        tug5Num.toLowerCase().includes(search.toLowerCase()) || 
+        vName.toLowerCase().includes(search.toLowerCase()) || 
         woRef.toLowerCase().includes(search.toLowerCase());
       const matchesVessel = vesselFilter === "All" || vName === vesselFilter;
       return matchesSearch && matchesVessel && isDateInFilter(dateVal);
     });
-  }, [requestsTUG6, requests, search, vesselFilter, timePreset, selectedMonth, dateFrom, dateTo]);
+  }, [requestsTUG6, requests, search, vesselFilter, datePreset, dateFrom, dateTo]);
 
   // Extract unique lists of vessels for filters
   const uniqueVessels = Array.from(new Set((dispatchList || []).filter(d => d && d.vessel_name).map(d => d.vessel_name))).filter(Boolean);
@@ -1106,10 +1136,8 @@ export default function DispatchView({
 
   const handlePrintFilteredTUG5 = () => {
     let filterLabel = "Semua TUG 5";
-    if (timePreset === "july2026" || selectedMonth === "2026-07") filterLabel = "Periode Juli 2026";
-    else if (timePreset === "week") filterLabel = "7 Hari Terakhir";
-    else if (timePreset === "month" && selectedMonth !== "ALL") filterLabel = `Bulan ${selectedMonth}`;
-    else if (timePreset === "custom") filterLabel = `Kustom (${dateFrom || "Awal"} s/d ${dateTo || "Akhir"})`;
+    if (datePreset !== "ALL" && datePreset !== "CUSTOM") filterLabel = `Periode ${formatMonthName(datePreset)}`;
+    else if (dateFrom || dateTo) filterLabel = `Kustom (${dateFrom || "Awal"} s/d ${dateTo || "Akhir"})`;
 
     if (filteredTug5List.length === 0) {
       const emptyDoc: MaterialRequest = {
@@ -1164,10 +1192,8 @@ export default function DispatchView({
 
   const handlePrintFilteredTUG6 = () => {
     let filterLabel = "Semua TUG 6";
-    if (timePreset === "july2026" || selectedMonth === "2026-07") filterLabel = "Periode Juli 2026";
-    else if (timePreset === "week") filterLabel = "7 Hari Terakhir";
-    else if (timePreset === "month" && selectedMonth !== "ALL") filterLabel = `Bulan ${selectedMonth}`;
-    else if (timePreset === "custom") filterLabel = `Kustom (${dateFrom || "Awal"} s/d ${dateTo || "Akhir"})`;
+    if (datePreset !== "ALL" && datePreset !== "CUSTOM") filterLabel = `Periode ${formatMonthName(datePreset)}`;
+    else if (dateFrom || dateTo) filterLabel = `Kustom (${dateFrom || "Awal"} s/d ${dateTo || "Akhir"})`;
 
     if (filteredTug6List.length === 0) {
       const emptyDoc: MaterialRequest = {
@@ -1224,11 +1250,15 @@ export default function DispatchView({
 
   const handlePrintFilteredTUG8 = () => {
     if (filtered.length === 0) {
-      const periodLabel = (timePreset === "july2026" || selectedMonth === "2026-07") ? "Juli 2026" : selectedMonth !== "ALL" ? `Bulan ${selectedMonth}` : "Periode Terpilih";
+      const periodLabel = (datePreset !== "ALL" && datePreset !== "CUSTOM") 
+        ? formatMonthName(datePreset) 
+        : (dateFrom || dateTo) 
+          ? `Kustom (${dateFrom || "Awal"} s/d ${dateTo || "Akhir"})` 
+          : "Periode Terpilih";
       const emptyDoc: OutboundDispatch = {
         id: `empty-tug8-${Date.now()}`,
-        dispatch_number: (timePreset === "july2026" || selectedMonth === "2026-07") ? "TUG8-2026-JULI" : "TUG8-2026-NIHIL",
-        tug8_number: (timePreset === "july2026" || selectedMonth === "2026-07") ? "BPB-2026-JULI" : "BPB-2026-NIHIL",
+        dispatch_number: (datePreset !== "ALL" && datePreset !== "CUSTOM") ? `TUG8-${datePreset}-NIHIL` : "TUG8-2026-NIHIL",
+        tug8_number: (datePreset !== "ALL" && datePreset !== "CUSTOM") ? `BPB-${datePreset}-NIHIL` : "BPB-2026-NIHIL",
         request_reference: "MANUAL",
         vessel_name: "-",
         warehouse_name: "GUDANG MERAK CENTRAL",
@@ -1243,7 +1273,7 @@ export default function DispatchView({
         notes: `Dokumen Rekapitulasi TUG 8 (${periodLabel} - NIHIL)`,
         items: [],
         created_by: "Staff Dispatch",
-        created_at: (timePreset === "july2026" || selectedMonth === "2026-07") ? "2026-07-31" : new Date().toISOString()
+        created_at: (datePreset !== "ALL" && datePreset !== "CUSTOM") ? `${datePreset}-01` : new Date().toISOString()
       };
       onPreviewDocument("bon", emptyDoc);
     } else if (filtered.length === 1) {
@@ -1407,184 +1437,188 @@ export default function DispatchView({
       </div>
 
       {/* Searching & Analytical Filters */}
-      <section className="bg-white border-b border-slate-200 px-6 py-4 flex flex-col md:flex-row md:items-center justify-between gap-4 shrink-0 shadow-xs no-print">
+      <section className="bg-white border-b border-slate-200 px-6 py-4 flex flex-col gap-3 shrink-0 shadow-xs no-print">
         
-        {/* Keyword */}
-        <div className="relative w-full md:w-80">
-          <input
-            type="text"
-            placeholder="Cari kapal, nomor TUG 8, nomor dispatch..."
-            value={search}
-            onChange={(e) => setSearch(e.target.value)}
-            className="w-full bg-slate-50 border border-slate-250 text-slate-800 p-2.5 pl-9 text-xs rounded-lg outline-none focus:border-blue-600 focus:bg-white placeholder:text-slate-450 font-sans font-medium"
-          />
-          <Search className="w-4 h-4 text-slate-400 absolute left-3 top-3.5" />
+        {/* Row 1: Keyword, Status, Vessel & Cetak Actions */}
+        <div className="flex flex-wrap items-center justify-between gap-3">
+          {/* Keyword */}
+          <div className="relative w-full sm:w-80">
+            <input
+              type="text"
+              placeholder="Cari kapal, nomor TUG 8, nomor dispatch..."
+              value={search}
+              onChange={(e) => setSearch(e.target.value)}
+              className="w-full bg-slate-50 border border-slate-250 text-slate-800 p-2.5 pl-9 text-xs rounded-lg outline-none focus:border-blue-600 focus:bg-white placeholder:text-slate-450 font-sans font-medium"
+            />
+            <Search className="w-4 h-4 text-slate-400 absolute left-3 top-3.5" />
+          </div>
+
+          {/* Controls: Status, Vessel, Print */}
+          <div className="flex flex-wrap items-center gap-3 font-mono text-[11px] font-bold">
+            {/* Status Filter */}
+            <div className="flex items-center gap-1.5 text-slate-600">
+              <SlidersHorizontal className="w-3.5 h-3.5 text-slate-400" />
+              <span>Status:</span>
+              <select
+                value={statusFilter}
+                onChange={(e) => setStatusFilter(e.target.value)}
+                className="bg-white border border-slate-200 rounded-lg p-2 text-[11px] font-bold text-slate-700 focus:outline-none focus:ring-1 focus:ring-blue-500 cursor-pointer"
+              >
+                <option value="All">Semua Status</option>
+                {activeTab === "queue" ? (
+                  <>
+                    <option value="DISPATCHED_PARTIAL">⚠️ Dispatched Parsial</option>
+                    <option value={DispatchStatus.DRAFT}>Draft</option>
+                    <option value={DispatchStatus.PICKING}>Picking</option>
+                    <option value={DispatchStatus.PACKED}>Packed</option>
+                    <option value={DispatchStatus.READY_TO_DISPATCH}>Ready To Dispatch</option>
+                    <option value={DispatchStatus.DISPATCHED}>Dispatched</option>
+                  </>
+                ) : (
+                  <>
+                    <option value={DispatchStatus.DELIVERED}>Delivered</option>
+                    <option value={DispatchStatus.COMPLETED}>Completed</option>
+                  </>
+                )}
+              </select>
+            </div>
+
+            {/* Vessel Filter */}
+            <div className="flex items-center gap-1.5 text-slate-600">
+              <Anchor className="w-3.5 h-3.5 text-slate-400" />
+              <span>Vessel:</span>
+              <select
+                value={vesselFilter}
+                onChange={(e) => setVesselFilter(e.target.value)}
+                className="bg-white border border-slate-200 rounded-lg p-2 text-[11px] font-bold text-slate-700 focus:outline-none focus:ring-1 focus:ring-blue-500 cursor-pointer"
+              >
+                <option value="All">Semua Kapal</option>
+                {uniqueVessels.map(v => (
+                  <option key={v} value={v}>{v}</option>
+                ))}
+              </select>
+            </div>
+
+            {/* Print Buttons Area */}
+            <div className="flex items-center gap-1.5 ml-1 shrink-0">
+              {/* Cetak TUG 5 Button */}
+              <button
+                type="button"
+                onClick={handlePrintFilteredTUG5}
+                className="bg-indigo-600 hover:bg-indigo-500 active:bg-indigo-700 text-white font-mono font-bold text-xs uppercase px-3 py-1.5 rounded-lg shadow-xs hover:shadow transition-all cursor-pointer flex items-center gap-1.5"
+                title="Cetak Dokumen TUG 5 Sesuai Rentang Waktu / Filter"
+              >
+                <Printer className="w-3.5 h-3.5 text-white" />
+                <span>Cetak TUG 5 ({filteredTug5List.length})</span>
+              </button>
+
+              {/* Cetak TUG 6 Button */}
+              <button
+                type="button"
+                onClick={handlePrintFilteredTUG6}
+                className="bg-emerald-600 hover:bg-emerald-500 active:bg-emerald-700 text-white font-mono font-bold text-xs uppercase px-3 py-1.5 rounded-lg shadow-xs hover:shadow transition-all cursor-pointer flex items-center gap-1.5"
+                title="Cetak Dokumen TUG 6 Sesuai Rentang Waktu / Filter"
+              >
+                <Printer className="w-3.5 h-3.5 text-white" />
+                <span>Cetak TUG 6 ({filteredTug6List.length})</span>
+              </button>
+
+              {/* Cetak TUG 8 Button */}
+              <button
+                type="button"
+                onClick={handlePrintFilteredTUG8}
+                className="bg-blue-600 hover:bg-blue-500 active:bg-blue-700 text-white font-mono font-bold text-xs uppercase px-3 py-1.5 rounded-lg shadow-xs hover:shadow transition-all cursor-pointer flex items-center gap-1.5"
+                title="Cetak Dokumen TUG 8 Sesuai Rentang Waktu / Filter"
+              >
+                <Printer className="w-3.5 h-3.5 text-white" />
+                <span>Cetak TUG 8 ({filtered.length})</span>
+              </button>
+            </div>
+          </div>
         </div>
 
-        {/* Dropdowns */}
-        <div className="flex flex-wrap items-center gap-3 font-mono text-[11px] font-bold">
-          
-          {/* Status Filter */}
-          <div className="flex items-center gap-1.5 text-slate-600">
-            <SlidersHorizontal className="w-3.5 h-3.5 text-slate-400" />
-            <span>Status:</span>
-            <select
-              value={statusFilter}
-              onChange={(e) => setStatusFilter(e.target.value)}
-              className="bg-white border border-slate-200 rounded-lg p-2 text-[11px] font-bold text-slate-700 focus:outline-none focus:ring-1 focus:ring-blue-500"
-            >
-              <option value="All">Semua Status</option>
-              {activeTab === "queue" ? (
-                <>
-                  <option value="DISPATCHED_PARTIAL">⚠️ Dispatched Parsial</option>
-                  <option value={DispatchStatus.DRAFT}>Draft</option>
-                  <option value={DispatchStatus.PICKING}>Picking</option>
-                  <option value={DispatchStatus.PACKED}>Packed</option>
-                  <option value={DispatchStatus.READY_TO_DISPATCH}>Ready To Dispatch</option>
-                  <option value={DispatchStatus.DISPATCHED}>Dispatched</option>
-                </>
-              ) : (
-                <>
-                  <option value={DispatchStatus.DELIVERED}>Delivered</option>
-                  <option value={DispatchStatus.COMPLETED}>Completed</option>
-                </>
-              )}
-            </select>
-          </div>
+        {/* Row 2: Periode Bulan & Tahun + Custom Date Picker + Counter */}
+        <div className="flex flex-wrap items-center justify-between gap-3 pt-2.5 border-t border-slate-100">
+          <div className="flex flex-wrap items-center gap-2">
+            <div className="flex items-center gap-1.5">
+              <span className="text-slate-500 uppercase tracking-wider flex items-center gap-1.5 mr-1 text-[10px] font-extrabold font-mono">
+                <Calendar className="w-3.5 h-3.5 text-emerald-600" /> PERIODE BULAN & TAHUN:
+              </span>
 
-          {/* Vessel Filter */}
-          <div className="flex items-center gap-1.5 text-slate-600">
-            <Anchor className="w-3.5 h-3.5 text-slate-400" />
-            <span>Vessel:</span>
-            <select
-              value={vesselFilter}
-              onChange={(e) => setVesselFilter(e.target.value)}
-              className="bg-white border border-slate-200 rounded-lg p-2 text-[11px] font-bold text-slate-700 focus:outline-none focus:ring-1 focus:ring-blue-500"
-            >
-              <option value="All">Semua Kapal</option>
-              {uniqueVessels.map(v => (
-                <option key={v} value={v}>{v}</option>
-              ))}
-            </select>
-          </div>
+              <div className="relative flex items-center">
+                <select
+                  value={datePreset}
+                  onChange={(e) => {
+                    const val = e.target.value;
+                    setDatePreset(val);
+                    if (val !== "CUSTOM") {
+                      setDateFrom("");
+                      setDateTo("");
+                    }
+                  }}
+                  className="bg-white hover:bg-slate-50 border border-slate-300 text-slate-800 text-xs font-bold font-sans rounded-lg pl-3 pr-8 py-1.5 shadow-xs focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-all cursor-pointer appearance-none"
+                  title="Pilih Bulan & Tahun Periode Dispatch Outbound"
+                >
+                  <option value="ALL">Semua Periode ({(dispatchList || []).length} Data)</option>
+                  {availableMonths.map(([ym, count]) => (
+                    <option key={ym} value={ym}>
+                      {formatMonthName(ym)} ({count} Data)
+                    </option>
+                  ))}
+                  {datePreset === "CUSTOM" && (
+                    <option value="CUSTOM">Rentang Tanggal Kustom</option>
+                  )}
+                </select>
+                <div className="pointer-events-none absolute inset-y-0 right-0 flex items-center pr-2.5 text-slate-400">
+                  <ChevronDown className="w-3.5 h-3.5" />
+                </div>
+              </div>
+            </div>
 
-          {/* Time Presets */}
-          <div className="flex items-center bg-slate-100 p-1 rounded-lg border border-slate-200 text-xs text-center">
-            <button
-              type="button"
-              onClick={() => { setTimePreset("all"); setSelectedMonth("ALL"); }}
-              className={`px-2.5 py-1 rounded cursor-pointer transition-all text-[10px] ${timePreset === "all" ? "bg-white text-blue-700 shadow-xs font-black" : "text-slate-600 hover:text-slate-900"}`}
-            >
-              Semua
-            </button>
-            <button
-              type="button"
-              onClick={() => { setTimePreset("week"); setSelectedMonth("ALL"); }}
-              className={`px-2.5 py-1 rounded cursor-pointer transition-all text-[10px] ${timePreset === "week" ? "bg-white text-blue-700 shadow-xs font-black" : "text-slate-600 hover:text-slate-900"}`}
-            >
-              Minggu Ini
-            </button>
-            <button
-              type="button"
-              onClick={() => { setTimePreset("month"); }}
-              className={`px-2.5 py-1 rounded cursor-pointer transition-all text-[10px] ${timePreset === "month" ? "bg-white text-blue-700 shadow-xs font-black" : "text-slate-600 hover:text-slate-900"}`}
-            >
-              Bulan
-            </button>
-            <button
-              type="button"
-              onClick={() => { setTimePreset("july2026"); setSelectedMonth("2026-07"); }}
-              className={`px-2.5 py-1 rounded cursor-pointer transition-all text-[10px] ${timePreset === "july2026" ? "bg-rose-600 text-white font-black shadow-xs" : "text-slate-600 hover:text-slate-900"}`}
-              title="Pilih Periode Juli 2026"
-            >
-              Juli 2026
-            </button>
-            <button
-              type="button"
-              onClick={() => { setTimePreset("custom"); setSelectedMonth("ALL"); }}
-              className={`px-2.5 py-1 rounded cursor-pointer transition-all text-[10px] ${timePreset === "custom" ? "bg-white text-blue-700 shadow-xs font-black" : "text-slate-600 hover:text-slate-900"}`}
-            >
-              Kustom
-            </button>
-          </div>
-
-          {/* Month Selector */}
-          {timePreset === "month" && (
-            <select
-              value={selectedMonth}
-              onChange={(e) => {
-                const val = e.target.value;
-                setSelectedMonth(val);
-                if (val === "2026-07") setTimePreset("july2026");
-              }}
-              className="bg-slate-50 border border-slate-250 text-slate-800 rounded-lg px-2.5 py-1.5 text-xs font-mono font-bold focus:outline-none focus:ring-1 focus:ring-blue-500 cursor-pointer"
-            >
-              <option value="ALL">-- Semua Bulan 2026 --</option>
-              <option value="2026-07">Juli 2026</option>
-              <option value="2026-06">Juni 2026</option>
-              <option value="2026-05">Mei 2026</option>
-              <option value="2026-04">April 2026</option>
-              <option value="2026-03">Maret 2026</option>
-              <option value="2026-02">Februari 2026</option>
-              <option value="2026-01">Januari 2026</option>
-            </select>
-          )}
-
-          {/* Custom Date Inputs */}
-          {timePreset === "custom" && (
-            <div className="flex items-center gap-1 font-mono text-xs">
+            {/* Date Range Inputs */}
+            <div className="flex items-center gap-1.5 ml-1 bg-slate-50 p-1 rounded-lg border border-slate-200">
               <input
                 type="date"
                 value={dateFrom}
-                onChange={(e) => setDateFrom(e.target.value)}
-                className="bg-slate-50 border border-slate-250 rounded px-2 py-1 text-xs font-bold text-slate-800"
+                onChange={(e) => {
+                  setDateFrom(e.target.value);
+                  setDatePreset("CUSTOM");
+                }}
+                className="bg-white border border-slate-200 rounded px-2 py-1 text-[11px] font-mono font-semibold text-slate-700 focus:outline-none focus:border-blue-500"
+                title="Tanggal Dispatch Dari"
               />
-              <span className="text-slate-400 font-bold">s/d</span>
+              <span className="text-[10px] font-bold text-slate-400 font-mono">s/d</span>
               <input
                 type="date"
                 value={dateTo}
-                onChange={(e) => setDateTo(e.target.value)}
-                className="bg-slate-50 border border-slate-250 rounded px-2 py-1 text-xs font-bold text-slate-800"
+                onChange={(e) => {
+                  setDateTo(e.target.value);
+                  setDatePreset("CUSTOM");
+                }}
+                className="bg-white border border-slate-200 rounded px-2 py-1 text-[11px] font-mono font-semibold text-slate-700 focus:outline-none focus:border-blue-500"
+                title="Tanggal Dispatch Sampai"
               />
             </div>
-          )}
 
-          {/* Print Buttons Area */}
-          <div className="flex items-center gap-1.5 ml-1 shrink-0">
-            {/* Cetak TUG 5 Button */}
-            <button
-              type="button"
-              onClick={handlePrintFilteredTUG5}
-              className="bg-indigo-600 hover:bg-indigo-500 active:bg-indigo-700 text-white font-mono font-bold text-xs uppercase px-3 py-1.5 rounded-lg shadow-xs hover:shadow transition-all cursor-pointer flex items-center gap-1.5"
-              title="Cetak Dokumen TUG 5 Sesuai Rentang Waktu / Filter"
-            >
-              <Printer className="w-3.5 h-3.5 text-white" />
-              <span>Cetak TUG 5 ({filteredTug5List.length})</span>
-            </button>
-
-            {/* Cetak TUG 6 Button */}
-            <button
-              type="button"
-              onClick={handlePrintFilteredTUG6}
-              className="bg-emerald-600 hover:bg-emerald-500 active:bg-emerald-700 text-white font-mono font-bold text-xs uppercase px-3 py-1.5 rounded-lg shadow-xs hover:shadow transition-all cursor-pointer flex items-center gap-1.5"
-              title="Cetak Dokumen TUG 6 Sesuai Rentang Waktu / Filter"
-            >
-              <Printer className="w-3.5 h-3.5 text-white" />
-              <span>Cetak TUG 6 ({filteredTug6List.length})</span>
-            </button>
-
-            {/* Cetak TUG 8 Button */}
-            <button
-              type="button"
-              onClick={handlePrintFilteredTUG8}
-              className="bg-blue-600 hover:bg-blue-500 active:bg-blue-700 text-white font-mono font-bold text-xs uppercase px-3 py-1.5 rounded-lg shadow-xs hover:shadow transition-all cursor-pointer flex items-center gap-1.5"
-              title="Cetak Dokumen TUG 8 Sesuai Rentang Waktu / Filter"
-            >
-              <Printer className="w-3.5 h-3.5 text-white" />
-              <span>Cetak TUG 8 ({filtered.length})</span>
-            </button>
+            {/* Reset Button */}
+            {(datePreset !== "ALL" || dateFrom || dateTo) && (
+              <button
+                type="button"
+                onClick={() => { setDatePreset("ALL"); setDateFrom(""); setDateTo(""); }}
+                className="px-2.5 py-1 bg-rose-50 hover:bg-rose-100 border border-rose-200 text-rose-700 rounded-lg text-[10px] font-bold cursor-pointer transition-all flex items-center gap-1"
+                title="Reset Filter Tanggal"
+              >
+                <X className="w-3 h-3" />
+                <span>Reset Tanggal</span>
+              </button>
+            )}
           </div>
 
+          {/* Menampilkan Counter */}
+          <div className="ml-auto text-[10px] text-slate-500 font-mono tracking-wider font-extrabold uppercase flex items-center gap-2">
+            <Boxes className="w-4 h-4 text-blue-600" />
+            <span>Menampilkan <strong className="text-slate-900 font-black">{filtered.length}</strong> dari {(dispatchList || []).length} Data Outbound</span>
+          </div>
         </div>
       </section>
 
