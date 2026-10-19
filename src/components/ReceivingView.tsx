@@ -392,24 +392,33 @@ export default function ReceivingView({
         const partsSaved = localStorage.getItem("wms_local_spare_parts");
         let localList = partsSaved ? JSON.parse(partsSaved) : [];
         if (!Array.isArray(localList)) localList = [];
-        const matchIdx = localList.findIndex((p: any) => p && (p.id === part.id || p.part_number === part.part_number));
+        const pnKey = (part.part_number || "").trim().toLowerCase();
+        const hasDistinctPn = Boolean(pnKey && pnKey !== "-" && pnKey !== "pn-generic");
+        const matchIdx = localList.findIndex((p: any) => {
+          if (!p) return false;
+          if (part.id && p.id === part.id) return true;
+          const pPn = (p.part_number || "").trim().toLowerCase();
+          if (hasDistinctPn && pPn && pPn !== "-" && pPn === pnKey) return true;
+          if (!hasDistinctPn && part.part_name && p.part_name && p.part_name.trim().toLowerCase() === part.part_name.trim().toLowerCase()) return true;
+          return false;
+        });
         const finalStock = part.current_stock !== undefined ? Number(part.current_stock) : 10;
         const newPartObj = {
           id: part.id,
           part_name: part.part_name,
-          part_number: part.part_number,
-          sku: part.sku || `SKU-${part.part_number}`,
+          part_number: part.part_number || "-",
+          sku: part.sku || `SKU-${part.part_number || Date.now().toString().slice(-4)}`,
           barcode: generatedBarcode,
           unit: part.unit || "PCS",
           category: part.category || "General Spares",
           location_id: part.location_id || "loc-wh-merak",
           description: part.description || `${part.part_name} — Suku cadang terdaftar dari Inbound Gudang.`,
-          maker: "OEM / Supplier",
+          maker: part.maker || "OEM / Supplier",
           current_stock: finalStock,
           minimum_stock: 2,
           maximum_stock: 100,
           reorder_point: 5,
-          vessel_compatibility: "Semua Armada Kapal",
+          vessel_compatibility: part.vessel_compatibility || "Semua Armada Kapal",
           created_at: new Date().toISOString(),
           updated_at: new Date().toISOString()
         };
@@ -436,38 +445,79 @@ export default function ReceivingView({
         }
       }
       
-      const key = (part.part_number || part.id).trim().toLowerCase();
+      const pnKey = (part.part_number || "").trim().toLowerCase();
+      const hasDistinctPn = Boolean(pnKey && pnKey !== "-" && pnKey !== "pn-generic");
       const nameKey = (part.part_name || "").trim().toLowerCase();
-      const exists = currentCatalog.some(item => 
-        (item.part_number && item.part_number.trim().toLowerCase() === key) ||
-        (item.part_name && item.part_name.trim().toLowerCase() === nameKey)
-      );
+      const idKey = (part.id || "").trim();
 
-      if (!exists) {
-        const newCatItem = {
-          id: part.id || `SP-CAT-${Date.now().toString().slice(-5)}`,
-          part_name: part.part_name,
-          part_number: part.part_number,
-          sku: part.sku || `SKU-${part.part_number}`,
-          barcode: generatedBarcode,
-          description: part.description || `${part.part_name} — Suku cadang terdaftar dari Penerimaan Barang Manual.`,
-          unit: part.unit || "PCS",
-          hierarchy: [part.category || "General Spares", "Depot Gudang", "Manual Inbound"],
-          specification: `Lokasi Rak: ${part.location_id || 'loc-1'}, Terdaftar via Non-SPK`,
-          manufacturer: "Vendor Maritim / Supplier",
-          vessel_compatibility: "Semua Armada Kapal",
-          weight_kg: 1.0
-        };
+      const existingIdx = currentCatalog.findIndex(item => {
+        if (!item) return false;
+        if (idKey && item.id === idKey) return true;
+        const itemPn = (item.part_number || "").trim().toLowerCase();
+        if (hasDistinctPn && itemPn && itemPn !== "-" && itemPn === pnKey) return true;
+        if (!hasDistinctPn && item.part_name && item.part_name.trim().toLowerCase() === nameKey) return true;
+        return false;
+      });
 
-        const updated = [newCatItem, ...currentCatalog];
-        localStorage.setItem("spare_part_catalog_data", JSON.stringify(updated));
+      const catItem = {
+        id: part.id || `SP-CAT-${Date.now().toString().slice(-5)}`,
+        part_name: part.part_name,
+        part_number: part.part_number || "-",
+        sku: part.sku || `SKU-${(part.part_number || "").replace(/[^a-zA-Z0-9]/g, "").slice(0, 10) || Date.now().toString().slice(-4)}`,
+        barcode: generatedBarcode,
+        description: part.description || `${part.part_name} — Suku cadang terdaftar dari Penerimaan Barang Manual.`,
+        unit: part.unit || "PCS",
+        hierarchy: [part.category || "General Spares", "Depot Gudang", "Manual Inbound"],
+        specification: `Lokasi Rak: ${part.location_id || 'loc-wh-merak'}, Terdaftar via Inbound`,
+        manufacturer: part.maker || "Vendor Maritim / Supplier",
+        vessel_compatibility: part.vessel_compatibility || "Semua Armada Kapal",
+        weight_kg: 1.0,
+        current_stock: part.current_stock !== undefined ? part.current_stock : 0
+      };
+
+      if (existingIdx !== -1) {
+        currentCatalog[existingIdx] = { ...currentCatalog[existingIdx], ...catItem };
+      } else {
+        currentCatalog.unshift(catItem);
       }
 
+      localStorage.setItem("spare_part_catalog_data", JSON.stringify(currentCatalog));
       window.dispatchEvent(new Event("storage"));
       window.dispatchEvent(new CustomEvent("catalog_updated"));
     } catch (err) {
       console.error("Failed to sync new part to catalog:", err);
     }
+  };
+
+  // Helper to reliably find an existing spare part without false name collisions for different part numbers
+  const findMatchingPart = (
+    pId?: string,
+    pNum?: string,
+    pName?: string,
+    partsList: SparePart[] = parts
+  ): SparePart | undefined => {
+    const cleanId = (pId || "").trim();
+    const cleanPn = (pNum || "").trim().toLowerCase();
+    const cleanName = (pName || "").trim().toLowerCase();
+    const hasDistinctPn = Boolean(cleanPn && cleanPn !== "-" && cleanPn !== "pn-generic");
+
+    if (cleanId && !cleanId.startsWith("temp-") && !cleanId.startsWith("item-")) {
+      const byId = partsList.find(p => p && p.id === cleanId);
+      if (byId) return byId;
+    }
+
+    if (hasDistinctPn) {
+      const byPn = partsList.find(p => p && (p.part_number || "").trim().toLowerCase() === cleanPn);
+      if (byPn) return byPn;
+      // When a distinct part number is present, NEVER fall back to part_name match!
+      return undefined;
+    }
+
+    if (cleanName) {
+      return partsList.find(p => p && (p.part_name || "").trim().toLowerCase() === cleanName);
+    }
+
+    return undefined;
   };
 
   // State for tracking active Push action per receiving record
@@ -522,7 +572,7 @@ export default function ReceivingView({
           const pId = itm.spare_part_id || (itm as any).id || "";
           if (!pName && !pNum) continue;
 
-          let match = parts.find(p => (pId && p.id === pId) || (pNum && pNum !== "-" && pNum !== "PN-GENERIC" && p.part_number?.toLowerCase() === pNum.toLowerCase()) || (pName && p.part_name?.toLowerCase() === pName.toLowerCase()));
+          let match = findMatchingPart(pId, pNum, pName, parts);
           
           let barcode = (match?.barcode || (itm as any).barcode || "").trim();
           if (!barcode || !barcode.startsWith("BC-")) {
@@ -530,17 +580,18 @@ export default function ReceivingView({
           }
 
           const qtyIn = Number(itm.qty_received !== undefined && itm.qty_received !== null && (itm as any).qty_received !== "" ? itm.qty_received : (itm.qty_ordered || (itm as any).qty || 0));
-          const finalPn = pNum || `PN-${Date.now().toString().slice(-4)}${count + 1}`;
-          const finalSku = (itm as any).sku || `SKU-${finalPn.replace(/[^a-zA-Z0-9]/g, "").slice(0, 10) || Date.now().toString().slice(-4)}`;
-          const finalUnit = itm.unit || "PCS";
-          const finalCat = (itm as any).category || "General Spares";
+          const finalPn = (pNum && pNum !== "-") ? pNum : (match?.part_number || `PN-${Date.now().toString().slice(-4)}${count + 1}`);
+          const finalSku = (itm as any).sku || match?.sku || `SKU-${finalPn.replace(/[^a-zA-Z0-9]/g, "").slice(0, 10) || Date.now().toString().slice(-4)}`;
+          const finalUnit = itm.unit || match?.unit || "PCS";
+          const finalCat = (itm as any).category || match?.category || "General Spares";
           const finalLoc = "loc-wh-merak";
-          const finalMaker = rec.vendor_name || "OEM / Supplier";
-          const finalVessel = rec.vessel_name ? `Kapal ${rec.vessel_name}` : "Semua Armada Kapal";
+          const finalMaker = rec.vendor_name || match?.maker || "OEM / Supplier";
+          const finalVessel = rec.vessel_name ? `Kapal ${rec.vessel_name}` : (match?.vessel_compatibility || "Semua Armada Kapal");
 
           if (match) {
             const updatedPayload: Partial<SparePart> = {
               barcode,
+              part_number: finalPn,
               location_id: "loc-wh-merak",
               current_stock: Math.max(0, qtyIn)
             };
@@ -640,7 +691,7 @@ export default function ReceivingView({
         const pNum = (itm.part_number || "").trim();
         const pId = itm.spare_part_id || (itm as any).id || "";
 
-        let match = parts.find(p => (pId && p.id === pId) || (pNum && pNum !== "-" && pNum !== "PN-GENERIC" && p.part_number?.toLowerCase() === pNum.toLowerCase()) || (pName && p.part_name?.toLowerCase() === pName.toLowerCase()));
+        let match = findMatchingPart(pId, pNum, pName, parts);
 
         let barcode = (match?.barcode || (itm as any).barcode || barcodeCache[pId] || "").trim();
         if (!barcode || !barcode.startsWith("BC-")) {
@@ -654,13 +705,13 @@ export default function ReceivingView({
             ? itm.qty_received
             : (itm.qty_ordered || (itm as any).qty || 0)
         );
-        const finalPn = pNum || `PN-${Date.now().toString().slice(-4)}${idx + 1}`;
-        const finalSku = (itm as any).sku || `SKU-${finalPn.replace(/[^a-zA-Z0-9]/g, "").slice(0, 10) || Date.now().toString().slice(-4)}`;
-        const finalUnit = itm.unit || "PCS";
-        const finalCat = (itm as any).category || "General Spares";
+        const finalPn = (pNum && pNum !== "-") ? pNum : (match?.part_number || `PN-${Date.now().toString().slice(-4)}${idx + 1}`);
+        const finalSku = (itm as any).sku || match?.sku || `SKU-${finalPn.replace(/[^a-zA-Z0-9]/g, "").slice(0, 10) || Date.now().toString().slice(-4)}`;
+        const finalUnit = itm.unit || match?.unit || "PCS";
+        const finalCat = (itm as any).category || match?.category || "General Spares";
         const finalLoc = "loc-wh-merak";
-        const finalMaker = rec.vendor_name || "OEM / Supplier";
-        const finalVessel = rec.vessel_name ? `Kapal ${rec.vessel_name}` : "Semua Armada Kapal";
+        const finalMaker = rec.vendor_name || match?.maker || "OEM / Supplier";
+        const finalVessel = rec.vessel_name ? `Kapal ${rec.vessel_name}` : (match?.vessel_compatibility || "Semua Armada Kapal");
 
         if (match) {
           barcodeCache[match.id] = barcode;
@@ -668,6 +719,7 @@ export default function ReceivingView({
 
           const updatedPayload: Partial<SparePart> = {
             barcode: barcode,
+            part_number: finalPn,
             current_stock: Math.max(0, qtyIn), // DISAMAKAN dengan QTY Diterima, bukan ditambahkan
             location_id: "loc-wh-merak",
             unit: match.unit || finalUnit
@@ -759,7 +811,7 @@ export default function ReceivingView({
     }
 
     const pId = itm.spare_part_id || (itm as any).id || "";
-    let match = parts.find(p => (pId && p.id === pId) || (pNum && pNum !== "-" && p.part_number?.toLowerCase() === pNum.toLowerCase()) || (pName && p.part_name?.toLowerCase() === pName.toLowerCase()));
+    let match = findMatchingPart(pId, pNum, pName, parts);
 
     const barcodeCache = (() => {
       try {
@@ -781,14 +833,15 @@ export default function ReceivingView({
         ? itm.qty_received
         : (itm.qty_ordered || itm.qty || 0)
     );
-    const finalPn = pNum || `PN-${Date.now().toString().slice(-4)}`;
-    const finalSku = (itm as any).sku || `SKU-${finalPn.replace(/[^a-zA-Z0-9]/g, "").slice(0, 10) || Date.now().toString().slice(-4)}`;
+    const finalPn = (pNum && pNum !== "-") ? pNum : (match?.part_number || `PN-${Date.now().toString().slice(-4)}`);
+    const finalSku = (itm as any).sku || match?.sku || `SKU-${finalPn.replace(/[^a-zA-Z0-9]/g, "").slice(0, 10) || Date.now().toString().slice(-4)}`;
 
     try {
       if (match) {
         barcodeCache[match.id] = barcode;
         const updatedPayload: Partial<SparePart> = {
           barcode,
+          part_number: finalPn,
           current_stock: Math.max(0, qtyIn), // DISAMAKAN dengan QTY Diterima, bukan ditambahkan
           location_id: "loc-wh-merak",
           unit: match.unit || itm.unit || "PCS"
@@ -1026,6 +1079,16 @@ export default function ReceivingView({
 
     setIsSavingEdit(true);
     try {
+      const barcodeCache = (() => {
+        try {
+          const s = localStorage.getItem("wms_part_barcode_cache");
+          return s ? JSON.parse(s) : {};
+        } catch {
+          return {};
+        }
+      })();
+      let cacheChanged = false;
+
       const updatedItems = editItems.map((itm, idx) => ({
         ...itm,
         part_number: itm.part_number !== undefined ? String(itm.part_number).trim() : (itm.part_number || "-"),
@@ -1033,17 +1096,127 @@ export default function ReceivingView({
         photo_url: itm.photo_url || (idx === 0 ? editPhotoUrl : itm.photo_url) || ""
       }));
 
-      // Sync part_number to spare_part master if item has spare_part_id
-      if (onUpdatePart) {
-        for (const itm of updatedItems) {
-          if (itm.spare_part_id && itm.part_number) {
-            try {
-              await onUpdatePart(itm.spare_part_id, { part_number: itm.part_number });
-            } catch (pErr) {
-              console.warn("Could not sync part number to spare_part master:", pErr);
-            }
-          }
+      // Proactively sync / push every item to Spare Part Master & Catalog Sparepart
+      const localParts = [...parts];
+      for (let idx = 0; idx < updatedItems.length; idx++) {
+        const itm = updatedItems[idx];
+        const pName = (itm.spare_part_name || (itm as any).part_name || "").trim();
+        const pNum = (itm.part_number !== undefined ? String(itm.part_number).trim() : (itm.part_number || "")).trim();
+        const pId = itm.spare_part_id || (itm as any).id || "";
+        const qtyIn = Number(
+          itm.qty_received !== undefined && itm.qty_received !== null && (itm as any).qty_received !== ""
+            ? itm.qty_received
+            : (itm.qty_ordered || (itm as any).qty || 0)
+        );
+
+        if (!pName && !pNum) continue;
+
+        let match = findMatchingPart(pId, pNum, pName, localParts);
+
+        let barcode = (match?.barcode || (itm as any).barcode || barcodeCache[pId] || "").trim();
+        if (!barcode || !barcode.startsWith("BC-")) {
+          barcode = `BC-${Math.floor(10000000 + Math.random() * 90000000)}`;
+          cacheChanged = true;
         }
+
+        const finalPn = (pNum && pNum !== "-") ? pNum : (match?.part_number || `PN-${Date.now().toString().slice(-4)}${idx + 1}`);
+        const finalSku = (itm as any).sku || match?.sku || `SKU-${finalPn.replace(/[^a-zA-Z0-9]/g, "").slice(0, 10) || Date.now().toString().slice(-4)}`;
+        const finalUnit = itm.unit || match?.unit || "PCS";
+        const finalCat = (itm as any).category || match?.category || "General Spares";
+        const finalMaker = editVendorName.trim() || match?.maker || "Vendor Logistik";
+        const finalVessel = editVesselName ? `Kapal ${editVesselName}` : (match?.vessel_compatibility || "Semua Armada Kapal");
+
+        if (match) {
+          barcodeCache[match.id] = barcode;
+          cacheChanged = true;
+          itm.spare_part_id = match.id;
+          itm.barcode = barcode;
+
+          const updatedPayload: Partial<SparePart> = {
+            part_number: finalPn,
+            part_name: pName || match.part_name,
+            barcode: barcode,
+            current_stock: Math.max(0, qtyIn),
+            unit: finalUnit,
+            location_id: "loc-wh-merak",
+            maker: finalMaker,
+            vessel_compatibility: finalVessel
+          };
+
+          try {
+            if (onUpdatePart) {
+              await onUpdatePart(match.id, updatedPayload);
+            } else {
+              await api.updateSparePart(match.id, updatedPayload);
+            }
+          } catch (pErr) {
+            console.warn("Could not update spare part in master:", pErr);
+          }
+
+          const mIdx = localParts.findIndex(p => p && p.id === match.id);
+          if (mIdx >= 0) {
+            localParts[mIdx] = { ...localParts[mIdx], ...updatedPayload };
+          }
+        } else {
+          const newPartId = (pId && !pId.startsWith("temp-") && !pId.startsWith("item-")) ? pId : `sp-${Date.now()}-${idx}-${Math.floor(Math.random() * 1000)}`;
+          barcodeCache[newPartId] = barcode;
+          cacheChanged = true;
+          itm.spare_part_id = newPartId;
+          itm.barcode = barcode;
+
+          const newPartPayload: Partial<SparePart> = {
+            id: newPartId,
+            part_name: pName || "Suku Cadang Inbound",
+            part_number: finalPn,
+            sku: finalSku,
+            barcode: barcode,
+            unit: finalUnit,
+            category: finalCat,
+            maker: finalMaker,
+            brand: "OEM",
+            minimum_stock: 2,
+            maximum_stock: 100,
+            reorder_point: 5,
+            current_stock: Math.max(0, qtyIn),
+            reserved_stock: 0,
+            location_id: "loc-wh-merak",
+            vessel_compatibility: finalVessel,
+            description: editKeeperNotes || itm.keeper_notes || (itm as any).description || `Suku cadang dari Inbound [PO: ${editPoNum.trim()}] (Lokasi: WAREHOUSE MERAK)`
+          };
+
+          try {
+            if (onAddPart) {
+              await onAddPart(newPartPayload);
+            } else {
+              await api.createSparePart(newPartPayload);
+            }
+          } catch (cErr) {
+            console.warn("Could not create spare part in master:", cErr);
+          }
+
+          localParts.push(newPartPayload as SparePart);
+        }
+
+        // Also push to Catalog Sparepart
+        syncNewPartToCatalog({
+          id: itm.spare_part_id || match?.id,
+          part_name: pName || match?.part_name || "Suku Cadang",
+          part_number: finalPn,
+          sku: finalSku,
+          barcode: barcode,
+          unit: finalUnit,
+          category: finalCat,
+          location_id: "loc-wh-merak",
+          maker: finalMaker,
+          vessel_compatibility: finalVessel,
+          current_stock: Math.max(0, qtyIn)
+        });
+      }
+
+      if (cacheChanged) {
+        try {
+          localStorage.setItem("wms_part_barcode_cache", JSON.stringify(barcodeCache));
+        } catch {}
       }
 
       const payload = {
@@ -1060,9 +1233,12 @@ export default function ReceivingView({
 
       await onVerifyReceiving(editingReceiving.id, payload as any);
 
+      window.dispatchEvent(new Event("storage"));
+      window.dispatchEvent(new CustomEvent("catalog_updated"));
+
       setIsEditModalOpen(false);
       setEditingReceiving(null);
-      alert("Data penerimaan dan foto berhasil diperbarui di Supabase!");
+      alert("✅ Data penerimaan berhasil diperbarui & disinkronkan ke:\n1. SPARE PART MASTER\n2. CATALOG SPAREPART");
     } catch (err: any) {
       console.error("Gagal menyimpan perubahan:", err);
       alert(err.message || "Gagal menyimpan perubahan.");
@@ -1320,7 +1496,7 @@ export default function ReceivingView({
 
         const pNum = (item.part_number || "").trim();
         const pName = (item.spare_part_name || "").trim();
-        const existingPart = parts.find(p => (item.spare_part_id && p.id === item.spare_part_id) || (pNum && pNum !== "-" && p.part_number?.toLowerCase() === pNum.toLowerCase()) || (pName && p.part_name?.toLowerCase() === pName.toLowerCase()));
+        const existingPart = findMatchingPart(item.spare_part_id, pNum, pName, parts);
 
         let resolvedBarcode = existingPart?.barcode || (item as any).barcode;
         if (!resolvedBarcode) {
@@ -1446,13 +1622,7 @@ export default function ReceivingView({
         const finalLoc = itm.location_id || locations[0]?.id || "loc-1";
 
         // Check if item already exists in parts by ID, part_number, or exact part_name
-        let existingPart = parts.find(p => p.id === finalPartId);
-        if (!existingPart && finalPartNum && finalPartNum !== "-") {
-          existingPart = parts.find(p => p.part_number?.toLowerCase() === finalPartNum.toLowerCase());
-        }
-        if (!existingPart) {
-          existingPart = parts.find(p => p.part_name?.toLowerCase() === finalPartName.toLowerCase());
-        }
+        let existingPart = findMatchingPart(finalPartId, finalPartNum, finalPartName, parts);
 
         if (existingPart) {
           finalPartId = existingPart.id;

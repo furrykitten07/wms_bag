@@ -533,10 +533,11 @@ export default function App() {
         const pId = itm.spare_part_id || "";
 
         let match = parts.find(p => pId && p.id === pId);
-        if (!match && pNum && pNum !== "-" && pNum !== "PN-GENERIC") {
+        const hasDistinctPn = Boolean(pNum && pNum !== "-" && pNum !== "PN-GENERIC");
+        if (!match && hasDistinctPn) {
           match = parts.find(p => p.part_number?.toLowerCase() === pNum.toLowerCase());
         }
-        if (!match && pName) {
+        if (!match && !hasDistinctPn && pName) {
           match = parts.find(p => p.part_name?.toLowerCase() === pName.toLowerCase());
         }
 
@@ -568,16 +569,17 @@ export default function App() {
           } catch (pErr) {
             console.warn("Failed to auto-create spare part for inbound item:", pErr);
           }
-        } else if (match && !match.barcode) {
-          const generatedBc = `BC-${Math.floor(10000000 + Math.random() * 90000000)}`;
+        } else if (match) {
+          const generatedBc = match.barcode || itm.barcode || `BC-${Math.floor(10000000 + Math.random() * 90000000)}`;
+          itm.barcode = generatedBc;
           try {
-            await handleUpdatePart(match.id, { barcode: generatedBc });
-            itm.barcode = generatedBc;
+            await handleUpdatePart(match.id, { 
+              barcode: generatedBc,
+              part_number: (hasDistinctPn ? pNum : match.part_number)
+            });
           } catch (uErr) {
-            console.warn("Failed to update barcode for existing spare part:", uErr);
+            console.warn("Failed to update spare part in inbound:", uErr);
           }
-        } else if (match && match.barcode) {
-          itm.barcode = match.barcode;
         }
       }
     }

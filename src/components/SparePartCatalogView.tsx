@@ -310,7 +310,7 @@ export default function SparePartCatalogView({
     const currentDeleted = deletedIds;
     const combinedParts: SparePart[] = (parts || []).filter(p => p && !currentDeleted.has(p.id));
     const existingIds = new Set(combinedParts.map(p => p.id));
-    const existingPns = new Set(combinedParts.map(p => (p.part_number || "").toLowerCase().trim()).filter(Boolean));
+    const existingPns = new Set(combinedParts.map(p => (p.part_number || "").toLowerCase().trim()).filter(pn => pn && pn !== "-" && pn !== "pn-generic"));
     const existingNames = new Set(combinedParts.map(p => (p.part_name || "").toLowerCase().trim()).filter(Boolean));
 
     const barcodeCache = getBarcodeCache();
@@ -329,9 +329,9 @@ export default function SparePartCatalogView({
           const pNum = (itm.part_number || "").trim();
           const pName = (itm.spare_part_name || itm.part_name || "").trim();
 
+          const hasDistinctPn = Boolean(pNum && pNum !== "-" && pNum !== "PN-GENERIC");
           const alreadyIn = (pId && existingIds.has(pId)) ||
-            (pNum && pNum !== "-" && existingPns.has(pNum.toLowerCase())) ||
-            (pName && existingNames.has(pName.toLowerCase()));
+            (hasDistinctPn ? existingPns.has(pNum.toLowerCase()) : (pName && existingNames.has(pName.toLowerCase())));
 
           if (!alreadyIn && (pName || pNum)) {
             const cleanPn = pNum || `PN-${Date.now().toString().slice(-4)}`;
@@ -354,7 +354,7 @@ export default function SparePartCatalogView({
 
             combinedParts.push(syntheticPart);
             existingIds.add(fallbackId);
-            if (cleanPn) existingPns.add(cleanPn.toLowerCase());
+            if (cleanPn && cleanPn !== "-" && cleanPn !== "PN-GENERIC") existingPns.add(cleanPn.toLowerCase());
             if (pName) existingNames.add(pName.toLowerCase());
           }
         });
