@@ -1028,9 +1028,23 @@ export default function ReceivingView({
     try {
       const updatedItems = editItems.map((itm, idx) => ({
         ...itm,
+        part_number: itm.part_number !== undefined ? String(itm.part_number).trim() : (itm.part_number || "-"),
         vessel_name: editVesselName,
         photo_url: itm.photo_url || (idx === 0 ? editPhotoUrl : itm.photo_url) || ""
       }));
+
+      // Sync part_number to spare_part master if item has spare_part_id
+      if (onUpdatePart) {
+        for (const itm of updatedItems) {
+          if (itm.spare_part_id && itm.part_number) {
+            try {
+              await onUpdatePart(itm.spare_part_id, { part_number: itm.part_number });
+            } catch (pErr) {
+              console.warn("Could not sync part number to spare_part master:", pErr);
+            }
+          }
+        }
+      }
 
       const payload = {
         purchase_order_num: editPoNum.trim(),
@@ -4105,7 +4119,8 @@ export default function ReceivingView({
                     <thead className="bg-slate-100 border-b border-slate-200 text-slate-700 font-mono text-[10px] uppercase">
                       <tr>
                         <th className="p-2.5">No</th>
-                        <th className="p-2.5">Nama Sparepart &amp; Part Number</th>
+                        <th className="p-2.5">Nama Sparepart</th>
+                        <th className="p-2.5">Part Number</th>
                         <th className="p-2.5 text-center">Qty Dipesan</th>
                         <th className="p-2.5 text-center">Qty Diterima Fisik</th>
                         <th className="p-2.5">Satuan</th>
@@ -4118,7 +4133,23 @@ export default function ReceivingView({
                           <td className="p-2.5 font-mono text-slate-500 text-center w-10">{idx + 1}</td>
                           <td className="p-2.5 font-medium">
                             <span className="font-bold text-slate-900 block">{itm.spare_part_name || itm.part_name || "Sparepart"}</span>
-                            <span className="text-[10px] font-mono text-slate-500">{itm.part_number || "-"}</span>
+                          </td>
+                          <td className="p-2.5 w-48">
+                            <input
+                              type="text"
+                              value={itm.part_number !== undefined && itm.part_number !== null ? itm.part_number : ""}
+                              onChange={(e) => {
+                                const val = e.target.value;
+                                setEditItems(prev => {
+                                  const updated = [...prev];
+                                  updated[idx] = { ...updated[idx], part_number: val };
+                                  return updated;
+                                });
+                              }}
+                              placeholder="Part Number..."
+                              className="w-full px-2.5 py-1 bg-white border border-slate-300 rounded font-mono font-bold text-xs text-slate-800 placeholder:text-slate-400 focus:border-blue-500 focus:ring-1 focus:ring-blue-500 focus:outline-none"
+                              title="Edit Part Number"
+                            />
                           </td>
                           <td className="p-2.5 text-center font-mono font-bold text-slate-600">
                             {itm.qty_ordered || itm.qty_spk || itm.quantity || 1}
