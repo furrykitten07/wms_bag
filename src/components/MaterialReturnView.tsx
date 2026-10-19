@@ -96,12 +96,6 @@ export default function MaterialReturnView({
   const isEmirRole = uLower.includes("emir") || rLower.includes("manager") || rLower.includes("logistik") || uLower.includes("superadmin") || rLower.includes("super");
   const isSumbonoRole = uLower.includes("sumbono") || rLower.includes("vp") || rLower.includes("rendalhar") || uLower.includes("superadmin") || rLower.includes("super");
 
-  // Date/Time filter states for TUG 10 (Minggu, Bulan, Custom, Juli 2026 Kosong)
-  const [timePreset, setTimePreset] = useState<"all" | "week" | "month" | "july2026" | "custom">("all");
-  const [selectedMonth, setSelectedMonth] = useState<string>("ALL");
-  const [dateFrom, setDateFrom] = useState<string>("");
-  const [dateTo, setDateTo] = useState<string>("");
-
   // Pagination states
   const [returnPage, setReturnPage] = useState(1);
   const [returnsPerPage, setReturnsPerPage] = useState<number>(10);
@@ -113,7 +107,7 @@ export default function MaterialReturnView({
   React.useEffect(() => {
     setReturnPage(1);
     setSelectedReturnIds([]);
-  }, [searchQuery, statusFilter, timePreset, selectedMonth, dateFrom, dateTo]);
+  }, [searchQuery, statusFilter]);
 
   // Create form state
   const [returnDate, setReturnDate] = useState<string>(new Date().toISOString().split("T")[0]);
@@ -424,51 +418,19 @@ export default function MaterialReturnView({
     if (!matchSearch) return false;
     if (statusFilter !== "All" && ret.status !== statusFilter) return false;
 
-    // July 2026 rule: July 2026 is empty (0 records)
-    if (timePreset === "july2026" || selectedMonth === "2026-07") {
-      return false;
-    }
-
-    const retDateStr = ret.return_date; // YYYY-MM-DD
-    const retTime = new Date(retDateStr).getTime();
-
-    if (timePreset === "week") {
-      const now = new Date().getTime();
-      const sevenDaysAgo = now - 7 * 24 * 60 * 60 * 1000;
-      return retTime >= sevenDaysAgo && retTime <= now + 86400000;
-    }
-
-    if (timePreset === "month" && selectedMonth !== "ALL") {
-      return retDateStr.startsWith(selectedMonth);
-    }
-
-    if (timePreset === "custom") {
-      if (dateFrom && retDateStr < dateFrom) return false;
-      if (dateTo && retDateStr > dateTo) return false;
-    }
-
     return true;
   });
 
-  // Function to trigger print for filtered TUG 10 (or empty (-) rows for empty results like July 2026)
+  // Function to trigger print for filtered TUG 10
   const handlePrintFilteredTUG10 = () => {
-    let filterLabel = "Semua TUG 10";
-    if (timePreset === "july2026" || selectedMonth === "2026-07") {
-      filterLabel = "Periode Juli 2026 (Nihil / Kosong)";
-    } else if (timePreset === "week") {
-      filterLabel = "Minggu Ini (7 Hari Terakhir)";
-    } else if (timePreset === "month" && selectedMonth !== "ALL") {
-      filterLabel = `Bulan ${selectedMonth}`;
-    } else if (timePreset === "custom") {
-      filterLabel = `Kustom (${dateFrom || "Awal"} s/d ${dateTo || "Akhir"})`;
-    }
+    const filterLabel = statusFilter !== "All" ? `Status ${statusFilter}` : "Semua TUG 10";
 
     if (filteredReturns.length === 0) {
       // Send an empty document record with items: [] -> PrintDocument renders (-) row
       const emptyDoc: MaterialReturn = {
         id: `ret-empty-${Date.now()}`,
-        return_number: (timePreset === "july2026" || selectedMonth === "2026-07") ? "TUG10-2026-JULI" : "TUG10-2026-NIHIL",
-        return_date: (timePreset === "july2026" || selectedMonth === "2026-07") ? "2026-07-31" : new Date().toISOString().split("T")[0],
+        return_number: "TUG10-2026-NIHIL",
+        return_date: new Date().toISOString().split("T")[0],
         vessel_name: "-",
         warehouse_name: "Gudang Merak",
         spk_number: "NP",
@@ -1358,87 +1320,6 @@ export default function MaterialReturnView({
               </div>
 
               <div className="flex flex-wrap items-center gap-2 w-full lg:w-auto justify-end font-mono text-[11px] font-bold">
-                {/* Time Presets */}
-                <div className="flex items-center bg-slate-100 p-1 rounded-lg border border-slate-200 text-xs text-center">
-                  <button
-                    type="button"
-                    onClick={() => { setTimePreset("all"); setSelectedMonth("ALL"); }}
-                    className={`px-2.5 py-1 rounded cursor-pointer transition-all text-[10px] ${timePreset === "all" ? "bg-white text-indigo-700 shadow-xs font-black" : "text-slate-600 hover:text-slate-900"}`}
-                  >
-                    Semua
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => { setTimePreset("week"); setSelectedMonth("ALL"); }}
-                    className={`px-2.5 py-1 rounded cursor-pointer transition-all text-[10px] ${timePreset === "week" ? "bg-white text-indigo-700 shadow-xs font-black" : "text-slate-600 hover:text-slate-900"}`}
-                  >
-                    Minggu Ini
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => { setTimePreset("month"); }}
-                    className={`px-2.5 py-1 rounded cursor-pointer transition-all text-[10px] ${timePreset === "month" ? "bg-white text-indigo-700 shadow-xs font-black" : "text-slate-600 hover:text-slate-900"}`}
-                  >
-                    Bulan
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => { setTimePreset("july2026"); setSelectedMonth("2026-07"); }}
-                    className={`px-2.5 py-1 rounded cursor-pointer transition-all text-[10px] ${timePreset === "july2026" ? "bg-rose-600 text-white font-black shadow-xs" : "text-slate-600 hover:text-slate-900"}`}
-                    title="Pilih Bulan Juli 2026 (Kosong / Nihil)"
-                  >
-                    Juli 2026 (Kosong)
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => { setTimePreset("custom"); setSelectedMonth("ALL"); }}
-                    className={`px-2.5 py-1 rounded cursor-pointer transition-all text-[10px] ${timePreset === "custom" ? "bg-white text-indigo-700 shadow-xs font-black" : "text-slate-600 hover:text-slate-900"}`}
-                  >
-                    Kustom
-                  </button>
-                </div>
-
-                {/* Month Selector */}
-                {timePreset === "month" && (
-                  <select
-                    value={selectedMonth}
-                    onChange={(e) => {
-                      const val = e.target.value;
-                      setSelectedMonth(val);
-                      if (val === "2026-07") setTimePreset("july2026");
-                    }}
-                    className="bg-slate-50 border border-slate-250 text-slate-800 rounded-lg px-2.5 py-1.5 text-xs font-mono font-bold focus:outline-none focus:ring-1 focus:ring-indigo-500 cursor-pointer"
-                  >
-                    <option value="ALL">-- Semua Bulan 2026 --</option>
-                    <option value="2026-07">Juli 2026 (Nihil / Kosong)</option>
-                    <option value="2026-06">Juni 2026</option>
-                    <option value="2026-05">Mei 2026</option>
-                    <option value="2026-04">April 2026</option>
-                    <option value="2026-03">Maret 2026</option>
-                    <option value="2026-02">Februari 2026</option>
-                    <option value="2026-01">Januari 2026</option>
-                  </select>
-                )}
-
-                {/* Custom Date Inputs */}
-                {timePreset === "custom" && (
-                  <div className="flex items-center gap-1 font-mono text-xs">
-                    <input
-                      type="date"
-                      value={dateFrom}
-                      onChange={(e) => setDateFrom(e.target.value)}
-                      className="bg-slate-50 border border-slate-250 rounded px-2 py-1 text-xs font-bold text-slate-800"
-                    />
-                    <span className="text-slate-400 font-bold">s/d</span>
-                    <input
-                      type="date"
-                      value={dateTo}
-                      onChange={(e) => setDateTo(e.target.value)}
-                      className="bg-slate-50 border border-slate-250 rounded px-2 py-1 text-xs font-bold text-slate-800"
-                    />
-                  </div>
-                )}
-
                 {/* Status Filter */}
                 <span className="text-slate-400 uppercase tracking-wider flex items-center gap-1 ml-1 text-[10px] font-extrabold">
                   <Filter className="w-3.5 h-3.5 text-slate-400" /> STATUS:
