@@ -49,13 +49,15 @@ import {
   SlidersHorizontal,
   Barcode,
   Printer,
-  Scissors
+  Scissors,
+  QrCode
 } from "lucide-react";
+import QRCode from "react-qr-code";
 import { InboundReceiving, ReceivingStatus, SparePart, UserRole, SPKWorkOrder, WarehouseLocation, Vessel, User, normalizeUserRole } from "../types.js";
 import { demoSPKs } from "../demoSeedData.js";
 import { api } from "../api.js";
 import { supabase } from "../supabaseClient.js";
-import { BarcodeGraphic } from "./SparePartCatalogView.js";
+import { BarcodeGraphic, getPublicSparePartUrl } from "./SparePartCatalogView.js";
 
 export const FLEET_VESSELS = [
   "MV. KARTINI BARUNA",
@@ -2413,12 +2415,12 @@ export default function ReceivingView({
                                       setBarcodePrintReceiving(item);
                                     }}
                                     className="w-full px-3 py-2 text-xs font-bold rounded-lg hover:bg-emerald-50 text-emerald-800 flex items-center gap-2 cursor-pointer transition-colors text-left"
-                                    title="Cetak semua label barcode item pada dokumen penerimaan ini untuk digunting"
+                                    title="Cetak semua label barcode / QR Code item pada dokumen penerimaan ini untuk digunting (4 per baris)"
                                   >
-                                    <Barcode className="w-4 h-4 text-emerald-600 shrink-0" />
+                                    <QrCode className="w-4 h-4 text-emerald-600 shrink-0" />
                                     <div className="truncate">
-                                      <div className="leading-tight font-bold text-emerald-900">Cetak Barcode Item</div>
-                                      <div className="text-[9.5px] text-emerald-600/80 font-normal font-sans">Cetak label barcode untuk digunting</div>
+                                      <div className="leading-tight font-bold text-emerald-900">Cetak Barcode / QR Item</div>
+                                      <div className="text-[9.5px] text-emerald-600/80 font-normal font-sans">Cetak label QR Code untuk digunting (4 per baris)</div>
                                     </div>
                                   </button>
 
@@ -4582,17 +4584,17 @@ export default function ReceivingView({
       {/* MODAL CETAK SEMUA BARCODE ITEM INBOUND (UNTUK DIGUNTING) */}
       {barcodePrintReceiving && (
         <div className="fixed inset-0 bg-slate-950/75 backdrop-blur-xs flex items-center justify-center z-[80] p-4 print:p-0 print:bg-white print:static print:inset-auto print-document-overlay">
-          <div className="bg-white rounded-2xl shadow-2xl border border-slate-200 w-full max-w-4xl max-h-[92vh] flex flex-col overflow-hidden print:border-none print:shadow-none print:max-w-none print:max-h-none print:w-full print:rounded-none">
+          <div className="bg-white rounded-2xl shadow-2xl border border-slate-200 w-full max-w-5xl max-h-[92vh] flex flex-col overflow-hidden print:border-none print:shadow-none print:max-w-none print:max-h-none print:w-full print:rounded-none">
             
             {/* Modal Top Header (Hidden on Print) */}
             <div className="w-full bg-slate-900 px-6 py-4 border-b border-slate-800 flex flex-wrap items-center justify-between gap-3 text-white no-print">
               <div className="flex items-center gap-3">
                 <div className="p-2 bg-emerald-500/20 text-emerald-400 rounded-lg border border-emerald-500/30">
-                  <Barcode className="w-5 h-5" />
+                  <QrCode className="w-5 h-5" />
                 </div>
                 <div>
                   <div className="font-bold text-sm tracking-wide flex items-center gap-2">
-                    <span>Cetak Label Barcode Item Inbound</span>
+                    <span>Cetak Label QR Code Item Inbound</span>
                     <span className="text-[10px] bg-emerald-600/40 text-emerald-300 font-mono px-2 py-0.5 rounded border border-emerald-500/30">
                       {printItemsList.length} Label
                     </span>
@@ -4654,34 +4656,35 @@ export default function ReceivingView({
                 <div className="flex items-center gap-2.5">
                   <Scissors className="w-4 h-4 text-emerald-600 shrink-0" />
                   <span>
-                    <strong>Format Label Siap Gunting:</strong> Setiap kartu label hanya menampilkan <strong>Nama Sparepart</strong>, <strong>Part Number</strong>, dan <strong>Gambar Barcode</strong> dengan garis batas putus-putus untuk digunting dan ditempelkan pada fisik barang.
+                    <strong>Format Label Siap Gunting (4 Kolom per Baris):</strong> Setiap kartu label menampilkan <strong>Nama Sparepart</strong>, <strong>Part Number</strong>, dan <strong>Gambar QR Code</strong> dengan garis putus-putus untuk digunting dan ditempelkan pada fisik barang.
                   </span>
                 </div>
-                <span className="text-[10px] text-emerald-700 font-mono font-bold bg-emerald-100 px-2 py-0.5 rounded shrink-0">
-                  Grid 3 Kolom A4
+                <span className="text-[10px] text-emerald-700 font-mono font-bold bg-emerald-100 px-2.5 py-0.5 rounded shrink-0">
+                  Grid 4 Kolom Siap Gunting
                 </span>
               </div>
 
               {/* Print Document Title Header (Only Visible on Print) */}
               <div className="hidden print:block mb-4 pb-2 border-b-2 border-slate-800 text-center">
-                <div className="text-[14px] font-black tracking-wider uppercase">LABEL BARCODE SUKU CADANG INBOUND</div>
+                <div className="text-[14px] font-black tracking-wider uppercase">LABEL QR CODE SUKU CADANG INBOUND</div>
                 <div className="text-[10px] font-mono text-slate-600">
                   Dokumen: {barcodePrintReceiving.spk_number || barcodePrintReceiving.purchase_order_num} • Kapal: {barcodePrintReceiving.vessel_name || "Semua Kapal"} • Tanggal Cetak: {new Date().toLocaleDateString("id-ID")}
                 </div>
               </div>
 
-              {/* Grid of Barcode Cards */}
-              <div className="grid grid-cols-2 sm:grid-cols-3 print:grid-cols-3 gap-3 print:gap-3">
+              {/* Grid of Barcode / QR Cards (Exactly 4 per row) */}
+              <div className="grid grid-cols-2 sm:grid-cols-4 print:grid-cols-4 gap-2.5 print:gap-2.5">
                 {printItemsList.map((itm: any, idx: number) => {
                   const pName = itm.spare_part_name || itm.part_name || "Suku Cadang";
                   const pNum = itm.part_number !== undefined && itm.part_number !== null ? String(itm.part_number).trim() : "-";
                   const bc = itm.barcode;
+                  const targetUrl = getPublicSparePartUrl(itm.spare_part_id || itm.id || bc, bc);
 
                   return (
                     <div
                       key={itm.uniqueKey || idx}
-                      className="border-2 border-dashed border-slate-300 print:border-slate-800 rounded-lg p-3 bg-white flex flex-col items-center justify-between text-center relative break-inside-avoid print:break-inside-avoid no-print-break"
-                      style={{ minHeight: "145px", WebkitPrintColorAdjust: "exact", printColorAdjust: "exact" }}
+                      className="border-2 border-dashed border-slate-300 print:border-slate-800 rounded-lg p-2.5 bg-white flex flex-col items-center justify-between text-center relative break-inside-avoid print:break-inside-avoid no-print-break"
+                      style={{ minHeight: "175px", WebkitPrintColorAdjust: "exact", printColorAdjust: "exact" }}
                     >
                       {/* Cut guide indicator */}
                       <div className="absolute top-1 left-1.5 text-[8.5px] text-slate-400 print:text-slate-500 font-mono flex items-center gap-0.5 select-none opacity-80">
@@ -4690,26 +4693,32 @@ export default function ReceivingView({
                       </div>
 
                       {/* 1. Nama Sparepart */}
-                      <div className="w-full mt-1.5 mb-1 px-1">
-                        <div className="text-[11px] font-black uppercase text-slate-900 leading-snug line-clamp-2" title={pName}>
+                      <div className="w-full mt-1 mb-1 px-0.5">
+                        <div className="text-[10px] font-black uppercase text-slate-900 leading-tight line-clamp-2" title={pName}>
                           {pName}
                         </div>
                       </div>
 
                       {/* 2. Part Number */}
-                      <div className="mb-2">
-                        <span className="inline-block text-[10px] font-mono font-black text-slate-700 bg-slate-100 border border-slate-250 px-2 py-0.5 rounded">
+                      <div className="mb-1">
+                        <span className="inline-block text-[9px] font-mono font-black text-slate-700 bg-slate-100 border border-slate-200 px-1.5 py-0.5 rounded max-w-full truncate">
                           PN: {pNum || "-"}
                         </span>
                       </div>
 
-                      {/* 3. Barcode Graphic with Code */}
+                      {/* 3. QR Code Graphic matching Catalog Sparepart */}
                       <div className="w-full flex flex-col items-center justify-center mt-auto">
-                        <BarcodeGraphic
-                          code={bc}
-                          width={145}
-                          height={34}
-                        />
+                        <div className="p-1.5 bg-white border border-slate-200 rounded-lg shadow-2xs flex items-center justify-center">
+                          <QRCode
+                            value={targetUrl}
+                            size={82}
+                            style={{ height: "82px", width: "82px", maxWidth: "82px" }}
+                            viewBox="0 0 256 256"
+                          />
+                        </div>
+                        <span className="text-[8.5px] font-mono font-bold text-slate-800 tracking-wider block mt-1">
+                          #{bc}
+                        </span>
                       </div>
                     </div>
                   );
@@ -4720,7 +4729,7 @@ export default function ReceivingView({
 
             {/* Modal Bottom Footer Bar (Hidden on Print) */}
             <div className="bg-slate-100 px-6 py-3 border-t border-slate-200 flex items-center justify-between text-xs text-slate-500 font-mono no-print">
-              <span>Total: {printItemsList.length} label barcode siap dicetak</span>
+              <span>Total: {printItemsList.length} label QR Code siap dicetak (4 label per baris)</span>
               <button
                 type="button"
                 onClick={() => setBarcodePrintReceiving(null)}
