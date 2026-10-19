@@ -34,7 +34,9 @@ import {
   Edit3,
   RefreshCw,
   ShieldCheck,
-  SlidersHorizontal
+  SlidersHorizontal,
+  Calendar,
+  Boxes
 } from "lucide-react";
 import { 
   User as UserType, 
@@ -96,6 +98,44 @@ export default function MaterialReturnView({
   const isEmirRole = uLower.includes("emir") || rLower.includes("manager") || rLower.includes("logistik") || uLower.includes("superadmin") || rLower.includes("super");
   const isSumbonoRole = uLower.includes("sumbono") || rLower.includes("vp") || rLower.includes("rendalhar") || uLower.includes("superadmin") || rLower.includes("super");
 
+  // Date filter states for TUG 10
+  const [datePreset, setDatePreset] = useState<string>("ALL"); // "ALL" | "YYYY-MM" | "CUSTOM"
+  const [startDate, setStartDate] = useState<string>("");
+  const [endDate, setEndDate] = useState<string>("");
+
+  // Extract all available months dynamically from returns
+  const availableMonths = useMemo(() => {
+    const monthMap = new Map<string, number>();
+    (returns || []).forEach(r => {
+      if (!r) return;
+      const d = (r.return_date || r.created_at || "").trim();
+      if (d.length >= 7) {
+        const ym = d.substring(0, 7); // "YYYY-MM"
+        if (/^\d{4}-\d{2}/.test(ym)) {
+          monthMap.set(ym, (monthMap.get(ym) || 0) + 1);
+        }
+      }
+    });
+    return Array.from(monthMap.entries()).sort((a, b) => b[0].localeCompare(a[0]));
+  }, [returns]);
+
+  const formatMonthName = (ym: string) => {
+    try {
+      const [year, month] = ym.split("-");
+      const monthNames = [
+        "Januari", "Februari", "Maret", "April", "Mei", "Juni",
+        "Juli", "Agustus", "September", "Oktober", "November", "Desember"
+      ];
+      const mIdx = parseInt(month, 10) - 1;
+      if (mIdx >= 0 && mIdx < 12) {
+        return `${monthNames[mIdx]} ${year}`;
+      }
+      return ym;
+    } catch {
+      return ym;
+    }
+  };
+
   // Pagination states
   const [returnPage, setReturnPage] = useState(1);
   const [returnsPerPage, setReturnsPerPage] = useState<number>(10);
@@ -107,7 +147,7 @@ export default function MaterialReturnView({
   React.useEffect(() => {
     setReturnPage(1);
     setSelectedReturnIds([]);
-  }, [searchQuery, statusFilter]);
+  }, [searchQuery, statusFilter, datePreset, startDate, endDate]);
 
   // Create form state
   const [returnDate, setReturnDate] = useState<string>(new Date().toISOString().split("T")[0]);
@@ -402,35 +442,50 @@ export default function MaterialReturnView({
     setIsCreating(false);
   };
 
-  // Filter returns with time presets, custom date pickers, and July 2026 empty rule
-  const filteredReturns = (returns || []).filter(ret => {
-    if (!ret) return false;
-    const query = searchQuery.toLowerCase();
-    const retNum = ret.return_number || "";
-    const vesName = ret.vessel_name || "";
-    const retReason = ret.return_reason || "";
-    const matchSearch = 
-      retNum.toLowerCase().includes(query) ||
-      vesName.toLowerCase().includes(query) ||
-      (ret.spk_number && ret.spk_number.toLowerCase().includes(query)) ||
-      retReason.toLowerCase().includes(query);
+  // Filter returns with date preset (month/year) and custom date pickers
+  const filteredReturns = useMemo(() => {
+    return (returns || []).filter(ret => {
+      if (!ret) return false;
 
-    if (!matchSearch) return false;
-    if (statusFilter !== "All" && ret.status !== statusFilter) return false;
+      // Date filtering
+      const retDateStr = (ret.return_date || ret.created_at || "").trim();
+      if (datePreset !== "ALL" && datePreset !== "CUSTOM") {
+        if (!retDateStr.startsWith(datePreset)) return false;
+      }
+      if (startDate && retDateStr && retDateStr < startDate) return false;
+      if (endDate && retDateStr && retDateStr > endDate) return false;
 
-    return true;
-  });
+      if (statusFilter !== "All" && ret.status !== statusFilter) return false;
+
+      if (!searchQuery.trim()) return true;
+      const query = searchQuery.toLowerCase();
+      const retNum = ret.return_number || "";
+      const vesName = ret.vessel_name || "";
+      const retReason = ret.return_reason || "";
+      return (
+        retNum.toLowerCase().includes(query) ||
+        vesName.toLowerCase().includes(query) ||
+        (ret.spk_number && ret.spk_number.toLowerCase().includes(query)) ||
+        retReason.toLowerCase().includes(query)
+      );
+    });
+  }, [returns, searchQuery, statusFilter, datePreset, startDate, endDate]);
 
   // Function to trigger print for filtered TUG 10
   const handlePrintFilteredTUG10 = () => {
-    const filterLabel = statusFilter !== "All" ? `Status ${statusFilter}` : "Semua TUG 10";
+    let filterLabel = statusFilter !== "All" ? `Status ${statusFilter}` : "Semua TUG 10";
+    if (datePreset !== "ALL" && datePreset !== "CUSTOM") {
+      filterLabel = `Periode ${formatMonthName(datePreset)}`;
+    } else if (startDate || endDate) {
+      filterLabel = `Kustom (${startDate || "Awal"} s/d ${endDate || "Akhir"})`;
+    }
 
     if (filteredReturns.length === 0) {
       // Send an empty document record with items: [] -> PrintDocument renders (-) row
       const emptyDoc: MaterialReturn = {
         id: `ret-empty-${Date.now()}`,
-        return_number: "TUG10-2026-NIHIL",
-        return_date: new Date().toISOString().split("T")[0],
+        return_number: (datePreset !== "ALL" && datePreset !== "CUSTOM") ? `TUG10-${datePreset}-NIHIL` : "TUG10-2026-NIHIL",
+        return_date: (datePreset !== "ALL" && datePreset !== "CUSTOM") ? `${datePreset}-01` : (startDate || new Date().toISOString().split("T")[0]),
         vessel_name: "-",
         warehouse_name: "Gudang Merak",
         spk_number: "NP",
@@ -1307,6 +1362,7 @@ export default function MaterialReturnView({
           
           {/* Filtering bar section */}
           <div className="bg-white border-b border-slate-200 px-6 py-3.5 flex flex-col gap-3 shrink-0 shadow-xs">
+            {/* Row 1: Search, Status Filter & Print Action */}
             <div className="flex flex-col lg:flex-row gap-3 items-center justify-between">
               <div className="relative w-full lg:w-72 shrink-0">
                 <input
@@ -1348,6 +1404,90 @@ export default function MaterialReturnView({
                   <Printer className="w-3.5 h-3.5 text-white" />
                   <span>Cetak TUG 10 ({filteredReturns.length})</span>
                 </button>
+              </div>
+            </div>
+
+            {/* Row 2: Periode Bulan & Tahun + Custom Date Picker */}
+            <div className="flex flex-wrap items-center justify-between gap-3 pt-2.5 border-t border-slate-100">
+              <div className="flex flex-wrap items-center gap-2">
+                <div className="flex items-center gap-1.5">
+                  <span className="text-slate-500 uppercase tracking-wider flex items-center gap-1.5 mr-1 text-[10px] font-extrabold font-mono">
+                    <Calendar className="w-3.5 h-3.5 text-emerald-600" /> PERIODE BULAN & TAHUN:
+                  </span>
+
+                  <div className="relative flex items-center">
+                    <select
+                      value={datePreset}
+                      onChange={(e) => {
+                        const val = e.target.value;
+                        setDatePreset(val);
+                        if (val !== "CUSTOM") {
+                          setStartDate("");
+                          setEndDate("");
+                        }
+                      }}
+                      className="bg-white hover:bg-slate-50 border border-slate-300 text-slate-800 text-xs font-bold font-sans rounded-lg pl-3 pr-8 py-1.5 shadow-xs focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 transition-all cursor-pointer appearance-none"
+                      title="Pilih Bulan & Tahun Periode TUG 10"
+                    >
+                      <option value="ALL">Semua Periode ({(returns || []).length} Data)</option>
+                      {availableMonths.map(([ym, count]) => (
+                        <option key={ym} value={ym}>
+                          {formatMonthName(ym)} ({count} Data)
+                        </option>
+                      ))}
+                      {datePreset === "CUSTOM" && (
+                        <option value="CUSTOM">Rentang Tanggal Kustom</option>
+                      )}
+                    </select>
+                    <div className="pointer-events-none absolute inset-y-0 right-0 flex items-center pr-2.5 text-slate-400">
+                      <ChevronDown className="w-3.5 h-3.5" />
+                    </div>
+                  </div>
+                </div>
+
+                {/* Date Range Inputs */}
+                <div className="flex items-center gap-1.5 ml-1 bg-slate-50 p-1 rounded-lg border border-slate-200">
+                  <input
+                    type="date"
+                    value={startDate}
+                    onChange={(e) => {
+                      setStartDate(e.target.value);
+                      setDatePreset("CUSTOM");
+                    }}
+                    className="bg-white border border-slate-200 rounded px-2 py-1 text-[11px] font-mono font-semibold text-slate-700 focus:outline-none focus:border-indigo-500"
+                    title="Tanggal Pengembalian Dari"
+                  />
+                  <span className="text-[10px] font-bold text-slate-400 font-mono">s/d</span>
+                  <input
+                    type="date"
+                    value={endDate}
+                    onChange={(e) => {
+                      setEndDate(e.target.value);
+                      setDatePreset("CUSTOM");
+                    }}
+                    className="bg-white border border-slate-200 rounded px-2 py-1 text-[11px] font-mono font-semibold text-slate-700 focus:outline-none focus:border-indigo-500"
+                    title="Tanggal Pengembalian Sampai"
+                  />
+                </div>
+
+                {/* Reset Button */}
+                {(datePreset !== "ALL" || startDate || endDate) && (
+                  <button
+                    type="button"
+                    onClick={() => { setDatePreset("ALL"); setStartDate(""); setEndDate(""); }}
+                    className="px-2.5 py-1 bg-rose-50 hover:bg-rose-100 border border-rose-200 text-rose-700 rounded-lg text-[10px] font-bold cursor-pointer transition-all flex items-center gap-1"
+                    title="Reset Filter Tanggal"
+                  >
+                    <X className="w-3 h-3" />
+                    <span>Reset Tanggal</span>
+                  </button>
+                )}
+              </div>
+
+              {/* Counter */}
+              <div className="ml-auto text-[10px] text-slate-500 font-mono tracking-wider font-extrabold uppercase flex items-center gap-2">
+                <Boxes className="w-4 h-4 text-indigo-600" />
+                <span>Menampilkan <strong className="text-slate-900 font-black">{filteredReturns.length}</strong> dari {(returns || []).length} Data TUG 10</span>
               </div>
             </div>
           </div>
