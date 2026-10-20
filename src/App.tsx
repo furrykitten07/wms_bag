@@ -56,7 +56,7 @@ import VesselsManagementView from "./components/VesselsManagementView.js";
 import PublicSparePartView from "./components/PublicSparePartView.js";
 import MaintenanceScreen from "./components/MaintenanceScreen.js";
 import MaintenanceAdminView from "./components/MaintenanceAdminView.js";
-import ScheduledMaintenanceModal, { formatIndonesianDate } from "./components/ScheduledMaintenanceModal.js";
+import ScheduledMaintenanceModal from "./components/ScheduledMaintenanceModal.js";
 import LoginAndLogsView from "./components/LoginAndLogsView.js";
 import CriticalSparePartsAdminView from "./components/CriticalSparePartsAdminView.js";
 import ErrorBoundary from "./components/ErrorBoundary.js";
@@ -1039,38 +1039,6 @@ export default function App() {
             >
               Kelola Mode Maintenance &rarr;
             </button>
-          </div>
-        )}
-
-        {/* Global Scheduled Maintenance Advance Notice Top Banner */}
-        {maintenanceConfig.schedule_notice_enabled && !maintenanceConfig.is_maintenance && (
-          <div className="bg-gradient-to-r from-red-600 via-rose-700 to-red-800 text-white px-6 py-2.5 flex items-center justify-between text-xs font-mono font-bold shrink-0 shadow-md border-b border-red-900 z-30">
-            <div className="flex items-center gap-2.5 min-w-0">
-              <span className="w-2.5 h-2.5 rounded-full bg-white animate-ping shrink-0" />
-              <AlertCircle className="w-4 h-4 text-white animate-bounce shrink-0" />
-              <div className="flex items-center gap-2 flex-wrap min-w-0">
-                <span className="bg-white/20 px-2 py-0.5 rounded text-[10px] font-black uppercase tracking-wider shrink-0">
-                  JADWAL MAINTENANCE
-                </span>
-                <span className="truncate">
-                  {formatIndonesianDate(maintenanceConfig.schedule_date)} (Pukul {maintenanceConfig.schedule_start_time || "22:00"} - {maintenanceConfig.schedule_end_time || "23:59"} WIB)
-                </span>
-                <span className="text-yellow-200 font-extrabold hidden md:inline">
-                  — ⚠️ MOHON TIDAK ADA TRANSAKSI DI JAM TERSEBUT
-                </span>
-              </div>
-            </div>
-            <div className="flex items-center gap-2 shrink-0">
-              {isSuperAdmin && (
-                <button
-                  type="button"
-                  onClick={() => setCurrentTab("maintenance")}
-                  className="bg-white/20 hover:bg-white/30 text-white px-2.5 py-1 rounded text-[10.5px] font-black uppercase tracking-wider transition-all cursor-pointer"
-                >
-                  Kelola Jadwal &rarr;
-                </button>
-              )}
-            </div>
           </div>
         )}
 
