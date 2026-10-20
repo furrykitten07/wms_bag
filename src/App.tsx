@@ -1359,6 +1359,9 @@ export default function App() {
             <LedgerView 
               movements={ledger}
               parts={parts}
+              receivingList={receivingList}
+              dispatchList={dispatchList}
+              materialReturns={materialReturns}
             />
           )}
 

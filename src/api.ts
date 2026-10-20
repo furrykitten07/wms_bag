@@ -2274,10 +2274,71 @@ async function fetcher<T>(url: string, options: RequestInit = {}): Promise<T> {
       // --- 11. LEDGER ---
       if (path.startsWith("/api/ledger") && method === "GET") {
         const { data, error } = await supabase.from("movement_ledger_entries").select("*");
-        if (!error && data) {
+        if (!error && data && data.length > 0) {
           localLedger = data as any;
           return data as any;
         }
+
+        // Synthesize ledger entries from localReceiving and localDispatches if table is empty
+        const synthLedger: MovementLedgerEntry[] = [];
+        const recList = loadLocalReceiving();
+        const dspList = loadLocalDispatches();
+
+        recList.forEach((r: any) => {
+          if (!r || !Array.isArray(r.items)) return;
+          r.items.forEach((item: any, idx: number) => {
+            const qty = Number(item.qty_received ?? item.qty_ordered ?? 1);
+            if (qty > 0) {
+              synthLedger.push({
+                id: `rec-ledg-${r.id}-${idx}`,
+                transaction_type: TransactionType.RECEIVING,
+                spare_part_id: item.spare_part_id || `part-${idx}`,
+                spare_part_name: item.spare_part_name || "Suku Cadang",
+                part_number: item.part_number || "-",
+                vessel_name: (item as any).vessel_name || r.vessel_name || "Gudang Utama",
+                qty_in: qty,
+                qty_out: 0,
+                before_stock: 0,
+                after_stock: qty,
+                reference_number: r.purchase_order_num || r.delivery_note_num || `PO-${r.id}`,
+                remarks: `Inbound PO | Vendor: ${r.vendor_name || '-'} | DN: ${r.delivery_note_num || '-'}`,
+                transaction_date: r.received_date || r.created_at || now,
+                created_by: r.received_by || r.created_by || "Petugas Gudang"
+              });
+            }
+          });
+        });
+
+        dspList.forEach((d: any) => {
+          if (!d || !Array.isArray(d.items)) return;
+          d.items.forEach((item: any, idx: number) => {
+            const qty = Number(item.qty_dispatched ?? item.qty ?? item.qty_requested ?? 1);
+            if (qty > 0) {
+              synthLedger.push({
+                id: `dsp-ledg-${d.id}-${idx}`,
+                transaction_type: TransactionType.DISPATCH,
+                spare_part_id: item.spare_part_id || `part-${idx}`,
+                spare_part_name: item.spare_part_name || "Suku Cadang",
+                part_number: item.part_number || "-",
+                vessel_name: d.vessel_name || "-",
+                qty_in: 0,
+                qty_out: qty,
+                before_stock: qty,
+                after_stock: 0,
+                reference_number: d.tug8_number || d.bon_pengeluaran_number || d.dispatch_number || `TUG8-${d.id}`,
+                remarks: `Outbound TUG 8 | Kapal: ${d.vessel_name || '-'} | Tujuan: ${d.delivery_destination || 'Pelabuhan'}`,
+                transaction_date: d.dispatch_date || d.created_at || now,
+                created_by: d.created_by || "Staff Gudang"
+              });
+            }
+          });
+        });
+
+        if (synthLedger.length > 0) {
+          localLedger = synthLedger;
+          return synthLedger as any;
+        }
+
         return localLedger as any;
       }
     } catch (supabaseErr: any) {
