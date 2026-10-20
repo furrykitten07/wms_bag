@@ -33,7 +33,6 @@ import {
   History,
   TrendingUp,
   SlidersHorizontal,
-  FolderArchive,
   ChevronDown,
   Trash2,
   ShieldCheck,
@@ -151,7 +150,6 @@ export default function DispatchView({
   receivingList = [],
   vessels = []
 }: DispatchViewProps) {
-  const [activeTab, setActiveTab] = useState<"queue" | "archive">("queue");
   const [activeActionId, setActiveActionId] = useState<string | null>(null);
   const [actionMenuCoords, setActionMenuCoords] = useState<{
     top?: number;
@@ -280,7 +278,7 @@ export default function DispatchView({
   React.useEffect(() => {
     setDspPage(1);
     setSelectedDspIds([]);
-  }, [search, statusFilter, vesselFilter, activeTab, datePreset, dateFrom, dateTo]);
+  }, [search, statusFilter, vesselFilter, datePreset, dateFrom, dateTo]);
 
   const [selectedDispatch, setSelectedDispatch] = useState<OutboundDispatch | null>(null);
 
@@ -1173,8 +1171,6 @@ export default function DispatchView({
     const tug8Num = d.tug8_number || "";
     const reqRef = d.request_reference || "";
 
-    const isQueue = activeTab === "queue" ? d.status !== DispatchStatus.DELIVERED && d.status !== DispatchStatus.COMPLETED && d.status !== "Completed" as any : d.status === DispatchStatus.DELIVERED || d.status === DispatchStatus.COMPLETED || d.status === "Completed" as any;
-    
     const matchesSearch = 
       vName.toLowerCase().includes(search.toLowerCase()) || 
       dispNum.toLowerCase().includes(search.toLowerCase()) || 
@@ -1191,7 +1187,7 @@ export default function DispatchView({
     const dDate = (d as any).dispatch_date || (d.created_at ? d.created_at.split("T")[0] : "") || d.created_at || "";
     const matchesTime = isDateInFilter(dDate);
 
-    return isQueue && matchesSearch && matchesStatus && matchesVessel && matchesTime;
+    return matchesSearch && matchesStatus && matchesVessel && matchesTime;
   });
 
   const handlePrintFilteredTUG5 = () => {
@@ -1432,7 +1428,7 @@ export default function DispatchView({
             <Truck className="w-5 h-5 text-blue-600" /> Dispatch & Outbound Logistics (TUG 8)
           </h1>
           <p className="text-xs text-slate-500 mt-1 font-sans font-medium">
-            Manage Picking, Packaging, Stock Allocations, and view archived Bon Pengeluaran issue slips
+            Manage Picking, Packaging, Stock Allocations, and Bon Pengeluaran issue slips
           </p>
         </div>
 
@@ -1475,32 +1471,6 @@ export default function DispatchView({
         </div>
       </div>
 
-      {/* Navigation Subtabs (Active Queue vs Document Archive) */}
-      <div className="flex gap-4 border-b border-slate-200 bg-white px-6 shrink-0 no-print">
-        <button
-          onClick={() => { setActiveTab("queue"); setDspPage(1); }}
-          className={`py-3.5 text-xs uppercase font-mono font-bold border-b-2 tracking-wider transition-all cursor-pointer flex items-center gap-2 ${
-            activeTab === "queue" 
-              ? "border-blue-600 text-blue-700" 
-              : "border-transparent text-slate-500 hover:text-slate-800"
-          }`}
-        >
-          <ClipboardList className="w-4 h-4" />
-          Active Dispatch Queue ({statsActiveCount})
-        </button>
-        <button
-          onClick={() => { setActiveTab("archive"); setDspPage(1); }}
-          className={`py-3.5 text-xs uppercase font-mono font-bold border-b-2 tracking-wider transition-all cursor-pointer flex items-center gap-2 ${
-            activeTab === "archive" 
-              ? "border-blue-600 text-blue-700" 
-              : "border-transparent text-slate-500 hover:text-slate-800"
-          }`}
-        >
-          <FolderArchive className="w-4 h-4" />
-          TUG 8 Document Archive ({statsArchiveCount})
-        </button>
-      </div>
-
       {/* Searching & Analytical Filters */}
       <section className="bg-white border-b border-slate-200 px-6 py-4 flex flex-col gap-3 shrink-0 shadow-xs no-print">
         
@@ -1530,21 +1500,14 @@ export default function DispatchView({
                 className="bg-white border border-slate-200 rounded-lg p-2 text-[11px] font-bold text-slate-700 focus:outline-none focus:ring-1 focus:ring-blue-500 cursor-pointer"
               >
                 <option value="All">Semua Status</option>
-                {activeTab === "queue" ? (
-                  <>
-                    <option value="DISPATCHED_PARTIAL">⚠️ Dispatched Parsial</option>
-                    <option value={DispatchStatus.DRAFT}>Draft</option>
-                    <option value={DispatchStatus.PICKING}>Picking</option>
-                    <option value={DispatchStatus.PACKED}>Packed</option>
-                    <option value={DispatchStatus.READY_TO_DISPATCH}>Ready To Dispatch</option>
-                    <option value={DispatchStatus.DISPATCHED}>Dispatched</option>
-                  </>
-                ) : (
-                  <>
-                    <option value={DispatchStatus.DELIVERED}>Delivered</option>
-                    <option value={DispatchStatus.COMPLETED}>Completed</option>
-                  </>
-                )}
+                <option value="DISPATCHED_PARTIAL">⚠️ Dispatched Parsial</option>
+                <option value={DispatchStatus.DRAFT}>Draft</option>
+                <option value={DispatchStatus.PICKING}>Picking</option>
+                <option value={DispatchStatus.PACKED}>Packed</option>
+                <option value={DispatchStatus.READY_TO_DISPATCH}>Ready To Dispatch</option>
+                <option value={DispatchStatus.DISPATCHED}>Dispatched</option>
+                <option value={DispatchStatus.DELIVERED}>Delivered</option>
+                <option value={DispatchStatus.COMPLETED}>Completed</option>
               </select>
             </div>
 
@@ -1722,7 +1685,7 @@ export default function DispatchView({
           <div className="flex items-center gap-2 text-slate-700">
             <Box className="w-4 h-4 text-blue-500" />
             <span className="text-xs font-bold uppercase font-mono tracking-widest text-slate-705">
-              {activeTab === "queue" ? "Antrean Pengiriman Aktif (Inbound-to-Outbound)" : "Dokumen TUG 8 Terbit & Kearsipan (Completed Delivery)"}
+              Antrean Pengiriman Dispatch (TUG 8)
             </span>
           </div>
           <span className="text-[10px] bg-slate-200 px-2 py-0.5 rounded font-mono font-bold text-slate-600">
@@ -1735,9 +1698,7 @@ export default function DispatchView({
             <div className="p-16 text-center">
               <ClipboardList className="w-10 h-10 text-slate-300 mx-auto mb-2" />
               <p className="text-xs text-slate-500 italic font-mono uppercase">
-                {activeTab === "queue" 
-                  ? "Tidak ada antrean pengiriman aktif yang cocok dengan kriteria." 
-                  : "Belum ada dokumen TUG 8 yang dikeluarkan/diselesaikan."}
+                Tidak ada data pengiriman dispatch yang cocok dengan kriteria.
               </p>
             </div>
           ) : (
