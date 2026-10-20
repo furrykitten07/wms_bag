@@ -102,7 +102,13 @@ export function resetCriticalSparePartsToDefault(): CriticalSparePart[] {
 }
 
 /**
- * Check if a spare part item matches any item in the critical spare parts database
+ * Check if a spare part item matches EXACTLY with the Critical Spare Parts master database.
+ * 
+ * STRICT RULE (USER DIRECTIVE):
+ * - Data harus sama persis seperti yang di menu "CRITICAL SPARE PARTS TUG 6"
+ * - Data harus identik sesuai dengan Nama Suku Cadang DAN Part Number secara bersamaan
+ * - JANGAN mencocokkan hanya berdasarkan salah satu field (nama saja atau part number saja)
+ * - Keduanya (part_name DAN part_number) HARUS SAMA-SAMA COCOK / IDENTIK
  */
 export function checkIsCriticalPart(
   item: { spare_part_name?: string; part_number?: string },
@@ -114,86 +120,57 @@ export function checkIsCriticalPart(
 
   const rawItemName = String(item.spare_part_name || "").trim().toUpperCase();
   const rawItemPn = String(item.part_number || "").trim().toUpperCase();
+
+  const cleanItemName = rawItemName.replace(/\s+/g, " ");
+  const alphaItemName = rawItemName.replace(/[^A-Z0-9]/g, "");
+
   const cleanItemPn = rawItemPn.replace(/[^A-Z0-9]/g, "");
   const hasItemPn = cleanItemPn !== "" && cleanItemPn !== "-";
 
   for (const crit of criticalParts) {
     const rawCritName = String(crit.part_name || "").trim().toUpperCase();
     const rawCritPn = String(crit.part_no || "").trim().toUpperCase();
+
+    const cleanCritName = rawCritName.replace(/\s+/g, " ");
+    const alphaCritName = rawCritName.replace(/[^A-Z0-9]/g, "");
+
     const cleanCritPn = rawCritPn.replace(/[^A-Z0-9]/g, "");
     const hasCritPn = cleanCritPn !== "" && cleanCritPn !== "-";
 
-    // -------------------------------------------------------------
-    // CRITERIA 1: Master item has a Part Number defined
-    // -------------------------------------------------------------
-    if (hasCritPn) {
-      const isShortPn = cleanCritPn.length <= 3; // e.g. drawing/position number like "1", "9", "12", "84", "92", "106", "127", "155", "902"
+    // 1. MUST IDENTICALLY MATCH PART NAME
+    const isNameIdentical = 
+      cleanItemName === cleanCritName || 
+      (alphaItemName.length > 0 && alphaItemName === alphaCritName);
 
-      if (isShortPn) {
-        // If master has a short index number (e.g. PN "9" for O-RING or "84" for PISTON RING):
-        // It requires BOTH the Part Number to match cleanCritPn AND the name to match!
-        // This ensures an item like O-RING with PN 3803-6419-00 will NEVER match O-RING PN 9!
-        if (cleanItemPn === cleanCritPn && cleanItemPn.length > 0) {
-          if (
-            rawItemName === rawCritName ||
-            rawItemName.includes(rawCritName) ||
-            rawCritName.includes(rawItemName)
-          ) {
-            return {
-              isCritical: true,
-              matchedCritical: crit,
-              matchReason: `Part No: ${crit.part_no} (${crit.part_name})`
-            };
-          }
-        }
-      } else {
-        // Specific alphanumeric Part Number (e.g. "00047-001", "E245200090A", "746623-51403", "24316-000210", "Z565002700ZZ", etc.)
-        if (hasItemPn) {
-          // Exact alphanumeric match
-          if (cleanItemPn === cleanCritPn) {
-            return {
-              isCritical: true,
-              matchedCritical: crit,
-              matchReason: `Part No: ${crit.part_no}`
-            };
-          }
-          // Substring match for long specific part numbers (>= 5 chars)
-          if (cleanCritPn.length >= 5 && cleanItemPn.length >= 5) {
-            if (cleanItemPn.includes(cleanCritPn) || cleanCritPn.includes(cleanItemPn)) {
-              return {
-                isCritical: true,
-                matchedCritical: crit,
-                matchReason: `Ref Part No: ${crit.part_no}`
-              };
-            }
-          }
-        }
+    if (!isNameIdentical) {
+      continue; // Nama berbeda -> BUKAN CRITICAL
+    }
+
+    // 2. MUST IDENTICALLY MATCH PART NUMBER (KEDUANYA HARUS COCOK)
+    if (hasCritPn) {
+      // Master memiliki part number spesifik (misal: "1", "12", "00047-001", "E245200090A", dsb)
+      // Item juga harus memiliki part number dan wajib sama persis
+      if (!hasItemPn) {
+        continue; // Master punya PN tapi item tidak punya PN -> BUKAN CRITICAL
+      }
+      if (cleanItemPn !== cleanCritPn) {
+        continue; // Part number berbeda -> BUKAN CRITICAL
       }
     } else {
-      // -------------------------------------------------------------
-      // CRITERIA 2: Master item has NO Part Number (part_no is "-" or empty)
-      // Example in FIKRI.xlsx: "PISTON CROWN" with part_no "-"
-      // -------------------------------------------------------------
-      if (rawCritName && rawItemName) {
-        // Exact name match or normalized alphanumeric match
-        if (rawItemName === rawCritName) {
-          return {
-            isCritical: true,
-            matchedCritical: crit,
-            matchReason: `Master Component: ${crit.part_name}`
-          };
-        }
-        const normItem = rawItemName.replace(/[^A-Z0-9]/g, "");
-        const normCrit = rawCritName.replace(/[^A-Z0-9]/g, "");
-        if (normItem === normCrit && normCrit.length >= 6) {
-          return {
-            isCritical: true,
-            matchedCritical: crit,
-            matchReason: `Master Component: ${crit.part_name}`
-          };
-        }
+      // Master TIDAK memiliki part number (part_no "-" atau kosong, misal PISTON CROWN di master)
+      // Item incoming juga HARUS TIDAK memiliki part number ("-" atau kosong).
+      // Jika item incoming memiliki part number spesifik (misal: PN-407142), maka TIDAK IDENTIK -> BUKAN CRITICAL!
+      if (hasItemPn) {
+        continue; // Item punya PN spesifik sedangkan master "-", jadi tidak identik
       }
     }
+
+    // KEDUANYA (NAMA DAN PART NUMBER) IDENTIK DENGAN MASTER CRITICAL!
+    return {
+      isCritical: true,
+      matchedCritical: crit,
+      matchReason: `Identik Master: ${crit.part_name} | P/N: ${crit.part_no || "-"}`
+    };
   }
 
   return { isCritical: false };

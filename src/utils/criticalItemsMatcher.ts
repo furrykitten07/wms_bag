@@ -65,8 +65,6 @@ export const CRITICAL_EXACT_SET = new Set<string>(
  */
 export function isItemCritical(item: Partial<MaterialRequestItem> | null | undefined): boolean {
   if (!item) return false;
-  if (item.is_critical) return true;
-  if (item.notes && item.notes.includes("[ITEM CRITICAL]")) return true;
 
   const rawName = item.spare_part_name;
   const rawPartNo = item.part_number;
@@ -78,21 +76,37 @@ export function isItemCritical(item: Partial<MaterialRequestItem> | null | undef
   const nameUpper = String(rawName || "").trim().toUpperCase();
   const partNoUpper = String(rawPartNo || "").trim().toUpperCase();
 
-  if (nameUpper && partNoUpper && CRITICAL_EXACT_SET.has(`${nameUpper}|||${partNoUpper}`)) {
-    return true;
-  }
+  const cleanItemName = nameUpper.replace(/\s+/g, " ");
+  const alphaItemName = nameUpper.replace(/[^A-Z0-9]/g, "");
 
-  // Also match normalized part numbers from critical list
-  if (partNoUpper) {
-    const normPartNo = partNoUpper.replace(/[^A-Z0-9]/g, "");
-    if (normPartNo) {
-      for (const entry of CRITICAL_PARTS_SHEET_DATA) {
-        const entryPartNorm = entry.part_no.toUpperCase().replace(/[^A-Z0-9]/g, "");
-        if (entryPartNorm && normPartNo === entryPartNorm) {
-          return true;
-        }
-      }
+  const cleanItemPn = partNoUpper.replace(/[^A-Z0-9]/g, "");
+  const hasItemPn = cleanItemPn !== "" && cleanItemPn !== "-";
+
+  for (const entry of CRITICAL_PARTS_SHEET_DATA) {
+    const rawCritName = entry.name.trim().toUpperCase();
+    const rawCritPn = String(entry.part_no || "").trim().toUpperCase();
+
+    const cleanCritName = rawCritName.replace(/\s+/g, " ");
+    const alphaCritName = rawCritName.replace(/[^A-Z0-9]/g, "");
+
+    const cleanCritPn = rawCritPn.replace(/[^A-Z0-9]/g, "");
+    const hasCritPn = cleanCritPn !== "" && cleanCritPn !== "-";
+
+    // 1. MUST IDENTICALLY MATCH PART NAME
+    const isNameIdentical =
+      cleanItemName === cleanCritName ||
+      (alphaItemName.length > 0 && alphaItemName === alphaCritName);
+
+    if (!isNameIdentical) continue;
+
+    // 2. MUST IDENTICALLY MATCH PART NUMBER (KEDUANYA HARUS COCOK)
+    if (hasCritPn) {
+      if (!hasItemPn || cleanItemPn !== cleanCritPn) continue;
+    } else {
+      if (hasItemPn) continue;
     }
+
+    return true;
   }
 
   return false;
