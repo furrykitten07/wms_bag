@@ -354,7 +354,8 @@ export default function App() {
               role: matched.role,
               vessel_name: matched.vessel_name || "-",
               warehouse_name: matched.warehouse_name || "Gudang Utama Merak",
-              userAgent: navigator.userAgent,
+              device: typeof navigator !== "undefined" ? (navigator.userAgent.includes("Windows") ? "Desktop (Windows 11 / Chrome)" : navigator.userAgent.includes("Mac") ? "Desktop (Mac)" : navigator.userAgent.includes("Android") || navigator.userAgent.includes("iPhone") ? "Mobile Device" : "Browser Web") : "Web",
+              userAgent: typeof navigator !== "undefined" ? navigator.userAgent : "",
               status: "SUCCESS"
             }
           }).catch(() => {});

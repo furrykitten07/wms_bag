@@ -65,64 +65,7 @@ export function formatJakartaDateTime(dateInput?: string | number | Date): strin
   });
 }
 
-// Helper to generate seed historical audit logs if Supabase has limited records
-function generateRealisticHistoryLogs(users: User[] = []): MaintenanceLog[] {
-  const actionsList = [
-    { action: "LOGIN", module: "AUTH", details: { status: "SUCCESS", device: "Desktop (Windows 11 / Chrome)", ip: "192.168.10.45" } },
-    { action: "VIEW_DASHBOARD", module: "SYSTEM", details: { page: "/dashboard", duration: "12m" } },
-    { action: "CREATE_TUG5", module: "LOGISTICS", details: { doc: "TUG5-2026-03745", vessel: "MV. LATIFAH BARUNA", items_count: 36 } },
-    { action: "VERIFY_RECEIVING", module: "RECEIVING", details: { po_num: "PO-2026-0811", vendor: "PT PANCANAKA PERKASA", status: "VERIFIED" } },
-    { action: "APPROVE_SIGNATURE", module: "DIGITAL_SIGNATURE", details: { doc: "TUG5-2026-03745", level: "Kepala Gudang", role: "Maghfur M. Alfin" } },
-    { action: "CREATE_DISPATCH", module: "DISPATCH", details: { dispatch_no: "DSP-2026-36618", phase: 1, type: "PARSIAL" } },
-    { action: "UPDATE_STOCK", module: "INVENTORY", details: { part_number: "FL-BR-08", action: "STOCK_INBOUND", qty: 2 } },
-    { action: "LOGIN", module: "AUTH", details: { status: "SUCCESS", device: "Laptop (Windows 10 / Edge)", ip: "192.168.10.88" } },
-    { action: "APPROVE_SIGNATURE", module: "DIGITAL_SIGNATURE", details: { doc: "TUG8-2026-92170", level: "Manager Logistik", role: "M. Emir Ferdian" } }
-  ];
-
-  const result: MaintenanceLog[] = [];
-  const now = new Date();
-
-  // Generate logs for past 10 days
-  for (let d = 9; d >= 0; d--) {
-    const dayDate = new Date(now.getTime() - d * 24 * 60 * 60 * 1000);
-    // 3 to 7 events per day (untuk hari ini hanya sedikit & strictly di masa lalu)
-    const eventsPerDay = d === 0 ? 3 : 4 + (d % 4);
-
-    for (let e = 0; e < eventsPerDay; e++) {
-      const u = users[e % (users.length || 1)] || { name: "Fikri Haikal", username: "superadmin", role: UserRole.SUPER_ADMIN };
-      const act = actionsList[(d + e) % actionsList.length];
-      
-      let eventTime: Date;
-      if (d === 0) {
-        // HARI INI: Waktu HARUS strictly di masa lalu dari jam realtime Jakarta saat ini!
-        // Contoh: 35 menit lalu, 90 menit lalu, 180 menit lalu (TIDAK AKAN PERNAH DI MASA DEPAN)
-        const minutesAgo = 35 + (e * 55) + ((e * 19) % 30);
-        eventTime = new Date(now.getTime() - minutesAgo * 60 * 1000);
-      } else {
-        const hour = 8 + (e * 2);
-        const minute = 10 + (e * 7);
-        eventTime = new Date(dayDate);
-        eventTime.setHours(hour, minute, (e * 13) % 60);
-      }
-
-      result.push({
-        id: `seed-log-${d}-${e}`,
-        action: act.action,
-        module: act.module,
-        operator: u.name || u.username,
-        timestamp: eventTime.toISOString(),
-        details: JSON.stringify({
-          ...act.details,
-          username: u.username,
-          role: u.role,
-          userAgent: "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 WMS-Desktop"
-        })
-      });
-    }
-  }
-
-  return result.reverse();
-}
+// Historical logs are loaded strictly from real database records (no dummy seed data)
 
 export default function LoginAndLogsView({
   currentUser,
@@ -176,16 +119,25 @@ export default function LoginAndLogsView({
   const loadAllLogs = async () => {
     setIsLoading(true);
     try {
-      const realLogs = await api.getAllAuditLogs(500);
-      const seedLogs = generateRealisticHistoryLogs(users);
+      // 1. Bersihkan sembarang dummy / seed log lama dari localStorage jika pernah tersimpan
+      try {
+        const cached = localStorage.getItem("wms_audit_logs_cache");
+        if (cached) {
+          const parsed = JSON.parse(cached);
+          if (Array.isArray(parsed)) {
+            const cleaned = parsed.filter((l: any) => !String(l.id || "").startsWith("seed-log"));
+            localStorage.setItem("wms_audit_logs_cache", JSON.stringify(cleaned));
+          }
+        }
+      } catch (e) {}
 
-      // Merge: real logs take priority, append seed logs if needed
-      const realIds = new Set(realLogs.map(l => l.id || l.timestamp));
-      const filteredSeed = seedLogs.filter(s => !realIds.has(s.id || s.timestamp));
+      // 2. Ambil real audit logs langsung dari Supabase / backend
+      const rawLogs = await api.getAllAuditLogs(500);
+      const realLogs = (rawLogs || []).filter(l => !String(l.id || "").startsWith("seed-log"));
 
       // Filter guard: cegah log dengan timestamp masa depan (> waktu saat ini + 30 detik)
       const maxAllowedTime = Date.now() + 30000;
-      const combined = [...realLogs, ...filteredSeed]
+      const combined = realLogs
         .filter(l => new Date(l.timestamp).getTime() <= maxAllowedTime)
         .sort((a, b) => {
           return new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime();
@@ -305,50 +257,120 @@ export default function LoginAndLogsView({
     }));
   }, [dailyStats, chartMetric]);
 
-  // User engagement summary: Who actually uses the system?
+  // User engagement summary: Real usage tracking from verified audit logs
   const userEngagement = useMemo(() => {
-    const stats = new Map<string, { name: string; username: string; role: string; totalLogins: number; totalActions: number; lastActive?: string }>();
+    const stats = new Map<string, { 
+      name: string; 
+      username: string; 
+      role: string; 
+      totalLogins: number; 
+      totalActions: number; 
+      lastActive?: string;
+      lastAuthAction?: "LOGIN" | "LOGOUT";
+      lastAuthTime?: string;
+      isOnline: boolean;
+    }>();
 
-    // Seed from registered users
+    // 1. Inisialisasi daftar seluruh pengguna resmi
     users.forEach(u => {
-      stats.set(u.username, {
+      const uKey = (u.username || "").toLowerCase().trim();
+      const isCurrentActive = Boolean(currentUser && (currentUser.username || "").toLowerCase().trim() === uKey);
+      stats.set(uKey, {
         name: u.name,
         username: u.username,
         role: u.role,
         totalLogins: 0,
         totalActions: 0,
-        lastActive: undefined
+        lastActive: isCurrentActive ? new Date().toISOString() : undefined,
+        lastAuthAction: isCurrentActive ? "LOGIN" : undefined,
+        lastAuthTime: isCurrentActive ? new Date().toISOString() : undefined,
+        isOnline: isCurrentActive
       });
     });
 
-    // Populate from logs
-    logs.forEach(log => {
+    // 2. Evaluasi log riwayat autentikasi & aktivitas nyata (diurutkan kronologis lama ke baru)
+    const chronological = [...logs].sort((a, b) => new Date(a.timestamp).getTime() - new Date(b.timestamp).getTime());
+
+    chronological.forEach(log => {
       const details = parseDetails(log.details);
-      const uName = details.username || log.operator;
+      const uName = (details.username || log.operator || "").trim().toLowerCase();
+      const opName = (log.operator || "").trim().toLowerCase();
+      
       const matched = Array.from(stats.values()).find(s => 
-        s.username.toLowerCase() === uName.toLowerCase() || 
-        s.name.toLowerCase() === (log.operator || "").toLowerCase()
+        s.username.toLowerCase() === uName || 
+        s.name.toLowerCase() === opName ||
+        s.name.toLowerCase().includes(opName) ||
+        opName.includes(s.name.toLowerCase())
       );
 
       if (matched) {
-        const isLogin = (log.action || "").toUpperCase().includes("LOGIN") || (log.module || "").toUpperCase() === "AUTH";
+        const actionUpper = (log.action || "").toUpperCase().trim();
+        const isLogin = actionUpper.includes("LOGIN") || ((log.module || "").toUpperCase() === "AUTH" && !actionUpper.includes("LOGOUT"));
+        const isLogout = actionUpper.includes("LOGOUT");
+
         if (isLogin) {
           matched.totalLogins += 1;
+          matched.lastAuthAction = "LOGIN";
+          matched.lastAuthTime = log.timestamp;
+        } else if (isLogout) {
+          matched.lastAuthAction = "LOGOUT";
+          matched.lastAuthTime = log.timestamp;
         } else {
           matched.totalActions += 1;
         }
+
         if (!matched.lastActive || new Date(log.timestamp) > new Date(matched.lastActive)) {
           matched.lastActive = log.timestamp;
         }
       }
     });
 
+    // 3. Tentukan status Online / Aktif vs Offline berdasarkan aktivitas real
+    Array.from(stats.values()).forEach(entry => {
+      const isCurrentActive = Boolean(currentUser && (currentUser.username || "").toLowerCase().trim() === entry.username.toLowerCase().trim());
+      if (isCurrentActive) {
+        entry.isOnline = true;
+        return;
+      }
+
+      // Jika aksi terakhir adalah LOGOUT, status PASTI Offline
+      if (entry.lastAuthAction === "LOGOUT") {
+        entry.isOnline = false;
+        return;
+      }
+
+      // Jika belum pernah login, status Offline
+      if (entry.totalLogins === 0) {
+        entry.isOnline = false;
+        return;
+      }
+
+      // Jika aksi terakhir adalah LOGIN, periksa batas waktu aktif sesi (maksimal 4 jam)
+      if (entry.lastAuthAction === "LOGIN" && entry.lastAuthTime) {
+        const loginTime = new Date(entry.lastAuthTime).getTime();
+        const hoursAgo = (Date.now() - loginTime) / (1000 * 60 * 60);
+        entry.isOnline = hoursAgo < 4;
+      } else {
+        entry.isOnline = false;
+      }
+    });
+
     return Array.from(stats.values()).sort((a, b) => {
+      // Akun yang sedang aktif di sesi ini ditempatkan teratas
+      const isCurrentA = currentUser && a.username.toLowerCase() === currentUser.username.toLowerCase();
+      const isCurrentB = currentUser && b.username.toLowerCase() === currentUser.username.toLowerCase();
+      if (isCurrentA && !isCurrentB) return -1;
+      if (!isCurrentA && isCurrentB) return 1;
+
+      // Akun online berikutnya
+      if (a.isOnline && !b.isOnline) return -1;
+      if (!a.isOnline && b.isOnline) return 1;
+
       const timeA = a.lastActive ? new Date(a.lastActive).getTime() : 0;
       const timeB = b.lastActive ? new Date(b.lastActive).getTime() : 0;
       return timeB - timeA;
     });
-  }, [users, logs]);
+  }, [users, logs, currentUser]);
 
   // Overall KPI metrics
   const totalLoginsCount = useMemo(() => {
@@ -360,7 +382,7 @@ export default function LoginAndLogsView({
   }, [logs]);
 
   const activeUsersCount = useMemo(() => {
-    const active = userEngagement.filter(u => u.totalLogins > 0 || u.totalActions > 0);
+    const active = userEngagement.filter(u => u.isOnline);
     return active.length;
   }, [userEngagement]);
 
@@ -702,8 +724,7 @@ export default function LoginAndLogsView({
             <div className="space-y-2 max-h-80 overflow-y-auto pr-1">
               {userEngagement.map((u, idx) => {
                 const isSelected = selectedUser.toLowerCase() === u.name.toLowerCase() || selectedUser.toLowerCase() === u.username.toLowerCase();
-                const lastActiveDate = u.lastActive ? new Date(u.lastActive) : null;
-                const isRecentlyActive = lastActiveDate && (new Date().getTime() - lastActiveDate.getTime()) < 24 * 60 * 60 * 1000;
+                const isOnline = u.isOnline;
 
                 return (
                   <div
@@ -718,7 +739,7 @@ export default function LoginAndLogsView({
                     <div className="flex items-center justify-between gap-2">
                       <div className="flex items-center gap-2 min-w-0">
                         <div className={`w-7 h-7 rounded-full flex items-center justify-center font-bold text-xs font-mono shrink-0 ${
-                          isRecentlyActive ? "bg-emerald-100 text-emerald-800" : "bg-slate-200 text-slate-700"
+                          isOnline ? "bg-emerald-100 text-emerald-800" : "bg-slate-200 text-slate-700"
                         }`}>
                           {u.name.charAt(0).toUpperCase()}
                         </div>
@@ -730,9 +751,9 @@ export default function LoginAndLogsView({
 
                       <div className="text-right shrink-0">
                         <span className={`inline-block px-1.5 py-0.5 rounded text-[9px] font-mono font-bold ${
-                          isRecentlyActive ? "bg-emerald-100 text-emerald-800" : "bg-slate-100 text-slate-500"
+                          isOnline ? "bg-emerald-100 text-emerald-800 border border-emerald-250" : "bg-slate-100 text-slate-500 border border-slate-200"
                         }`}>
-                          {isRecentlyActive ? "Aktif" : "Offline"}
+                          {isOnline ? "Aktif" : "Offline"}
                         </span>
                         <div className="text-[9.5px] font-mono text-slate-400 mt-0.5">
                           {u.totalLogins}x Login • {u.totalActions}x Aksi
@@ -1017,6 +1038,17 @@ export default function LoginAndLogsView({
                               )}
                               {details.role && (
                                 <span className="text-[10px] text-blue-700 font-bold font-mono">
+                                  [{details.role}]
+                                </span>
+                              )}
+                            </div>
+                          ) : isLogout ? (
+                            <div className="flex items-center gap-2 flex-wrap">
+                              <span className="font-semibold text-slate-700">
+                                Berhasil Keluar Sesi WMS (Logout)
+                              </span>
+                              {details.role && (
+                                <span className="text-[10px] text-slate-500 font-bold font-mono">
                                   [{details.role}]
                                 </span>
                               )}
