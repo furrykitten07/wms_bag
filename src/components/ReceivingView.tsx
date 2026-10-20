@@ -116,6 +116,27 @@ export default function ReceivingView({
   const [startDate, setStartDate] = useState<string>("");
   const [endDate, setEndDate] = useState<string>("");
   const [activeActionId, setActiveActionId] = useState<string | null>(null);
+
+  // Memoize receiving warehouse locations ensuring WH-MERAK is at index 0 and always available
+  const receivingLocations = useMemo(() => {
+    const list = [...(locations || [])];
+    const merakIdx = list.findIndex(l => l.id === "loc-wh-merak" || l.code === "WH-MERAK");
+    if (merakIdx === -1) {
+      list.unshift({
+        id: "loc-wh-merak",
+        code: "WH-MERAK",
+        warehouse: "WAREHOUSE MERAK",
+        zone: "Gudang Utama Pelabuhan Merak",
+        rack: "Merak Rack A",
+        shelf: "Level 1",
+        bin: "MRK-01"
+      });
+    } else if (merakIdx > 0) {
+      const [merakLoc] = list.splice(merakIdx, 1);
+      list.unshift(merakLoc);
+    }
+    return list;
+  }, [locations]);
   
   // Extract all available months dynamically from receivingList
   const availableMonths = useMemo(() => {
@@ -926,32 +947,6 @@ export default function ReceivingView({
     isNewPart: boolean;
   }
 
-  const availableLocations = useMemo(() => {
-    const defaultMerak: WarehouseLocation = {
-      id: "loc-wh-merak",
-      code: "WH-MERAK",
-      warehouse: "WAREHOUSE MERAK",
-      zone: "Gudang Utama Pelabuhan Merak",
-      rack: "Merak Rack A",
-      shelf: "Level 1",
-      bin: "MRK-01"
-    };
-
-    const list = [...(locations || [])];
-    const merakIdx = list.findIndex(l => l.code === "WH-MERAK" || l.id === "loc-wh-merak" || (l.warehouse && l.warehouse.toUpperCase().includes("MERAK")));
-
-    if (merakIdx > 0) {
-      const [merakLoc] = list.splice(merakIdx, 1);
-      return [merakLoc, ...list];
-    } else if (merakIdx === 0) {
-      return list;
-    } else {
-      return [defaultMerak, ...list];
-    }
-  }, [locations]);
-
-  const defaultLocationId = availableLocations[0]?.id || "loc-wh-merak";
-
   const createInitialManualItem = (): ManualItemRow => ({
     tempId: `item-${Date.now()}-${Math.random().toString(36).substring(7)}`,
     spare_part_id: "",
@@ -960,22 +955,13 @@ export default function ReceivingView({
     unit: "PCS",
     category: "General Spares",
     qty: 1,
-    location_id: defaultLocationId,
+    location_id: "loc-wh-merak",
     keeper_notes: "",
     photo_url: "",
     isNewPart: false
   });
 
   const [manualItems, setManualItems] = useState<ManualItemRow[]>([createInitialManualItem()]);
-
-  useEffect(() => {
-    setManualItems(prev => prev.map(item => {
-      if (!item.location_id || item.location_id === "loc-1") {
-        return { ...item, location_id: defaultLocationId };
-      }
-      return item;
-    }));
-  }, [defaultLocationId]);
   const [activeItemSearchIdx, setActiveItemSearchIdx] = useState<number | null>(null);
 
   const handleAddManualItemRow = () => {
@@ -1966,7 +1952,7 @@ export default function ReceivingView({
         const finalPartNum = itm.part_number.trim() || "-";
         const finalUnit = itm.unit || "PCS";
         const finalCat = itm.category || "General Spares";
-        const finalLoc = itm.location_id || defaultLocationId;
+        const finalLoc = itm.location_id || "loc-wh-merak";
 
         // Check if item already exists in parts by ID, part_number, or exact part_name
         let existingPart = findMatchingPart(finalPartId, finalPartNum, finalPartName, parts);
@@ -4059,7 +4045,7 @@ export default function ReceivingView({
                                           up[idx].part_number = matched.part_number || "-";
                                           up[idx].unit = matched.unit || "PCS";
                                           up[idx].category = matched.category || "General Spares";
-                                          up[idx].location_id = (matched.location_id && matched.location_id !== "loc-1") ? matched.location_id : defaultLocationId;
+                                          up[idx].location_id = matched.location_id || "loc-wh-merak";
                                           up[idx].isNewPart = false;
                                         } else {
                                           up[idx].spare_part_id = "";
@@ -4095,7 +4081,7 @@ export default function ReceivingView({
                                             up[idx].part_number = p.part_number || "-";
                                             up[idx].unit = p.unit || "PCS";
                                             up[idx].category = p.category || "General Spares";
-                                            up[idx].location_id = (p.location_id && p.location_id !== "loc-1") ? p.location_id : defaultLocationId;
+                                            up[idx].location_id = p.location_id || "loc-wh-merak";
                                             up[idx].isNewPart = false;
                                             return up;
                                           });
@@ -4245,7 +4231,7 @@ export default function ReceivingView({
                                   Lokasi Rak Penyimpanan
                                 </label>
                                 <select
-                                  value={item.location_id || defaultLocationId}
+                                  value={item.location_id}
                                   onChange={(e) => {
                                     const val = e.target.value;
                                     setManualItems(prev => {
@@ -4256,20 +4242,13 @@ export default function ReceivingView({
                                   }}
                                   className="w-full bg-slate-50 border border-slate-200 p-1.5 text-[11px] font-mono text-slate-700 rounded-md outline-none cursor-pointer"
                                 >
-                                  {availableLocations.length > 0 ? (
-                                    availableLocations.map(l => (
-                                      <option key={l.id} value={l.id}>
-                                        {l.code === "WH-MERAK" ? "WH-MERAK" : `${l.code || `${l.warehouse} - ${l.zone}`} (${l.id})`}
-                                      </option>
-                                    ))
-                                  ) : (
-                                    <>
-                                      <option value="loc-wh-merak">WH-MERAK</option>
-                                      <option value="loc-1">Rak Gudang Utama (loc-1)</option>
-                                      <option value="loc-2">Rak Mesin / Engine (loc-2)</option>
-                                      <option value="loc-3">Rak Deck &amp; Navigasi (loc-3)</option>
-                                    </>
-                                  )}
+                                  {receivingLocations.map(l => {
+                                      const isMerak = l.id === "loc-wh-merak" || l.code === "WH-MERAK";
+                                      const label = isMerak ? "WH-MERAK" : `${l.code || `${l.warehouse} - ${l.zone}`} (${l.id})`;
+                                      return (
+                                        <option key={l.id} value={l.id}>{label}</option>
+                                      );
+                                    })}
                                 </select>
                               </div>
 
