@@ -13,6 +13,7 @@ import {
   QrCode, 
   Printer, 
   ChevronRight, 
+  ChevronDown,
   Download, 
   SlidersHorizontal, 
   ArrowUpDown, 
@@ -472,13 +473,15 @@ export default function SparePartCatalogView({
   const [currentPage, setCurrentPage] = useState(1);
   const [itemsPerPage, setItemsPerPage] = useState(8);
 
-  // Modal states
+  // Modal & Dropdown states
   const [selectedItem, setSelectedItem] = useState<CatalogItem | null>(null);
   const [isPrintModalOpen, setIsPrintModalOpen] = useState(false);
   const [isCreateModalOpen, setIsCreateModalOpen] = useState(false);
   const [isEditingItem, setIsEditingItem] = useState(false);
   const [editItemForm, setEditItemForm] = useState<CatalogItem | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [activeDropdownId, setActiveDropdownId] = useState<string | null>(null);
+  const [copiedBarcode, setCopiedBarcode] = useState<string | null>(null);
 
   // New item form state
   const [newPartName, setNewPartName] = useState("");
@@ -559,7 +562,14 @@ export default function SparePartCatalogView({
   // Reset page when filter changes
   useEffect(() => {
     setCurrentPage(1);
+    setActiveDropdownId(null);
   }, [searchQuery, selectedCategory, selectedPosition, itemsPerPage]);
+
+  const handleCopyBarcode = (barcode: string) => {
+    navigator.clipboard.writeText(barcode);
+    setCopiedBarcode(barcode);
+    setTimeout(() => setCopiedBarcode(null), 2000);
+  };
 
   const handleOpenPrintModal = (item: CatalogItem) => {
     setSelectedItem(item);
@@ -987,7 +997,9 @@ export default function SparePartCatalogView({
             {paginatedData.map((item) => (
               <div 
                 key={item.id} 
-                className="bg-white rounded-xl border border-slate-200 shadow-sm hover:shadow-md transition-all p-5 flex flex-col md:flex-row gap-5 relative group"
+                className={`bg-white rounded-xl border border-slate-200 shadow-sm hover:shadow-md transition-all p-5 flex flex-col md:flex-row gap-5 relative group ${
+                  activeDropdownId === item.id ? "z-30 ring-1 ring-blue-500/20 shadow-md" : "z-0"
+                }`}
               >
                 {/* Product Detail Content Side */}
                 <div className="flex-1 space-y-3">
@@ -1092,29 +1104,152 @@ export default function SparePartCatalogView({
                     </span>
                   </div>
                   
-                  <div className="flex gap-2 w-full mt-3 no-print">
+                  {/* Dropdown Menu Aksi Suku Cadang */}
+                  <div className="relative w-full mt-3 no-print">
                     <button
-                      onClick={() => handleOpenPrintModal(item)}
-                      className="w-full bg-white hover:bg-blue-50 text-blue-700 border border-slate-250 hover:border-blue-300 py-1.5 rounded text-[10px] font-black uppercase tracking-wider flex items-center justify-center gap-1 cursor-pointer shadow-xs transition-colors"
+                      type="button"
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        setActiveDropdownId(activeDropdownId === item.id ? null : item.id);
+                      }}
+                      className={`w-full py-2 px-3 rounded-lg text-[11px] font-bold flex items-center justify-between border transition-all cursor-pointer shadow-xs ${
+                        activeDropdownId === item.id
+                          ? "bg-blue-50 border-blue-400 text-blue-700 ring-2 ring-blue-500/20"
+                          : "bg-white hover:bg-slate-50 border-slate-250 text-slate-700 hover:text-slate-900 hover:border-slate-350"
+                      }`}
                     >
-                      <QrCode className="w-3.5 h-3.5" /> Detail
+                      <span className="flex items-center gap-1.5 truncate">
+                        <SlidersHorizontal className="w-3.5 h-3.5 text-blue-600 shrink-0" />
+                        <span className="truncate">Opsi Tindakan</span>
+                      </span>
+                      <ChevronDown className={`w-3.5 h-3.5 text-slate-400 shrink-0 transition-transform duration-200 ${activeDropdownId === item.id ? "rotate-180 text-blue-600" : ""}`} />
                     </button>
-                    <button
-                      onClick={() => handleOpenPrintModal(item)}
-                      className="bg-slate-100 hover:bg-slate-200 text-slate-700 py-1.5 px-2.5 rounded border border-slate-250 flex items-center justify-center cursor-pointer transition-colors shadow-2xs"
-                      title="Cetak Label Barcode & QR"
-                    >
-                      <Printer className="w-3.5 h-3.5" />
-                    </button>
-                    {isSuperAdmin && (
-                      <button
-                        type="button"
-                        onClick={() => handleDeleteItem(item)}
-                        className="bg-red-50 hover:bg-red-100 text-red-600 border border-red-200 py-1.5 px-2.5 rounded flex items-center justify-center cursor-pointer transition-colors shadow-2xs"
-                        title="Hapus Suku Cadang (Super Admin Only)"
-                      >
-                        <Trash2 className="w-3.5 h-3.5" />
-                      </button>
+
+                    {activeDropdownId === item.id && (
+                      <>
+                        {/* Backdrop untuk menutup dropdown saat klik di luar */}
+                        <div 
+                          className="fixed inset-0 z-30" 
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            setActiveDropdownId(null);
+                          }} 
+                        />
+
+                        {/* Menu Dropdown Popover */}
+                        <div 
+                          onClick={(e) => e.stopPropagation()}
+                          className="absolute right-0 bottom-full mb-1.5 sm:bottom-auto sm:top-full sm:mt-1.5 w-52 bg-white rounded-xl shadow-2xl border border-slate-200 py-1.5 z-40 animate-fade-in text-left select-text"
+                        >
+                          <div className="px-3 py-1 text-[9.5px] font-mono font-bold uppercase tracking-wider text-slate-400 border-b border-slate-100 flex items-center justify-between">
+                            <span>Menu Suku Cadang</span>
+                            <span className="text-[9px] text-blue-600 font-bold">#{item.barcode}</span>
+                          </div>
+
+                          <div className="py-1">
+                            <button
+                              type="button"
+                              onClick={() => {
+                                setActiveDropdownId(null);
+                                handleOpenPrintModal(item);
+                              }}
+                              className="w-full px-3 py-2 text-xs font-semibold text-slate-700 hover:bg-blue-50 hover:text-blue-700 flex items-center gap-2.5 transition-colors cursor-pointer text-left"
+                            >
+                              <div className="w-6 h-6 rounded-md bg-blue-50 text-blue-600 flex items-center justify-center shrink-0 border border-blue-100">
+                                <QrCode className="w-3.5 h-3.5" />
+                              </div>
+                              <div className="flex-1 min-w-0">
+                                <span className="block font-bold text-slate-800 text-[11px] leading-tight">Lihat Detail & QR</span>
+                                <span className="block text-[9.5px] text-slate-400 font-normal leading-tight mt-0.5">Spesifikasi & preview label</span>
+                              </div>
+                            </button>
+
+                            <button
+                              type="button"
+                              onClick={() => {
+                                setActiveDropdownId(null);
+                                handleOpenPrintModal(item);
+                                setTimeout(() => {
+                                  window.print();
+                                }, 350);
+                              }}
+                              className="w-full px-3 py-2 text-xs font-semibold text-slate-700 hover:bg-slate-50 hover:text-slate-900 flex items-center gap-2.5 transition-colors cursor-pointer text-left"
+                            >
+                              <div className="w-6 h-6 rounded-md bg-slate-100 text-slate-700 flex items-center justify-center shrink-0 border border-slate-200">
+                                <Printer className="w-3.5 h-3.5" />
+                              </div>
+                              <div className="flex-1 min-w-0">
+                                <span className="block font-bold text-slate-800 text-[11px] leading-tight">Cetak Label Barcode</span>
+                                <span className="block text-[9.5px] text-slate-400 font-normal leading-tight mt-0.5">Cetak stiker barcode 1D & QR</span>
+                              </div>
+                            </button>
+
+                            <button
+                              type="button"
+                              onClick={() => {
+                                setActiveDropdownId(null);
+                                setSelectedItem(item);
+                                setEditItemForm(JSON.parse(JSON.stringify(item)));
+                                setIsEditingItem(true);
+                                setEditValidationError("");
+                                setIsPrintModalOpen(true);
+                              }}
+                              className="w-full px-3 py-2 text-xs font-semibold text-slate-700 hover:bg-amber-50 hover:text-amber-800 flex items-center gap-2.5 transition-colors cursor-pointer text-left"
+                            >
+                              <div className="w-6 h-6 rounded-md bg-amber-50 text-amber-700 flex items-center justify-center shrink-0 border border-amber-200">
+                                <Edit2 className="w-3.5 h-3.5" />
+                              </div>
+                              <div className="flex-1 min-w-0">
+                                <span className="block font-bold text-slate-800 text-[11px] leading-tight">Edit Suku Cadang</span>
+                                <span className="block text-[9.5px] text-slate-400 font-normal leading-tight mt-0.5">Ubah nama, nomor part, spesifikasi</span>
+                              </div>
+                            </button>
+
+                            <button
+                              type="button"
+                              onClick={() => {
+                                handleCopyBarcode(item.barcode);
+                              }}
+                              className="w-full px-3 py-2 text-xs font-semibold text-slate-700 hover:bg-slate-50 hover:text-slate-900 flex items-center gap-2.5 transition-colors cursor-pointer text-left"
+                            >
+                              <div className="w-6 h-6 rounded-md bg-slate-100 text-slate-600 flex items-center justify-center shrink-0 border border-slate-200">
+                                {copiedBarcode === item.barcode ? (
+                                  <CheckCircle2 className="w-3.5 h-3.5 text-emerald-600" />
+                                ) : (
+                                  <Copy className="w-3.5 h-3.5" />
+                                )}
+                              </div>
+                              <div className="flex-1 min-w-0">
+                                <span className="block font-bold text-slate-800 text-[11px] leading-tight">
+                                  {copiedBarcode === item.barcode ? "Tersalin ke Clipboard!" : "Salin Token / Barcode"}
+                                </span>
+                                <span className="block text-[9.5px] text-slate-400 font-mono leading-tight mt-0.5">#{item.barcode}</span>
+                              </div>
+                            </button>
+                          </div>
+
+                          {isSuperAdmin && (
+                            <div className="pt-1 border-t border-slate-100">
+                              <button
+                                type="button"
+                                onClick={() => {
+                                  setActiveDropdownId(null);
+                                  handleDeleteItem(item);
+                                }}
+                                className="w-full px-3 py-2 text-xs font-semibold text-red-600 hover:bg-red-50 hover:text-red-700 flex items-center gap-2.5 transition-colors cursor-pointer text-left"
+                              >
+                                <div className="w-6 h-6 rounded-md bg-red-50 text-red-600 flex items-center justify-center shrink-0 border border-red-200">
+                                  <Trash2 className="w-3.5 h-3.5" />
+                                </div>
+                                <div className="flex-1 min-w-0">
+                                  <span className="block font-bold text-red-600 text-[11px] leading-tight">Hapus Suku Cadang</span>
+                                  <span className="block text-[9.5px] text-red-400 font-normal leading-tight mt-0.5">Hapus permanen dari database</span>
+                                </div>
+                              </button>
+                            </div>
+                          )}
+                        </div>
+                      </>
                     )}
                   </div>
                 </div>
