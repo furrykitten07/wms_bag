@@ -1247,6 +1247,9 @@ export default function App() {
               materialRequestsTUG6={materialRequestsTUG6}
               dispatches={dispatchList}
               materialReturns={materialReturns}
+              receivingList={receivingList}
+              ledger={ledger}
+              parts={parts}
               spkList={spkList}
               onQuickOrder={handleQuickOrder}
               onNavigateTab={setCurrentTab}

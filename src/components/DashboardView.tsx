@@ -24,10 +24,20 @@ import {
   PlusCircle,
   Sparkles,
   ArrowUpRight,
+  ArrowDownLeft,
   SlidersHorizontal,
   FileCheck
 } from "lucide-react";
-import { AuditLog, MaterialRequest, OutboundDispatch, MaterialReturn, SPKWorkOrder } from "../types.js";
+import { 
+  AuditLog, 
+  MaterialRequest, 
+  OutboundDispatch, 
+  MaterialReturn, 
+  SPKWorkOrder,
+  InboundReceiving,
+  MovementLedgerEntry,
+  SparePart
+} from "../types.js";
 
 interface DashboardViewProps {
   summary: {
@@ -55,6 +65,9 @@ interface DashboardViewProps {
   materialRequestsTUG6?: MaterialRequest[];
   dispatches?: OutboundDispatch[];
   materialReturns?: MaterialReturn[];
+  receivingList?: InboundReceiving[];
+  ledger?: MovementLedgerEntry[];
+  parts?: SparePart[];
   spkList?: SPKWorkOrder[];
   onQuickOrder?: (partId: string) => void;
   onNavigateTab: (tab: string) => void;
@@ -69,6 +82,9 @@ export default function DashboardView({
   materialRequestsTUG6,
   dispatches,
   materialReturns,
+  receivingList = [],
+  ledger = [],
+  parts = [],
   onQuickOrder, 
   onNavigateTab, 
   onProcessTUG5,
@@ -113,6 +129,141 @@ export default function DashboardView({
   
   // Storage utilization percentage calculator (simulated based on parts layout)
   const utilPercent = Math.min(95, 45 + (summary.totalParts * 6.5));
+
+  // Unified Stock Ledger Activities for Operations Audit Trail
+  const stockLedgerActivities = React.useMemo(() => {
+    const list: Array<{
+      id: string;
+      type: "INBOUND" | "OUTBOUND" | "RETURN";
+      partName: string;
+      partNumber?: string;
+      qty: number;
+      refNumber: string;
+      vesselName?: string;
+      operator: string;
+      timestamp: string;
+      remarks?: string;
+    }> = [];
+    const seen = new Set<string>();
+
+    // 1. Inbound Receivings (Barang Masuk)
+    (receivingList || []).forEach((rec) => {
+      if (!rec || !Array.isArray(rec.items)) return;
+      const recDate = (rec.received_date || (rec as any).completion_date || rec.created_at || new Date().toISOString()).trim();
+      const recVessel = rec.vessel_name || (rec.items[0] && (rec.items[0] as any).vessel_name) || "Gudang Utama Merak";
+      const refCode = rec.purchase_order_num || rec.delivery_note_num || rec.spk_number || `PO-${rec.id}`;
+
+      rec.items.forEach((item, idx) => {
+        if (!item) return;
+        const qty = Number(item.qty_received ?? item.qty_ordered ?? 1);
+        if (qty <= 0) return;
+        const key = `IN_${refCode}_${item.part_number || idx}`;
+        if (!seen.has(key)) {
+          seen.add(key);
+          const matchedPart = parts.find(p => p.id === item.spare_part_id || (p.part_number && p.part_number === item.part_number));
+          list.push({
+            id: `rec-${rec.id}-${idx}`,
+            type: "INBOUND",
+            partName: item.spare_part_name || matchedPart?.part_name || "Suku Cadang",
+            partNumber: item.part_number || matchedPart?.part_number,
+            qty,
+            refNumber: refCode,
+            vesselName: (item as any).vessel_name || recVessel,
+            operator: rec.received_by || rec.created_by || "Petugas Gudang",
+            timestamp: recDate,
+            remarks: rec.vendor_name ? `Vendor: ${rec.vendor_name}` : rec.delivery_note_num ? `DN: ${rec.delivery_note_num}` : "Penerimaan PO"
+          });
+        }
+      });
+    });
+
+    // 2. Outbound Dispatches (Barang Keluar TUG 8)
+    (dispatches || []).forEach((dsp) => {
+      if (!dsp || !Array.isArray(dsp.items)) return;
+      const dspDate = (dsp.dispatch_date || dsp.created_at || new Date().toISOString()).trim();
+      const refCode = dsp.tug8_number || dsp.bon_pengeluaran_number || dsp.dispatch_number || `TUG8-${dsp.id}`;
+      const vessel = dsp.vessel_name || "Armada Kapal";
+
+      dsp.items.forEach((item, idx) => {
+        if (!item) return;
+        const qty = Number(item.qty_dispatched ?? (item as any).qty ?? item.qty_requested ?? 1);
+        if (qty <= 0) return;
+        const key = `OUT_${refCode}_${item.part_number || idx}`;
+        if (!seen.has(key)) {
+          seen.add(key);
+          const matchedPart = parts.find(p => p.id === item.spare_part_id || (p.part_number && p.part_number === item.part_number));
+          list.push({
+            id: `dsp-${dsp.id}-${idx}`,
+            type: "OUTBOUND",
+            partName: item.spare_part_name || (item as any).part_name || matchedPart?.part_name || "Suku Cadang",
+            partNumber: item.part_number || matchedPart?.part_number,
+            qty,
+            refNumber: refCode,
+            vesselName: vessel,
+            operator: dsp.created_by || "Staff Gudang",
+            timestamp: dspDate,
+            remarks: dsp.delivery_destination || dsp.destination_port ? `Tujuan: ${dsp.delivery_destination || dsp.destination_port}` : "Pengeluaran TUG 8"
+          });
+        }
+      });
+    });
+
+    // 3. Material Returns (TUG 10)
+    (materialReturns || []).forEach((ret) => {
+      if (!ret || !Array.isArray(ret.items)) return;
+      const retDate = (ret.return_date || ret.created_at || new Date().toISOString()).trim();
+      const refCode = ret.return_number || `TUG10-${ret.id}`;
+
+      ret.items.forEach((item, idx) => {
+        if (!item) return;
+        const qty = Number(item.qty_returned || 1);
+        if (qty <= 0) return;
+        const key = `RET_${refCode}_${item.part_number || idx}`;
+        if (!seen.has(key)) {
+          seen.add(key);
+          const matchedPart = parts.find(p => p.id === item.spare_part_id || (p.part_number && p.part_number === item.part_number));
+          list.push({
+            id: `ret-${ret.id}-${idx}`,
+            type: "RETURN",
+            partName: item.spare_part_name || matchedPart?.part_name || "Suku Cadang Retur",
+            partNumber: item.part_number || matchedPart?.part_number,
+            qty,
+            refNumber: refCode,
+            vesselName: ret.vessel_name || "Armada Kapal",
+            operator: ret.created_by || "Chief Engineer",
+            timestamp: retDate,
+            remarks: item.return_reason || "Retur sisa pekerjaan TUG 10"
+          });
+        }
+      });
+    });
+
+    // 4. Stored Ledger Movements
+    (ledger || []).forEach((m, idx) => {
+      if (!m) return;
+      const isPositive = m.qty_in > 0;
+      const key = `RAW_${m.reference_number}_${m.spare_part_id || m.part_number || idx}`;
+      if (!seen.has(key)) {
+        seen.add(key);
+        list.push({
+          id: m.id || `mvt-${idx}`,
+          type: isPositive ? "INBOUND" : "OUTBOUND",
+          partName: m.spare_part_name || "Suku Cadang",
+          partNumber: m.part_number,
+          qty: isPositive ? m.qty_in : m.qty_out,
+          refNumber: m.reference_number || "ADJ",
+          vesselName: m.vessel_name || "Gudang Merak",
+          operator: m.created_by || "Petugas Gudang",
+          timestamp: m.transaction_date,
+          remarks: m.remarks
+        });
+      }
+    });
+
+    // Sort descending: newest movements first
+    return list.sort((a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime());
+  }, [receivingList, dispatches, materialReturns, ledger, parts]);
+
 
   const ALL_MONTH_NAMES = React.useMemo(() => [
     { name: "JANUARI", label: "JAN", monthIdx: 0 },
@@ -939,56 +1090,128 @@ export default function DashboardView({
           </div>
         </section>
 
-        {/* Realtime Operations Audit Trail Feed */}
+        {/* Realtime Operations Audit Trail Feed - Connected to Stock Ledger Trail */}
         <section className="lg:col-span-2 bg-slate-900 text-white border border-slate-800 rounded-2xl p-5 flex flex-col shadow-xl">
           <div className="flex items-center justify-between pb-3.5 border-b border-slate-800 mb-3">
-            <h4 className="text-xs font-bold font-display uppercase tracking-widest text-slate-200 flex items-center gap-2">
-              <Activity className="w-4 h-4 text-emerald-400" />
-              OPERATIONS AUDIT TRAIL LOGS
-            </h4>
-            <span 
+            <div className="flex items-center gap-2.5">
+              <div className="relative">
+                <Activity className="w-4 h-4 text-emerald-400" />
+                <span className="absolute -top-0.5 -right-0.5 w-1.5 h-1.5 bg-emerald-400 rounded-full animate-ping" />
+              </div>
+              <h4 className="text-xs font-bold font-display uppercase tracking-widest text-slate-200">
+                OPERATIONS AUDIT TRAIL LOGS
+              </h4>
+              <span className="px-2 py-0.5 text-[9px] bg-slate-800 text-emerald-400 border border-slate-700/80 rounded-full font-mono font-bold">
+                {stockLedgerActivities.length} Riwayat
+              </span>
+            </div>
+            <button 
               onClick={() => onNavigateTab("ledger")}
-              className="text-[10px] text-blue-400 hover:text-blue-300 font-bold uppercase cursor-pointer hover:underline font-mono"
+              className="text-[11px] text-blue-400 hover:text-blue-300 font-bold uppercase cursor-pointer hover:underline font-mono flex items-center gap-1 transition-colors"
             >
-              Ledger Trail &rarr;
-            </span>
+              <span>LEDGER TRAIL</span>
+              <ArrowRight className="w-3 h-3" />
+            </button>
           </div>
 
-          <div className="flex-1 overflow-y-auto max-h-[420px] min-h-[300px] space-y-2.5 font-mono text-[10.5px] pr-2 dark-scrollbar">
-            {summary.recentActivities.length === 0 ? (
-              <div className="text-center py-10 text-xs text-slate-500 italic">
-                Belum ada catatan aktivitas log sistem.
+          <div className="flex-1 overflow-y-auto max-h-[420px] min-h-[300px] space-y-2.5 font-mono text-[10.5px] pr-1.5 dark-scrollbar">
+            {stockLedgerActivities.length === 0 ? (
+              <div className="text-center py-14 px-4 flex flex-col items-center justify-center text-slate-500">
+                <Boxes className="w-10 h-10 mb-2 opacity-30 text-slate-400" />
+                <p className="text-xs italic text-slate-400 font-medium">Belum ada mutasi stok tercatat.</p>
+                <p className="text-[10px] text-slate-600 mt-1 max-w-xs">Data pergerakan barang Inbound & Outbound akan otomatis tampil di sini secara real-time.</p>
               </div>
             ) : (
-              summary.recentActivities.map((log) => {
-                const colors = 
-                  log.module === "Auth" ? "text-blue-400 bg-blue-500/10 border-blue-500/30" 
-                  : log.module === "Receiving" ? "text-emerald-400 bg-emerald-500/10 border-emerald-500/30"
-                  : log.module === "Dispatch" ? "text-amber-400 bg-amber-500/10 border-amber-500/30"
-                  : log.module === "Approvals" ? "text-indigo-400 bg-indigo-500/10 border-indigo-500/30"
-                  : "text-purple-400 bg-purple-500/10 border-purple-500/30";
+              stockLedgerActivities.slice(0, 20).map((act) => {
+                const isInbound = act.type === "INBOUND";
+                const isOutbound = act.type === "OUTBOUND";
+                const isReturn = act.type === "RETURN";
+
+                const badgeStyle = isInbound
+                  ? "text-emerald-300 bg-emerald-500/15 border-emerald-500/30"
+                  : isOutbound
+                  ? "text-rose-300 bg-rose-500/15 border-rose-500/30"
+                  : "text-cyan-300 bg-cyan-500/15 border-cyan-500/30";
+
+                const dateObj = new Date(act.timestamp);
+                const isValidDate = !isNaN(dateObj.getTime());
+                const dateStr = isValidDate
+                  ? dateObj.toLocaleDateString("id-ID", { day: "2-digit", month: "short", year: "numeric" })
+                  : act.timestamp;
+                const timeStr = isValidDate
+                  ? dateObj.toLocaleTimeString("id-ID", { hour: "2-digit", minute: "2-digit" })
+                  : "";
 
                 return (
-                  <div key={log.id} className="p-3 rounded-xl bg-slate-850/90 border border-slate-800 hover:border-slate-700/80 transition-all flex flex-col gap-1.5 shadow-sm">
-                    <div className="flex justify-between items-center">
-                      <span className={`font-bold uppercase text-[9px] px-2 py-0.5 rounded-md border ${colors}`}>
-                        [{log.module}] {log.action}
-                      </span>
-                      <span className="text-[10px] text-slate-400 font-mono flex items-center gap-1">
+                  <div 
+                    key={act.id} 
+                    onClick={() => onNavigateTab("ledger")}
+                    className="p-3 rounded-xl bg-slate-850/80 hover:bg-slate-800/90 border border-slate-800/90 hover:border-slate-700 transition-all flex flex-col gap-2 shadow-sm cursor-pointer group"
+                    title="Klik untuk membuka riwayat lengkap di Stock Ledger Trail"
+                  >
+                    <div className="flex justify-between items-center gap-2">
+                      <div className="flex items-center gap-2 flex-wrap">
+                        <span className={`font-bold uppercase text-[9px] px-2 py-0.5 rounded-md border flex items-center gap-1 ${badgeStyle}`}>
+                          {isInbound && <ArrowDownLeft className="w-3 h-3 text-emerald-400" />}
+                          {isOutbound && <ArrowUpRight className="w-3 h-3 text-rose-400" />}
+                          {isReturn && <RotateCcw className="w-3 h-3 text-cyan-400" />}
+                          {act.type} {isInbound || isReturn ? `+${act.qty}` : `-${act.qty}`} UNIT
+                        </span>
+                        <span className="font-mono text-[9px] px-1.5 py-0.5 rounded bg-slate-800 text-slate-300 border border-slate-700/60 font-medium">
+                          {act.refNumber}
+                        </span>
+                      </div>
+                      <span className="text-[10px] text-slate-400 font-mono flex items-center gap-1 shrink-0">
                         <Clock className="w-3 h-3 text-slate-500" />
-                        {new Date(log.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                        {dateStr}{timeStr ? `, ${timeStr}` : ""}
                       </span>
                     </div>
-                    <p className="text-slate-200 font-sans text-xs leading-normal mt-0.5 font-medium">{log.description}</p>
-                    <div className="flex justify-between text-[9px] text-slate-400 tracking-wider font-mono pt-1 border-t border-slate-800/60">
-                      <span>Operator: <strong className="text-slate-200">{log.username}</strong></span>
-                      <span className="italic">Role: {log.role}</span>
+
+                    <div className="flex flex-col gap-0.5">
+                      <div className="text-slate-100 font-sans text-xs font-semibold group-hover:text-blue-300 transition-colors flex items-center gap-1.5">
+                        <Package className="w-3.5 h-3.5 text-slate-500 shrink-0" />
+                        <span className="truncate">{act.partName}</span>
+                        {act.partNumber && act.partNumber !== "-" && (
+                          <span className="text-[10px] font-mono font-normal text-slate-400">
+                            [{act.partNumber}]
+                          </span>
+                        )}
+                      </div>
+                      {act.remarks && (
+                        <p className="text-slate-400 font-sans text-[11px] leading-tight line-clamp-1 pl-5">
+                          {act.remarks}
+                        </p>
+                      )}
+                    </div>
+
+                    <div className="flex justify-between items-center text-[9px] text-slate-400 font-mono pt-1.5 border-t border-slate-800/60">
+                      <span className="flex items-center gap-1 truncate max-w-[200px]">
+                        <Ship className="w-3 h-3 text-slate-500 shrink-0" />
+                        <span className="truncate text-slate-300">{act.vesselName || "Gudang Utama"}</span>
+                      </span>
+                      <span className="truncate">
+                        By: <strong className="text-slate-200">{act.operator}</strong>
+                      </span>
                     </div>
                   </div>
                 );
               })
             )}
           </div>
+
+          {stockLedgerActivities.length > 0 && (
+            <div className="pt-3 mt-2 border-t border-slate-800/80 flex items-center justify-between">
+              <span className="text-[10px] text-slate-500 font-mono">
+                Menampilkan {Math.min(20, stockLedgerActivities.length)} mutasi stok terbaru
+              </span>
+              <button
+                onClick={() => onNavigateTab("ledger")}
+                className="text-[10px] text-blue-400 hover:text-blue-300 font-bold uppercase hover:underline flex items-center gap-1 cursor-pointer font-mono"
+              >
+                Buka Ledger Trail Lengkap &rarr;
+              </button>
+            </div>
+          )}
         </section>
 
       </div>
