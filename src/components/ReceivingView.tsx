@@ -587,7 +587,7 @@ export default function ReceivingView({
           }
 
           const qtyIn = Number(itm.qty_received !== undefined && itm.qty_received !== null && (itm as any).qty_received !== "" ? itm.qty_received : (itm.qty_ordered || (itm as any).qty || 0));
-          const finalPn = (pNum && pNum !== "-") ? pNum : (match?.part_number || `PN-${Date.now().toString().slice(-4)}${count + 1}`);
+          const finalPn = (pNum && pNum !== "-") ? pNum : (match?.part_number || "-");
           const finalSku = (itm as any).sku || match?.sku || `SKU-${finalPn.replace(/[^a-zA-Z0-9]/g, "").slice(0, 10) || Date.now().toString().slice(-4)}`;
           const finalUnit = itm.unit || match?.unit || "PCS";
           const finalCat = (itm as any).category || match?.category || "General Spares";
@@ -712,7 +712,7 @@ export default function ReceivingView({
             ? itm.qty_received
             : (itm.qty_ordered || (itm as any).qty || 0)
         );
-        const finalPn = (pNum && pNum !== "-") ? pNum : (match?.part_number || `PN-${Date.now().toString().slice(-4)}${idx + 1}`);
+        const finalPn = (pNum && pNum !== "-") ? pNum : (match?.part_number || "-");
         const finalSku = (itm as any).sku || match?.sku || `SKU-${finalPn.replace(/[^a-zA-Z0-9]/g, "").slice(0, 10) || Date.now().toString().slice(-4)}`;
         const finalUnit = itm.unit || match?.unit || "PCS";
         const finalCat = (itm as any).category || match?.category || "General Spares";
@@ -840,7 +840,7 @@ export default function ReceivingView({
         ? itm.qty_received
         : (itm.qty_ordered || itm.qty || 0)
     );
-    const finalPn = (pNum && pNum !== "-") ? pNum : (match?.part_number || `PN-${Date.now().toString().slice(-4)}`);
+    const finalPn = (pNum && pNum !== "-") ? pNum : (match?.part_number || "-");
     const finalSku = (itm as any).sku || match?.sku || `SKU-${finalPn.replace(/[^a-zA-Z0-9]/g, "").slice(0, 10) || Date.now().toString().slice(-4)}`;
 
     try {
@@ -930,7 +930,7 @@ export default function ReceivingView({
     tempId: `item-${Date.now()}-${Math.random().toString(36).substring(7)}`,
     spare_part_id: "",
     spare_part_name: "",
-    part_number: "",
+    part_number: "-",
     unit: "PCS",
     category: "General Spares",
     qty: 1,
@@ -1431,7 +1431,7 @@ export default function ReceivingView({
           cacheChanged = true;
         }
 
-        const finalPn = (pNum && pNum !== "-") ? pNum : (match?.part_number || `PN-${Date.now().toString().slice(-4)}${idx + 1}`);
+        const finalPn = (pNum && pNum !== "-") ? pNum : (match?.part_number || "-");
         const finalSku = (itm as any).sku || match?.sku || `SKU-${finalPn.replace(/[^a-zA-Z0-9]/g, "").slice(0, 10) || Date.now().toString().slice(-4)}`;
         const finalUnit = itm.unit || match?.unit || "PCS";
         const finalCat = (itm as any).category || match?.category || "General Spares";
@@ -1806,7 +1806,7 @@ export default function ReceivingView({
           ? `Terdapat selisih QTY fisik (-${qtyRejected})` 
           : "Pemeriksaan fisik barang oleh penjaga gudang sesuai";
 
-        const pNum = (item.part_number || "").trim();
+        const pNum = (item.part_number || "").trim() || "-";
         const pName = (item.spare_part_name || "").trim();
         const existingPart = findMatchingPart(item.spare_part_id, pNum, pName, parts);
 
@@ -1816,12 +1816,12 @@ export default function ReceivingView({
         }
 
         // Auto-register to catalog if new
-        if (!existingPart && (pName || pNum)) {
+        if (!existingPart && (pName || (pNum && pNum !== "-"))) {
           const newPartId = (item.spare_part_id && !item.spare_part_id.startsWith("temp-") && !item.spare_part_id.startsWith("item-")) ? item.spare_part_id : `sp-${Date.now()}-${idx}-${Math.floor(Math.random() * 1000)}`;
           syncNewPartToCatalog({
             id: newPartId,
             part_name: pName || "Suku Cadang SPK",
-            part_number: pNum || `PN-${Date.now().toString().slice(-4)}`,
+            part_number: pNum,
             barcode: resolvedBarcode,
             category: "Main Engine Parts",
             description: `Suku cadang dari penerimaan SPK ${selectedSpkNumber}`
@@ -1831,7 +1831,7 @@ export default function ReceivingView({
         return {
           spare_part_id: existingPart?.id || item.spare_part_id,
           spare_part_name: item.spare_part_name,
-          part_number: item.part_number,
+          part_number: pNum,
           barcode: resolvedBarcode,
           qty_ordered: qtyOrdered,
           qty_received: qtyReceived,
@@ -1928,7 +1928,7 @@ export default function ReceivingView({
         const itm = manualItems[i];
         let finalPartId = itm.spare_part_id;
         const finalPartName = itm.spare_part_name.trim();
-        const finalPartNum = itm.part_number.trim() || `PN-${Date.now().toString().slice(-5)}${i + 1}`;
+        const finalPartNum = itm.part_number.trim() || "-";
         const finalUnit = itm.unit || "PCS";
         const finalCat = itm.category || "General Spares";
         const finalLoc = itm.location_id || locations[0]?.id || "loc-1";
@@ -4021,7 +4021,7 @@ export default function ReceivingView({
 
                                         if (matched) {
                                           up[idx].spare_part_id = matched.id;
-                                          up[idx].part_number = matched.part_number;
+                                          up[idx].part_number = matched.part_number || "-";
                                           up[idx].unit = matched.unit || "PCS";
                                           up[idx].category = matched.category || "General Spares";
                                           up[idx].location_id = matched.location_id || locations[0]?.id || "loc-1";
@@ -4029,6 +4029,9 @@ export default function ReceivingView({
                                         } else {
                                           up[idx].spare_part_id = "";
                                           up[idx].isNewPart = text.trim().length > 0;
+                                          if (!up[idx].part_number || !up[idx].part_number.trim()) {
+                                            up[idx].part_number = "-";
+                                          }
                                         }
                                         return up;
                                       });
@@ -4054,7 +4057,7 @@ export default function ReceivingView({
                                             const up = [...prev];
                                             up[idx].spare_part_id = p.id;
                                             up[idx].spare_part_name = p.part_name;
-                                            up[idx].part_number = p.part_number;
+                                            up[idx].part_number = p.part_number || "-";
                                             up[idx].unit = p.unit || "PCS";
                                             up[idx].category = p.category || "General Spares";
                                             up[idx].location_id = p.location_id || locations[0]?.id || "loc-1";
@@ -4104,7 +4107,26 @@ export default function ReceivingView({
                                       return up;
                                     });
                                   }}
-                                  placeholder="Contoh: 746673-51108"
+                                  onFocus={(e) => {
+                                    if (e.target.value === "-") {
+                                      setManualItems(prev => {
+                                        const up = [...prev];
+                                        up[idx].part_number = "";
+                                        return up;
+                                      });
+                                    }
+                                  }}
+                                  onBlur={(e) => {
+                                    const val = e.target.value.trim();
+                                    if (!val) {
+                                      setManualItems(prev => {
+                                        const up = [...prev];
+                                        up[idx].part_number = "-";
+                                        return up;
+                                      });
+                                    }
+                                  }}
+                                  placeholder="Contoh: 746673-51108 (Default: -)"
                                   className="w-full bg-slate-50 border border-slate-300 p-2 text-xs font-mono font-bold text-slate-800 rounded-lg focus:ring-1 focus:ring-blue-500 outline-none"
                                 />
                               </div>
