@@ -545,6 +545,12 @@ export interface MaintenanceConfig {
   audio_url?: string;
   audio_title?: string;
   audio_enabled?: boolean;
+  // Scheduled maintenance advance notice
+  schedule_notice_enabled?: boolean;
+  schedule_date?: string;          // e.g. "2026-10-25"
+  schedule_start_time?: string;    // e.g. "22:00"
+  schedule_end_time?: string;      // e.g. "23:59"
+  schedule_message?: string;       // Warning message regarding transactions
 }
 
 export interface MaintenanceLog {

@@ -2589,7 +2589,12 @@ let systemMaintenanceConfig = {
   message: "Sistem WMS PT. Pelayaran Bahtera Adhiguna sedang dalam pemeliharaan berkala untuk peningkatan database dan optimasi sistem armada.",
   estimated_finish: "Segera kembali online",
   updated_by: "Fikri Haikal (Superadmin)",
-  updated_at: new Date().toISOString()
+  updated_at: new Date().toISOString(),
+  schedule_notice_enabled: false,
+  schedule_date: "",
+  schedule_start_time: "22:00",
+  schedule_end_time: "23:59",
+  schedule_message: "Dimohon dengan sangat agar TIDAK ADA TRANSAKSI (Inbound, Dispatch, Permintaan Barang, Approval) pada jam tersebut untuk mencegah inkonsistensi data."
 };
 
 app.get("/api/maintenance", (req, res) => {

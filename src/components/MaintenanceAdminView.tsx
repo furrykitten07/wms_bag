@@ -43,10 +43,16 @@ import {
   Disc,
   Trash2,
   RotateCcw,
-  Sliders
+  Sliders,
+  Calendar,
+  Bell,
+  AlertOctagon,
+  Ban,
+  Megaphone
 } from "lucide-react";
 import { MaintenanceConfig, MaintenanceLog, User } from "../types.js";
 import { api } from "../api.js";
+import { formatIndonesianDate } from "./ScheduledMaintenanceModal.js";
 
 interface MaintenanceAdminViewProps {
   config: MaintenanceConfig;
@@ -69,6 +75,19 @@ const ESTIMATE_TEMPLATES = [
   "We’ll be back soon! Our website is currently undergoing scheduled maintenance."
 ];
 
+const SCHEDULE_MESSAGE_TEMPLATES = [
+  "Dimohon dengan sangat agar TIDAK ADA TRANSAKSI (Inbound, Dispatch, Permintaan Barang, Approval) pada jam tersebut untuk mencegah inkonsistensi data.",
+  "MOHON TUNDA SEMUA TRANSAKSI & INPUT DATA: Sistem database sedang dioptimasi demi keamanan dan integritas data operasional.",
+  "DILARANG TRANSAKSI PADA JAM PEMELIHARAAN: Seluruh aktivitas receiving, outbound, dan approval ditangguhkan sementara hingga proses selesai."
+];
+
+const SCHEDULE_TIME_PRESETS = [
+  { label: "22:00 - 23:59 WIB (Malam)", start: "22:00", end: "23:59" },
+  { label: "23:00 - 04:00 WIB (Dini Hari)", start: "23:00", end: "04:00" },
+  { label: "12:00 - 13:00 WIB (Istirahat)", start: "12:00", end: "13:00" },
+  { label: "00:00 - 06:00 WIB (Off-Peak)", start: "00:00", end: "06:00" }
+];
+
 export default function MaintenanceAdminView({
   config,
   currentUser,
@@ -83,6 +102,25 @@ export default function MaintenanceAdminView({
   const [isLoadingLogs, setIsLoadingLogs] = useState(false);
   const [showConfirmModal, setShowConfirmModal] = useState<boolean>(false);
   const [pendingAction, setPendingAction] = useState<boolean | null>(null);
+
+  // Scheduled Maintenance Announcement State (Dashboard Advance Notice)
+  const [scheduleNoticeEnabled, setScheduleNoticeEnabled] = useState<boolean>(
+    config.schedule_notice_enabled ?? false
+  );
+  const [scheduleDate, setScheduleDate] = useState<string>(
+    config.schedule_date || ""
+  );
+  const [scheduleStartTime, setScheduleStartTime] = useState<string>(
+    config.schedule_start_time || "22:00"
+  );
+  const [scheduleEndTime, setScheduleEndTime] = useState<string>(
+    config.schedule_end_time || "23:59"
+  );
+  const [scheduleMessage, setScheduleMessage] = useState<string>(
+    config.schedule_message || "Dimohon dengan sangat agar TIDAK ADA TRANSAKSI (Inbound, Dispatch, Permintaan Barang, Approval) pada jam tersebut untuk mencegah inkonsistensi data."
+  );
+  const [isSavingSchedule, setIsSavingSchedule] = useState<boolean>(false);
+  const [scheduleSaveSuccess, setScheduleSaveSuccess] = useState<boolean>(false);
 
   // Pagination & Filtering state for logs
   const [searchQuery, setSearchQuery] = useState("");
@@ -115,6 +153,21 @@ export default function MaintenanceAdminView({
   useEffect(() => {
     setMessage(config.message || "");
     setEstimatedFinish(config.estimated_finish || "");
+    if (config.schedule_notice_enabled !== undefined) {
+      setScheduleNoticeEnabled(config.schedule_notice_enabled);
+    }
+    if (config.schedule_date !== undefined) {
+      setScheduleDate(config.schedule_date);
+    }
+    if (config.schedule_start_time !== undefined) {
+      setScheduleStartTime(config.schedule_start_time);
+    }
+    if (config.schedule_end_time !== undefined) {
+      setScheduleEndTime(config.schedule_end_time);
+    }
+    if (config.schedule_message !== undefined) {
+      setScheduleMessage(config.schedule_message);
+    }
     if (config.audio_url !== undefined) {
       setAudioUrl(config.audio_url || (typeof window !== "undefined" ? localStorage.getItem("wms_maintenance_custom_song_data") || "" : ""));
     }
@@ -295,6 +348,72 @@ export default function MaintenanceAdminView({
       alert("Gagal menyimpan pesan: " + (err.message || "Error"));
     } finally {
       setIsUpdating(false);
+    }
+  };
+
+  const handleSaveSchedule = async (e?: React.FormEvent) => {
+    if (e) e.preventDefault();
+    setIsSavingSchedule(true);
+    setScheduleSaveSuccess(false);
+    try {
+      await onUpdateConfig({
+        schedule_notice_enabled: scheduleNoticeEnabled,
+        schedule_date: scheduleDate,
+        schedule_start_time: scheduleStartTime,
+        schedule_end_time: scheduleEndTime,
+        schedule_message: scheduleMessage
+      });
+      setScheduleSaveSuccess(true);
+      await loadLogs();
+      setTimeout(() => setScheduleSaveSuccess(false), 4000);
+    } catch (err: any) {
+      alert("Gagal menyimpan jadwal maintenance: " + (err.message || "Error"));
+    } finally {
+      setIsSavingSchedule(false);
+    }
+  };
+
+  const handleToggleScheduleNotice = async (newVal: boolean) => {
+    setScheduleNoticeEnabled(newVal);
+    try {
+      await onUpdateConfig({
+        schedule_notice_enabled: newVal,
+        schedule_date: scheduleDate,
+        schedule_start_time: scheduleStartTime,
+        schedule_end_time: scheduleEndTime,
+        schedule_message: scheduleMessage
+      });
+      setScheduleSaveSuccess(true);
+      await loadLogs();
+      setTimeout(() => setScheduleSaveSuccess(false), 3000);
+    } catch (err: any) {
+      alert("Gagal mengubah status pengumuman jadwal: " + (err.message || "Error"));
+    }
+  };
+
+  const setQuickDate = (type: "today" | "tomorrow" | "weekend") => {
+    const now = new Date();
+    if (type === "today") {
+      const y = now.getFullYear();
+      const m = String(now.getMonth() + 1).padStart(2, "0");
+      const d = String(now.getDate()).padStart(2, "0");
+      setScheduleDate(`${y}-${m}-${d}`);
+    } else if (type === "tomorrow") {
+      const tomorrow = new Date(now);
+      tomorrow.setDate(tomorrow.getDate() + 1);
+      const y = tomorrow.getFullYear();
+      const m = String(tomorrow.getMonth() + 1).padStart(2, "0");
+      const d = String(tomorrow.getDate()).padStart(2, "0");
+      setScheduleDate(`${y}-${m}-${d}`);
+    } else if (type === "weekend") {
+      const saturday = new Date(now);
+      const day = saturday.getDay();
+      const diff = (6 - day + 7) % 7 || 7;
+      saturday.setDate(saturday.getDate() + diff);
+      const y = saturday.getFullYear();
+      const m = String(saturday.getMonth() + 1).padStart(2, "0");
+      const d = String(saturday.getDate()).padStart(2, "0");
+      setScheduleDate(`${y}-${m}-${d}`);
     }
   };
 
@@ -496,6 +615,313 @@ export default function MaintenanceAdminView({
             </div>
 
           </div>
+        </div>
+
+        {/* PENGUMUMAN JADWAL MAINTENANCE DI DASHBOARD & POJOK KANAN (ADVANCE NOTICE) */}
+        <div className="bg-white rounded-2xl border border-slate-200 shadow-2xs overflow-hidden">
+          
+          {/* Card Header with Glowing Status & Big Toggle */}
+          <div className="p-4 sm:p-5 bg-gradient-to-r from-slate-900 via-rose-950 to-slate-900 text-white border-b border-rose-900/60 flex flex-col md:flex-row md:items-center justify-between gap-4">
+            <div className="flex items-center gap-3">
+              <div className="w-10 h-10 rounded-xl bg-rose-500/20 border border-rose-400/40 text-rose-400 flex items-center justify-center shrink-0 shadow-inner">
+                <Bell className="w-5 h-5 animate-bounce" />
+              </div>
+              <div>
+                <div className="flex items-center gap-2 flex-wrap">
+                  <h3 className="text-sm font-black uppercase tracking-wider text-white font-mono">
+                    Fitur Pengumuman Jadwal Maintenance & Larangan Transaksi
+                  </h3>
+                  <span className={`text-[10px] font-mono font-bold px-2.5 py-0.5 rounded-full flex items-center gap-1.5 border shadow-xs ${
+                    scheduleNoticeEnabled 
+                      ? "bg-rose-500/20 border-rose-400/50 text-rose-300 animate-pulse" 
+                      : "bg-slate-800 border-slate-700 text-slate-400"
+                  }`}>
+                    <span className={`w-1.5 h-1.5 rounded-full ${scheduleNoticeEnabled ? "bg-rose-400 animate-ping" : "bg-slate-500"}`} />
+                    <span>{scheduleNoticeEnabled ? "STATUS: PENGUMUMAN AKTIF (TERLIHAT DI DASHBOARD)" : "STATUS: PENGUMUMAN NONAKTIF"}</span>
+                  </span>
+                  <span className="bg-amber-500/20 border border-amber-400/30 text-amber-300 text-[10px] font-mono font-bold px-2 py-0.5 rounded-full">
+                    Khusus Super Admin
+                  </span>
+                </div>
+                <p className="text-xs text-rose-100/75 mt-1 max-w-2xl">
+                  Fitur ini dapat di on/off kan untuk menampilkan modal peringatan kecil berwarna merah di pojok kanan bawah seluruh user, menginformasikan tanggal, bulan, tahun, jam maintenance, dan larangan transaksi.
+                </p>
+              </div>
+            </div>
+
+            {/* Quick Toggle Switch Button */}
+            <div className="flex items-center gap-3 shrink-0 self-start md:self-auto bg-slate-850/80 p-2 rounded-xl border border-slate-700">
+              <span className="text-xs font-mono font-bold text-slate-300">
+                Saklar Pengumuman:
+              </span>
+              <button
+                type="button"
+                onClick={() => handleToggleScheduleNotice(!scheduleNoticeEnabled)}
+                className={`relative inline-flex h-7 w-14 items-center rounded-full transition-colors cursor-pointer border ${
+                  scheduleNoticeEnabled 
+                    ? "bg-rose-600 border-rose-400" 
+                    : "bg-slate-700 border-slate-600"
+                }`}
+                title="Klik untuk mengaktifkan atau menonaktifkan pengumuman di dashboard staf"
+              >
+                <span
+                  className={`inline-block h-5 w-5 transform rounded-full bg-white transition-transform shadow-md ${
+                    scheduleNoticeEnabled ? "translate-x-8" : "translate-x-1"
+                  }`}
+                />
+              </button>
+              <span className={`text-xs font-mono font-black uppercase ${scheduleNoticeEnabled ? "text-rose-400" : "text-slate-400"}`}>
+                {scheduleNoticeEnabled ? "ON" : "OFF"}
+              </span>
+            </div>
+          </div>
+
+          {/* Form & Live Preview Grid */}
+          <div className="p-5 sm:p-6 space-y-6">
+            
+            {/* Success Alert Banner */}
+            {scheduleSaveSuccess && (
+              <div className="p-3 bg-emerald-50 border border-emerald-200 rounded-xl text-emerald-800 text-xs font-mono flex items-center gap-2 animate-in fade-in">
+                <CheckCircle2 className="w-4 h-4 shrink-0 text-emerald-600" />
+                <span>Pengaturan jadwal maintenance berhasil disimpan dan langsung disinkronkan ke seluruh dashboard pengguna!</span>
+              </div>
+            )}
+
+            <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">
+              
+              {/* Left Column: Form Controls (7 cols) */}
+              <form onSubmit={handleSaveSchedule} className="lg:col-span-7 space-y-4">
+                
+                {/* 1. Date Picker: Tanggal, Bulan, Tahun */}
+                <div>
+                  <div className="flex items-center justify-between mb-1.5">
+                    <label className="text-xs font-bold text-slate-700 uppercase font-mono flex items-center gap-1.5">
+                      <Calendar className="w-3.5 h-3.5 text-rose-500" />
+                      <span>1. Tanggal Pelaksanaan (Tanggal, Bulan, Tahun)</span>
+                    </label>
+                    <span className="text-[10px] text-slate-400 font-mono">Pilihan Cepat:</span>
+                  </div>
+
+                  {/* Quick Date Presets */}
+                  <div className="flex flex-wrap gap-1.5 mb-2">
+                    <button
+                      type="button"
+                      onClick={() => setQuickDate("today")}
+                      className="text-[10px] bg-slate-100 hover:bg-rose-50 hover:text-rose-700 text-slate-600 px-2 py-1 rounded-md border border-slate-200 transition-colors font-mono cursor-pointer"
+                    >
+                      Hari Ini
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setQuickDate("tomorrow")}
+                      className="text-[10px] bg-slate-100 hover:bg-rose-50 hover:text-rose-700 text-slate-600 px-2 py-1 rounded-md border border-slate-200 transition-colors font-mono cursor-pointer"
+                    >
+                      Besok
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setQuickDate("weekend")}
+                      className="text-[10px] bg-slate-100 hover:bg-rose-50 hover:text-rose-700 text-slate-600 px-2 py-1 rounded-md border border-slate-200 transition-colors font-mono cursor-pointer"
+                    >
+                      Sabtu Depan
+                    </button>
+                  </div>
+
+                  <div className="flex items-center gap-3">
+                    <input
+                      type="date"
+                      value={scheduleDate}
+                      onChange={(e) => setScheduleDate(e.target.value)}
+                      className="bg-slate-50 border border-slate-300 rounded-xl px-3 py-2 text-xs text-slate-900 focus:bg-white focus:outline-none focus:ring-2 focus:ring-rose-500 font-mono transition-colors shadow-2xs cursor-pointer"
+                    />
+                    <div className="text-xs font-mono text-slate-700 bg-slate-100 px-3 py-2 rounded-xl border border-slate-200 flex-1 truncate">
+                      📅 <strong className="text-slate-900">{formatIndonesianDate(scheduleDate)}</strong>
+                    </div>
+                  </div>
+                </div>
+
+                {/* 2. Jam Pelaksanaan: Jam Mulai & Jam Selesai */}
+                <div>
+                  <div className="flex items-center justify-between mb-1.5">
+                    <label className="text-xs font-bold text-slate-700 uppercase font-mono flex items-center gap-1.5">
+                      <Clock className="w-3.5 h-3.5 text-amber-500" />
+                      <span>2. Rentang Jam Pelaksanaan Maintenance</span>
+                    </label>
+                    <span className="text-[10px] text-slate-400 font-mono">Preset Jam:</span>
+                  </div>
+
+                  {/* Quick Time Presets */}
+                  <div className="flex flex-wrap gap-1.5 mb-2">
+                    {SCHEDULE_TIME_PRESETS.map((p, idx) => (
+                      <button
+                        key={idx}
+                        type="button"
+                        onClick={() => {
+                          setScheduleStartTime(p.start);
+                          setScheduleEndTime(p.end);
+                        }}
+                        className="text-[10px] bg-slate-100 hover:bg-amber-50 hover:text-amber-800 text-slate-600 px-2 py-1 rounded-md border border-slate-200 transition-colors font-mono cursor-pointer"
+                      >
+                        {p.label}
+                      </button>
+                    ))}
+                  </div>
+
+                  <div className="grid grid-cols-2 gap-3">
+                    <div>
+                      <span className="text-[10px] font-mono text-slate-500 block mb-1">Jam Mulai:</span>
+                      <input
+                        type="time"
+                        value={scheduleStartTime}
+                        onChange={(e) => setScheduleStartTime(e.target.value)}
+                        className="w-full bg-slate-50 border border-slate-300 rounded-xl px-3 py-2 text-xs text-slate-900 focus:bg-white focus:outline-none focus:ring-2 focus:ring-rose-500 font-mono transition-colors shadow-2xs"
+                      />
+                    </div>
+                    <div>
+                      <span className="text-[10px] font-mono text-slate-500 block mb-1">Jam Selesai:</span>
+                      <input
+                        type="time"
+                        value={scheduleEndTime}
+                        onChange={(e) => setScheduleEndTime(e.target.value)}
+                        className="w-full bg-slate-50 border border-slate-300 rounded-xl px-3 py-2 text-xs text-slate-900 focus:bg-white focus:outline-none focus:ring-2 focus:ring-rose-500 font-mono transition-colors shadow-2xs"
+                      />
+                    </div>
+                  </div>
+                  <span className="text-[10px] text-slate-400 font-mono mt-1 block">
+                    *Zona waktu: Waktu Indonesia Barat (WIB).
+                  </span>
+                </div>
+
+                {/* 3. Pesan Informasi & Larangan Transaksi */}
+                <div>
+                  <div className="flex items-center justify-between mb-1.5">
+                    <label className="text-xs font-bold text-slate-700 uppercase font-mono flex items-center gap-1.5">
+                      <Ban className="w-3.5 h-3.5 text-rose-600" />
+                      <span>3. Informasi Larangan Transaksi (Highlight Merah)</span>
+                    </label>
+                    <span className="text-[10px] text-slate-400 font-mono">Template:</span>
+                  </div>
+
+                  <div className="flex flex-col gap-1 mb-2">
+                    {SCHEDULE_MESSAGE_TEMPLATES.map((tmpl, tIdx) => (
+                      <button
+                        key={tIdx}
+                        type="button"
+                        onClick={() => setScheduleMessage(tmpl)}
+                        className="text-[10px] bg-slate-100 hover:bg-rose-50 hover:text-rose-800 text-slate-600 px-2 py-1 rounded-md border border-slate-200 transition-colors text-left font-sans cursor-pointer flex items-center gap-1"
+                      >
+                        <Sparkles className="w-2.5 h-2.5 text-amber-500 shrink-0" />
+                        <span className="truncate">{tmpl}</span>
+                      </button>
+                    ))}
+                  </div>
+
+                  <textarea
+                    rows={3}
+                    value={scheduleMessage}
+                    onChange={(e) => setScheduleMessage(e.target.value)}
+                    placeholder="Tulis instruksi agar user tidak melakukan transaksi di jam tersebut..."
+                    className="w-full bg-slate-50 border border-slate-300 rounded-xl p-3 text-xs text-slate-900 focus:bg-white focus:outline-none focus:ring-2 focus:ring-rose-500 font-sans leading-relaxed shadow-2xs"
+                  />
+                  <span className="text-[10px] text-slate-400 font-mono mt-1 block">
+                    Pesan ini akan ditampilkan dalam kotak merah tebal di modal pojok kanan pengguna.
+                  </span>
+                </div>
+
+                {/* Save Button */}
+                <div className="pt-2 flex items-center justify-between">
+                  <button
+                    type="submit"
+                    disabled={isSavingSchedule}
+                    className="px-5 py-2.5 rounded-xl bg-gradient-to-r from-rose-600 to-red-600 hover:from-rose-500 hover:to-red-500 text-white font-bold text-xs uppercase font-mono tracking-wider shadow-sm flex items-center gap-2 cursor-pointer transition-all disabled:opacity-50 active:scale-95"
+                  >
+                    <Save className="w-4 h-4" />
+                    <span>{isSavingSchedule ? "Menyimpan Jadwal..." : "Simpan & Publikasikan Jadwal"}</span>
+                  </button>
+
+                  <span className="text-[11px] font-mono text-slate-500">
+                    Status saat ini: <strong className={scheduleNoticeEnabled ? "text-rose-600" : "text-slate-500"}>
+                      {scheduleNoticeEnabled ? "Aktif Tayang" : "Nonaktif"}
+                    </strong>
+                  </span>
+                </div>
+
+              </form>
+
+              {/* Right Column: Live Preview of Corner Modal (5 cols) */}
+              <div className="lg:col-span-5 flex flex-col justify-between bg-slate-950 p-5 rounded-2xl border border-rose-900/40 text-white">
+                <div>
+                  <div className="flex items-center justify-between border-b border-slate-800 pb-3 mb-3">
+                    <div className="flex items-center gap-2">
+                      <Eye className="w-4 h-4 text-rose-400" />
+                      <h4 className="text-xs font-black uppercase tracking-wider text-rose-200 font-mono">
+                        Live Preview: Modal Pojok Kanan
+                      </h4>
+                    </div>
+                    <span className={`text-[9.5px] font-mono px-2 py-0.5 rounded border ${
+                      scheduleNoticeEnabled 
+                        ? "bg-rose-500/20 text-rose-300 border-rose-500/40" 
+                        : "bg-slate-800 text-slate-400 border-slate-700"
+                    }`}>
+                      {scheduleNoticeEnabled ? "Tampil di Layar" : "Tersembunyi"}
+                    </span>
+                  </div>
+
+                  {/* Rendered Preview Box */}
+                  <div className="bg-gradient-to-b from-slate-900 via-rose-950/95 to-slate-950 rounded-2xl border-2 border-rose-500 shadow-xl p-3.5 space-y-3 font-sans">
+                    
+                    {/* Header */}
+                    <div className="flex items-center justify-between pb-2 border-b border-rose-500/30">
+                      <div className="flex items-center gap-1.5 text-xs font-mono font-black uppercase text-rose-300">
+                        <span className="relative flex h-2 w-2">
+                          <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-white opacity-75" />
+                          <span className="relative inline-flex rounded-full h-2 w-2 bg-white" />
+                        </span>
+                        <AlertOctagon className="w-3.5 h-3.5 text-rose-400" />
+                        <span>Pemberitahuan Maintenance</span>
+                      </div>
+                      <span className="text-[10px] text-rose-300 font-mono">Pojok Kanan</span>
+                    </div>
+
+                    {/* Date & Time */}
+                    <div className="bg-slate-900/90 border border-rose-500/20 rounded-xl p-2.5 space-y-1.5 text-[11px] font-mono">
+                      <div className="flex items-center gap-2 text-slate-200">
+                        <Calendar className="w-3 h-3 text-rose-400 shrink-0" />
+                        <span className="truncate">📅 <strong>{formatIndonesianDate(scheduleDate)}</strong></span>
+                      </div>
+                      <div className="flex items-center gap-2 text-amber-300 font-bold border-t border-slate-800 pt-1">
+                        <Clock className="w-3 h-3 text-amber-400 shrink-0" />
+                        <span>⏰ Pukul {scheduleStartTime || "22:00"} s/d {scheduleEndTime || "23:59"} WIB</span>
+                      </div>
+                    </div>
+
+                    {/* Warning box */}
+                    <div className="bg-red-600/30 border-2 border-red-500/80 rounded-xl p-2.5 space-y-1">
+                      <div className="flex items-center gap-1.5 text-[11px] font-mono font-black uppercase text-red-200">
+                        <Ban className="w-3 h-3 text-red-400 shrink-0" />
+                        <span>MOHON TIDAK ADA TRANSAKSI</span>
+                      </div>
+                      <p className="text-[10.5px] text-rose-100 leading-snug">
+                        {scheduleMessage || "Dimohon dengan sangat agar TIDAK ADA TRANSAKSI pada jam tersebut untuk mencegah inkonsistensi data."}
+                      </p>
+                    </div>
+
+                    <div className="text-[9.5px] font-mono text-slate-400 flex items-center justify-between pt-1">
+                      <span>Operator: {currentUser?.name || "Superadmin"}</span>
+                      <span className="text-rose-400 font-bold">WMS PT. BAG</span>
+                    </div>
+                  </div>
+                </div>
+
+                <p className="text-[10.5px] text-slate-400 font-mono mt-3 text-center">
+                  *Preview aktual modal kecil yang muncul di pojok kanan bawah setiap user saat pengumuman aktif.
+                </p>
+              </div>
+
+            </div>
+
+          </div>
+
         </div>
 
         {/* Grid: Settings Form & Live Preview */}

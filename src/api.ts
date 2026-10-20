@@ -2848,7 +2848,12 @@ export const api = {
       updated_at: new Date().toISOString(),
       audio_url: "",
       audio_title: "PT. BAG Maritime Chill Lounge (Lo-Fi Ambient Loop)",
-      audio_enabled: true
+      audio_enabled: true,
+      schedule_notice_enabled: false,
+      schedule_date: "",
+      schedule_start_time: "22:00",
+      schedule_end_time: "23:59",
+      schedule_message: "Dimohon dengan sangat agar TIDAK ADA TRANSAKSI (Inbound, Dispatch, Permintaan Barang, Approval) pada jam tersebut untuk mencegah inkonsistensi data."
     };
 
     // 1. Try local cache first
