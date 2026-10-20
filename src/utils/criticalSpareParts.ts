@@ -11,14 +11,14 @@ import { CriticalSparePart, MaterialRequest, MaterialRequestItem } from "../type
 export const DEFAULT_CRITICAL_SPAREPARTS: Omit<CriticalSparePart, "id" | "created_at">[] = [
   { part_name: "CYLINDER LINER", part_no: "1", category: "Engine Component", equipment: "Main Engine", criticality_level: "CRITICAL", notes: "Komponen kritis ruang bakar silinder mesin" },
   { part_name: "MAIN & THRUST BEARING SHELL", part_no: "1", category: "Bearing", equipment: "Main Engine", criticality_level: "CRITICAL", notes: "Bearing utama & thrust shaft" },
-  { part_name: "ORING CYL. LOWER", part_no: "12", category: "Gasket & Seal", equipment: "Cylinder System", criticality_level: "HIGH", notes: "Seal O-ring bawah silinder liner" },
+  { part_name: "ORING CYL. LOWER", part_no: "12", category: "Gasket & Seal", equipment: "Cylinder System", criticality_level: "CRITICAL", notes: "Seal O-ring bawah silinder liner" },
   { part_name: "PISTON RING", part_no: "84", category: "Piston & Ring", equipment: "Main Engine", criticality_level: "CRITICAL", notes: "Ring piston kompresi & oli" },
   { part_name: "CONNECTING ROD", part_no: "E245200090A", category: "Engine Component", equipment: "Main Engine", criticality_level: "CRITICAL", notes: "Batang piston penghubung crankshaft" },
   { part_name: "CYLINDER LINER", part_no: "00047-001", category: "Engine Component", equipment: "Main Engine", criticality_level: "CRITICAL", notes: "Liner silinder mesin utama" },
   { part_name: "CONNECTING ROD BEARING (COMPLETE)", part_no: "127", category: "Bearing", equipment: "Main Engine", criticality_level: "CRITICAL", notes: "Metal jalan con-rod komplit" },
   { part_name: "CYLINDER COVER COMPLETE", part_no: "92", category: "Engine Component", equipment: "Cylinder Head", criticality_level: "CRITICAL", notes: "Cylinder head cover assy" },
   { part_name: "CYLINDER LINER", part_no: "46", category: "Engine Component", equipment: "Main Engine", criticality_level: "CRITICAL", notes: "Liner silinder" },
-  { part_name: "GASKET", part_no: "Z565002700ZZ", category: "Gasket & Seal", equipment: "Exhaust / Piping", criticality_level: "HIGH", notes: "Gasket metal tahan panas" },
+  { part_name: "GASKET", part_no: "Z565002700ZZ", category: "Gasket & Seal", equipment: "Exhaust / Piping", criticality_level: "CRITICAL", notes: "Gasket metal tahan panas" },
   { part_name: "MAIN BEARING SHELL", part_no: "E200750010", category: "Bearing", equipment: "Crankshaft", criticality_level: "CRITICAL", notes: "Metal duduk main bearing" },
   { part_name: "PISTON RING", part_no: "106", category: "Piston & Ring", equipment: "Main Engine", criticality_level: "CRITICAL", notes: "Ring piston" },
   { part_name: "PISTON RING 1", part_no: "E205150240B", category: "Piston & Ring", equipment: "Main Engine", criticality_level: "CRITICAL", notes: "Ring kompresi 1 (top ring)" },
@@ -28,13 +28,13 @@ export const DEFAULT_CRITICAL_SPAREPARTS: Omit<CriticalSparePart, "id" | "create
   { part_name: "PISTON ROD COMPLETE", part_no: "155", category: "Engine Component", equipment: "Piston Assembly", criticality_level: "CRITICAL", notes: "Batang piston komplit" },
   { part_name: "FUEL INJECTION PUMP ASSY", part_no: "746623-51403", category: "Fuel System", equipment: "Fuel Injection", criticality_level: "CRITICAL", notes: "Bosch pump / fuel injection pump assy" },
   { part_name: "METAL,MAIN BEARING", part_no: "146673-02352", category: "Bearing", equipment: "Crankshaft", criticality_level: "CRITICAL", notes: "Metal duduk crankshaft" },
-  { part_name: "Packing P.21", part_no: "24316-000210", category: "Gasket & Seal", equipment: "Piping & Valves", criticality_level: "HIGH", notes: "Packing seal P.21" },
-  { part_name: "Packing P.24", part_no: "24316-000240", category: "Gasket & Seal", equipment: "Piping & Valves", criticality_level: "HIGH", notes: "Packing seal P.24" },
-  { part_name: "Packing P.28", part_no: "24311-020280", category: "Gasket & Seal", equipment: "Piping & Valves", criticality_level: "HIGH", notes: "Packing seal P.28" },
-  { part_name: "Packing p.35", part_no: "24316-000350", category: "Gasket & Seal", equipment: "Piping & Valves", criticality_level: "HIGH", notes: "Packing seal P.35" },
-  { part_name: "Packing P.9.0", part_no: "24311-000090", category: "Gasket & Seal", equipment: "Piping & Valves", criticality_level: "HIGH", notes: "Packing seal P.9.0" },
+  { part_name: "Packing P.21", part_no: "24316-000210", category: "Gasket & Seal", equipment: "Piping & Valves", criticality_level: "CRITICAL", notes: "Packing seal P.21" },
+  { part_name: "Packing P.24", part_no: "24316-000240", category: "Gasket & Seal", equipment: "Piping & Valves", criticality_level: "CRITICAL", notes: "Packing seal P.24" },
+  { part_name: "Packing P.28", part_no: "24311-020280", category: "Gasket & Seal", equipment: "Piping & Valves", criticality_level: "CRITICAL", notes: "Packing seal P.28" },
+  { part_name: "Packing p.35", part_no: "24316-000350", category: "Gasket & Seal", equipment: "Piping & Valves", criticality_level: "CRITICAL", notes: "Packing seal P.35" },
+  { part_name: "Packing P.9.0", part_no: "24311-000090", category: "Gasket & Seal", equipment: "Piping & Valves", criticality_level: "CRITICAL", notes: "Packing seal P.9.0" },
   { part_name: "PISTON CROWN", part_no: "-", category: "Piston & Ring", equipment: "Main Engine", criticality_level: "CRITICAL", notes: "Kepala piston ruang bakar" },
-  { part_name: "O-RING", part_no: "9", category: "Gasket & Seal", equipment: "General Piping", criticality_level: "HIGH", notes: "O-ring seal pelindung kebocoran" },
+  { part_name: "O-RING", part_no: "9", category: "Gasket & Seal", equipment: "General Piping", criticality_level: "CRITICAL", notes: "O-ring seal pelindung kebocoran" },
 ];
 
 const STORAGE_KEY = "wms_critical_spareparts";
@@ -56,7 +56,7 @@ export function loadCriticalSpareParts(): CriticalSparePart[] {
     if (raw) {
       const parsed = JSON.parse(raw);
       if (Array.isArray(parsed) && parsed.length > 0) {
-        return parsed;
+        return parsed.map((p: CriticalSparePart) => ({ ...p, criticality_level: "CRITICAL" }));
       }
     }
   } catch (err) {

@@ -627,19 +627,16 @@ export default function CriticalSparePartsAdminView({
                 <thead className="bg-slate-100/90 text-slate-700 font-mono font-bold text-[10px] uppercase border-b border-slate-200">
                   <tr>
                     <th className="py-3 px-4 w-12 text-center font-black">NO</th>
-                    <th className="py-3 px-4 min-w-[220px] font-black">NAMA SUKU CADANG</th>
+                    <th className="py-3 px-4 min-w-[260px] font-black">NAMA SUKU CADANG</th>
                     <th className="py-3 px-4 font-mono font-black">PART NUMBER</th>
-                    <th className="py-3 px-4 font-semibold">KATEGORI</th>
-                    <th className="py-3 px-4 font-semibold">EQUIPMENT / MESIN</th>
-                    <th className="py-3 px-4 text-center font-semibold">TINGKAT KRITIS</th>
-                    <th className="py-3 px-4 min-w-[240px] font-semibold">KETERANGAN / JUSTIFIKASI</th>
+                    <th className="py-3 px-4 text-center font-black">TINGKAT KRITIS</th>
                     <th className="py-3 px-4 w-28 text-center font-black">AKSI</th>
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-slate-100">
                   {paginatedParts.length === 0 ? (
                     <tr>
-                      <td colSpan={8} className="py-14 text-center text-slate-400">
+                      <td colSpan={5} className="py-14 text-center text-slate-400">
                         <AlertOctagon className="w-10 h-10 text-slate-300 mx-auto mb-2" />
                         <p className="font-bold text-slate-700 text-sm">
                           Tidak ada data suku cadang yang sesuai
@@ -660,8 +657,6 @@ export default function CriticalSparePartsAdminView({
                     </tr>
                   ) : (
                     paginatedParts.map((part, index) => {
-                      const isCrit = part.criticality_level === "CRITICAL";
-                      const isHigh = part.criticality_level === "HIGH";
                       const rowNumber = (currentPage - 1) * perPage + index + 1;
 
                       return (
@@ -693,37 +688,12 @@ export default function CriticalSparePartsAdminView({
                             </span>
                           </td>
 
-                          {/* Category */}
-                          <td className="py-3.5 px-4 font-medium text-slate-700 text-xs">
-                            {part.category || "General"}
-                          </td>
-
-                          {/* Equipment */}
-                          <td className="py-3.5 px-4 font-medium text-slate-600 text-xs">
-                            {part.equipment || "Main Engine"}
-                          </td>
-
-                          {/* Criticality Level Badge */}
+                          {/* Criticality Level Badge - Dibuat CRITICAL untuk semua item */}
                           <td className="py-3.5 px-4 text-center">
-                            <span
-                              className={`inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-[10px] font-mono font-black uppercase tracking-wider ${
-                                isCrit
-                                  ? "bg-rose-100 text-rose-800 border border-rose-300 shadow-2xs"
-                                  : isHigh
-                                  ? "bg-amber-100 text-amber-800 border border-amber-300"
-                                  : "bg-blue-100 text-blue-800 border border-blue-300"
-                              }`}
-                            >
-                              {isCrit && (
-                                <span className="w-1.5 h-1.5 rounded-full bg-rose-600 animate-pulse"></span>
-                              )}
-                              <span>{part.criticality_level || "CRITICAL"}</span>
+                            <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-[10px] font-mono font-black uppercase tracking-wider bg-rose-100 text-rose-800 border border-rose-300 shadow-2xs">
+                              <span className="w-1.5 h-1.5 rounded-full bg-rose-600 animate-pulse"></span>
+                              <span>CRITICAL</span>
                             </span>
-                          </td>
-
-                          {/* Notes / Reason */}
-                          <td className="py-3.5 px-4 text-slate-600 text-[11px] leading-relaxed">
-                            {part.notes || "Komponen vital kelancaran operasional armada kapal."}
                           </td>
 
                           {/* Action Buttons */}
