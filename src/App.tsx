@@ -325,7 +325,14 @@ export default function App() {
       localStorage.setItem("wms_username", usernameStr);
       setCurrentUserHeader(usernameStr);
       
-      const matched = simulatedUsers.find(u => u.username === usernameStr);
+      const cleanStr = usernameStr.trim().toLowerCase();
+      const matched = simulatedUsers.find(u => 
+        u.username.toLowerCase() === cleanStr || 
+        u.name.toLowerCase() === cleanStr ||
+        (u.email && u.email.toLowerCase() === cleanStr) ||
+        cleanStr.includes(u.username.toLowerCase()) ||
+        u.name.toLowerCase().includes(cleanStr)
+      );
       if (matched) {
         setCurrentUser(matched);
         setIsAuthenticated(true);

@@ -196,8 +196,27 @@ export default function LoginAndLogsView({
 
       // User Filter
       if (selectedUser !== "ALL") {
-        const op = (log.operator || "").toLowerCase();
-        if (!op.includes(selectedUser.toLowerCase())) return false;
+        const op = (log.operator || "").toLowerCase().trim();
+        const details = parseDetails(log.details);
+        const uName = (details.username || "").toLowerCase().trim();
+        const q = selectedUser.toLowerCase().trim();
+
+        // Cari user yang sesuai dari direktori users
+        const matchedUserObj = users.find(u => 
+          (u.name && u.name.toLowerCase().trim() === q) || 
+          (u.username && u.username.toLowerCase().trim() === q)
+        );
+
+        const targetKeys = matchedUserObj 
+          ? [matchedUserObj.username.toLowerCase().trim(), matchedUserObj.name.toLowerCase().trim()]
+          : [q];
+
+        const matchesUser = targetKeys.some(target => 
+          op === target || op.includes(target) || target.includes(op) ||
+          uName === target || uName.includes(target) || target.includes(uName)
+        );
+
+        if (!matchesUser) return false;
       }
 
       // Search Query
@@ -296,12 +315,18 @@ export default function LoginAndLogsView({
       const uName = (details.username || log.operator || "").trim().toLowerCase();
       const opName = (log.operator || "").trim().toLowerCase();
       
-      const matched = Array.from(stats.values()).find(s => 
-        s.username.toLowerCase() === uName || 
-        s.name.toLowerCase() === opName ||
-        s.name.toLowerCase().includes(opName) ||
-        opName.includes(s.name.toLowerCase())
-      );
+      const matched = Array.from(stats.values()).find(s => {
+        const sUser = s.username.toLowerCase().trim();
+        const sName = s.name.toLowerCase().trim();
+
+        // 1. Cocokkan username (misal: "alfin" di "alfin@wmsbag.id" atau exact)
+        if (uName && (sUser === uName || uName.includes(sUser) || sUser.includes(uName))) return true;
+
+        // 2. Cocokkan nama operator (misal: "MAGHFUR MUHAMMAD ALFIN")
+        if (opName && (sName === opName || sName.includes(opName) || opName.includes(sName))) return true;
+
+        return false;
+      });
 
       if (matched) {
         const actionUpper = (log.action || "").toUpperCase().trim();

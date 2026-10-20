@@ -2143,11 +2143,23 @@ async function fetcher<T>(url: string, options: RequestInit = {}): Promise<T> {
       if (path === "/api/auth/login" && method === "POST") {
         const inputUsername = (body.username || "").trim().toLowerCase();
         const inputPassword = body.password || "";
-        const { data, error } = await supabase
+        let { data, error } = await supabase
           .from("users")
           .select("*")
           .ilike("username", inputUsername)
           .maybeSingle();
+
+        if (!data) {
+          const { data: byName } = await supabase
+            .from("users")
+            .select("*")
+            .or(`name.ilike.%${inputUsername}%,email.ilike.%${inputUsername}%`)
+            .limit(1);
+          if (byName && byName.length > 0) {
+            data = byName[0];
+            error = null;
+          }
+        }
 
         if (!error && data) {
           if (!inputPassword || data.password === inputPassword || inputPassword === "admin123") {
@@ -3000,10 +3012,14 @@ export const api = {
           ? (updated.is_maintenance ? "ACTIVATE_MAINTENANCE" : "DEACTIVATE_MAINTENANCE")
           : "UPDATE_CONFIG";
 
+        const safeDetails = { ...updated };
+        if (safeDetails.audio_url && safeDetails.audio_url.length > 500) {
+          safeDetails.audio_url = "[AUDIO_ATTACHED]";
+        }
         await supabase.from("audit_logs").insert([{
           action: actionType,
           module: "MAINTENANCE",
-          details: JSON.stringify(updated),
+          details: JSON.stringify(safeDetails),
           operator: operator,
           timestamp: new Date().toISOString()
         }]);
