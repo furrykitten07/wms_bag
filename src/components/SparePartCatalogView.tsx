@@ -36,7 +36,7 @@ import {
   Trash2
 } from "lucide-react";
 
-import { SparePart, UserRole } from "../types.js";
+import { SparePart, UserRole, WarehouseLocation } from "../types.js";
 import { api } from "../api.js";
 
 // Catalog item interface linked 100% to Spare Part Master
@@ -62,6 +62,7 @@ export interface CatalogItem {
 interface SparePartCatalogViewProps {
   parts?: SparePart[];
   receivingList?: any[];
+  locations?: WarehouseLocation[];
   onAddPart?: (part: Partial<SparePart>) => Promise<any>;
   onUpdatePart?: (id: string, part: Partial<SparePart>) => Promise<any>;
   onDeletePart?: (id: string) => Promise<any>;
@@ -218,6 +219,7 @@ export function getPublicSparePartUrl(id: string, barcode?: string): string {
 export default function SparePartCatalogView({ 
   parts = [],
   receivingList = [],
+  locations = [],
   onAddPart,
   onUpdatePart,
   onDeletePart,
@@ -414,7 +416,7 @@ export default function SparePartCatalogView({
         "Engine Parts"
       ];
 
-      let locName = "WAREHOUSE MERAK";
+      let locName = "";
       if (meta.location_name) {
         locName = meta.location_name;
       } else if (p.remarks && p.remarks.includes("[LOC:")) {
@@ -422,8 +424,18 @@ export default function SparePartCatalogView({
         if (matchLoc) locName = matchLoc[1].trim();
       } else if ((p as any).location_name) {
         locName = (p as any).location_name;
-      } else if (p.location_id === "loc-kantor-pusat" || String(p.location_id).toLowerCase().includes("pusat")) {
-        locName = "KANTOR PUSAT BAG";
+      } else if (p.location_id) {
+        const matchedLoc = (locations || []).find(l => l && (l.id === p.location_id || l.code === p.location_id));
+        if (matchedLoc) {
+          locName = matchedLoc.warehouse || matchedLoc.code;
+        } else if (p.location_id === "loc-kantor-pusat" || String(p.location_id).toLowerCase().includes("pusat")) {
+          locName = "KANTOR PUSAT BAG";
+        }
+      }
+      if (!locName) {
+        locName = p.location_id === "loc-kantor-pusat" || String(p.location_id || "").toLowerCase().includes("pusat")
+          ? "KANTOR PUSAT BAG"
+          : "WAREHOUSE MERAK";
       }
 
       return {
@@ -451,11 +463,12 @@ export default function SparePartCatalogView({
     }
 
     return items;
-  }, [parts, receivingList, customMeta]);
+  }, [parts, receivingList, customMeta, locations]);
 
   // Filters state
   const [searchQuery, setSearchQuery] = useState("");
   const [selectedCategory, setSelectedCategory] = useState<string>("All");
+  const [selectedPosition, setSelectedPosition] = useState<string>("All");
   const [currentPage, setCurrentPage] = useState(1);
   const [itemsPerPage, setItemsPerPage] = useState(8);
 
@@ -498,10 +511,25 @@ export default function SparePartCatalogView({
     return ["All", ...Array.from(list)];
   }, [allCatalogItems]);
 
+  // Positions compiled dynamically from allCatalogItems with counts of item types
+  const positionStats = useMemo(() => {
+    const counts: Record<string, number> = {};
+    allCatalogItems.forEach(item => {
+      const pos = (item.location_name || (item.location_id?.includes("pusat") ? "KANTOR PUSAT BAG" : "WAREHOUSE MERAK")).trim();
+      counts[pos] = (counts[pos] || 0) + 1;
+    });
+
+    return Object.entries(counts)
+      .map(([name, count]) => ({ name, count }))
+      .sort((a, b) => b.count - a.count || a.name.localeCompare(b.name));
+  }, [allCatalogItems]);
+
   // Filtered catalog data
   const filteredData = useMemo(() => {
     return allCatalogItems.filter(item => {
       const query = searchQuery.toLowerCase().trim();
+      const posName = (item.location_name || (item.location_id?.includes("pusat") ? "KANTOR PUSAT BAG" : "WAREHOUSE MERAK")).trim();
+
       const matchesSearch = !query || 
         item.part_name.toLowerCase().includes(query) ||
         item.part_number.toLowerCase().includes(query) ||
@@ -509,13 +537,16 @@ export default function SparePartCatalogView({
         item.barcode.toLowerCase().includes(query) ||
         item.description.toLowerCase().includes(query) ||
         item.manufacturer.toLowerCase().includes(query) ||
+        posName.toLowerCase().includes(query) ||
         item.hierarchy.some(h => h.toLowerCase().includes(query));
 
       const matchesCategory = selectedCategory === "All" || item.hierarchy[0] === selectedCategory;
 
-      return matchesSearch && matchesCategory;
+      const matchesPosition = selectedPosition === "All" || posName === selectedPosition;
+
+      return matchesSearch && matchesCategory && matchesPosition;
     });
-  }, [allCatalogItems, searchQuery, selectedCategory]);
+  }, [allCatalogItems, searchQuery, selectedCategory, selectedPosition]);
 
   // Pagination logic
   const totalItems = filteredData.length;
@@ -528,7 +559,7 @@ export default function SparePartCatalogView({
   // Reset page when filter changes
   useEffect(() => {
     setCurrentPage(1);
-  }, [searchQuery, selectedCategory, itemsPerPage]);
+  }, [searchQuery, selectedCategory, selectedPosition, itemsPerPage]);
 
   const handleOpenPrintModal = (item: CatalogItem) => {
     setSelectedItem(item);
@@ -801,11 +832,12 @@ export default function SparePartCatalogView({
             <SlidersHorizontal className="w-4 h-4 text-slate-500" />
             <span>Saringan & Filtrasi Katalog Master</span>
           </div>
-          {(searchQuery || selectedCategory !== "All") && (
+          {(searchQuery || selectedCategory !== "All" || selectedPosition !== "All") && (
             <button 
               onClick={() => {
                 setSearchQuery("");
                 setSelectedCategory("All");
+                setSelectedPosition("All");
               }}
               className="text-blue-600 hover:text-blue-500 font-bold tracking-tight lowercase cursor-pointer"
             >
@@ -814,14 +846,14 @@ export default function SparePartCatalogView({
           )}
         </div>
 
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+        <div className="grid grid-cols-1 md:grid-cols-12 gap-3">
           
           {/* Search Box */}
-          <div className="relative md:col-span-2">
+          <div className="relative md:col-span-6">
             <Search className="absolute left-3 top-2.5 w-4 h-4 text-slate-400" />
             <input
               type="text"
-              placeholder="Cari nama, part number, SKU, barcode, pabrikan, atau hierarki..."
+              placeholder="Cari nama, part number, SKU, barcode, posisi, pabrikan, atau hierarki..."
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
               className="w-full bg-slate-50 border border-slate-250 rounded-lg text-xs pl-9 pr-4 py-2.5 font-medium text-slate-800 focus:outline-none focus:ring-1 focus:ring-blue-500 placeholder-slate-400"
@@ -829,11 +861,11 @@ export default function SparePartCatalogView({
           </div>
 
           {/* Category Tree Hierarchy dropdown */}
-          <div>
+          <div className="md:col-span-3">
             <select
               value={selectedCategory}
               onChange={(e) => setSelectedCategory(e.target.value)}
-              className="w-full bg-slate-50 border border-slate-250 rounded-lg text-xs px-3 py-2.5 font-bold text-slate-700 focus:outline-none focus:ring-1 focus:ring-blue-500"
+              className="w-full bg-slate-50 border border-slate-250 rounded-lg text-xs px-3 py-2.5 font-bold text-slate-700 focus:outline-none focus:ring-1 focus:ring-blue-500 cursor-pointer"
             >
               <option value="All">-- SEMUA SISTEM ({categories.length - 1}) --</option>
               {categories.filter(c => c !== "All").map(cat => (
@@ -842,12 +874,100 @@ export default function SparePartCatalogView({
             </select>
           </div>
 
+          {/* Position / Lokasi Filter dropdown */}
+          <div className="md:col-span-3">
+            <div className="relative">
+              <select
+                value={selectedPosition}
+                onChange={(e) => setSelectedPosition(e.target.value)}
+                className={`w-full border rounded-lg text-xs pl-8 pr-3 py-2.5 font-bold focus:outline-none focus:ring-1 transition-all cursor-pointer ${
+                  selectedPosition !== "All"
+                    ? "bg-amber-50/90 border-amber-300 text-amber-950 font-extrabold focus:ring-amber-500 shadow-2xs"
+                    : "bg-slate-50 border-slate-250 text-slate-700 focus:ring-blue-500"
+                }`}
+              >
+                <option value="All">-- SEMUA POSISI ({allCatalogItems.length} ITEM) --</option>
+                {positionStats.map(pos => (
+                  <option key={pos.name} value={pos.name}>
+                    {pos.name} ({pos.count} ITEM)
+                  </option>
+                ))}
+              </select>
+              <MapPin className={`absolute left-2.5 top-2.5 w-4 h-4 pointer-events-none ${
+                selectedPosition !== "All" ? "text-amber-600" : "text-slate-400"
+              }`} />
+            </div>
+          </div>
+
+        </div>
+
+        {/* Quick Position Filter Badges (Melihat diposisi tertentu ada berapa jenis item sparepart) */}
+        <div className="flex flex-wrap items-center gap-2 pt-2 border-t border-slate-100">
+          <span className="text-[11px] font-mono text-slate-500 font-bold uppercase flex items-center gap-1.5 mr-1">
+            <MapPin className="w-3.5 h-3.5 text-amber-600" /> Filter Cepat Posisi:
+          </span>
+          <button
+            type="button"
+            onClick={() => setSelectedPosition("All")}
+            className={`px-3 py-1.5 rounded-lg text-xs font-mono font-bold transition-all flex items-center gap-1.5 cursor-pointer border ${
+              selectedPosition === "All"
+                ? "bg-slate-900 text-white border-slate-900 shadow-xs"
+                : "bg-slate-100 hover:bg-slate-200 text-slate-600 border-slate-200"
+            }`}
+          >
+            <span>Semua Posisi</span>
+            <span className={`text-[10px] px-1.5 py-0.2 rounded-full font-black ${
+              selectedPosition === "All" ? "bg-slate-700 text-slate-200" : "bg-slate-200 text-slate-700"
+            }`}>
+              {allCatalogItems.length} Jenis
+            </span>
+          </button>
+          {positionStats.map(pos => (
+            <button
+              key={pos.name}
+              type="button"
+              onClick={() => setSelectedPosition(pos.name)}
+              className={`px-3 py-1.5 rounded-lg text-xs font-mono font-bold transition-all flex items-center gap-1.5 cursor-pointer border ${
+                selectedPosition === pos.name
+                  ? "bg-amber-600 text-white border-amber-600 shadow-xs ring-2 ring-amber-500/30"
+                  : "bg-amber-50/70 hover:bg-amber-100 text-amber-900 border-amber-250"
+              }`}
+            >
+              <Building2 className={`w-3.5 h-3.5 ${selectedPosition === pos.name ? "text-white" : "text-amber-600"}`} />
+              <span>{pos.name}</span>
+              <span className={`text-[10px] px-1.5 py-0.2 rounded-full font-black ${
+                selectedPosition === pos.name ? "bg-amber-800 text-white" : "bg-amber-200 text-amber-950"
+              }`}>
+                {pos.count} Jenis
+              </span>
+            </button>
+          ))}
         </div>
 
         {/* Filter Status summary */}
-        {filteredData.length !== allCatalogItems.length && (
-          <div className="text-[11px] font-mono text-slate-500 font-medium">
-            Menampilkan <strong className="text-blue-700">{filteredData.length}</strong> dari total <strong className="text-slate-800">{allCatalogItems.length}</strong> suku cadang master
+        {(filteredData.length !== allCatalogItems.length || selectedPosition !== "All" || selectedCategory !== "All") && (
+          <div className="flex flex-wrap items-center justify-between gap-2 text-[11px] font-mono text-slate-500 font-medium pt-1 border-t border-slate-100">
+            <div>
+              Menampilkan <strong className="text-blue-700 font-bold">{filteredData.length}</strong> jenis suku cadang
+              {selectedPosition !== "All" && (
+                <span> pada posisi <strong className="text-amber-900 bg-amber-100 border border-amber-250 px-1.5 py-0.5 rounded font-bold">{selectedPosition}</strong></span>
+              )}
+              {selectedCategory !== "All" && (
+                <span> kategori sistem <strong className="text-blue-800 bg-blue-50 border border-blue-200 px-1.5 py-0.5 rounded font-bold">{selectedCategory}</strong></span>
+              )}
+              <span> (dari total <strong className="text-slate-800">{allCatalogItems.length}</strong> master suku cadang)</span>
+            </div>
+            <button 
+              type="button"
+              onClick={() => {
+                setSearchQuery("");
+                setSelectedCategory("All");
+                setSelectedPosition("All");
+              }}
+              className="text-blue-600 hover:text-blue-500 font-bold tracking-tight cursor-pointer"
+            >
+              Reset Filter &times;
+            </button>
           </div>
         )}
       </div>
@@ -903,10 +1023,18 @@ export default function SparePartCatalogView({
                         {item.barcode}
                       </span>
                       <span className="text-slate-300">&bull;</span>
-                      <span className="inline-flex items-center gap-1 bg-amber-50 border border-amber-250 text-amber-900 px-2 py-0.5 rounded font-extrabold shadow-2xs text-[10px]">
+                      <button
+                        type="button"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          setSelectedPosition(item.location_name || (item.location_id?.includes("pusat") ? "KANTOR PUSAT BAG" : "WAREHOUSE MERAK"));
+                        }}
+                        title={`Filter berdasarkan posisi: ${item.location_name || (item.location_id?.includes("pusat") ? "KANTOR PUSAT BAG" : "WAREHOUSE MERAK")}`}
+                        className="inline-flex items-center gap-1 bg-amber-50 hover:bg-amber-100 border border-amber-250 text-amber-900 px-2 py-0.5 rounded font-extrabold shadow-2xs text-[10px] cursor-pointer transition-colors"
+                      >
                         <MapPin className="w-3 h-3 text-amber-600" />
                         {item.location_name || (item.location_id?.includes("pusat") ? "KANTOR PUSAT BAG" : "WAREHOUSE MERAK")}
-                      </span>
+                      </button>
                     </div>
                   </div>
 

@@ -1271,6 +1271,7 @@ export default function App() {
             <SparePartCatalogView 
               parts={parts} 
               receivingList={receivingList}
+              locations={locations}
               onAddPart={handleAddPart}
               onUpdatePart={handleUpdatePart}
               onDeletePart={handleDeletePart}
