@@ -68,7 +68,9 @@ const vendors: Vendor[] = [
 ];
 
 let locations: WarehouseLocation[] = [
-  { id: "loc-1", code: "A1", warehouse: "Jakarta HQ Warehouse", zone: "Zone A (Ground level, Max 1m)", rack: "Rack A", shelf: "Level 1 (Low)", bin: "A1-G" },
+  { id: "loc-wh-merak", code: "WH-MERAK", warehouse: "WAREHOUSE MERAK", zone: "Gudang Utama Pelabuhan Merak", rack: "Merak Rack A", shelf: "Level 1", bin: "MRK-01" },
+  { id: "loc-kantor-pusat", code: "KP-BAG", warehouse: "KANTOR PUSAT BAG", zone: "Logistik Kantor Pusat Jakarta", rack: "HQ Rack A", shelf: "Level 1", bin: "HQ-01" },
+  { id: "loc-1", code: "A1", warehouse: "WAREHOUSE MERAK", zone: "Zone A (Ground level, Max 1m)", rack: "Rack A", shelf: "Level 1 (Low)", bin: "A1-G" },
   { id: "loc-2", code: "A2", warehouse: "Jakarta HQ Warehouse", zone: "Zone A (Mid level, 1m - 2m)", rack: "Rack A", shelf: "Level 2 (Mid)", bin: "A2-M" },
   { id: "loc-3", code: "A3", warehouse: "Jakarta HQ Warehouse", zone: "Zone A (High level, 2m+, Use Ladder!)", rack: "Rack A", shelf: "Level 3 (High)", bin: "A3-H" },
   { id: "loc-4", code: "B1", warehouse: "Jakarta HQ Warehouse", zone: "Zone B (Ground level, Max 1m)", rack: "Rack B", shelf: "Level 1 (Low)", bin: "B1-G" },
