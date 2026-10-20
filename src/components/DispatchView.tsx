@@ -4,6 +4,7 @@
  */
 
 import React, { useState, useMemo, useRef, useEffect } from "react";
+import { createPortal } from "react-dom";
 import { 
   FileText, 
   Search, 
@@ -152,6 +153,65 @@ export default function DispatchView({
 }: DispatchViewProps) {
   const [activeTab, setActiveTab] = useState<"queue" | "archive">("queue");
   const [activeActionId, setActiveActionId] = useState<string | null>(null);
+  const [actionMenuCoords, setActionMenuCoords] = useState<{
+    top?: number;
+    bottom?: number;
+    right: number;
+    maxHeight: number;
+    openUpwards: boolean;
+  } | null>(null);
+
+  // Automatically close floating action menu on window scroll, table scroll, or resize
+  useEffect(() => {
+    if (!activeActionId) return;
+    const handleClose = () => {
+      setActiveActionId(null);
+      setActionMenuCoords(null);
+    };
+    window.addEventListener("scroll", handleClose, true);
+    window.addEventListener("resize", handleClose);
+    return () => {
+      window.removeEventListener("scroll", handleClose, true);
+      window.removeEventListener("resize", handleClose);
+    };
+  }, [activeActionId]);
+
+  // Handle opening action menu with viewport boundary detection
+  const handleToggleActionMenu = (item: OutboundDispatch, e: React.MouseEvent<HTMLButtonElement>) => {
+    e.stopPropagation();
+    if (activeActionId === item.id) {
+      setActiveActionId(null);
+      setActionMenuCoords(null);
+      return;
+    }
+    const rect = e.currentTarget.getBoundingClientRect();
+    const windowHeight = window.innerHeight;
+    const spaceBelow = windowHeight - rect.bottom;
+    const spaceAbove = rect.top;
+    
+    // Check if opening downwards would be cramped (less than 420px below button)
+    // and if opening upwards offers more vertical space
+    const openUpwards = spaceBelow < 420 && spaceAbove > spaceBelow;
+    const right = Math.max(16, window.innerWidth - rect.right);
+    
+    if (openUpwards) {
+      setActionMenuCoords({
+        bottom: windowHeight - rect.top + 8,
+        right,
+        maxHeight: Math.min(520, spaceAbove - 20),
+        openUpwards: true
+      });
+    } else {
+      setActionMenuCoords({
+        top: rect.bottom + 8,
+        right,
+        maxHeight: Math.min(520, spaceBelow - 20),
+        openUpwards: false
+      });
+    }
+    setActiveActionId(item.id);
+  };
+
   const [search, setSearch] = useState("");
   const [statusFilter, setStatusFilter] = useState("All");
   const [vesselFilter, setVesselFilter] = useState("All");
@@ -1306,6 +1366,11 @@ export default function DispatchView({
   const dspTotalPages = Math.ceil(filtered.length / dspPerPage) || 1;
   const paginatedDsp = filtered.slice((dspPage - 1) * dspPerPage, dspPage * dspPerPage);
 
+  const activeDispatchItem = useMemo(() => {
+    if (!activeActionId) return null;
+    return dispatchList.find(d => d.id === activeActionId) || null;
+  }, [activeActionId, dispatchList]);
+
   const isAllPageSelected = paginatedDsp.length > 0 && paginatedDsp.every(d => selectedDspIds.includes(d.id));
   const isSomePageSelected = paginatedDsp.some(d => selectedDspIds.includes(d.id));
 
@@ -1890,10 +1955,7 @@ export default function DispatchView({
                           <div className="relative inline-block text-left">
                             <button
                               type="button"
-                              onClick={(e) => {
-                                e.stopPropagation();
-                                setActiveActionId(activeActionId === item.id ? null : item.id);
-                              }}
+                              onClick={(e) => handleToggleActionMenu(item, e)}
                               className={`inline-flex items-center justify-center gap-2 px-3.5 py-2 rounded-xl text-xs font-sans font-bold transition-all duration-200 cursor-pointer shadow-xs active:scale-95 border ${
                                 activeActionId === item.id
                                   ? "bg-blue-600 border-blue-600 text-white shadow-md ring-2 ring-blue-500/20"
@@ -1904,306 +1966,6 @@ export default function DispatchView({
                               <span>Actions</span>
                               <ChevronDown className={`w-3.5 h-3.5 transition-transform duration-200 ${activeActionId === item.id ? 'rotate-180 text-white' : 'text-slate-400'}`} />
                             </button>
-
-                            {activeActionId === item.id && (
-                              <>
-                                <div 
-                                  className="fixed inset-0 z-10" 
-                                  onClick={(e) => {
-                                    e.stopPropagation();
-                                    setActiveActionId(null);
-                                  }}
-                                />
-                                <div className={`absolute right-0 ${idx >= 4 && idx >= paginatedDsp.length - 2 ? "bottom-full mb-2" : "top-full mt-2"} w-80 max-h-[calc(100vh-140px)] sm:max-h-[480px] overflow-y-auto overscroll-contain bg-white border border-slate-200 rounded-2xl shadow-2xl z-50 text-left p-2 animate-in fade-in zoom-in-95 duration-150 ring-1 ring-slate-900/10 text-slate-700 divide-y divide-slate-100 scrollbar-thin`}>
-                                  
-                                  {/* Header Info */}
-                                  <div className="p-2.5 bg-gradient-to-r from-slate-900 to-slate-800 rounded-xl text-white mb-1.5 shadow-xs">
-                                    <div className="flex items-center justify-between gap-2">
-                                      <span className="text-[9.5px] font-mono font-bold text-slate-400 uppercase tracking-wider">TUG 8 Dispatch</span>
-                                      <span className="text-[9px] font-mono font-extrabold px-2 py-0.5 rounded bg-blue-500/20 text-blue-300 border border-blue-400/30 truncate max-w-[120px]">
-                                        {item.status}
-                                      </span>
-                                    </div>
-                                    <div className="font-mono text-xs font-black text-rose-300 truncate mt-1">
-                                      {item.tug8_number || item.bon_pengeluaran_number || item.id}
-                                    </div>
-                                    <div className="text-[11px] text-slate-300 font-bold truncate mt-0.5 flex items-center gap-1">
-                                      <span>⚓</span> {item.vessel_name}
-                                    </div>
-                                  </div>
-
-                                  {/* SECTION 1: PERSETUJUAN & TTD DIGITAL (2x2 Grid) */}
-                                  <div className="py-1.5 space-y-1">
-                                    <div className="px-1 text-[9px] font-mono font-black uppercase tracking-widest text-slate-400 flex items-center justify-between">
-                                      <span className="flex items-center gap-1">
-                                        <ShieldCheck className="w-3.5 h-3.5 text-emerald-500" />
-                                        Approval 4 Tahap
-                                      </span>
-                                      <span className="text-[8.5px] text-slate-400 font-mono">Aldi/Alfin/Emir/Sumbono</span>
-                                    </div>
-
-                                    <div className="grid grid-cols-2 gap-1.5">
-                                      {/* 1. ALDI HIDAYAT (PETUGAS GUDANG) */}
-                                      {item.aldi_signed ? (
-                                        <div className="px-2 py-1.5 bg-emerald-50 border border-emerald-200/80 rounded-lg flex items-center justify-between text-[10.5px]">
-                                          <div className="truncate">
-                                            <div className="font-bold text-emerald-950 truncate leading-none">Aldi H.</div>
-                                            <div className="text-[8.5px] text-emerald-700 font-mono mt-0.5">Petugas Gudang</div>
-                                          </div>
-                                          <span className="text-[8.5px] font-mono font-black text-emerald-700 bg-emerald-100 px-1 py-0.5 rounded shrink-0">✓ ACC</span>
-                                        </div>
-                                      ) : (
-                                        <button
-                                          type="button"
-                                          onClick={async (e) => {
-                                            e.stopPropagation();
-                                            setActiveActionId(null);
-                                            const now = new Date().toISOString();
-                                            if (onUpdateDispatch) {
-                                              await onUpdateDispatch(item.id, {
-                                                aldi_signed: true,
-                                                aldi_signed_at: now,
-                                                aldi_signature_url: ALDI_SIGNATURE_URL
-                                              });
-                                            }
-                                          }}
-                                          className="px-2 py-1.5 bg-teal-50 hover:bg-teal-100 text-teal-900 border border-teal-200 rounded-lg flex items-center justify-between text-[10.5px] font-bold cursor-pointer transition-colors text-left"
-                                          title="Beri Tanda Tangan Digital Petugas Gudang (Aldi Hidayat)"
-                                        >
-                                          <div className="truncate">
-                                            <div className="font-bold truncate leading-none">Aldi H.</div>
-                                            <div className="text-[8.5px] text-teal-700 font-mono mt-0.5">Petugas Gudang</div>
-                                          </div>
-                                          <span className="text-[8.5px] font-mono bg-teal-200 text-teal-900 px-1.5 py-0.5 rounded font-black shrink-0">TTD</span>
-                                        </button>
-                                      )}
-
-                                      {/* 2. MAGHFUR MUHAMMAD ALFIN (KEPALA GUDANG) */}
-                                      {item.alfin_signed ? (
-                                        <div className="px-2 py-1.5 bg-emerald-50 border border-emerald-200/80 rounded-lg flex items-center justify-between text-[10.5px]">
-                                          <div className="truncate">
-                                            <div className="font-bold text-emerald-950 truncate leading-none">M. Alfin</div>
-                                            <div className="text-[8.5px] text-emerald-700 font-mono mt-0.5">Kepala Gudang</div>
-                                          </div>
-                                          <span className="text-[8.5px] font-mono font-black text-emerald-700 bg-emerald-100 px-1.5 py-0.5 rounded shrink-0">✓ ACC</span>
-                                        </div>
-                                      ) : (
-                                        <button
-                                          type="button"
-                                          onClick={async (e) => {
-                                            e.stopPropagation();
-                                            setActiveActionId(null);
-                                            const now = new Date().toISOString();
-                                            if (onUpdateDispatch) {
-                                              await onUpdateDispatch(item.id, {
-                                                alfin_signed: true,
-                                                alfin_signed_at: now,
-                                                alfin_signature_url: ALFIN_SIGNATURE_URL
-                                              });
-                                            }
-                                          }}
-                                          className="px-2 py-1.5 bg-emerald-50 hover:bg-emerald-100 text-emerald-900 border border-emerald-200 rounded-lg flex items-center justify-between text-[10.5px] font-bold cursor-pointer transition-colors text-left"
-                                          title="Beri Tanda Tangan Digital Kepala Gudang (Maghfur Muhammad Alfin)"
-                                        >
-                                          <div className="truncate">
-                                            <div className="font-bold truncate leading-none">M. Alfin</div>
-                                            <div className="text-[8.5px] text-emerald-700 font-mono mt-0.5">Kepala Gudang</div>
-                                          </div>
-                                          <span className="text-[8.5px] font-mono bg-emerald-200 text-emerald-900 px-1.5 py-0.5 rounded font-black shrink-0">TTD</span>
-                                        </button>
-                                      )}
-
-                                      {/* 3. MOHAMAT EMIR FERDIAN (MANAGER LOGISTIK) */}
-                                      {item.emir_signed ? (
-                                        <div className="px-2 py-1.5 bg-emerald-50 border border-emerald-200/80 rounded-lg flex items-center justify-between text-[10.5px]">
-                                          <div className="truncate">
-                                            <div className="font-bold text-emerald-950 truncate leading-none">Emir F.</div>
-                                            <div className="text-[8.5px] text-emerald-700 font-mono mt-0.5">Manager Logistik</div>
-                                          </div>
-                                          <span className="text-[8.5px] font-mono font-black text-emerald-700 bg-emerald-100 px-1.5 py-0.5 rounded shrink-0">✓ ACC</span>
-                                        </div>
-                                      ) : (
-                                        <button
-                                          type="button"
-                                          onClick={async (e) => {
-                                            e.stopPropagation();
-                                            setActiveActionId(null);
-                                            const now = new Date().toISOString();
-                                            if (onUpdateDispatch) {
-                                              await onUpdateDispatch(item.id, {
-                                                emir_signed: true,
-                                                emir_signed_at: now,
-                                                emir_signature_url: "https://api.dicebear.com/7.x/initials/svg?seed=EmirFerdian"
-                                              });
-                                            }
-                                          }}
-                                          className="px-2 py-1.5 bg-amber-50 hover:bg-amber-100 text-amber-900 border border-amber-200 rounded-lg flex items-center justify-between text-[10.5px] font-bold cursor-pointer transition-colors text-left"
-                                          title="Beri Tanda Tangan Digital Manager Logistik (Mohamat Emir Ferdian)"
-                                        >
-                                          <div className="truncate">
-                                            <div className="font-bold truncate leading-none">Emir F.</div>
-                                            <div className="text-[8.5px] text-amber-700 font-mono mt-0.5">Manager Logistik</div>
-                                          </div>
-                                          <span className="text-[8.5px] font-mono bg-amber-200 text-amber-900 px-1.5 py-0.5 rounded font-black shrink-0">TTD</span>
-                                        </button>
-                                      )}
-
-                                      {/* 4. SUMBONO (VP RENDALHAR) */}
-                                      {item.sumbono_signed ? (
-                                        <div className="px-2 py-1.5 bg-emerald-50 border border-emerald-200/80 rounded-lg flex items-center justify-between text-[10.5px]">
-                                          <div className="truncate">
-                                            <div className="font-bold text-emerald-950 truncate leading-none">Sumbono</div>
-                                            <div className="text-[8.5px] text-emerald-700 font-mono mt-0.5">VP Rendalhar</div>
-                                          </div>
-                                          <span className="text-[8.5px] font-mono font-black text-emerald-700 bg-emerald-100 px-1.5 py-0.5 rounded shrink-0">✓ ACC</span>
-                                        </div>
-                                      ) : (
-                                        <button
-                                          type="button"
-                                          onClick={async (e) => {
-                                            e.stopPropagation();
-                                            setActiveActionId(null);
-                                            const now = new Date().toISOString();
-                                            if (onUpdateDispatch) {
-                                              await onUpdateDispatch(item.id, {
-                                                sumbono_signed: true,
-                                                sumbono_signed_at: now,
-                                                sumbono_signature_url: "https://api.dicebear.com/7.x/initials/svg?seed=Sumbono",
-                                                status: DispatchStatus.DELIVERED
-                                              });
-                                            }
-                                          }}
-                                          className="px-2 py-1.5 bg-indigo-50 hover:bg-indigo-100 text-indigo-900 border border-indigo-200 rounded-lg flex items-center justify-between text-[10.5px] font-bold cursor-pointer transition-colors text-left"
-                                          title="Beri Tanda Tangan Digital VP Rendalhar (Sumbono)"
-                                        >
-                                          <div className="truncate">
-                                            <div className="font-bold truncate leading-none">Sumbono</div>
-                                            <div className="text-[8.5px] text-indigo-700 font-mono mt-0.5">VP Rendalhar</div>
-                                          </div>
-                                          <span className="text-[8.5px] font-mono bg-indigo-200 text-indigo-900 px-1.5 py-0.5 rounded font-black shrink-0">TTD</span>
-                                        </button>
-                                      )}
-                                    </div>
-                                  </div>
-
-                                  {/* SECTION 2: DOKUMEN & OPERASIONAL */}
-                                  <div className="py-1.5 space-y-0.5">
-                                    <div className="px-2 py-1 text-[9px] font-mono font-black uppercase tracking-widest text-slate-400">
-                                      Operasional
-                                    </div>
-
-                                    {/* Quick Actions for Partial Multi-Shipment */}
-                                    {(item.is_partial || item.status === "DISPATCHED_PARTIAL") && (() => {
-                                      const pInfo = getDispatchPhaseInfo(item);
-                                      return (
-                                        <button
-                                          type="button"
-                                          onClick={(e) => {
-                                            e.stopPropagation();
-                                            setActiveActionId(null);
-                                            handleOpenFollowupDispatch(item);
-                                          }}
-                                          className="w-full px-2.5 py-1.5 text-xs font-bold bg-amber-50 hover:bg-amber-100 text-amber-900 rounded-lg border border-amber-200 flex items-center gap-2 cursor-pointer transition-colors text-left"
-                                        >
-                                          <Truck className="w-3.5 h-3.5 text-amber-600" />
-                                          <span>Kirim Susulan (Tahap {pInfo.phase + 1})</span>
-                                        </button>
-                                      );
-                                    })()}
-
-                                    <button
-                                      type="button"
-                                      onClick={(e) => {
-                                        e.stopPropagation();
-                                        setActiveActionId(null);
-                                        setPartialDetailModalItem(item);
-                                      }}
-                                      className="w-full px-2.5 py-1.5 text-xs font-semibold hover:bg-slate-100 text-slate-800 rounded-lg flex items-center gap-2 cursor-pointer transition-colors text-left"
-                                    >
-                                      <History className="w-3.5 h-3.5 text-purple-600" />
-                                      <span>Rincian Parsial &amp; Sisa Barang</span>
-                                    </button>
-
-                                    <button
-                                      type="button"
-                                      onClick={(e) => {
-                                        e.stopPropagation();
-                                        setActiveActionId(null);
-                                        handleOpenUpdateModal(item);
-                                      }}
-                                      className="w-full px-2.5 py-2 text-xs font-bold bg-blue-50 hover:bg-blue-100 text-blue-800 rounded-lg border border-blue-200/80 flex items-center gap-2 cursor-pointer transition-colors text-left shadow-2xs"
-                                    >
-                                      {role !== UserRole.VESSEL_CREW ? (
-                                        <>
-                                          <Edit3 className="w-3.5 h-3.5 text-blue-600 shrink-0" />
-                                          <div className="flex flex-col">
-                                            <span>Edit Data Pengiriman (TUG 8)</span>
-                                            <span className="text-[9px] font-normal text-blue-600/80">Koreksi barang, qty, kapal, driver &amp; tanggal</span>
-                                          </div>
-                                        </>
-                                      ) : (
-                                        <>
-                                          <Eye className="w-3.5 h-3.5 text-slate-550" />
-                                          <span>Lihat Detail Dispatch</span>
-                                        </>
-                                      )}
-                                    </button>
-
-                                    <button
-                                      type="button"
-                                      onClick={(e) => {
-                                        e.stopPropagation();
-                                        setActiveActionId(null);
-                                        onPreviewDocument("bon", item);
-                                      }}
-                                      className="w-full px-2.5 py-1.5 text-xs font-medium hover:bg-slate-100 text-rose-700 rounded-lg flex items-center gap-2 cursor-pointer transition-colors text-left"
-                                    >
-                                      <Printer className="w-3.5 h-3.5 text-rose-500" />
-                                      <span>Cetak TUG 8 Note (PDF)</span>
-                                    </button>
-
-                                    <button
-                                      type="button"
-                                      onClick={(e) => {
-                                        e.stopPropagation();
-                                        setActiveActionId(null);
-                                        onPreviewDocument("surat_jalan", item);
-                                      }}
-                                      className="w-full px-2.5 py-1.5 text-xs font-medium hover:bg-slate-100 text-emerald-700 flex items-center gap-2 cursor-pointer transition-colors text-left"
-                                    >
-                                      <Printer className="w-3.5 h-3.5 text-emerald-500" />
-                                      <span>Cetak Surat Jalan (PDF)</span>
-                                    </button>
-                                  </div>
-
-                                  {/* SECTION 3: HAPUS DATA */}
-                                  {onDeleteDispatch && (
-                                    <div className="pt-1">
-                                      <button
-                                        type="button"
-                                        onClick={async (e) => {
-                                          e.stopPropagation();
-                                          setActiveActionId(null);
-                                          const docName = item.tug8_number || item.bon_pengeluaran_number || item.id;
-                                          if (window.confirm(`Apakah Anda yakin ingin menghapus data Pengeluaran Barang TUG 8 [${docName}]?`)) {
-                                            try {
-                                              await onDeleteDispatch(item.id);
-                                              alert(`Data TUG 8 [${docName}] berhasil dihapus.`);
-                                            } catch (err: any) {
-                                              alert(`Gagal menghapus data: ${err?.message || err}`);
-                                            }
-                                          }
-                                        }}
-                                        className="w-full px-2.5 py-1.5 text-xs font-medium hover:bg-rose-50 text-rose-600 rounded-lg flex items-center gap-2 cursor-pointer transition-colors text-left"
-                                      >
-                                        <Trash2 className="w-3.5 h-3.5 text-rose-500" />
-                                        <span>Hapus Data TUG 8</span>
-                                      </button>
-                                    </div>
-                                  )}
-                                </div>
-                              </>
-                            )}
                           </div>
                         </div>
                       </td>
@@ -5048,6 +4810,344 @@ export default function DispatchView({
           </div>
         );
       })()}
+
+      {/* Portal Actions Menu for Outbound Dispatch (TUG 8) */}
+      {activeActionId && actionMenuCoords && activeDispatchItem && typeof document !== "undefined" && createPortal(
+        <div className="fixed inset-0 z-[9999] pointer-events-auto">
+          {/* Transparent Backdrop to close on click outside */}
+          <div 
+            className="fixed inset-0 z-10 bg-transparent" 
+            onClick={(e) => {
+              e.stopPropagation();
+              setActiveActionId(null);
+              setActionMenuCoords(null);
+            }}
+          />
+          
+          {/* Floating Action Menu Container */}
+          <div 
+            style={{
+              position: "fixed",
+              right: `${actionMenuCoords.right}px`,
+              top: actionMenuCoords.top !== undefined ? `${actionMenuCoords.top}px` : undefined,
+              bottom: actionMenuCoords.bottom !== undefined ? `${actionMenuCoords.bottom}px` : undefined,
+              maxHeight: `${actionMenuCoords.maxHeight}px`,
+              width: "340px"
+            }}
+            className={`z-20 overflow-y-auto overscroll-contain bg-white border border-slate-200 rounded-2xl shadow-2xl text-left p-2 animate-in fade-in ${
+              actionMenuCoords.openUpwards ? "slide-in-from-bottom-2" : "slide-in-from-top-2"
+            } duration-150 ring-1 ring-slate-900/15 text-slate-700 divide-y divide-slate-100 scrollbar-thin`}
+            onClick={(e) => e.stopPropagation()}
+          >
+            {/* Header Info */}
+            <div className="p-2.5 bg-gradient-to-r from-slate-900 to-slate-800 rounded-xl text-white mb-1.5 shadow-xs">
+              <div className="flex items-center justify-between gap-2">
+                <span className="text-[9.5px] font-mono font-bold text-slate-400 uppercase tracking-wider">TUG 8 Dispatch</span>
+                <span className="text-[9px] font-mono font-extrabold px-2 py-0.5 rounded bg-blue-500/20 text-blue-300 border border-blue-400/30 truncate max-w-[120px]">
+                  {activeDispatchItem.status}
+                </span>
+              </div>
+              <div className="font-mono text-xs font-black text-rose-300 truncate mt-1">
+                {activeDispatchItem.tug8_number || activeDispatchItem.bon_pengeluaran_number || activeDispatchItem.id}
+              </div>
+              <div className="text-[11px] text-slate-300 font-bold truncate mt-0.5 flex items-center gap-1">
+                <span>⚓</span> {activeDispatchItem.vessel_name}
+              </div>
+            </div>
+
+            {/* SECTION 1: PERSETUJUAN & TTD DIGITAL (2x2 Grid) */}
+            <div className="py-1.5 space-y-1">
+              <div className="px-1 text-[9px] font-mono font-black uppercase tracking-widest text-slate-400 flex items-center justify-between">
+                <span className="flex items-center gap-1">
+                  <ShieldCheck className="w-3.5 h-3.5 text-emerald-500" />
+                  Approval 4 Tahap
+                </span>
+                <span className="text-[8.5px] text-slate-400 font-mono">Aldi/Alfin/Emir/Sumbono</span>
+              </div>
+
+              <div className="grid grid-cols-2 gap-1.5">
+                {/* 1. ALDI HIDAYAT (PETUGAS GUDANG) */}
+                {activeDispatchItem.aldi_signed ? (
+                  <div className="px-2 py-1.5 bg-emerald-50 border border-emerald-200/80 rounded-lg flex items-center justify-between text-[10.5px]">
+                    <div className="truncate">
+                      <div className="font-bold text-emerald-950 truncate leading-none">Aldi H.</div>
+                      <div className="text-[8.5px] text-emerald-700 font-mono mt-0.5">Petugas Gudang</div>
+                    </div>
+                    <span className="text-[8.5px] font-mono font-black text-emerald-700 bg-emerald-100 px-1 py-0.5 rounded shrink-0">✓ ACC</span>
+                  </div>
+                ) : (
+                  <button
+                    type="button"
+                    onClick={async (e) => {
+                      e.stopPropagation();
+                      const dspId = activeDispatchItem.id;
+                      setActiveActionId(null);
+                      setActionMenuCoords(null);
+                      const now = new Date().toISOString();
+                      if (onUpdateDispatch) {
+                        await onUpdateDispatch(dspId, {
+                          aldi_signed: true,
+                          aldi_signed_at: now,
+                          aldi_signature_url: ALDI_SIGNATURE_URL
+                        });
+                      }
+                    }}
+                    className="px-2 py-1.5 bg-teal-50 hover:bg-teal-100 text-teal-900 border border-teal-200 rounded-lg flex items-center justify-between text-[10.5px] font-bold cursor-pointer transition-colors text-left"
+                    title="Beri Tanda Tangan Digital Petugas Gudang (Aldi Hidayat)"
+                  >
+                    <div className="truncate">
+                      <div className="font-bold truncate leading-none">Aldi H.</div>
+                      <div className="text-[8.5px] text-teal-700 font-mono mt-0.5">Petugas Gudang</div>
+                    </div>
+                    <span className="text-[8.5px] font-mono bg-teal-200 text-teal-900 px-1.5 py-0.5 rounded font-black shrink-0">TTD</span>
+                  </button>
+                )}
+
+                {/* 2. MAGHFUR MUHAMMAD ALFIN (KEPALA GUDANG) */}
+                {activeDispatchItem.alfin_signed ? (
+                  <div className="px-2 py-1.5 bg-emerald-50 border border-emerald-200/80 rounded-lg flex items-center justify-between text-[10.5px]">
+                    <div className="truncate">
+                      <div className="font-bold text-emerald-950 truncate leading-none">M. Alfin</div>
+                      <div className="text-[8.5px] text-emerald-700 font-mono mt-0.5">Kepala Gudang</div>
+                    </div>
+                    <span className="text-[8.5px] font-mono font-black text-emerald-700 bg-emerald-100 px-1.5 py-0.5 rounded shrink-0">✓ ACC</span>
+                  </div>
+                ) : (
+                  <button
+                    type="button"
+                    onClick={async (e) => {
+                      e.stopPropagation();
+                      const dspId = activeDispatchItem.id;
+                      setActiveActionId(null);
+                      setActionMenuCoords(null);
+                      const now = new Date().toISOString();
+                      if (onUpdateDispatch) {
+                        await onUpdateDispatch(dspId, {
+                          alfin_signed: true,
+                          alfin_signed_at: now,
+                          alfin_signature_url: ALFIN_SIGNATURE_URL
+                        });
+                      }
+                    }}
+                    className="px-2 py-1.5 bg-emerald-50 hover:bg-emerald-100 text-emerald-900 border border-emerald-200 rounded-lg flex items-center justify-between text-[10.5px] font-bold cursor-pointer transition-colors text-left"
+                    title="Beri Tanda Tangan Digital Kepala Gudang (Maghfur Muhammad Alfin)"
+                  >
+                    <div className="truncate">
+                      <div className="font-bold truncate leading-none">M. Alfin</div>
+                      <div className="text-[8.5px] text-emerald-700 font-mono mt-0.5">Kepala Gudang</div>
+                    </div>
+                    <span className="text-[8.5px] font-mono bg-emerald-200 text-emerald-900 px-1.5 py-0.5 rounded font-black shrink-0">TTD</span>
+                  </button>
+                )}
+
+                {/* 3. MOHAMAT EMIR FERDIAN (MANAGER LOGISTIK) */}
+                {activeDispatchItem.emir_signed ? (
+                  <div className="px-2 py-1.5 bg-emerald-50 border border-emerald-200/80 rounded-lg flex items-center justify-between text-[10.5px]">
+                    <div className="truncate">
+                      <div className="font-bold text-emerald-950 truncate leading-none">Emir F.</div>
+                      <div className="text-[8.5px] text-emerald-700 font-mono mt-0.5">Manager Logistik</div>
+                    </div>
+                    <span className="text-[8.5px] font-mono font-black text-emerald-700 bg-emerald-100 px-1.5 py-0.5 rounded shrink-0">✓ ACC</span>
+                  </div>
+                ) : (
+                  <button
+                    type="button"
+                    onClick={async (e) => {
+                      e.stopPropagation();
+                      const dspId = activeDispatchItem.id;
+                      setActiveActionId(null);
+                      setActionMenuCoords(null);
+                      const now = new Date().toISOString();
+                      if (onUpdateDispatch) {
+                        await onUpdateDispatch(dspId, {
+                          emir_signed: true,
+                          emir_signed_at: now,
+                          emir_signature_url: "https://api.dicebear.com/7.x/initials/svg?seed=EmirFerdian"
+                        });
+                      }
+                    }}
+                    className="px-2 py-1.5 bg-amber-50 hover:bg-amber-100 text-amber-900 border border-amber-200 rounded-lg flex items-center justify-between text-[10.5px] font-bold cursor-pointer transition-colors text-left"
+                    title="Beri Tanda Tangan Digital Manager Logistik (Mohamat Emir Ferdian)"
+                  >
+                    <div className="truncate">
+                      <div className="font-bold truncate leading-none">Emir F.</div>
+                      <div className="text-[8.5px] text-amber-700 font-mono mt-0.5">Manager Logistik</div>
+                    </div>
+                    <span className="text-[8.5px] font-mono bg-amber-200 text-amber-900 px-1.5 py-0.5 rounded font-black shrink-0">TTD</span>
+                  </button>
+                )}
+
+                {/* 4. SUMBONO (VP RENDALHAR) */}
+                {activeDispatchItem.sumbono_signed ? (
+                  <div className="px-2 py-1.5 bg-emerald-50 border border-emerald-200/80 rounded-lg flex items-center justify-between text-[10.5px]">
+                    <div className="truncate">
+                      <div className="font-bold text-emerald-950 truncate leading-none">Sumbono</div>
+                      <div className="text-[8.5px] text-emerald-700 font-mono mt-0.5">VP Rendalhar</div>
+                    </div>
+                    <span className="text-[8.5px] font-mono font-black text-emerald-700 bg-emerald-100 px-1.5 py-0.5 rounded shrink-0">✓ ACC</span>
+                  </div>
+                ) : (
+                  <button
+                    type="button"
+                    onClick={async (e) => {
+                      e.stopPropagation();
+                      const dspId = activeDispatchItem.id;
+                      setActiveActionId(null);
+                      setActionMenuCoords(null);
+                      const now = new Date().toISOString();
+                      if (onUpdateDispatch) {
+                        await onUpdateDispatch(dspId, {
+                          sumbono_signed: true,
+                          sumbono_signed_at: now,
+                          sumbono_signature_url: "https://api.dicebear.com/7.x/initials/svg?seed=Sumbono",
+                          status: DispatchStatus.DELIVERED
+                        });
+                      }
+                    }}
+                    className="px-2 py-1.5 bg-indigo-50 hover:bg-indigo-100 text-indigo-900 border border-indigo-200 rounded-lg flex items-center justify-between text-[10.5px] font-bold cursor-pointer transition-colors text-left"
+                    title="Beri Tanda Tangan Digital VP Rendalhar (Sumbono)"
+                  >
+                    <div className="truncate">
+                      <div className="font-bold truncate leading-none">Sumbono</div>
+                      <div className="text-[8.5px] text-indigo-700 font-mono mt-0.5">VP Rendalhar</div>
+                    </div>
+                    <span className="text-[8.5px] font-mono bg-indigo-200 text-indigo-900 px-1.5 py-0.5 rounded font-black shrink-0">TTD</span>
+                  </button>
+                )}
+              </div>
+            </div>
+
+            {/* SECTION 2: DOKUMEN & OPERASIONAL */}
+            <div className="py-1.5 space-y-0.5">
+              <div className="px-2 py-1 text-[9px] font-mono font-black uppercase tracking-widest text-slate-400">
+                Operasional
+              </div>
+
+              {/* Quick Actions for Partial Multi-Shipment */}
+              {(activeDispatchItem.is_partial || activeDispatchItem.status === "DISPATCHED_PARTIAL") && (() => {
+                const pInfo = getDispatchPhaseInfo(activeDispatchItem);
+                return (
+                  <button
+                    type="button"
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      const target = activeDispatchItem;
+                      setActiveActionId(null);
+                      setActionMenuCoords(null);
+                      handleOpenFollowupDispatch(target);
+                    }}
+                    className="w-full px-2.5 py-1.5 text-xs font-bold bg-amber-50 hover:bg-amber-100 text-amber-900 rounded-lg border border-amber-200 flex items-center gap-2 cursor-pointer transition-colors text-left"
+                  >
+                    <Truck className="w-3.5 h-3.5 text-amber-600" />
+                    <span>Kirim Susulan (Tahap {pInfo.phase + 1})</span>
+                  </button>
+                );
+              })()}
+
+              <button
+                type="button"
+                onClick={(e) => {
+                  e.stopPropagation();
+                  const target = activeDispatchItem;
+                  setActiveActionId(null);
+                  setActionMenuCoords(null);
+                  setPartialDetailModalItem(target);
+                }}
+                className="w-full px-2.5 py-1.5 text-xs font-semibold hover:bg-slate-100 text-slate-800 rounded-lg flex items-center gap-2 cursor-pointer transition-colors text-left"
+              >
+                <History className="w-3.5 h-3.5 text-purple-600" />
+                <span>Rincian Parsial &amp; Sisa Barang</span>
+              </button>
+
+              <button
+                type="button"
+                onClick={(e) => {
+                  e.stopPropagation();
+                  const target = activeDispatchItem;
+                  setActiveActionId(null);
+                  setActionMenuCoords(null);
+                  handleOpenUpdateModal(target);
+                }}
+                className="w-full px-2.5 py-2 text-xs font-bold bg-blue-50 hover:bg-blue-100 text-blue-800 rounded-lg border border-blue-200/80 flex items-center gap-2 cursor-pointer transition-colors text-left shadow-2xs"
+              >
+                {role !== UserRole.VESSEL_CREW ? (
+                  <>
+                    <Edit3 className="w-3.5 h-3.5 text-blue-600 shrink-0" />
+                    <div className="flex flex-col">
+                      <span>Edit Data Pengiriman (TUG 8)</span>
+                      <span className="text-[9px] font-normal text-blue-600/80">Koreksi barang, qty, kapal, driver &amp; tanggal</span>
+                    </div>
+                  </>
+                ) : (
+                  <>
+                    <Eye className="w-3.5 h-3.5 text-slate-500" />
+                    <span>Lihat Detail Dispatch</span>
+                  </>
+                )}
+              </button>
+
+              <button
+                type="button"
+                onClick={(e) => {
+                  e.stopPropagation();
+                  const target = activeDispatchItem;
+                  setActiveActionId(null);
+                  setActionMenuCoords(null);
+                  onPreviewDocument("bon", target);
+                }}
+                className="w-full px-2.5 py-1.5 text-xs font-medium hover:bg-slate-100 text-rose-700 rounded-lg flex items-center gap-2 cursor-pointer transition-colors text-left"
+              >
+                <Printer className="w-3.5 h-3.5 text-rose-500" />
+                <span>Cetak TUG 8 Note (PDF)</span>
+              </button>
+
+              <button
+                type="button"
+                onClick={(e) => {
+                  e.stopPropagation();
+                  const target = activeDispatchItem;
+                  setActiveActionId(null);
+                  setActionMenuCoords(null);
+                  onPreviewDocument("surat_jalan", target);
+                }}
+                className="w-full px-2.5 py-1.5 text-xs font-medium hover:bg-slate-100 text-emerald-700 flex items-center gap-2 cursor-pointer transition-colors text-left"
+              >
+                <Printer className="w-3.5 h-3.5 text-emerald-500" />
+                <span>Cetak Surat Jalan (PDF)</span>
+              </button>
+            </div>
+
+            {/* SECTION 3: HAPUS DATA */}
+            {onDeleteDispatch && (
+              <div className="pt-1">
+                <button
+                  type="button"
+                  onClick={async (e) => {
+                    e.stopPropagation();
+                    const target = activeDispatchItem;
+                    setActiveActionId(null);
+                    setActionMenuCoords(null);
+                    const docName = target.tug8_number || target.bon_pengeluaran_number || target.id;
+                    if (window.confirm(`Apakah Anda yakin ingin menghapus data Pengeluaran Barang TUG 8 [${docName}]?`)) {
+                      try {
+                        await onDeleteDispatch(target.id);
+                        alert(`Data TUG 8 [${docName}] berhasil dihapus.`);
+                      } catch (err: any) {
+                        alert(`Gagal menghapus data: ${err?.message || err}`);
+                      }
+                    }
+                  }}
+                  className="w-full px-2.5 py-1.5 text-xs font-medium hover:bg-rose-50 text-rose-600 rounded-lg flex items-center gap-2 cursor-pointer transition-colors text-left"
+                >
+                  <Trash2 className="w-3.5 h-3.5 text-rose-500" />
+                  <span>Hapus Data TUG 8</span>
+                </button>
+              </div>
+            )}
+          </div>
+        </div>,
+        document.body
+      )}
 
     </div>
   );
