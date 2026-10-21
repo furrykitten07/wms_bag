@@ -187,7 +187,7 @@ export default function MaterialRequestTUG6View({
   const [isSPKPickerOpen, setIsSPKPickerOpen] = useState(false);
   const [spkSearchQuery, setSpkSearchQuery] = useState("");
   const [criticalSearchQuery, setCriticalSearchQuery] = useState("");
-  const [criticalFilterTab, setCriticalFilterTab] = useState<"all" | "unfulfilled" | "partial" | "fulfilled">("all");
+  const [criticalFilterTab, setCriticalFilterTab] = useState<"all" | "critical" | "unfulfilled" | "partial" | "fulfilled">("all");
 
   // Available SPKs from TUG 6, TUG 5, and spkList
   const availableSPKList = useMemo(() => {
@@ -309,6 +309,7 @@ export default function MaterialRequestTUG6View({
       if (!matchSearch) return false;
 
       if (criticalFilterTab === "all") return true;
+      if (criticalFilterTab === "critical") return item.is_critical;
       if (criticalFilterTab === "unfulfilled") return item.fulfillment_status === "UNFULFILLED";
       if (criticalFilterTab === "partial") return item.fulfillment_status === "PARTIAL";
       if (criticalFilterTab === "fulfilled") return item.fulfillment_status === "FULFILLED";
@@ -433,20 +434,20 @@ export default function MaterialRequestTUG6View({
         spk.vessels.forEach(vessel => {
           vessel.items.forEach(itm => {
             const isCrit = checkIsCriticalPart({ spare_part_name: itm.spare_part_name, part_number: itm.part_number }, criticalParts || []).isCritical;
-            if (isCrit) {
-              const matchedPart = parts.find(p => p.id === itm.spare_part_id || p.part_number === itm.part_number);
-              allItems.push({
-                spare_part_id: matchedPart?.id || itm.spare_part_id,
-                spare_part_name: matchedPart?.part_name || itm.spare_part_name,
-                part_number: matchedPart?.part_number || itm.part_number,
-                unit: matchedPart?.unit || itm.unit || "PCS",
-                avg_monthly_usage: 1,
-                remaining_stock: matchedPart?.current_stock || 0,
-                requested_qty: itm.qty_to_pick,
-                is_critical: true,
-                notes: `[ITEM CRITICAL] Sinkronisasi Otomatis SPK TUG 6 - Kapal: ${vessel.vessel_name}`
-              });
-            }
+            const matchedPart = parts.find(p => p.id === itm.spare_part_id || p.part_number === itm.part_number);
+            allItems.push({
+              spare_part_id: matchedPart?.id || itm.spare_part_id,
+              spare_part_name: matchedPart?.part_name || itm.spare_part_name,
+              part_number: matchedPart?.part_number || itm.part_number,
+              unit: matchedPart?.unit || itm.unit || "PCS",
+              avg_monthly_usage: 1,
+              remaining_stock: matchedPart?.current_stock || 0,
+              requested_qty: itm.qty_to_pick,
+              is_critical: isCrit,
+              notes: isCrit 
+                ? `[ITEM CRITICAL] Sinkronisasi Otomatis SPK TUG 6 - Kapal: ${vessel.vessel_name}`
+                : `Sinkronisasi Otomatis SPK TUG 6 - Kapal: ${vessel.vessel_name}`
+            });
           });
         });
 
@@ -562,28 +563,22 @@ export default function MaterialRequestTUG6View({
       return;
     }
 
-    // Strictly filter ONLY items that match Critical Spare Parts master (BOTH part_name AND part_number identical)
-    const verifiedCriticalItems = rawItems.filter(item => {
-      const checkCrit = checkIsCriticalPart(item, criticalParts);
-      return checkCrit.isCritical;
-    });
-
-    if (verifiedCriticalItems.length === 0) {
-      alert(`Tidak dapat membuat Form TUG 6!\n\nTidak ditemukan suku cadang pada SPK ${selectedSPKForCritical} yang identik (Nama Suku Cadang DAN Part Number) dengan data di menu "CRITICAL SPARE PARTS TUG 6".`);
-      return;
-    }
-
-    const finalFormItems: Partial<MaterialRequestItem>[] = verifiedCriticalItems.map((item, idx) => {
+    // Include ALL items from the SPK, tagging items that match Critical Spare Parts master
+    const finalFormItems: Partial<MaterialRequestItem>[] = rawItems.map((item, idx) => {
       const matchedPart = parts.find(p => p.id === item.spare_part_id || (p.part_number && item.part_number && p.part_number.trim().toLowerCase() === item.part_number.trim().toLowerCase()));
       
+      const checkCrit = checkIsCriticalPart(item, criticalParts);
       let itemNotes = item.notes ? item.notes.trim() : "";
-      if (!itemNotes.toUpperCase().includes("[ITEM CRITICAL]")) {
-        const critTag = `[ITEM CRITICAL]`;
-        itemNotes = itemNotes ? `${critTag} ${itemNotes}` : `${critTag} Suku cadang kritis armada kapal`;
+      
+      if (checkCrit.isCritical) {
+        if (!itemNotes.toUpperCase().includes("[ITEM CRITICAL]")) {
+          const critTag = `[ITEM CRITICAL]`;
+          itemNotes = itemNotes ? `${critTag} ${itemNotes}` : `${critTag} Suku cadang kritis armada kapal`;
+        }
       }
 
       return {
-        spare_part_id: matchedPart?.id || item.spare_part_id || `item-crit-${Date.now()}-${idx}`,
+        spare_part_id: matchedPart?.id || item.spare_part_id || `item-tug6-${Date.now()}-${idx}`,
         spare_part_name: matchedPart?.part_name || item.spare_part_name,
         part_number: matchedPart?.part_number || item.part_number || "-",
         unit: matchedPart?.unit || item.unit || "PCS",
@@ -591,12 +586,12 @@ export default function MaterialRequestTUG6View({
         remaining_stock: matchedPart?.current_stock ?? item.remaining_stock ?? 0,
         requested_qty: Number(item.requested_qty) || 1,
         notes: itemNotes,
-        is_critical: true,
+        is_critical: checkCrit.isCritical,
         item_status: "Pending"
       };
     });
 
-    const criticalCount = finalFormItems.length;
+    const criticalCount = finalFormItems.filter(i => i.is_critical).length;
 
     // Populate TUG 6 Create Form fields
     resetForm();
@@ -654,18 +649,12 @@ export default function MaterialRequestTUG6View({
       return;
     }
 
-    // Must strictly match Critical Spare Parts master on BOTH part_name AND part_number
+    // Check if matches Critical Spare Parts master
     const checkCrit = checkIsCriticalPart(
       { spare_part_name: part.part_name, part_number: part.part_number },
       criticalParts
     );
-
-    if (!checkCrit.isCritical) {
-      alert(
-        `Item "${part.part_name}" (P/N: ${part.part_number || "-"}) tidak dapat diinputkan ke form TUG 6!\n\nSesuai aturan, data harus sama persis dan identik (Nama Suku Cadang DAN Part Number) dengan yang terdaftar di menu "CRITICAL SPARE PARTS TUG 6".`
-      );
-      return;
-    }
+    const isCrit = checkCrit.isCritical;
 
     const newItem: Partial<MaterialRequestItem> = {
       spare_part_id: part.id,
@@ -675,8 +664,10 @@ export default function MaterialRequestTUG6View({
       avg_monthly_usage: itemUsage,
       remaining_stock: part.current_stock,
       requested_qty: itemQty,
-      is_critical: true,
-      notes: itemNotes ? `[ITEM CRITICAL] ${itemNotes}` : `[ITEM CRITICAL] Suku cadang kritis`
+      is_critical: isCrit,
+      notes: isCrit 
+        ? (itemNotes ? `[ITEM CRITICAL] ${itemNotes}` : `[ITEM CRITICAL] Suku cadang kritis`)
+        : itemNotes
     };
 
     setFormItems([...formItems, newItem]);
@@ -715,30 +706,21 @@ export default function MaterialRequestTUG6View({
       return;
     }
 
-    // Strictly validate that ALL items being inputted to TUG 6 are identical to Critical Spare Parts master (both name AND part number)
-    const invalidItems = formItems.filter(itm => !checkIsCriticalPart(itm, criticalParts).isCritical);
-    if (invalidItems.length > 0) {
-      const invalidNames = invalidItems.map(it => `• ${it.spare_part_name || "Tanpa Nama"} (P/N: ${it.part_number || "-"})`).join("\n");
-      alert(
-        `Gagal menyimpan TUG 6!\n\nItem berikut tidak terdaftar atau tidak identik dengan menu "CRITICAL SPARE PARTS TUG 6":\n\n${invalidNames}\n\nSesuai aturan, data harus sama persis dan identik berdasarkan Nama Suku Cadang DAN Part Number secara bersamaan baru bisa diinputkan di menu TUG 6.`
-      );
-      return;
-    }
-
-    const currentYear = new Date().getFullYear();
-    const sameYearMRs = (requests || []).filter(m => m && m.request_number?.startsWith(`MR6-${currentYear}`));
-    let nextSeqStr = "000001";
-    if (sameYearMRs.length > 0) {
-      const seqs = sameYearMRs.map(m => {
-        const partsNum = (m.request_number || "").split("-");
-        return Number(partsNum[partsNum.length - 1] || 0);
-      });
-      const maxSeq = Math.max(...seqs);
-      nextSeqStr = String(maxSeq + 1).padStart(6, "0");
-    }
-
     const generatedReqNum = activeMR?.request_number || `MR6-${currentYear}-${nextSeqStr}`;
     const generatedTug6Num = activeMR?.tug6_number || `TUG6-${currentYear}-${nextSeqStr.slice(-3)}`;
+
+    // Enrich items with accurate is_critical flag
+    const enrichedFormItems = formItems.map(itm => {
+      const isCrit = Boolean(
+        checkIsCriticalPart(itm, criticalParts).isCritical || 
+        itm.is_critical || 
+        (itm.notes && itm.notes.toUpperCase().includes("CRITICAL"))
+      );
+      return {
+        ...itm,
+        is_critical: isCrit
+      };
+    });
 
     const reqData = {
       request_number: generatedReqNum,
@@ -753,10 +735,7 @@ export default function MaterialRequestTUG6View({
       function_code: functionCode,
       remarks,
       status,
-      items: formItems.map(itm => ({
-        ...itm,
-        is_critical: true
-      })) as MaterialRequestItem[],
+      items: enrichedFormItems as MaterialRequestItem[],
       tug_type: "TUG6" as const
     };
 
@@ -2491,37 +2470,40 @@ export default function MaterialRequestTUG6View({
                               type="button"
                               onClick={() => {
                                 const matchedItems = matchedSPK.vessels.flatMap(v =>
-                                  v.items
-                                    .filter(it => checkIsCriticalPart({ spare_part_name: it.spare_part_name, part_number: it.part_number }, criticalParts).isCritical)
-                                    .map(it => {
-                                      const matchedPart = parts.find(p => p.id === it.spare_part_id || p.part_number === it.part_number);
-                                      return {
-                                        spare_part_id: matchedPart?.id || it.spare_part_id,
-                                        spare_part_name: matchedPart?.part_name || it.spare_part_name,
-                                        part_number: matchedPart?.part_number || it.part_number,
-                                        unit: matchedPart?.unit || it.unit,
-                                        avg_monthly_usage: 1,
-                                        remaining_stock: matchedPart?.current_stock || 0,
-                                        requested_qty: it.qty_to_pick,
-                                        is_critical: true,
-                                        notes: `[ITEM CRITICAL] Diimpor dari SPK (TUG 6): ${matchedSPK.spk_number} (${v.vessel_name})`
-                                      };
-                                    })
+                                  v.items.map(it => {
+                                    const matchedPart = parts.find(p => p.id === it.spare_part_id || p.part_number === it.part_number);
+                                    const checkCrit = checkIsCriticalPart({ spare_part_name: it.spare_part_name, part_number: it.part_number }, criticalParts);
+                                    const isCrit = checkCrit.isCritical;
+                                    return {
+                                      spare_part_id: matchedPart?.id || it.spare_part_id,
+                                      spare_part_name: matchedPart?.part_name || it.spare_part_name,
+                                      part_number: matchedPart?.part_number || it.part_number,
+                                      unit: matchedPart?.unit || it.unit,
+                                      avg_monthly_usage: 1,
+                                      remaining_stock: matchedPart?.current_stock || 0,
+                                      requested_qty: it.qty_to_pick,
+                                      is_critical: isCrit,
+                                      notes: isCrit
+                                        ? `[ITEM CRITICAL] Diimpor dari SPK (TUG 6): ${matchedSPK.spk_number} (${v.vessel_name})`
+                                        : `Diimpor dari SPK: ${matchedSPK.spk_number} (${v.vessel_name})`
+                                    };
+                                  })
                                 );
 
                                 if (matchedItems.length === 0) {
-                                  alert(`Tidak ditemukan suku cadang pada SPK ${matchedSPK.spk_number} yang identik (Nama Suku Cadang DAN Part Number) dengan data di menu "CRITICAL SPARE PARTS TUG 6".`);
+                                  alert(`Tidak ditemukan suku cadang pada SPK ${matchedSPK.spk_number}.`);
                                   return;
                                 }
 
-                                if (confirm(`Muat ${matchedItems.length} suku cadang kritis (identik Nama & Part Number) dari SPK ${matchedSPK.spk_number} ke dalam Form TUG 6?`)) {
+                                const critCount = matchedItems.filter(i => i.is_critical).length;
+                                if (confirm(`Muat ${matchedItems.length} suku cadang (${critCount} item critical terdeteksi) dari SPK ${matchedSPK.spk_number} ke dalam Form TUG 6?`)) {
                                   setFormItems(matchedItems);
                                 }
                               }}
                               className="w-full py-1.5 px-3 bg-indigo-600 hover:bg-indigo-700 text-white font-bold rounded-lg text-xs transition-all shadow-xs cursor-pointer flex items-center justify-center gap-1.5"
                             >
                               <Sparkles className="w-3.5 h-3.5" />
-                              <span>Muat Item Critical Dari SPK</span>
+                              <span>Muat Seluruh Item Dari SPK</span>
                             </button>
                             <span className="text-[9px] text-slate-500 block leading-tight">
                               Kapal dalam SPK: {matchedSPK.vessels.map(v => v.vessel_name).join(", ")}
@@ -3162,11 +3144,13 @@ export default function MaterialRequestTUG6View({
                   {/* KPI Summary Cards */}
                   <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
                     <div className="bg-white p-3.5 rounded-xl border border-slate-200 shadow-2xs">
-                      <div className="text-[10px] font-mono font-bold uppercase text-slate-400">Total Item Critical</div>
-                      <div className="text-2xl font-black font-display text-rose-600 mt-1">
+                      <div className="text-[10px] font-mono font-bold uppercase text-slate-400">Total Item SPK</div>
+                      <div className="text-2xl font-black font-display text-slate-900 mt-1">
                         {matchedSPKCriticalItems.length}
                       </div>
-                      <div className="text-[10px] text-slate-500 font-medium mt-0.5">Suku cadang terdaftar di Master</div>
+                      <div className="text-[10px] text-rose-600 font-bold mt-0.5">
+                        {matchedSPKCriticalItems.filter(i => i.is_critical).length} Item Critical
+                      </div>
                     </div>
 
                     <div className="bg-white p-3.5 rounded-xl border border-slate-200 shadow-2xs">
@@ -3201,7 +3185,8 @@ export default function MaterialRequestTUG6View({
                         <Filter className="w-3 h-3 text-slate-400" /> Filter:
                       </span>
                       {[
-                        { id: "all", label: "Semua Item Critical", count: matchedSPKCriticalItems.length },
+                        { id: "all", label: "Semua Item SPK", count: matchedSPKCriticalItems.length },
+                        { id: "critical", label: "Item Critical Saja", count: matchedSPKCriticalItems.filter(i => i.is_critical).length },
                         { id: "unfulfilled", label: "❌ Belum Keluar di TUG 6", count: matchedSPKCriticalItems.filter(i => i.fulfillment_status === "UNFULFILLED").length },
                         { id: "partial", label: "⚠️ Sebagian / Selisih", count: matchedSPKCriticalItems.filter(i => i.fulfillment_status === "PARTIAL").length },
                         { id: "fulfilled", label: "✅ Lengkap di TUG 6", count: matchedSPKCriticalItems.filter(i => i.fulfillment_status === "FULFILLED").length }
@@ -3273,10 +3258,16 @@ export default function MaterialRequestTUG6View({
                                       <span className="font-mono text-[10px] text-slate-500 bg-slate-100 px-1.5 py-0.5 rounded font-bold">
                                         P/N: {item.part_number || "-"}
                                       </span>
-                                      <span className="inline-flex items-center gap-1 px-1.5 py-0.2 rounded text-[9px] font-black uppercase font-mono bg-rose-100 text-rose-700 border border-rose-200">
-                                        <AlertOctagon className="w-2.5 h-2.5 text-rose-600" />
-                                        CRITICAL
-                                      </span>
+                                      {item.is_critical ? (
+                                        <span className="inline-flex items-center gap-1 px-1.5 py-0.2 rounded text-[9px] font-black uppercase font-mono bg-rose-100 text-rose-700 border border-rose-200">
+                                          <AlertOctagon className="w-2.5 h-2.5 text-rose-600" />
+                                          CRITICAL
+                                        </span>
+                                      ) : (
+                                        <span className="inline-flex items-center px-1.5 py-0.2 rounded text-[9px] font-bold uppercase font-mono bg-slate-100 text-slate-600 border border-slate-200">
+                                          REGULER
+                                        </span>
+                                      )}
                                     </div>
                                   </td>
 
@@ -3347,7 +3338,9 @@ export default function MaterialRequestTUG6View({
 
                                   {/* Alasan Kritis / Justifikasi */}
                                   <td className="py-3 px-4 text-slate-600 text-[11px] leading-relaxed max-w-xs">
-                                    {item.critical_info.notes || item.match_reason || "Komponen vital operasional kapal & sistem armada maritim."}
+                                    {item.is_critical 
+                                      ? (item.critical_info.notes || item.match_reason || "Komponen vital operasional kapal & sistem armada maritim.")
+                                      : (item.match_reason || "Suku cadang reguler SPK")}
                                   </td>
                                 </tr>
                               );

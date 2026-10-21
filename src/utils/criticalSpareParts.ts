@@ -183,6 +183,7 @@ export interface SPKCriticalComparisonItem {
   unit: string;
   critical_info: CriticalSparePart;
   match_reason: string;
+  is_critical?: boolean;
   // TUG 5 Info
   tug5_qty: number;
   tug5_request_numbers: string[];
@@ -198,8 +199,8 @@ export interface SPKCriticalComparisonItem {
 }
 
 /**
- * Correlates items between TUG 5 (Requested) and TUG 6 (Issued) for a specific SPK number,
- * filtering only items classified as CRITICAL.
+ * Correlates all items between TUG 5 (Requested) and TUG 6 (Issued) for a specific SPK number,
+ * classifying items as CRITICAL or REGULER and prioritizing critical items.
  */
 export function matchCriticalPartsForSPK(
   spkNumber: string,
@@ -225,42 +226,51 @@ export function matchCriticalPartsForSPK(
     return rSPK === cleanTargetSPK || (cleanTargetSPK.length >= 6 && (rSPK.includes(cleanTargetSPK) || rRemarks.includes(cleanTargetSPK)));
   });
 
-  // Map of critical items: key = normalized PN or Name
-  const criticalMap = new Map<string, SPKCriticalComparisonItem>();
+  // Map of all items: key = critical ID or normalized PN / Name
+  const itemsMap = new Map<string, SPKCriticalComparisonItem>();
 
   // 1. Process TUG 5 Items
   matchedTUG5.forEach(tug5 => {
     (tug5.items || []).forEach(item => {
       const { isCritical, matchedCritical, matchReason } = checkIsCriticalPart(item, criticalParts);
-      if (isCritical && matchedCritical) {
-        const key = matchedCritical.id || `${matchedCritical.part_name}-${matchedCritical.part_no}`;
+      const cleanPN = (item.part_number || "-").trim();
+      const cleanName = (item.spare_part_name || "").trim();
+      
+      const key = isCritical && matchedCritical
+        ? `crit-${matchedCritical.id || `${matchedCritical.part_name}-${matchedCritical.part_no}`}`
+        : `reg-${(item.spare_part_id || `${cleanName}-${cleanPN}`).toLowerCase()}`;
 
-        const existing = criticalMap.get(key);
-        const reqQty = Number(item.requested_qty) || 0;
+      const existing = itemsMap.get(key);
+      const reqQty = Number(item.requested_qty) || 0;
 
-        if (existing) {
-          existing.tug5_qty += reqQty;
-          if (tug5.request_number && !existing.tug5_request_numbers.includes(tug5.request_number)) {
-            existing.tug5_request_numbers.push(tug5.request_number);
-          }
-        } else {
-          criticalMap.set(key, {
-            id: `crit-item-${key}`,
-            part_name: matchedCritical.part_name || item.spare_part_name,
-            part_number: matchedCritical.part_no && matchedCritical.part_no !== "-" ? matchedCritical.part_no : (item.part_number || "-"),
-            unit: item.unit || matchedCritical.unit || "PCS",
-            critical_info: matchedCritical,
-            match_reason: matchReason || "Critical Match",
-            tug5_qty: reqQty,
-            tug5_request_numbers: tug5.request_number ? [tug5.request_number] : [],
-            tug5_status: tug5.status,
-            tug6_qty: 0,
-            tug6_request_numbers: [],
-            fulfillment_status: "UNFULFILLED",
-            vessel_name: tug5.vessel_name,
-            spk_number: spkNumber
-          });
+      if (existing) {
+        existing.tug5_qty += reqQty;
+        if (tug5.request_number && !existing.tug5_request_numbers.includes(tug5.request_number)) {
+          existing.tug5_request_numbers.push(tug5.request_number);
         }
+      } else {
+        itemsMap.set(key, {
+          id: `item-${key}`,
+          part_name: (isCritical && matchedCritical?.part_name) ? matchedCritical.part_name : (item.spare_part_name || "Suku Cadang"),
+          part_number: (isCritical && matchedCritical?.part_no && matchedCritical.part_no !== "-") ? matchedCritical.part_no : cleanPN,
+          unit: item.unit || matchedCritical?.unit || "PCS",
+          critical_info: matchedCritical || {
+            category: "Reguler",
+            equipment: "-",
+            criticality_level: "NORMAL",
+            notes: "Suku Cadang Reguler"
+          },
+          match_reason: matchReason || (isCritical ? "Critical Match" : "Reguler"),
+          is_critical: isCritical,
+          tug5_qty: reqQty,
+          tug5_request_numbers: tug5.request_number ? [tug5.request_number] : [],
+          tug5_status: tug5.status,
+          tug6_qty: 0,
+          tug6_request_numbers: [],
+          fulfillment_status: "UNFULFILLED",
+          vessel_name: tug5.vessel_name,
+          spk_number: spkNumber
+        });
       }
     });
   });
@@ -269,45 +279,54 @@ export function matchCriticalPartsForSPK(
   matchedTUG6.forEach(tug6 => {
     (tug6.items || []).forEach(item => {
       const { isCritical, matchedCritical, matchReason } = checkIsCriticalPart(item, criticalParts);
-      if (isCritical && matchedCritical) {
-        const key = matchedCritical.id || `${matchedCritical.part_name}-${matchedCritical.part_no}`;
+      const cleanPN = (item.part_number || "-").trim();
+      const cleanName = (item.spare_part_name || "").trim();
 
-        const existing = criticalMap.get(key);
-        const issuedQty = Number(item.approved_qty ?? item.requested_qty) || 0;
+      const key = isCritical && matchedCritical
+        ? `crit-${matchedCritical.id || `${matchedCritical.part_name}-${matchedCritical.part_no}`}`
+        : `reg-${(item.spare_part_id || `${cleanName}-${cleanPN}`).toLowerCase()}`;
 
-        if (existing) {
-          existing.tug6_qty += issuedQty;
-          if (tug6.request_number && !existing.tug6_request_numbers.includes(tug6.request_number)) {
-            existing.tug6_request_numbers.push(tug6.request_number);
-          }
-          if (tug6.status) {
-            existing.tug6_status = tug6.status;
-          }
-        } else {
-          criticalMap.set(key, {
-            id: `crit-item-${key}`,
-            part_name: matchedCritical.part_name || item.spare_part_name,
-            part_number: matchedCritical.part_no && matchedCritical.part_no !== "-" ? matchedCritical.part_no : (item.part_number || "-"),
-            unit: item.unit || matchedCritical.unit || "PCS",
-            critical_info: matchedCritical,
-            match_reason: matchReason || "Critical Match",
-            tug5_qty: 0,
-            tug5_request_numbers: [],
-            tug6_qty: issuedQty,
-            tug6_request_numbers: tug6.request_number ? [tug6.request_number] : [],
-            tug6_status: tug6.status,
-            fulfillment_status: "TUG6_ONLY",
-            vessel_name: tug6.vessel_name,
-            spk_number: spkNumber
-          });
+      const existing = itemsMap.get(key);
+      const issuedQty = Number(item.approved_qty ?? item.requested_qty) || 0;
+
+      if (existing) {
+        existing.tug6_qty += issuedQty;
+        if (tug6.request_number && !existing.tug6_request_numbers.includes(tug6.request_number)) {
+          existing.tug6_request_numbers.push(tug6.request_number);
         }
+        if (tug6.status) {
+          existing.tug6_status = tug6.status;
+        }
+      } else {
+        itemsMap.set(key, {
+          id: `item-${key}`,
+          part_name: (isCritical && matchedCritical?.part_name) ? matchedCritical.part_name : (item.spare_part_name || "Suku Cadang"),
+          part_number: (isCritical && matchedCritical?.part_no && matchedCritical.part_no !== "-") ? matchedCritical.part_no : cleanPN,
+          unit: item.unit || matchedCritical?.unit || "PCS",
+          critical_info: matchedCritical || {
+            category: "Reguler",
+            equipment: "-",
+            criticality_level: "NORMAL",
+            notes: "Suku Cadang Reguler"
+          },
+          match_reason: matchReason || (isCritical ? "Critical Match" : "Reguler"),
+          is_critical: isCritical,
+          tug5_qty: 0,
+          tug5_request_numbers: [],
+          tug6_qty: issuedQty,
+          tug6_request_numbers: tug6.request_number ? [tug6.request_number] : [],
+          tug6_status: tug6.status,
+          fulfillment_status: "TUG6_ONLY",
+          vessel_name: tug6.vessel_name,
+          spk_number: spkNumber
+        });
       }
     });
   });
 
   // 3. Calculate Fulfillment Status
   const result: SPKCriticalComparisonItem[] = [];
-  criticalMap.forEach(item => {
+  itemsMap.forEach(item => {
     if (item.tug5_qty > 0 && item.tug6_qty >= item.tug5_qty) {
       item.fulfillment_status = "FULFILLED";
     } else if (item.tug5_qty > 0 && item.tug6_qty > 0) {
@@ -320,9 +339,13 @@ export function matchCriticalPartsForSPK(
     result.push(item);
   });
 
-  // Sort by priority (UNFULFILLED first, then PARTIAL, then FULFILLED)
+  // Sort by priority: CRITICAL items first at top, then UNFULFILLED, PARTIAL, TUG6_ONLY, FULFILLED
   const order = { UNFULFILLED: 0, PARTIAL: 1, TUG6_ONLY: 2, FULFILLED: 3 };
-  result.sort((a, b) => order[a.fulfillment_status] - order[b.fulfillment_status]);
+  result.sort((a, b) => {
+    if (a.is_critical && !b.is_critical) return -1;
+    if (!a.is_critical && b.is_critical) return 1;
+    return order[a.fulfillment_status] - order[b.fulfillment_status];
+  });
 
   return result;
 }

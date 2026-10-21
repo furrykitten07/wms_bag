@@ -9,6 +9,7 @@ import jsPDF from "jspdf";
 import html2canvas from "html2canvas";
 import { OutboundDispatch, SparePart, InboundReceiving, SPKWorkOrder, DigitalSignature } from "../types.js";
 import { api } from "../api.js";
+import { checkIsCriticalPart, loadCriticalSpareParts } from "../utils/criticalSpareParts.js";
 
 interface PrintDocumentProps {
   type: "bon" | "surat_jalan" | "manifest" | "stock_report" | "mutation_report" | "spk_report" | "tug5" | "tug6" | "tug10";
@@ -110,6 +111,7 @@ export default function PrintDocument({
   selectedDocTypes,
   onClose
 }: PrintDocumentProps) {
+  const criticalPartsMaster = useMemo(() => loadCriticalSpareParts(), []);
   // Dynamic Document Filter (Inbound, TUG 5, TUG 8, TUG 10)
   const activeDocTypes = useMemo(() => {
     return selectedDocTypes || (data as any)?.selectedDocTypes || {
@@ -1328,18 +1330,49 @@ export default function PrintDocument({
                             <td className="px-4 py-2 text-slate-500 font-sans font-normal italic text-[11px]">NIHIL (-)</td>
                           </tr>
                         ) : (
-                          data.items.map((item: any, idx: number) => (
-                            <tr key={idx} className="font-semibold text-slate-900 border-b border-slate-300">
-                              <td className="px-2 py-2 border-r border-slate-300 text-center font-mono text-slate-400">{idx + 1}</td>
-                              <td className="px-4 py-2 border-r border-slate-300 text-slate-900 font-sans font-black">{item.spare_part_name || "(-)"}</td>
-                              <td className="px-3 py-2 border-r border-slate-300 font-mono text-[11px] text-slate-750">{item.part_number || "(-)"}</td>
-                              <td className="px-2 py-2 border-r border-slate-300 text-center uppercase font-mono text-[11px]">{item.unit || "(-)"}</td>
-                              <td className="px-3 py-2 border-r border-slate-300 text-center font-mono text-blue-900 font-black text-xs">{item.requested_qty || "(-)"}</td>
-                              <td className="px-3 py-2 border-r border-slate-300 text-center font-mono text-[10px] text-slate-700">
-                              </td>
-                              <td className="px-4 py-2 text-slate-650 font-sans font-normal italic text-[11px]">{item.notes || "(-)"}</td>
-                            </tr>
-                          ))
+                          data.items.map((item: any, idx: number) => {
+                            const isCrit = Boolean(
+                              item.is_critical || 
+                              (item.notes && item.notes.toUpperCase().includes("CRITICAL")) || 
+                              checkIsCriticalPart(item, criticalPartsMaster).isCritical
+                            );
+
+                            return (
+                              <tr key={idx} className={`font-semibold text-slate-900 border-b border-slate-300 ${isCrit ? "bg-red-50/40" : ""}`}>
+                                <td className="px-2 py-2 border-r border-slate-300 text-center font-mono text-slate-500 font-bold">{idx + 1}</td>
+                                <td className="px-4 py-2 border-r border-slate-300 text-slate-900 font-sans font-black">
+                                  <div className="flex items-center gap-1.5 flex-wrap">
+                                    <span>{item.spare_part_name || "(-)"}</span>
+                                    {isCrit && (
+                                      <span className="inline-flex items-center px-1.5 py-0.5 rounded text-[8px] font-mono font-black uppercase bg-red-100 text-red-700 border border-red-300 print:border-red-600 print:text-red-800">
+                                        [ITEM CRITICAL]
+                                      </span>
+                                    )}
+                                  </div>
+                                </td>
+                                <td className="px-3 py-2 border-r border-slate-300 font-mono text-[11px] text-slate-750">{item.part_number || "(-)"}</td>
+                                <td className="px-2 py-2 border-r border-slate-300 text-center uppercase font-mono text-[11px]">{item.unit || "(-)"}</td>
+                                <td className="px-3 py-2 border-r border-slate-300 text-center font-mono text-blue-900 font-black text-xs">{item.requested_qty || item.approved_qty || "(-)"}</td>
+                                <td className="px-3 py-2 border-r border-slate-300 text-center font-mono text-[10px] text-slate-700">
+                                  {item.do_number || "-"}
+                                </td>
+                                <td className="px-4 py-2 text-slate-700 font-sans text-[11px]">
+                                  {isCrit ? (
+                                    <div>
+                                      <span className="font-bold text-red-700 block font-mono text-[9.5px] uppercase tracking-wide">
+                                        ★ ITEM CRITICAL TUG 6
+                                      </span>
+                                      <span className="text-slate-650 italic text-[10.5px]">
+                                        {item.notes ? item.notes.replace(/\[ITEM CRITICAL\]/gi, "").trim() || "Suku cadang kritis armada kapal" : "Suku cadang kritis armada kapal"}
+                                      </span>
+                                    </div>
+                                  ) : (
+                                    <span className="text-slate-650 italic">{item.notes || "(-)"}</span>
+                                  )}
+                                </td>
+                              </tr>
+                            );
+                          })
                         )
                       ) : type === "bon" ? (
                         (!data?.items || data.items.length === 0) ? (

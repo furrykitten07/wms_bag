@@ -126,11 +126,34 @@ for req in tug5_requests:
         new_t6_req['request_number'] = f"MR6-2026-{seq_str_t6}"
         new_t6_req['tug_type'] = "TUG6"
         new_t6_req['tug6_number'] = f"TUG6-2026-{seq_str_t6[-3:]}"
-        new_t6_req['items'] = matched_items
         
+        all_t6_items = []
+        for it in req.get('items', []):
+            sn = str(it.get('spare_part_name', '')).strip().upper()
+            pn = str(it.get('part_number', '')).strip().upper()
+            
+            is_crit = False
+            for c in crit_items:
+                c_no = c['part_no'].upper()
+                c_name = c['part_name'].upper()
+                match_pn = (c_no != '-' and c_no != '' and (pn == c_no or (len(c_no) > 3 and c_no in pn)))
+                match_sn = (c_name != '' and (sn == c_name or (len(c_name) > 3 and c_name in sn)))
+                if match_pn or match_sn:
+                    is_crit = True
+                    break
+            
+            item_copy = dict(it)
+            item_copy['is_critical'] = is_crit
+            if is_crit:
+                base_notes = item_copy.get('notes', '')
+                if '[ITEM CRITICAL]' not in base_notes:
+                    item_copy['notes'] = f"[ITEM CRITICAL] {base_notes}".strip()
+            all_t6_items.append(item_copy)
+
+        new_t6_req['items'] = all_t6_items
         tug6_requests.append(new_t6_req)
 
-print(f"Generated {len(tug6_requests)} TUG 6 requests matching critical items.")
+print(f"Generated {len(tug6_requests)} TUG 6 requests with all items included and critical items flagged.")
 
 # 4. Write back into src/demoSeedData.ts
 with open('src/demoSeedData.ts', 'r', encoding='utf-8') as f:
