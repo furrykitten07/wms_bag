@@ -706,6 +706,18 @@ export default function MaterialRequestTUG6View({
       return;
     }
 
+    const currentYear = new Date().getFullYear();
+    const sameYearMRs = (requests || []).filter(m => m && m.request_number?.startsWith(`MR6-${currentYear}`));
+    let nextSeqStr = "000001";
+    if (sameYearMRs.length > 0) {
+      const seqs = sameYearMRs.map(m => {
+        const partsNum = (m.request_number || "").split("-");
+        return Number(partsNum[partsNum.length - 1] || 0);
+      });
+      const maxSeq = Math.max(...seqs);
+      nextSeqStr = String(maxSeq + 1).padStart(6, "0");
+    }
+
     const generatedReqNum = activeMR?.request_number || `MR6-${currentYear}-${nextSeqStr}`;
     const generatedTug6Num = activeMR?.tug6_number || `TUG6-${currentYear}-${nextSeqStr.slice(-3)}`;
 
