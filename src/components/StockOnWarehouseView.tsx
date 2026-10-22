@@ -105,6 +105,7 @@ export default function StockOnWarehouseView({
   const [selectedVessel, setSelectedVessel] = useState<string>("all");
   const [selectedLocation, setSelectedLocation] = useState<string>("all");
   const [sortBy, setSortBy] = useState<"remaining_desc" | "remaining_asc" | "date_desc" | "date_asc" | "name_asc">("date_desc");
+  const [showArchivedDispatched, setShowArchivedDispatched] = useState<boolean>(false);
 
   // Expandable row state in PO/SPK view
   const [expandedKeys, setExpandedKeys] = useState<Record<string, boolean>>({});
@@ -365,7 +366,7 @@ export default function StockOnWarehouseView({
     groupMap.forEach(group => {
       const itemsArr = Array.from(group.itemsMap.values());
       const totalIn = itemsArr.reduce((acc, i) => acc + i.qtyReceived, 0);
-      const totalOut = itemsArr.reduce((acc, i) => acc + i.qtyDispatched, 0);
+      const totalOut = itemsArr.reduce((acc, i) => acc + Math.min(i.qtyReceived, i.qtyDispatched), 0);
       const totalRem = itemsArr.reduce((acc, i) => acc + i.remainingStock, 0);
       const remPct = totalIn > 0 ? Math.round((totalRem / totalIn) * 100) : 0;
 
@@ -461,7 +462,7 @@ export default function StockOnWarehouseView({
             locationName: itm.locationName,
             masterCurrentStock: Number(matchedMaster?.current_stock ?? itm.remainingStock),
             totalInbound: itm.qtyReceived,
-            totalOutbound: itm.qtyDispatched,
+            totalOutbound: Math.min(itm.qtyReceived, itm.qtyDispatched),
             warehouseBalance: itm.remainingStock,
             associatedPOs: [{
               poNumber: pGroup.poNumber,
@@ -469,7 +470,7 @@ export default function StockOnWarehouseView({
               vendorName: pGroup.vendorName,
               receivedDate: pGroup.receivedDate,
               qtyReceived: itm.qtyReceived,
-              qtyDispatched: itm.qtyDispatched,
+              qtyDispatched: Math.min(itm.qtyReceived, itm.qtyDispatched),
               remainingStock: itm.remainingStock
             }],
             associatedDispatches: [...itm.matchedDispatches]
@@ -477,7 +478,7 @@ export default function StockOnWarehouseView({
         } else {
           const existing = partMap.get(itm.partKey)!;
           existing.totalInbound += itm.qtyReceived;
-          existing.totalOutbound += itm.qtyDispatched;
+          existing.totalOutbound += Math.min(itm.qtyReceived, itm.qtyDispatched);
           existing.warehouseBalance += itm.remainingStock;
           existing.associatedPOs.push({
             poNumber: pGroup.poNumber,
@@ -485,7 +486,7 @@ export default function StockOnWarehouseView({
             vendorName: pGroup.vendorName,
             receivedDate: pGroup.receivedDate,
             qtyReceived: itm.qtyReceived,
-            qtyDispatched: itm.qtyDispatched,
+            qtyDispatched: Math.min(itm.qtyReceived, itm.qtyDispatched),
             remainingStock: itm.remainingStock
           });
           itm.matchedDispatches.forEach(d => {
@@ -504,7 +505,6 @@ export default function StockOnWarehouseView({
     let totalOutbound = 0;
     let totalRemaining = 0;
     let activePOsWithStock = 0;
-    let totalItemsTracked = consolidatedPartBalances.length;
 
     poSPKBalances.forEach(p => {
       totalInbound += p.totalReceived;
@@ -513,13 +513,16 @@ export default function StockOnWarehouseView({
       if (p.totalRemaining > 0) activePOsWithStock++;
     });
 
+    const activePartsCount = consolidatedPartBalances.filter(p => p.warehouseBalance > 0).length;
+
     return {
       totalInbound,
       totalOutbound,
       totalRemaining,
       activePOsWithStock,
       totalPOs: poSPKBalances.length,
-      totalItemsTracked
+      activePartsCount,
+      totalItemsTracked: consolidatedPartBalances.length
     };
   }, [poSPKBalances, consolidatedPartBalances]);
 
@@ -527,11 +530,16 @@ export default function StockOnWarehouseView({
   const filteredPOSPKBalances = useMemo(() => {
     let list = [...poSPKBalances];
 
+    // By default, exclude PO/SPKs that are fully dispatched (0 warehouse stock)
+    if (!showArchivedDispatched) {
+      list = list.filter(p => p.totalRemaining > 0);
+    }
+
     // Status Filter
     if (statusFilter === "available") {
       list = list.filter(p => p.status === "AVAILABLE" && p.totalRemaining > 0);
     } else if (statusFilter === "partial") {
-      list = list.filter(p => p.status === "PARTIAL");
+      list = list.filter(p => p.status === "PARTIAL" && p.totalRemaining > 0);
     } else if (statusFilter === "exhausted") {
       list = list.filter(p => p.status === "EXHAUSTED" || p.totalRemaining === 0);
     }
@@ -572,15 +580,20 @@ export default function StockOnWarehouseView({
     });
 
     return list;
-  }, [poSPKBalances, statusFilter, selectedVessel, selectedLocation, searchQuery, sortBy]);
+  }, [poSPKBalances, showArchivedDispatched, statusFilter, selectedVessel, selectedLocation, searchQuery, sortBy]);
 
   // 5. Filtering and Sorting for Tab 2 (Consolidated Suku Cadang)
   const filteredPartBalances = useMemo(() => {
     let list = [...consolidatedPartBalances];
 
+    // By default, exclude spare parts that have 0 balance in warehouse
+    if (!showArchivedDispatched) {
+      list = list.filter(p => p.warehouseBalance > 0);
+    }
+
     // Status Filter
     if (statusFilter === "available") {
-      list = list.filter(p => p.warehouseBalance > 0);
+      list = list.filter(p => p.warehouseBalance > 0 && p.totalOutbound === 0);
     } else if (statusFilter === "partial") {
       list = list.filter(p => p.totalOutbound > 0 && p.warehouseBalance > 0);
     } else if (statusFilter === "exhausted") {
@@ -615,7 +628,7 @@ export default function StockOnWarehouseView({
     });
 
     return list;
-  }, [consolidatedPartBalances, statusFilter, selectedLocation, searchQuery, sortBy]);
+  }, [consolidatedPartBalances, showArchivedDispatched, statusFilter, selectedLocation, searchQuery, sortBy]);
 
   // Extract vessel list options
   const vesselOptions = useMemo(() => {
@@ -656,26 +669,29 @@ export default function StockOnWarehouseView({
       let rowIdx = 1;
 
       filteredPOSPKBalances.forEach(p => {
-        p.items.forEach(itm => {
-          const tug8Refs = itm.matchedDispatches.map(d => `${d.tug8Number} (${d.qtyDispatched} ${itm.unit})`).join("; ") || "-";
-          rows.push([
-            rowIdx++,
-            `"${p.poNumber.replace(/"/g, '""')}"`,
-            `"${p.spkNumber.replace(/"/g, '""')}"`,
-            `"${p.vendorName.replace(/"/g, '""')}"`,
-            `"${p.vesselName.replace(/"/g, '""')}"`,
-            `"${p.receivedDate.split("T")[0]}"`,
-            `"${itm.partName.replace(/"/g, '""')}"`,
-            `"${itm.partNumber.replace(/"/g, '""')}"`,
-            `"${itm.unit}"`,
-            `"${itm.locationName.replace(/"/g, '""')}"`,
-            itm.qtyReceived,
-            itm.qtyDispatched,
-            itm.remainingStock,
-            itm.remainingStock === 0 ? "Habis Terdistribusi" : itm.qtyDispatched > 0 ? "Sebagian Terkirim" : "Tersedia Utuh",
-            `"${tug8Refs.replace(/"/g, '""')}"`
-          ]);
-        });
+        p.items
+          .filter(itm => showArchivedDispatched ? true : itm.remainingStock > 0)
+          .forEach(itm => {
+            const effectiveOut = Math.min(itm.qtyReceived, itm.qtyDispatched);
+            const tug8Refs = itm.matchedDispatches.map(d => `${d.tug8Number} (${d.qtyDispatched} ${itm.unit})`).join("; ") || "-";
+            rows.push([
+              rowIdx++,
+              `"${p.poNumber.replace(/"/g, '""')}"`,
+              `"${p.spkNumber.replace(/"/g, '""')}"`,
+              `"${p.vendorName.replace(/"/g, '""')}"`,
+              `"${p.vesselName.replace(/"/g, '""')}"`,
+              `"${p.receivedDate.split("T")[0]}"`,
+              `"${itm.partName.replace(/"/g, '""')}"`,
+              `"${itm.partNumber.replace(/"/g, '""')}"`,
+              `"${itm.unit}"`,
+              `"${itm.locationName.replace(/"/g, '""')}"`,
+              itm.qtyReceived,
+              effectiveOut,
+              itm.remainingStock,
+              itm.remainingStock === 0 ? "Habis Terdistribusi" : itm.qtyDispatched > 0 ? "Sebagian Terkirim" : "Tersedia Utuh",
+              `"${tug8Refs.replace(/"/g, '""')}"`
+            ]);
+          });
       });
 
       const csvContent = "data:text/csv;charset=utf-8,\uFEFF" + [headers.join(","), ...rows.map(e => e.join(","))].join("\n");
@@ -828,7 +844,7 @@ export default function StockOnWarehouseView({
             </div>
             <div className="mt-2 flex items-center gap-1.5 text-[11px] text-blue-700 font-medium">
               <Truck className="w-3.5 h-3.5 text-blue-600" />
-              <span>Dari {summaryKPIs.totalPOs} Dokumen Penerimaan PO/SPK</span>
+              <span>Dari {summaryKPIs.activePOsWithStock} PO/SPK Tersedia di Gudang</span>
             </div>
           </div>
 
@@ -854,11 +870,11 @@ export default function StockOnWarehouseView({
             </div>
           </div>
 
-          {/* Card 4: PO/SPK Aktif dengan Sisa Stok */}
+          {/* Card 4: PO/SPK Tersedia di Gudang */}
           <div className="bg-gradient-to-br from-amber-500/10 via-white to-white p-4 rounded-2xl border border-amber-200 shadow-xs relative overflow-hidden">
             <div className="flex items-center justify-between">
               <span className="text-[11px] font-bold uppercase tracking-wider text-amber-800 font-mono">
-                PO / SPK Aktif (Ada Sisa)
+                PO / SPK Tersedia di Gudang
               </span>
               <div className="w-8 h-8 rounded-lg bg-amber-100 text-amber-700 flex items-center justify-center">
                 <FileSpreadsheet className="w-4 h-4" />
@@ -868,11 +884,11 @@ export default function StockOnWarehouseView({
               <span className="text-2xl font-black text-slate-900 font-mono tracking-tight">
                 {summaryKPIs.activePOsWithStock}
               </span>
-              <span className="text-xs text-slate-500 font-semibold">/ {summaryKPIs.totalPOs} Dokumen</span>
+              <span className="text-xs text-slate-500 font-semibold">Dokumen Aktif</span>
             </div>
             <div className="mt-2 flex items-center gap-1.5 text-[11px] text-amber-700 font-medium">
               <Boxes className="w-3.5 h-3.5 text-amber-600" />
-              <span>{summaryKPIs.totalItemsTracked} jenis sparepart terdaftar</span>
+              <span>{summaryKPIs.activePartsCount} jenis sparepart fisik di gudang</span>
             </div>
           </div>
 
@@ -891,8 +907,8 @@ export default function StockOnWarehouseView({
             >
               <FileText className="w-3.5 h-3.5" />
               <span>Rekap Berdasarkan Nomor PO &amp; SPK</span>
-              <span className="px-1.5 py-0.2 rounded-full text-[10px] font-mono bg-blue-100 text-blue-800">
-                {poSPKBalances.length}
+              <span className="px-1.5 py-0.2 rounded-full text-[10px] font-mono bg-blue-100 text-blue-800 font-bold">
+                {showArchivedDispatched ? poSPKBalances.length : summaryKPIs.activePOsWithStock}
               </span>
             </button>
 
@@ -906,8 +922,8 @@ export default function StockOnWarehouseView({
             >
               <Boxes className="w-3.5 h-3.5" />
               <span>Rekap Seluruh Suku Cadang (Stock On Hand)</span>
-              <span className="px-1.5 py-0.2 rounded-full text-[10px] font-mono bg-indigo-100 text-indigo-800">
-                {consolidatedPartBalances.length}
+              <span className="px-1.5 py-0.2 rounded-full text-[10px] font-mono bg-indigo-100 text-indigo-800 font-bold">
+                {showArchivedDispatched ? consolidatedPartBalances.length : summaryKPIs.activePartsCount}
               </span>
             </button>
           </div>
@@ -990,58 +1006,84 @@ export default function StockOnWarehouseView({
           </div>
 
           {/* Filter Pills */}
-          <div className="flex items-center gap-2 pt-1 overflow-x-auto pb-1 text-xs font-semibold">
-            <span className="text-slate-400 text-[11px] font-mono uppercase tracking-wider shrink-0 flex items-center gap-1">
-              <Filter className="w-3 h-3" />
-              <span>Status Stok:</span>
-            </span>
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 pt-2 border-t border-slate-100">
+            <div className="flex items-center gap-2 overflow-x-auto pb-1 text-xs font-semibold">
+              <span className="text-slate-400 text-[11px] font-mono uppercase tracking-wider shrink-0 flex items-center gap-1">
+                <Filter className="w-3 h-3" />
+                <span>Status Stok:</span>
+              </span>
 
-            <button
-              onClick={() => setStatusFilter("all")}
-              className={`px-3 py-1 rounded-lg text-xs font-bold transition-all cursor-pointer shrink-0 ${
-                statusFilter === "all"
-                  ? "bg-slate-900 text-white shadow-xs"
-                  : "bg-slate-100 text-slate-600 hover:bg-slate-200"
-              }`}
-            >
-              Semua ({activeTab === "pospk" ? poSPKBalances.length : consolidatedPartBalances.length})
-            </button>
+              <button
+                onClick={() => setStatusFilter("all")}
+                className={`px-3 py-1 rounded-lg text-xs font-bold transition-all cursor-pointer shrink-0 ${
+                  statusFilter === "all"
+                    ? "bg-slate-900 text-white shadow-xs"
+                    : "bg-slate-100 text-slate-600 hover:bg-slate-200"
+                }`}
+              >
+                Semua di Gudang ({activeTab === "pospk" 
+                  ? (showArchivedDispatched ? poSPKBalances.length : summaryKPIs.activePOsWithStock)
+                  : (showArchivedDispatched ? consolidatedPartBalances.length : summaryKPIs.activePartsCount)
+                })
+              </button>
 
-            <button
-              onClick={() => setStatusFilter("available")}
-              className={`px-3 py-1 rounded-lg text-xs font-bold transition-all cursor-pointer shrink-0 flex items-center gap-1.5 ${
-                statusFilter === "available"
-                  ? "bg-emerald-600 text-white shadow-xs"
-                  : "bg-emerald-50 text-emerald-700 hover:bg-emerald-100"
-              }`}
-            >
-              <span className="w-1.5 h-1.5 rounded-full bg-emerald-500"></span>
-              <span>Stok Tersedia Utuh</span>
-            </button>
+              <button
+                onClick={() => setStatusFilter("available")}
+                className={`px-3 py-1 rounded-lg text-xs font-bold transition-all cursor-pointer shrink-0 flex items-center gap-1.5 ${
+                  statusFilter === "available"
+                    ? "bg-emerald-600 text-white shadow-xs"
+                    : "bg-emerald-50 text-emerald-700 hover:bg-emerald-100"
+                }`}
+              >
+                <span className="w-1.5 h-1.5 rounded-full bg-emerald-500"></span>
+                <span>Stok Tersedia Utuh</span>
+              </button>
 
-            <button
-              onClick={() => setStatusFilter("partial")}
-              className={`px-3 py-1 rounded-lg text-xs font-bold transition-all cursor-pointer shrink-0 flex items-center gap-1.5 ${
-                statusFilter === "partial"
-                  ? "bg-amber-600 text-white shadow-xs"
-                  : "bg-amber-50 text-amber-700 hover:bg-amber-100"
-              }`}
-            >
-              <span className="w-1.5 h-1.5 rounded-full bg-amber-500"></span>
-              <span>Sebagian Terkirim</span>
-            </button>
+              <button
+                onClick={() => setStatusFilter("partial")}
+                className={`px-3 py-1 rounded-lg text-xs font-bold transition-all cursor-pointer shrink-0 flex items-center gap-1.5 ${
+                  statusFilter === "partial"
+                    ? "bg-amber-600 text-white shadow-xs"
+                    : "bg-amber-50 text-amber-700 hover:bg-amber-100"
+                }`}
+              >
+                <span className="w-1.5 h-1.5 rounded-full bg-amber-500"></span>
+                <span>Sebagian Terkirim</span>
+              </button>
 
-            <button
-              onClick={() => setStatusFilter("exhausted")}
-              className={`px-3 py-1 rounded-lg text-xs font-bold transition-all cursor-pointer shrink-0 flex items-center gap-1.5 ${
-                statusFilter === "exhausted"
-                  ? "bg-rose-600 text-white shadow-xs"
-                  : "bg-rose-50 text-rose-700 hover:bg-rose-100"
-              }`}
-            >
-              <span className="w-1.5 h-1.5 rounded-full bg-rose-500"></span>
-              <span>Habis Terdistribusi</span>
-            </button>
+              {showArchivedDispatched && (
+                <button
+                  onClick={() => setStatusFilter("exhausted")}
+                  className={`px-3 py-1 rounded-lg text-xs font-bold transition-all cursor-pointer shrink-0 flex items-center gap-1.5 ${
+                    statusFilter === "exhausted"
+                      ? "bg-rose-600 text-white shadow-xs"
+                      : "bg-rose-50 text-rose-700 hover:bg-rose-100"
+                  }`}
+                >
+                  <span className="w-1.5 h-1.5 rounded-full bg-rose-500"></span>
+                  <span>Habis Terdistribusi</span>
+                </button>
+              )}
+            </div>
+
+            {/* Checkbox to reveal 0-stock archived items */}
+            <div className="shrink-0 flex items-center gap-2">
+              <label className="flex items-center gap-2 text-xs font-semibold text-slate-500 hover:text-slate-800 cursor-pointer select-none">
+                <input
+                  type="checkbox"
+                  checked={showArchivedDispatched}
+                  onChange={(e) => {
+                    const checked = e.target.checked;
+                    setShowArchivedDispatched(checked);
+                    if (!checked && statusFilter === "exhausted") {
+                      setStatusFilter("all");
+                    }
+                  }}
+                  className="rounded border-slate-300 text-blue-600 focus:ring-blue-500 w-3.5 h-3.5 cursor-pointer"
+                />
+                <span className="text-[11px]">Tampilkan arsip PO/SPK yang sudah habis (0 stok)</span>
+              </label>
+            </div>
           </div>
         </div>
 
@@ -1170,178 +1212,233 @@ export default function StockOnWarehouseView({
                         </div>
 
                         {/* Expand Button */}
-                        <button
-                          onClick={() => toggleExpand(group.groupKey)}
-                          className={`px-3 py-2 rounded-xl text-xs font-bold flex items-center gap-1.5 transition-all cursor-pointer ${
-                            isExpanded 
-                              ? "bg-slate-900 text-white" 
-                              : "bg-slate-100 hover:bg-slate-200 text-slate-700"
-                          }`}
-                        >
-                          <span>{isExpanded ? "Tutup Rincian" : `Rincian (${group.items.length} Item)`}</span>
-                          <ChevronDown className={`w-3.5 h-3.5 transition-transform ${isExpanded ? "rotate-180" : ""}`} />
-                        </button>
+                        {(() => {
+                          const availableItemsCount = group.items.filter(i => i.remainingStock > 0).length;
+                          return (
+                            <button
+                              onClick={() => toggleExpand(group.groupKey)}
+                              className={`px-3 py-2 rounded-xl text-xs font-bold flex items-center gap-1.5 transition-all cursor-pointer ${
+                                isExpanded 
+                                  ? "bg-slate-900 text-white" 
+                                  : "bg-slate-100 hover:bg-slate-200 text-slate-700"
+                              }`}
+                            >
+                              <span>
+                                {isExpanded 
+                                  ? "Tutup Rincian" 
+                                  : showArchivedDispatched
+                                    ? `Rincian (${group.items.length} Item)`
+                                    : `Rincian (${availableItemsCount} Item di Gudang)`
+                                }
+                              </span>
+                              <ChevronDown className={`w-3.5 h-3.5 transition-transform ${isExpanded ? "rotate-180" : ""}`} />
+                            </button>
+                          );
+                        })()}
 
                       </div>
 
                     </div>
 
                     {/* Expandable Breakdown Table */}
-                    {isExpanded && (
-                      <div className="border-t border-slate-200 bg-slate-50/50 p-4 sm:p-5">
-                        
-                        <div className="text-xs font-bold text-slate-700 uppercase tracking-wider mb-2 flex items-center gap-1.5">
-                          <Boxes className="w-4 h-4 text-blue-600" />
-                          <span>Daftar Suku Cadang pada PO: {group.poNumber}</span>
-                        </div>
+                    {isExpanded && (() => {
+                      const displayedItems = group.items.filter(itm => showArchivedDispatched ? true : itm.remainingStock > 0);
+                      const exhaustedCount = group.items.length - displayedItems.length;
 
-                        <div className="overflow-x-auto rounded-xl border border-slate-200 bg-white shadow-2xs">
-                          <table className="w-full text-left text-xs">
-                            <thead className="bg-slate-100/80 text-slate-600 font-mono text-[10px] uppercase tracking-wider border-b border-slate-200">
-                              <tr>
-                                <th className="py-2.5 px-3 text-center">No</th>
-                                <th className="py-2.5 px-4 font-bold">Nama Suku Cadang</th>
-                                <th className="py-2.5 px-3">Part Number</th>
-                                <th className="py-2.5 px-3">Lokasi Gudang</th>
-                                <th className="py-2.5 px-3 text-center">Satuan</th>
-                                <th className="py-2.5 px-3 text-center bg-blue-50/60 font-bold text-blue-900">QTY Masuk (Inbound)</th>
-                                <th className="py-2.5 px-3 text-center bg-indigo-50/60 font-bold text-indigo-900">QTY Terkirim (TUG 8)</th>
-                                <th className="py-2.5 px-3 text-center bg-emerald-50/80 font-black text-emerald-900">Sisa di Gudang</th>
-                                <th className="py-2.5 px-3 text-center">Status Item</th>
-                                <th className="py-2.5 px-3">Dokumen TUG 8 Pengiriman</th>
-                              </tr>
-                            </thead>
-                            <tbody className="divide-y divide-slate-100 font-medium text-slate-700">
-                              {group.items.map((itm, iIdx) => {
-                                return (
-                                  <tr key={itm.partKey} className="hover:bg-slate-50/80 transition-colors">
-                                    <td className="py-2.5 px-3 text-center font-mono text-slate-400 font-bold">
-                                      {iIdx + 1}
-                                    </td>
-                                    
-                                    <td className="py-2.5 px-4">
-                                      <div className="font-bold text-slate-900 leading-snug">
-                                        {itm.partName}
-                                      </div>
-                                      <div className="text-[10px] text-slate-400 font-mono flex items-center gap-2 mt-0.5">
-                                        <span>Kat: {itm.category}</span>
-                                        {itm.barcode && itm.barcode !== "-" && (
-                                          <span>&bull; BC: {itm.barcode}</span>
-                                        )}
-                                      </div>
-                                    </td>
-
-                                    <td className="py-2.5 px-3 font-mono text-slate-600 text-[11px]">
-                                      {itm.partNumber || "-"}
-                                    </td>
-
-                                    <td className="py-2.5 px-3 text-slate-600 text-[11px]">
-                                      <div className="flex items-center gap-1">
-                                        <MapPin className="w-3 h-3 text-slate-400 shrink-0" />
-                                        <span className="truncate max-w-[140px]" title={itm.locationName}>
-                                          {itm.locationName}
-                                        </span>
-                                      </div>
-                                    </td>
-
-                                    <td className="py-2.5 px-3 text-center font-mono font-bold text-slate-500">
-                                      {itm.unit}
-                                    </td>
-
-                                    <td className="py-2.5 px-3 text-center font-mono text-sm font-bold text-blue-700 bg-blue-50/30">
-                                      {itm.qtyReceived}
-                                    </td>
-
-                                    <td className="py-2.5 px-3 text-center font-mono text-sm font-bold text-indigo-700 bg-indigo-50/30">
-                                      {itm.qtyDispatched}
-                                    </td>
-
-                                    <td className="py-2.5 px-3 text-center font-mono text-sm font-black bg-emerald-50/40">
-                                      <span className={`inline-block px-2 py-0.5 rounded-lg ${
-                                        itm.remainingStock > 0 
-                                          ? "bg-emerald-100 text-emerald-800 border border-emerald-300 font-bold" 
-                                          : "bg-slate-100 text-slate-400 font-normal"
-                                      }`}>
-                                        {itm.remainingStock}
-                                      </span>
-                                    </td>
-
-                                    <td className="py-2.5 px-3 text-center">
-                                      {itm.remainingStock === itm.qtyReceived ? (
-                                        <span className="inline-flex items-center gap-1 px-2 py-0.2 rounded-full text-[9px] font-bold uppercase font-mono bg-emerald-100 text-emerald-800">
-                                          Tersedia Utuh
-                                        </span>
-                                      ) : itm.remainingStock > 0 ? (
-                                        <span className="inline-flex items-center gap-1 px-2 py-0.2 rounded-full text-[9px] font-bold uppercase font-mono bg-amber-100 text-amber-800">
-                                          Parsial ({itm.remainingStock})
-                                        </span>
-                                      ) : (
-                                        <span className="inline-flex items-center gap-1 px-2 py-0.2 rounded-full text-[9px] font-bold uppercase font-mono bg-slate-100 text-slate-600">
-                                          Habis Terkirim
-                                        </span>
-                                      )}
-                                    </td>
-
-                                    <td className="py-2.5 px-3 text-[11px] font-mono text-slate-600">
-                                      {itm.matchedDispatches.length === 0 ? (
-                                        <span className="text-slate-400 italic">Belum Ada TUG 8</span>
-                                      ) : (
-                                        <div className="flex flex-col gap-1">
-                                          {itm.matchedDispatches.map((d, dIdx) => (
-                                            <div key={dIdx} className="flex items-center gap-1.5 text-[10px]">
-                                              <span className="font-bold text-indigo-700 bg-indigo-50 px-1 py-0.2 rounded">
-                                                {d.tug8Number}
-                                              </span>
-                                              <span className="text-slate-500">
-                                                (-{d.qtyDispatched} {itm.unit}) &bull; {d.vesselName}
-                                              </span>
-                                            </div>
-                                          ))}
-                                        </div>
-                                      )}
-                                    </td>
-                                  </tr>
-                                );
-                              })}
-                            </tbody>
-                          </table>
-                        </div>
-
-                        {/* Document Trail Summary */}
-                        <div className="mt-3 p-3 bg-white rounded-xl border border-slate-200 flex flex-col sm:flex-row items-center justify-between gap-3 text-xs">
-                          <div className="flex items-center gap-2 text-slate-500">
-                            <Clock className="w-3.5 h-3.5 text-slate-400" />
-                            <span>
-                              Dokumen Sumber Inbound: <strong className="text-slate-700">{group.receivingIds.length} Penerimaan</strong> &bull; Surat Jalan: <span className="font-mono text-slate-700">{group.deliveryNote}</span>
-                            </span>
-                          </div>
-
-                          <div className="flex items-center gap-2">
-                            {group.uniqueDispatches.length > 0 && (
-                              <div className="flex items-center gap-1 text-[11px] text-indigo-700 font-mono">
-                                <span>TUG 8 Terkait:</span>
-                                {group.uniqueDispatches.map(d => (
-                                  <span key={d.tug8Number} className="bg-indigo-50 border border-indigo-200 px-1.5 py-0.2 rounded font-bold">
-                                    {d.tug8Number}
-                                  </span>
-                                ))}
-                              </div>
-                            )}
-
-                            {onNavigateTab && (
+                      return (
+                        <div className="border-t border-slate-200 bg-slate-50/50 p-4 sm:p-5">
+                          
+                          <div className="text-xs font-bold text-slate-700 uppercase tracking-wider mb-2 flex items-center justify-between flex-wrap gap-2">
+                            <div className="flex items-center gap-1.5">
+                              <Boxes className="w-4 h-4 text-blue-600" />
+                              <span>
+                                {showArchivedDispatched 
+                                  ? `Seluruh Suku Cadang pada PO: ${group.poNumber}` 
+                                  : `Daftar Suku Cadang Tersedia di Gudang pada PO: ${group.poNumber} (${displayedItems.length} Item Fisik)`
+                                }
+                              </span>
+                            </div>
+                            {exhaustedCount > 0 && !showArchivedDispatched && (
                               <button
-                                onClick={() => onNavigateTab("dispatch")}
-                                className="px-3 py-1.5 bg-indigo-50 hover:bg-indigo-100 text-indigo-700 font-bold rounded-lg text-xs transition-colors cursor-pointer flex items-center gap-1"
+                                onClick={() => setShowArchivedDispatched(true)}
+                                className="text-[11px] font-semibold text-blue-600 hover:text-blue-800 underline cursor-pointer"
                               >
-                                <span>Buka Menu Dispatch (TUG 8)</span>
-                                <ExternalLink className="w-3 h-3" />
+                                Tampilkan juga {exhaustedCount} item yang sudah terkirim habis
                               </button>
                             )}
                           </div>
-                        </div>
 
-                      </div>
-                    )}
+                          <div className="overflow-x-auto rounded-xl border border-slate-200 bg-white shadow-2xs">
+                            <table className="w-full text-left text-xs">
+                              <thead className="bg-slate-100/80 text-slate-600 font-mono text-[10px] uppercase tracking-wider border-b border-slate-200">
+                                <tr>
+                                  <th className="py-2.5 px-3 text-center">No</th>
+                                  <th className="py-2.5 px-4 font-bold">Nama Suku Cadang</th>
+                                  <th className="py-2.5 px-3">Part Number</th>
+                                  <th className="py-2.5 px-3">Lokasi Gudang</th>
+                                  <th className="py-2.5 px-3 text-center">Satuan</th>
+                                  <th className="py-2.5 px-3 text-center bg-blue-50/60 font-bold text-blue-900">QTY Masuk (Inbound)</th>
+                                  <th className="py-2.5 px-3 text-center bg-indigo-50/60 font-bold text-indigo-900">QTY Terkirim (TUG 8)</th>
+                                  <th className="py-2.5 px-3 text-center bg-emerald-50/80 font-black text-emerald-900">Sisa di Gudang</th>
+                                  <th className="py-2.5 px-3 text-center">Status Item</th>
+                                  <th className="py-2.5 px-3">Dokumen TUG 8 Pengiriman</th>
+                                </tr>
+                              </thead>
+                              <tbody className="divide-y divide-slate-100 font-medium text-slate-700">
+                                {displayedItems.length === 0 ? (
+                                  <tr>
+                                    <td colSpan={10} className="py-6 text-center text-slate-400">
+                                      Tidak ada item yang tersisa di gudang untuk dokumen ini.
+                                    </td>
+                                  </tr>
+                                ) : (
+                                  displayedItems.map((itm, iIdx) => {
+                                    const effectiveOut = Math.min(itm.qtyReceived, itm.qtyDispatched);
+                                    return (
+                                      <tr key={itm.partKey} className="hover:bg-slate-50/80 transition-colors">
+                                        <td className="py-2.5 px-3 text-center font-mono text-slate-400 font-bold">
+                                          {iIdx + 1}
+                                        </td>
+                                        
+                                        <td className="py-2.5 px-4">
+                                          <div className="font-bold text-slate-900 leading-snug">
+                                            {itm.partName}
+                                          </div>
+                                          <div className="text-[10px] text-slate-400 font-mono flex items-center gap-2 mt-0.5">
+                                            <span>Kat: {itm.category}</span>
+                                            {itm.barcode && itm.barcode !== "-" && (
+                                              <span>&bull; BC: {itm.barcode}</span>
+                                            )}
+                                          </div>
+                                        </td>
+
+                                        <td className="py-2.5 px-3 font-mono text-slate-600 text-[11px]">
+                                          {itm.partNumber || "-"}
+                                        </td>
+
+                                        <td className="py-2.5 px-3 text-slate-600 text-[11px]">
+                                          <div className="flex items-center gap-1">
+                                            <MapPin className="w-3 h-3 text-slate-400 shrink-0" />
+                                            <span className="truncate max-w-[140px]" title={itm.locationName}>
+                                              {itm.locationName}
+                                            </span>
+                                          </div>
+                                        </td>
+
+                                        <td className="py-2.5 px-3 text-center font-mono font-bold text-slate-500">
+                                          {itm.unit}
+                                        </td>
+
+                                        <td className="py-2.5 px-3 text-center font-mono text-sm font-bold text-blue-700 bg-blue-50/30">
+                                          {itm.qtyReceived}
+                                        </td>
+
+                                        <td className="py-2.5 px-3 text-center font-mono text-sm font-bold text-indigo-700 bg-indigo-50/30">
+                                          {effectiveOut}
+                                        </td>
+
+                                        <td className="py-2.5 px-3 text-center font-mono text-sm font-black bg-emerald-50/40">
+                                          <span className={`inline-block px-2 py-0.5 rounded-lg ${
+                                            itm.remainingStock > 0 
+                                              ? "bg-emerald-100 text-emerald-800 border border-emerald-300 font-bold" 
+                                              : "bg-slate-100 text-slate-400 font-normal"
+                                          }`}>
+                                            {itm.remainingStock}
+                                          </span>
+                                        </td>
+
+                                        <td className="py-2.5 px-3 text-center">
+                                          {itm.remainingStock === itm.qtyReceived ? (
+                                            <span className="inline-flex items-center gap-1 px-2 py-0.2 rounded-full text-[9px] font-bold uppercase font-mono bg-emerald-100 text-emerald-800">
+                                              Tersedia Utuh
+                                            </span>
+                                          ) : itm.remainingStock > 0 ? (
+                                            <span className="inline-flex items-center gap-1 px-2 py-0.2 rounded-full text-[9px] font-bold uppercase font-mono bg-amber-100 text-amber-800">
+                                              Parsial ({itm.remainingStock})
+                                            </span>
+                                          ) : (
+                                            <span className="inline-flex items-center gap-1 px-2 py-0.2 rounded-full text-[9px] font-bold uppercase font-mono bg-slate-100 text-slate-600">
+                                              Habis Terkirim
+                                            </span>
+                                          )}
+                                        </td>
+
+                                        <td className="py-2.5 px-3 text-[11px] font-mono text-slate-600">
+                                          {itm.matchedDispatches.length === 0 ? (
+                                            <span className="text-slate-400 italic">Belum Ada TUG 8</span>
+                                          ) : (
+                                            <div className="flex flex-col gap-1">
+                                              {itm.matchedDispatches.map((d, dIdx) => (
+                                                <div key={dIdx} className="flex items-center gap-1.5 text-[10px]">
+                                                  <span className="font-bold text-indigo-700 bg-indigo-50 px-1 py-0.2 rounded">
+                                                    {d.tug8Number}
+                                                  </span>
+                                                  <span className="text-slate-500">
+                                                    (-{d.qtyDispatched} {itm.unit}) &bull; {d.vesselName}
+                                                  </span>
+                                                </div>
+                                              ))}
+                                            </div>
+                                          )}
+                                        </td>
+                                      </tr>
+                                    );
+                                  })
+                                )}
+                              </tbody>
+                            </table>
+                          </div>
+
+                          {exhaustedCount > 0 && !showArchivedDispatched && (
+                            <div className="mt-2.5 px-3 py-2 bg-slate-100/80 rounded-xl text-[11px] text-slate-500 flex items-center justify-between">
+                              <span>
+                                * Menampilkan <strong>{displayedItems.length}</strong> jenis item yang masih bersisa di gudang ({exhaustedCount} item telah terkirim habis dan disembunyikan).
+                              </span>
+                              <button
+                                onClick={() => setShowArchivedDispatched(true)}
+                                className="text-blue-600 hover:text-blue-800 underline font-semibold cursor-pointer shrink-0 ml-2"
+                              >
+                                Tampilkan Semua
+                              </button>
+                            </div>
+                          )}
+
+                          {/* Document Trail Summary */}
+                          <div className="mt-3 p-3 bg-white rounded-xl border border-slate-200 flex flex-col sm:flex-row items-center justify-between gap-3 text-xs">
+                            <div className="flex items-center gap-2 text-slate-500">
+                              <Clock className="w-3.5 h-3.5 text-slate-400" />
+                              <span>
+                                Dokumen Sumber Inbound: <strong className="text-slate-700">{group.receivingIds.length} Penerimaan</strong> &bull; Surat Jalan: <span className="font-mono text-slate-700">{group.deliveryNote}</span>
+                              </span>
+                            </div>
+
+                            <div className="flex items-center gap-2">
+                              {group.uniqueDispatches.length > 0 && (
+                                <div className="flex items-center gap-1 text-[11px] text-indigo-700 font-mono">
+                                  <span>TUG 8 Terkait:</span>
+                                  {group.uniqueDispatches.map(d => (
+                                    <span key={d.tug8Number} className="bg-indigo-50 border border-indigo-200 px-1.5 py-0.2 rounded font-bold">
+                                      {d.tug8Number}
+                                    </span>
+                                  ))}
+                                </div>
+                              )}
+
+                              {onNavigateTab && (
+                                <button
+                                  onClick={() => onNavigateTab("dispatch")}
+                                  className="px-3 py-1.5 bg-indigo-50 hover:bg-indigo-100 text-indigo-700 font-bold rounded-lg text-xs transition-colors cursor-pointer flex items-center gap-1"
+                                >
+                                  <span>Buka Menu Dispatch (TUG 8)</span>
+                                  <ExternalLink className="w-3 h-3" />
+                                </button>
+                              )}
+                            </div>
+                          </div>
+
+                        </div>
+                      );
+                    })()}
 
                   </div>
                 );
@@ -1358,7 +1455,12 @@ export default function StockOnWarehouseView({
             <div className="p-4 border-b border-slate-200 flex flex-col sm:flex-row items-center justify-between gap-3 bg-slate-50/50">
               <div className="flex items-center gap-2 text-xs font-bold text-slate-700">
                 <Boxes className="w-4 h-4 text-indigo-600" />
-                <span>Seluruh Suku Cadang Terdata ({filteredPartBalances.length} Jenis Barang)</span>
+                <span>
+                  {showArchivedDispatched
+                    ? `Seluruh Suku Cadang Terdata (${filteredPartBalances.length} Jenis Barang)`
+                    : `Suku Cadang Tersedia di Gudang (${filteredPartBalances.length} Jenis Barang Fisik)`
+                  }
+                </span>
               </div>
               <div className="text-[11px] text-slate-500 font-mono">
                 Sinkron otomatis antara Inbound vs Outbound
@@ -1466,18 +1568,21 @@ export default function StockOnWarehouseView({
 
                           <td className="py-3 px-4">
                             <div className="flex flex-wrap gap-1 max-w-xs">
-                              {itm.associatedPOs.slice(0, 3).map((po, pIdx) => (
-                                <span 
-                                  key={pIdx}
-                                  className="font-mono text-[9.5px] bg-slate-100 hover:bg-slate-200 text-slate-700 px-1.5 py-0.5 rounded border border-slate-200"
-                                  title={`Vendor: ${po.vendorName} | Masuk: ${po.qtyReceived} ${itm.unit}`}
-                                >
-                                  {po.poNumber} ({po.remainingStock})
-                                </span>
+                              {itm.associatedPOs
+                                .filter(po => showArchivedDispatched ? true : po.remainingStock > 0)
+                                .slice(0, 3)
+                                .map((po, pIdx) => (
+                                  <span 
+                                    key={pIdx}
+                                    className="font-mono text-[9.5px] bg-slate-100 hover:bg-slate-200 text-slate-700 px-1.5 py-0.5 rounded border border-slate-200"
+                                    title={`Vendor: ${po.vendorName} | Masuk: ${po.qtyReceived} ${itm.unit} | Sisa: ${po.remainingStock} ${itm.unit}`}
+                                  >
+                                    {po.poNumber} ({po.remainingStock})
+                                  </span>
                               ))}
-                              {itm.associatedPOs.length > 3 && (
+                              {itm.associatedPOs.filter(po => showArchivedDispatched ? true : po.remainingStock > 0).length > 3 && (
                                 <span className="font-mono text-[9px] text-slate-400 self-center">
-                                  +{itm.associatedPOs.length - 3} lagi
+                                  +{itm.associatedPOs.filter(po => showArchivedDispatched ? true : po.remainingStock > 0).length - 3} lagi
                                 </span>
                               )}
                             </div>
