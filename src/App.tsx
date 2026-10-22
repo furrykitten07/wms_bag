@@ -60,6 +60,7 @@ import ScheduledMaintenanceModal from "./components/ScheduledMaintenanceModal.js
 import LoginAndLogsView from "./components/LoginAndLogsView.js";
 import CriticalSparePartsAdminView from "./components/CriticalSparePartsAdminView.js";
 import SessionTimeoutManager from "./components/SessionTimeoutManager.js";
+import LogoutConfirmModal from "./components/LogoutConfirmModal.js";
 import ErrorBoundary from "./components/ErrorBoundary.js";
 import { CriticalSparePart } from "./types.js";
 import { loadCriticalSpareParts } from "./utils/criticalSpareParts.js";
@@ -71,6 +72,7 @@ export default function App() {
   const [loading, setLoading] = useState<boolean>(true);
   const [error, setError] = useState<string | null>(null);
   const [sessionExpiredNotice, setSessionExpiredNotice] = useState<string | null>(null);
+  const [showLogoutModal, setShowLogoutModal] = useState<boolean>(false);
 
   // System Maintenance Configuration State
   const [maintenanceConfig, setMaintenanceConfig] = useState<MaintenanceConfig>({
@@ -423,6 +425,7 @@ export default function App() {
 
     localStorage.removeItem("wms_username");
     localStorage.removeItem("wms_last_activity");
+    setShowLogoutModal(false);
     setCurrentUser(null);
     setIsAuthenticated(false);
     setCurrentTab("dashboard");
@@ -1065,13 +1068,24 @@ export default function App() {
         timeoutMs={30 * 60 * 1000} // 30 minutes
         warningMs={2 * 60 * 1000}  // 2 minutes warning countdown
       />
+
+      {/* User Logout Confirmation Modal */}
+      <LogoutConfirmModal 
+        isOpen={showLogoutModal}
+        currentUser={currentUser}
+        onClose={() => setShowLogoutModal(false)}
+        onConfirm={() => {
+          setShowLogoutModal(false);
+          handleLogout("MANUAL_LOGOUT");
+        }}
+      />
       
       {/* Main UI Layout wrapper (hides during browser print) */}
       <div className="flex-1 flex flex-col overflow-hidden no-print">
         {/* Absolute Navbar Header */}
         <Header 
           currentUser={currentUser!} 
-          onLogout={handleLogout}
+          onLogout={() => setShowLogoutModal(true)}
         />
 
         {/* Global Super Admin Maintenance Active Banner */}
