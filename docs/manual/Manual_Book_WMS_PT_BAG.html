@@ -1,0 +1,936 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+<meta charset="utf-8">
+<title>Buku Panduan Penggunaan WMS PT. Pelayaran Bahtera Adhiguna</title>
+<meta name="description" content="Manual Book / Buku Panduan Penggunaan Warehouse Management System (WMS) PT. Pelayaran Bahtera Adhiguna">
+<style>
+  @page { size: A4; margin: 18mm 16mm 20mm 16mm;
+    @bottom-center { content: "WMS PT. Pelayaran Bahtera Adhiguna — Buku Panduan Pengguna  |  Halaman " counter(page); font-family: Segoe UI, Arial, sans-serif; font-size: 8pt; color: #64748b; }
+  }
+  @page:first { margin: 0; @bottom-center { content: none; } }
+  * { box-sizing: border-box; }
+  html { -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+  body { font-family: "Segoe UI", Calibri, Arial, sans-serif; font-size: 10.5pt; line-height: 1.55; color: #1e293b; margin: 0; }
+  h1, h2, h3, h4 { font-family: "Segoe UI Semibold", "Segoe UI", Arial, sans-serif; color: #0f2a4a; line-height: 1.25; }
+  h1 { font-size: 21pt; margin: 0 0 6mm; padding: 0 0 3mm; border-bottom: 3px solid #0b5cab; page-break-before: always; }
+  h1 .bab { display: block; font-size: 10pt; letter-spacing: 3px; color: #0b5cab; text-transform: uppercase; margin-bottom: 1mm; }
+  h2 { font-size: 14.5pt; margin: 7mm 0 2.5mm; padding-left: 3mm; border-left: 4px solid #0b5cab; page-break-after: avoid; }
+  h3 { font-size: 12pt; margin: 5mm 0 2mm; color: #0b5cab; page-break-after: avoid; }
+  h4 { font-size: 10.5pt; margin: 4mm 0 1.5mm; color: #334155; page-break-after: avoid; }
+  p { margin: 0 0 2.5mm; text-align: justify; }
+  ul, ol { margin: 0 0 3mm; padding-left: 6mm; }
+  li { margin-bottom: 1mm; }
+  table { width: 100%; border-collapse: collapse; margin: 2mm 0 4mm; font-size: 9.2pt; page-break-inside: auto; }
+  tr { page-break-inside: avoid; }
+  th { background: #0f2a4a; color: #fff; text-align: left; padding: 2mm 2.2mm; font-weight: 600; }
+  td { border-bottom: 1px solid #e2e8f0; padding: 1.8mm 2.2mm; vertical-align: top; }
+  tbody tr:nth-child(even) td { background: #f8fafc; }
+  code, .ui { font-family: Consolas, "Courier New", monospace; font-size: 9pt; background: #eef2f7; padding: 0.3mm 1.2mm; border-radius: 1mm; color: #0f2a4a; }
+  .btn { display: inline-block; font-size: 8.8pt; font-weight: 600; background: #0b5cab; color: #fff; padding: 0.2mm 2mm; border-radius: 1mm; }
+  blockquote { margin: 3mm 0; padding: 2.5mm 4mm; border-left: 4px solid #0b5cab; background: #eff6ff; border-radius: 0 2mm 2mm 0; page-break-inside: avoid; }
+  blockquote.warn { border-color: #d97706; background: #fffbeb; }
+  blockquote.danger { border-color: #dc2626; background: #fef2f2; }
+  blockquote.tip { border-color: #059669; background: #ecfdf5; }
+  blockquote p:last-child { margin-bottom: 0; }
+  .flow { display: flex; flex-wrap: wrap; align-items: center; gap: 1.5mm; margin: 3mm 0 4mm; page-break-inside: avoid; }
+  .flow span.s { background: #0f2a4a; color: #fff; padding: 1.5mm 3mm; border-radius: 1.5mm; font-size: 8.8pt; font-weight: 600; }
+  .flow span.s.alt { background: #0b5cab; }
+  .flow span.s.ok { background: #047857; }
+  .flow span.a { color: #0b5cab; font-weight: 700; }
+  .meta { display: grid; grid-template-columns: 1fr 1fr; gap: 2mm 6mm; background: #f1f5f9; border-radius: 2mm; padding: 3mm 4mm; margin: 2mm 0 4mm; font-size: 9.3pt; page-break-inside: avoid; }
+  .meta b { color: #0f2a4a; }
+  /* Cover */
+  .cover { height: 297mm; width: 210mm; position: relative; background: linear-gradient(160deg, #0f2a4a 0%, #0b5cab 62%, #1d7fd6 100%); color: #fff; padding: 28mm 22mm; overflow: hidden; }
+  .cover .logo { background: #fff; border-radius: 4mm; padding: 5mm 7mm; display: inline-block; }
+  .cover .logo img { height: 30mm; display: block; }
+  .cover .kicker { margin-top: 34mm; letter-spacing: 4px; font-size: 11pt; text-transform: uppercase; opacity: .85; }
+  .cover .title { font-size: 34pt; font-weight: 700; line-height: 1.1; margin: 4mm 0; color: #fff; border: 0; page-break-before: avoid; padding: 0; }
+  .cover .sub { font-size: 15pt; opacity: .95; margin-bottom: 10mm; }
+  .cover .band { border-top: 1px solid rgba(255,255,255,.4); padding-top: 5mm; font-size: 10.5pt; width: 120mm; }
+  .cover .band div { margin-bottom: 1.5mm; }
+  .cover .foot { position: absolute; bottom: 18mm; left: 22mm; right: 22mm; font-size: 8.5pt; opacity: .8; border-top: 1px solid rgba(255,255,255,.3); padding-top: 3mm; }
+  .cover .circle { position: absolute; right: -40mm; top: 90mm; width: 150mm; height: 150mm; border-radius: 50%; border: 18mm solid rgba(255,255,255,.06); }
+  .toc { columns: 1; font-size: 10pt; }
+  .toc .c { font-weight: 700; color: #0f2a4a; margin-top: 2.5mm; }
+  .toc .s { padding-left: 7mm; color: #334155; }
+  .nobreak { page-break-inside: avoid; }
+  .kpi { display: grid; grid-template-columns: repeat(4, 1fr); gap: 2mm; margin: 2mm 0 4mm; }
+  .kpi div { border: 1px solid #cbd5e1; border-radius: 2mm; padding: 2mm; font-size: 8.6pt; text-align: center; }
+  .kpi b { display: block; color: #0b5cab; font-size: 10pt; }
+</style>
+</head>
+<body>
+
+<!-- ============================ COVER ============================ -->
+<section class="cover">
+  <div class="circle"></div>
+  <div class="logo"><img src="bag-logo.png" alt="Logo PT. Pelayaran Bahtera Adhiguna"></div>
+  <div class="kicker">Buku Panduan Pengguna · User Manual</div>
+  <div class="title">Warehouse Management System (WMS)</div>
+  <div class="sub">Sistem Manajemen Gudang Suku Cadang &amp; Logistik Armada<br>PT. Pelayaran Bahtera Adhiguna</div>
+  <div class="band">
+    <div><b>Cakupan:</b> Dashboard, Master Suku Cadang, Katalog &amp; QR, Ledger, TUG 5, TUG 6, Receiving, TUG 8, TUG 10, SPK, Laporan TUG 11, Administrasi</div>
+    <div><b>Versi Dokumen:</b> 1.0</div>
+    <div><b>Tanggal Terbit:</b> Oktober 2026</div>
+    <div><b>Klasifikasi:</b> Internal — Untuk Pengguna WMS</div>
+  </div>
+  <div class="foot">PT. PELAYARAN BAHTERA ADHIGUNA (MEMBER OF PLN INDONESIA POWER) · Jl. Yos Sudarso No. 193 Tanjung Sekong, Merak, Banten</div>
+</section>
+
+<!-- ============================ INFO DOKUMEN ============================ -->
+<h1><span class="bab">Informasi Dokumen</span>Lembar Pengesahan &amp; Riwayat Revisi</h1>
+<table>
+  <tr><th style="width:32%">Atribut</th><th>Keterangan</th></tr>
+  <tr><td>Judul Dokumen</td><td>Buku Panduan Penggunaan (Manual Book) WMS PT. Pelayaran Bahtera Adhiguna</td></tr>
+  <tr><td>Nama Aplikasi</td><td>BAg Logistics WMS — Maritime Logistics and Spares Warehouse (Mare-WMS)</td></tr>
+  <tr><td>Pemilik Sistem</td><td>Divisi Logistik — Gudang Merak, PT. Pelayaran Bahtera Adhiguna</td></tr>
+  <tr><td>Administrator Sistem</td><td>Super Admin WMS</td></tr>
+  <tr><td>Sasaran Pembaca</td><td>Petugas Gudang, Kepala Gudang, Manager Logistik, VP Rendalhar, Superintendent, Kru Kapal, dan Super Admin</td></tr>
+  <tr><td>Platform</td><td>Aplikasi web (browser) — dapat diakses dari komputer dan perangkat seluler</td></tr>
+</table>
+
+<h3>Riwayat Revisi</h3>
+<table>
+  <tr><th style="width:12%">Versi</th><th style="width:20%">Tanggal</th><th>Uraian Perubahan</th><th style="width:22%">Disusun Oleh</th></tr>
+  <tr><td>1.0</td><td>Oktober 2026</td><td>Penerbitan pertama buku panduan. Mencakup seluruh modul WMS hasil analisis kode sumber aplikasi.</td><td>Tim IT WMS</td></tr>
+</table>
+
+<h3>Lembar Pengesahan</h3>
+<table>
+  <tr><th>Disusun Oleh</th><th>Diperiksa Oleh</th><th>Disetujui Oleh</th></tr>
+  <tr><td style="height:28mm"></td><td></td><td></td></tr>
+  <tr><td>Super Admin WMS</td><td>Kepala Gudang</td><td>Manager Logistik</td></tr>
+</table>
+
+<!-- ============================ DAFTAR ISI ============================ -->
+<h1><span class="bab">Navigasi</span>Daftar Isi</h1>
+<div class="toc">
+  <div class="c">BAB 1 — Pendahuluan</div>
+  <div class="s">1.1 Tentang WMS · 1.2 Tujuan Buku Panduan · 1.3 Kebutuhan Sistem · 1.4 Istilah &amp; Singkatan</div>
+  <div class="c">BAB 2 — Pengguna, Peran &amp; Hak Akses</div>
+  <div class="s">2.1 Daftar Peran · 2.2 Akun Pejabat Penanda Tangan · 2.3 Alur TTD Digital 4 Tahap · 2.4 Matriks Hak Akses</div>
+  <div class="c">BAB 3 — Memulai Aplikasi</div>
+  <div class="s">3.1 Login · 3.2 Tata Letak Layar Utama · 3.3 Banner Status TTD · 3.4 Menu Sidebar · 3.5 Logout · 3.6 Halaman Publik QR · 3.7 Layar Maintenance</div>
+  <div class="c">BAB 4 — Alur Bisnis Gudang Terintegrasi</div>
+  <div class="s">4.1 Gambaran Alur End-to-End · 4.2 Dampak Transaksi Terhadap Stok</div>
+  <div class="c">BAB 5 — Modul Operations</div>
+  <div class="s">5.1 HQ Dashboard · 5.2 Spare Part Master · 5.3 Catalog Sparepart &amp; QR Code · 5.4 Stock Ledger Trail</div>
+  <div class="c">BAB 6 — Modul Logistics Flow</div>
+  <div class="s">6.1 Permintaan Barang TUG 5 · 6.2 Permintaan Barang TUG 6 · 6.3 Receiving (Inbound) · 6.4 Dispatch (Outbound) TUG 8 · 6.5 Pengembalian Barang TUG 10</div>
+  <div class="c">BAB 7 — Modul Documents &amp; Requisitions</div>
+  <div class="s">7.1 SPK (Surat Perintah Kerja) · 7.2 Laporan Keluar Masuk (TUG 11)</div>
+  <div class="c">BAB 8 — Modul Administration</div>
+  <div class="s">8.1 Database Kapal · 8.2 Database User &amp; Role · 8.3 Tanda Tangan Digital · 8.4 Critical Spare Parts TUG 6 · 8.5 Login &amp; Logs Audit · 8.6 Mode Maintenance</div>
+  <div class="c">BAB 9 — Pencetakan Dokumen &amp; Ekspor Data</div>
+  <div class="c">BAB 10 — Referensi Status &amp; Indikator</div>
+  <div class="c">BAB 11 — Pemecahan Masalah (Troubleshooting) &amp; FAQ</div>
+  <div class="c">Lampiran A — Checklist Kerja Harian per Peran</div>
+  <div class="c">Lampiran B — Glosarium</div>
+</div>
+
+<!-- ============================ BAB 1 ============================ -->
+<h1><span class="bab">Bab 1</span>Pendahuluan</h1>
+
+<h2>1.1 Tentang WMS PT. Pelayaran Bahtera Adhiguna</h2>
+<p><b>Warehouse Management System (WMS)</b> PT. Pelayaran Bahtera Adhiguna adalah aplikasi berbasis web untuk mengelola seluruh siklus logistik suku cadang (<i>spare parts</i>) dan material armada kapal — mulai dari pendaftaran master barang, penerimaan barang dari vendor, permintaan barang oleh kapal, pengeluaran barang dari gudang, pengembalian sisa material, hingga pelaporan mutasi stok.</p>
+<p>Sistem ini mengadopsi standar dokumen gudang perusahaan yang dikenal sebagai <b>TUG</b>:</p>
+<table>
+  <tr><th style="width:18%">Dokumen</th><th style="width:32%">Nama Resmi</th><th>Fungsi di WMS</th></tr>
+  <tr><td><b>TUG 5</b></td><td>Daftar Permintaan Barang-Barang (Material Umum)</td><td>Permintaan suku cadang/material dari kapal (diajukan Chief Engineer) untuk kebutuhan operasional armada.</td></tr>
+  <tr><td><b>TUG 6</b></td><td>Daftar Permintaan Barang-Barang (Sparepart)</td><td>Permintaan suku cadang, termasuk pemantauan khusus suku cadang <b>Critical</b> berdasarkan SPK.</td></tr>
+  <tr><td><b>TUG 8</b></td><td>Bon Pengeluaran / Spare Part Note &amp; Surat Jalan</td><td>Pengeluaran fisik barang dari gudang ke kapal. Saat berstatus <i>Dispatched</i>, stok gudang otomatis dipotong.</td></tr>
+  <tr><td><b>TUG 10</b></td><td>Bon Pengembalian Bahan &amp; Suku Cadang</td><td>Pengembalian sisa/barang tidak terpakai dari kapal ke gudang. Saat disetujui, stok gudang otomatis bertambah.</td></tr>
+  <tr><td><b>TUG 11</b></td><td>Laporan Mutasi Barang Keluar Masuk</td><td>Laporan analitik mutasi stok harian/periodik dan rekap per SPK.</td></tr>
+  <tr><td><b>SPK</b></td><td>Surat Perintah Kerja (Work Order)</td><td>Paket penugasan penyiapan (picking) barang untuk satu atau lebih kapal di pelabuhan tujuan.</td></tr>
+</table>
+
+<h2>1.2 Tujuan Buku Panduan</h2>
+<ul>
+  <li>Menjadi acuan resmi cara menggunakan setiap menu dan fitur WMS secara benar.</li>
+  <li>Menjelaskan alur kerja (business process) antar modul agar data stok tetap akurat dan dapat diaudit.</li>
+  <li>Menjelaskan hak akses setiap peran serta alur persetujuan dan Tanda Tangan (TTD) Digital berjenjang.</li>
+  <li>Membantu pengguna mengatasi kendala umum secara mandiri.</li>
+</ul>
+
+<h2>1.3 Kebutuhan Sistem</h2>
+<table>
+  <tr><th style="width:30%">Komponen</th><th>Spesifikasi yang Disarankan</th></tr>
+  <tr><td>Perangkat</td><td>PC/Laptop (disarankan untuk input data), tablet, atau smartphone (untuk scan QR &amp; foto bukti fisik)</td></tr>
+  <tr><td>Browser</td><td>Google Chrome, Microsoft Edge, atau Mozilla Firefox versi terbaru</td></tr>
+  <tr><td>Resolusi Layar</td><td>Minimal 1366 × 768 piksel; ideal 1920 × 1080 piksel</td></tr>
+  <tr><td>Koneksi</td><td>Internet/jaringan kantor yang stabil (data tersinkron ke server &amp; cloud storage)</td></tr>
+  <tr><td>Printer</td><td>Printer A4 untuk mencetak dokumen TUG, Surat Jalan, Lembar Picking, dan Label Barcode/QR</td></tr>
+  <tr><td>Opsional</td><td>Scanner barcode 1D/QR genggam; kamera perangkat untuk foto bukti penerimaan</td></tr>
+</table>
+
+<h2>1.4 Istilah &amp; Singkatan</h2>
+<table>
+  <tr><th style="width:22%">Istilah</th><th>Penjelasan</th></tr>
+  <tr><td>SKU</td><td><i>Stock Keeping Unit</i> — kode unik internal suku cadang (contoh: SKU-ME-PST-05).</td></tr>
+  <tr><td>Part Number (PN)</td><td>Nomor part asli dari pabrikan (maker).</td></tr>
+  <tr><td>PO</td><td><i>Purchase Order</i> — nomor pesanan pembelian ke vendor.</td></tr>
+  <tr><td>DN / Surat Jalan</td><td><i>Delivery Note</i> — nomor surat jalan pengiriman dari vendor.</td></tr>
+  <tr><td>WO</td><td><i>Work Order</i> / Perintah Kerja; di WMS biasanya merujuk ke nomor SPK atau PO Inbound.</td></tr>
+  <tr><td>Inbound</td><td>Barang masuk ke gudang (Receiving).</td></tr>
+  <tr><td>Outbound</td><td>Barang keluar dari gudang (Dispatch / TUG 8).</td></tr>
+  <tr><td>Ledger / Kartu Stok</td><td>Catatan audit setiap mutasi stok: jumlah masuk/keluar, stok sebelum dan sesudah, nomor referensi, operator.</td></tr>
+  <tr><td>Reorder Point</td><td>Batas stok yang memicu peringatan untuk pemesanan ulang.</td></tr>
+  <tr><td>Reserved Stock</td><td>Stok yang dicadangkan untuk pengiriman yang sedang diproses (Picking/Packed/Ready To Dispatch).</td></tr>
+  <tr><td>Kode Akun / Fungsi</td><td>Kode pembebanan akuntansi (default <code>BPP</code>) dan fungsi layanan (default <code>ARMADA</code>).</td></tr>
+  <tr><td>TTD Digital</td><td>Tanda tangan elektronik pejabat yang otomatis disisipkan pada dokumen cetak.</td></tr>
+  <tr><td>Nihil</td><td>Laporan kosong resmi (tidak ada transaksi) yang tetap dapat dicetak untuk keperluan pelaporan.</td></tr>
+</table>
+
+<!-- ============================ BAB 2 ============================ -->
+<h1><span class="bab">Bab 2</span>Pengguna, Peran &amp; Hak Akses</h1>
+
+<h2>2.1 Daftar Peran (Role)</h2>
+<p>Setiap akun pengguna memiliki satu peran yang menentukan menu dan tindakan yang dapat dilakukan. Peran dikelola oleh Super Admin melalui menu <b>Database User &amp; Role</b>.</p>
+<table>
+  <tr><th style="width:24%">Peran</th><th>Tanggung Jawab Utama</th></tr>
+  <tr><td><b>Super Admin</b></td><td>Pemilik sistem. Akses penuh ke seluruh modul, termasuk menu eksklusif: Critical Spare Parts TUG 6, Login &amp; Logs Audit, Mode Maintenance, hapus suku cadang dari katalog, dan Push barang Inbound ke Master.</td></tr>
+  <tr><td><b>Petugas Gudang</b></td><td>Operator gudang harian: penerimaan barang, pembuatan dokumen, picking, dan <b>TTD Tahap 1</b> (pemeriksa/penyerah).</td></tr>
+  <tr><td><b>Kepala Gudang</b></td><td>Mengawasi operasional gudang dan memberikan <b>TTD Tahap 2</b> (menyetujui).</td></tr>
+  <tr><td><b>Manager Logistik</b></td><td>Persetujuan tingkat manajerial, <b>TTD Tahap 3</b>.</td></tr>
+  <tr><td><b>VP RENDALHAR</b></td><td>Pengesahan akhir dokumen, <b>TTD Tahap 4</b>.</td></tr>
+  <tr><td><b>Verifikator Rendalhar (L1)</b></td><td>Verifikasi tingkat pertama dokumen TUG.</td></tr>
+  <tr><td><b>Superintendent</b></td><td>Pemeriksa/verifikator TUG dari sisi teknis armada.</td></tr>
+  <tr><td><b>Warehouse Admin</b></td><td>Administrasi data gudang (peran default bila peran tidak dikenali).</td></tr>
+  <tr><td><b>Vessel Crew</b></td><td>Kru kapal; melihat dan mengajukan permintaan untuk kapalnya.</td></tr>
+</table>
+
+<h2>2.2 Akun Pejabat Penanda Tangan</h2>
+<p>Alur persetujuan dokumen TUG terikat pada pejabat berikut. Username digunakan untuk login; <b>password diberikan oleh Super Admin</b> dan wajib dijaga kerahasiaannya.</p>
+<table>
+  <tr><th>Tahap</th><th>Nama Pejabat</th><th>Jabatan</th><th>Username</th></tr>
+  <tr><td>1</td><td>Aldi Hidayat</td><td>Petugas Gudang (Pemeriksa / Penyerah)</td><td><code>aldi</code></td></tr>
+  <tr><td>2</td><td>Maghfur Muhammad Alfin</td><td>Kepala Gudang (Menyetujui)</td><td><code>alfin</code></td></tr>
+  <tr><td>3</td><td>Mohamat Emir Ferdian</td><td>Manager Logistik</td><td><code>emir</code></td></tr>
+  <tr><td>4</td><td>Sumbono</td><td>VP Rendalhar (Pengesahan)</td><td><code>sumbono</code></td></tr>
+  <tr><td>—</td><td>Fikri Haikal</td><td>Super Admin (Pemilik Sistem)</td><td><code>superadmin</code></td></tr>
+</table>
+<blockquote class="danger"><p><b>Keamanan:</b> Segera ganti password bawaan setelah login pertama melalui Super Admin. Jangan pernah meminjamkan akun — setiap TTD digital tercatat atas nama pemilik akun.</p></blockquote>
+
+<h2>2.3 Alur Tanda Tangan Digital 4 Tahap</h2>
+<p>Dokumen <b>TUG 5, TUG 6, TUG 8, dan TUG 10</b> wajib melalui persetujuan berjenjang. Setiap tahap hanya dapat dilakukan oleh pejabat yang berwenang (atau Super Admin), dan secara berurutan:</p>
+<div class="flow">
+  <span class="s">Tahap 1 · Petugas Gudang (Aldi)</span><span class="a">➜</span>
+  <span class="s">Tahap 2 · Kepala Gudang (Alfin)</span><span class="a">➜</span>
+  <span class="s">Tahap 3 · Manager Logistik (Emir)</span><span class="a">➜</span>
+  <span class="s ok">Tahap 4 · VP Rendalhar (Sumbono)</span>
+</div>
+<ul>
+  <li>Status persetujuan ditampilkan sebagai lencana <span class="ui">Menunggu TTD (0/4)</span> hingga <span class="ui">Disetujui Penuh (4/4)</span>.</li>
+  <li>Tombol TTD yang bukan wewenang Anda tampil terkunci dengan keterangan <span class="ui">🔒 Memerlukan login akun</span>.</li>
+  <li>TTD dapat dibatalkan melalui tombol <span class="ui">Batal Approve</span> bila terjadi kesalahan (tercatat di log).</li>
+  <li>Gambar TTD yang tersimpan di menu <b>Tanda Tangan Digital</b> otomatis disisipkan pada kolom tanda tangan dokumen cetak.</li>
+</ul>
+
+<h2>2.4 Matriks Hak Akses</h2>
+<table>
+  <tr><th>Menu / Fitur</th><th>Super Admin</th><th>Petugas / Kepala Gudang</th><th>Manager / VP</th><th>Superintendent / Crew</th></tr>
+  <tr><td>HQ Dashboard</td><td>Penuh</td><td>Penuh</td><td>Penuh</td><td>Lihat</td></tr>
+  <tr><td>Spare Part Master &amp; Catalog</td><td>Penuh + Hapus</td><td>Tambah / Ubah</td><td>Lihat / Ubah</td><td>Lihat</td></tr>
+  <tr><td>Stock Ledger Trail</td><td>Lihat</td><td>Lihat</td><td>Lihat</td><td>Lihat</td></tr>
+  <tr><td>TUG 5 / TUG 6</td><td>Penuh + semua TTD</td><td>Buat, Proses, TTD Tahap 1–2</td><td>TTD Tahap 3–4</td><td>Buat / Lihat</td></tr>
+  <tr><td>Receiving (Inbound)</td><td>Penuh + Push Master</td><td>Penuh</td><td>Lihat</td><td>—</td></tr>
+  <tr><td>Dispatch TUG 8</td><td>Penuh + semua TTD</td><td>Buat, Ubah Status, TTD 1–2</td><td>TTD Tahap 3–4</td><td>Lihat</td></tr>
+  <tr><td>Pengembalian TUG 10</td><td>Penuh + semua TTD</td><td>Buat, Verifikasi, TTD 1–2</td><td>TTD Tahap 3–4</td><td>Buat</td></tr>
+  <tr><td>SPK &amp; Laporan</td><td>Penuh</td><td>Penuh</td><td>Penuh</td><td>Lihat</td></tr>
+  <tr><td>Database Kapal, User, TTD Digital</td><td>Penuh</td><td>Sesuai izin</td><td>Sesuai izin</td><td>—</td></tr>
+  <tr><td>Critical Parts, Login Logs, Maintenance</td><td>Eksklusif</td><td>—</td><td>—</td><td>—</td></tr>
+</table>
+
+<!-- ============================ BAB 3 ============================ -->
+<h1><span class="bab">Bab 3</span>Memulai Aplikasi</h1>
+
+<h2>3.1 Login ke Sistem</h2>
+<ol>
+  <li>Buka alamat aplikasi WMS pada browser.</li>
+  <li>Halaman login menampilkan logo perusahaan dan judul <b>Warehouse Management System — PT. Pelayaran Bahtera Adhiguna</b>.</li>
+  <li>Isi kolom <b>Username</b> (tidak membedakan huruf besar/kecil).</li>
+  <li>Isi kolom <b>Password</b>. Klik ikon mata untuk menampilkan/menyembunyikan password.</li>
+  <li>Klik tombol <span class="btn">Masuk ke Dashboard →</span>.</li>
+  <li>Jika berhasil, muncul animasi <i>"Otentikasi Berhasil!"</i> dan Anda diarahkan ke HQ Dashboard.</li>
+</ol>
+<table>
+  <tr><th style="width:45%">Pesan Kesalahan</th><th>Penyebab &amp; Solusi</th></tr>
+  <tr><td>Harap masukkan Username. / Harap masukkan Password.</td><td>Kolom masih kosong — lengkapi isian.</td></tr>
+  <tr><td>Username atau Password salah.</td><td>Periksa ejaan dan tombol Caps Lock. Hubungi Super Admin untuk reset password.</td></tr>
+</table>
+<blockquote class="tip"><p><b>Sesi tersimpan:</b> Setelah login, sesi diingat di browser. Membuka ulang aplikasi akan langsung masuk tanpa login ulang, sampai Anda menekan tombol <b>Keluar</b>.</p></blockquote>
+
+<h2>3.2 Tata Letak Layar Utama</h2>
+<table>
+  <tr><th style="width:26%">Area</th><th>Isi &amp; Fungsi</th></tr>
+  <tr><td><b>Header (atas)</b></td><td>Identitas aplikasi "BAg - Logistics WMS", profil pengguna aktif, dan tombol <span class="ui">Keluar</span>.</td></tr>
+  <tr><td><b>Banner Status TTD</b></td><td>Ringkasan dokumen TUG yang belum lengkap TTD dan tombol Quick Filter (lihat 3.3).</td></tr>
+  <tr><td><b>Sidebar (kiri)</b></td><td>Menu navigasi modul, dikelompokkan per kategori (lihat 3.4).</td></tr>
+  <tr><td><b>Area Kerja (tengah)</b></td><td>Konten modul yang dipilih: tabel data, formulir, grafik, dan dialog.</td></tr>
+  <tr><td><b>Banner Maintenance</b></td><td>Khusus Super Admin — tampil merah bila Mode Maintenance sedang aktif, dengan tombol <span class="ui">Kelola Mode Maintenance →</span>.</td></tr>
+</table>
+
+<h2>3.3 Banner "Status TTD Digital Berjenjang"</h2>
+<p>Banner gelap di bawah header selalu menampilkan nama dan peran Anda, serta:</p>
+<ul>
+  <li><b>⚠️ Terdapat N Dokumen TUG belum lengkap TTD Digital</b> — total dokumen TUG 5/6/8/10 yang belum ditandatangani penuh.</li>
+  <li><b>N Siap Anda Setujui</b> (hijau) — dokumen yang sedang menunggu tanda tangan <u>Anda</u> sesuai urutan tahap. Ikon berkedip kuning bila ada aksi untuk Anda.</li>
+  <li><b>Quick Filter</b> — tombol <span class="ui">📄 TUG 5</span> <span class="ui">📑 TUG 6</span> <span class="ui">🚚 TUG 8</span> <span class="ui">🔄 TUG 10</span> menampilkan jumlah <i>Pending</i> atau <i>✓ Complete</i>; klik untuk langsung membuka modul terkait.</li>
+</ul>
+
+<h2>3.4 Menu Sidebar</h2>
+<table>
+  <tr><th style="width:24%">Kelompok</th><th style="width:34%">Menu</th><th>Keterangan</th></tr>
+  <tr><td rowspan="4"><b>OPERATIONS</b></td><td>HQ Dashboard</td><td>Ringkasan KPI &amp; grafik</td></tr>
+  <tr><td>Spare Part Master</td><td>Lencana merah = jumlah barang stok rendah</td></tr>
+  <tr><td>Catalog Sparepart</td><td>Katalog visual + Barcode/QR</td></tr>
+  <tr><td>Stock Ledger Trail</td><td>Riwayat mutasi stok</td></tr>
+  <tr><td rowspan="5"><b>LOGISTICS FLOW</b></td><td>Permintaan Barang (TUG 5)</td><td>Permintaan material umum kapal</td></tr>
+  <tr><td>Permintaan Barang (TUG 6)</td><td>Permintaan sparepart &amp; critical</td></tr>
+  <tr><td>Receiving (Inbound)</td><td>Penerimaan barang datang</td></tr>
+  <tr><td>Dispatch (Outbound)</td><td>Pengeluaran TUG 8; lencana oranye = pengiriman aktif</td></tr>
+  <tr><td>Pengembalian Barang (TUG 10)</td><td>Retur material ke gudang</td></tr>
+  <tr><td rowspan="2"><b>DOCUMENTS &amp; REQUISITIONS</b></td><td>SPK</td><td>Surat Perintah Kerja picking</td></tr>
+  <tr><td>Laporan Keluar Masuk</td><td>Laporan mutasi TUG 11</td></tr>
+  <tr><td rowspan="6"><b>ADMINISTRATION</b></td><td>Database Kapal</td><td>Master armada</td></tr>
+  <tr><td>Database User &amp; Role</td><td>Akun &amp; peran</td></tr>
+  <tr><td>Tanda Tangan Digital</td><td>Gambar TTD pejabat</td></tr>
+  <tr><td>Critical Spare Parts TUG 6</td><td>Khusus Super Admin</td></tr>
+  <tr><td>Login &amp; Logs Audit</td><td>Khusus Super Admin</td></tr>
+  <tr><td>Mode Maintenance</td><td>Khusus Super Admin (lencana AKTIF/OFF)</td></tr>
+</table>
+
+<h2>3.5 Logout</h2>
+<p>Klik tombol <span class="ui">Keluar</span> di pojok kanan atas header. Sesi dihapus dari browser dan Anda kembali ke halaman login. Selalu logout bila menggunakan komputer bersama.</p>
+
+<h2>3.6 Halaman Publik Scan QR Suku Cadang</h2>
+<p>Setiap suku cadang memiliki QR Code yang bila dipindai dengan kamera HP akan membuka halaman <b>"Sistem Informasi Terbuka Suku Cadang (QR Scanner)"</b> <u>tanpa perlu login</u>. Halaman ini menampilkan:</p>
+<ul>
+  <li>Nama, Part Number, SKU, dan lencana <i>Suku Cadang Terverifikasi Resmi / Live Verified</i>.</li>
+  <li>Status stok fisik gudang, lokasi rak, satuan, bobot, reorder point, pabrikan, kesesuaian kapal, dan kategori.</li>
+  <li>Tombol <span class="ui">Salin Tautan QR Ini</span>, <span class="ui">Cetak</span>, dan <span class="ui">Masuk ke Sistem WMS Lengkap</span>.</li>
+</ul>
+
+<h2>3.7 Layar Maintenance (Pemeliharaan Sistem)</h2>
+<p>Bila Super Admin mengaktifkan Mode Maintenance, seluruh pengguna selain Super Admin akan melihat layar <b>"Sistem Sedang Ditutup Sementara"</b> dan tidak dapat login. Layar ini menampilkan pesan resmi, estimasi selesai, penanggung jawab, kontak dukungan IT, dan musik pengiring (bila diaktifkan).</p>
+<ul>
+  <li>Sistem memeriksa status secara otomatis setiap ±12 detik. Begitu maintenance selesai, muncul pesan <i>"Pemeliharaan Selesai!"</i> dan Anda dialihkan otomatis.</li>
+  <li>Super Admin dapat masuk melalui tombol <span class="ui">Portal Masuk Super Admin</span> di layar tersebut.</li>
+</ul>
+
+<!-- ============================ BAB 4 ============================ -->
+<h1><span class="bab">Bab 4</span>Alur Bisnis Gudang Terintegrasi</h1>
+
+<h2>4.1 Gambaran Alur End-to-End</h2>
+<p>Seluruh modul WMS saling terhubung. Urutan kerja standar dari kebutuhan kapal hingga laporan adalah sebagai berikut:</p>
+<div class="flow">
+  <span class="s">1. SPK diterbitkan</span><span class="a">➜</span>
+  <span class="s alt">2. Receiving barang datang</span><span class="a">➜</span>
+  <span class="s">3. TUG 5 / TUG 6 diajukan</span><span class="a">➜</span>
+  <span class="s alt">4. TTD 4 Tahap</span><span class="a">➜</span>
+  <span class="s">5. TUG 8 Dispatch</span><span class="a">➜</span>
+  <span class="s alt">6. TUG 10 Retur sisa</span><span class="a">➜</span>
+  <span class="s ok">7. Ledger &amp; Laporan TUG 11</span>
+</div>
+<table>
+  <tr><th style="width:6%">No</th><th style="width:22%">Tahap</th><th>Uraian</th><th style="width:20%">Menu</th></tr>
+  <tr><td>1</td><td>Perencanaan</td><td>Logistik menerbitkan SPK berisi pelabuhan tujuan, daftar kapal, dan daftar suku cadang yang harus disiapkan.</td><td>SPK</td></tr>
+  <tr><td>2</td><td>Penerimaan</td><td>Barang dari vendor diperiksa fisik berdasarkan list SPK atau input manual; hasil pemeriksaan langsung terverifikasi.</td><td>Receiving (Inbound)</td></tr>
+  <tr><td>3</td><td>Permintaan</td><td>Dokumen TUG 5/TUG 6 dibuat (manual, dari SPK, atau dari data Inbound/TUG 10).</td><td>TUG 5 / TUG 6</td></tr>
+  <tr><td>4</td><td>Persetujuan</td><td>Dokumen ditandatangani berurutan: Petugas Gudang → Kepala Gudang → Manager Logistik → VP Rendalhar.</td><td>TUG 5 / 6 / 8 / 10</td></tr>
+  <tr><td>5</td><td>Pengeluaran</td><td>TUG 8 diterbitkan dari TUG 5 (bisa parsial/bertahap). Status <i>Dispatched</i> memotong stok gudang.</td><td>Dispatch (Outbound)</td></tr>
+  <tr><td>6</td><td>Pengembalian</td><td>Sisa material/barang tidak sesuai dikembalikan via TUG 10. Status <i>Approved</i> menambah stok gudang.</td><td>Pengembalian TUG 10</td></tr>
+  <tr><td>7</td><td>Pelaporan</td><td>Setiap mutasi tercatat di Ledger; laporan dicetak per periode atau per SPK.</td><td>Ledger, Laporan</td></tr>
+</table>
+
+<h2>4.2 Dampak Transaksi Terhadap Stok</h2>
+<table>
+  <tr><th style="width:32%">Transaksi</th><th style="width:22%">Efek pada Stok</th><th>Keterangan</th></tr>
+  <tr><td>Receiving terverifikasi / Push ke Master</td><td>Stok bertambah (+)</td><td>Tercatat di Ledger tipe <i>Inbound Receiving</i>.</td></tr>
+  <tr><td>TUG 8 status Picking / Packed / Ready To Dispatch</td><td>Stok <b>dicadangkan</b> (reserved)</td><td>Stok fisik belum berkurang, tetapi ditandai terpakai.</td></tr>
+  <tr><td>TUG 8 status Dispatched / Delivered / Completed</td><td>Stok berkurang (−)</td><td>Tercatat di Ledger tipe <i>Outbound Dispatch</i>. Sistem menolak bila stok fisik tidak mencukupi.</td></tr>
+  <tr><td>TUG 8 dikembalikan ke status sebelum Dispatched</td><td>Stok dikembalikan (+)</td><td>Efek pemotongan sebelumnya dibatalkan otomatis.</td></tr>
+  <tr><td>TUG 10 status Approved</td><td>Stok bertambah (+)</td><td>Tercatat di Ledger tipe <i>Material Return</i>. Barang baru yang belum ada di master otomatis didaftarkan dengan lokasi <i>Unassigned</i>.</td></tr>
+  <tr><td>Edit / Stock Adjust di Master</td><td>Stok disesuaikan (±)</td><td>Tercatat sebagai <i>Stock Adjustment</i>.</td></tr>
+</table>
+<blockquote class="warn"><p><b>Penting:</b> Jangan mengubah stok secara manual untuk menggantikan transaksi TUG. Gunakan modul yang sesuai agar riwayat Ledger tetap lengkap dan dapat diaudit.</p></blockquote>
+
+<!-- ============================ BAB 5 ============================ -->
+<h1><span class="bab">Bab 5</span>Modul Operations</h1>
+
+<h2>5.1 HQ Dashboard</h2>
+<div class="meta"><div><b>Menu:</b> Operations › HQ Dashboard</div><div><b>Pengguna:</b> Semua peran</div><div><b>Judul layar:</b> Executive Operations Control Dashboard</div><div><b>Fungsi:</b> Pusat monitoring mutasi suku cadang</div></div>
+<h4>Elemen Layar</h4>
+<table>
+  <tr><th style="width:30%">Elemen</th><th>Fungsi</th></tr>
+  <tr><td>Tombol cepat</td><td><span class="ui">Form TUG 5</span>, <span class="ui">TUG 8 Dispatch</span>, <span class="ui">TUG 10 Return</span> untuk membuka modul terkait; <span class="ui">Sync</span> untuk menyinkronkan ulang seluruh data.</td></tr>
+  <tr><td>Kartu KPI</td><td>Total Master SKU, TUG 5 Permintaan, TUG 6 Requisition, Outbound Shipments (TUG 8), dan TUG 10 Pengembalian.</td></tr>
+  <tr><td>Grafik Tren</td><td>"Analisis Tren Permintaan (TUG 5) vs Pengeluaran Armada (TUG 8)" per bulan. Pilih tahun di <i>Pilih Tahun Analisis</i>; klik batang bulan untuk melihat Rasio Pemenuhan dan analisis bulanan.</td></tr>
+  <tr><td>Ringkasan Alokasi Kargo</td><td>Inbound Receipts, Outbound TUG 8, efisiensi processing, alarm kritis, kategori terbanyak, kapal tujuan.</td></tr>
+  <tr><td>Daftar TUG 5 Aktif</td><td>Tabel TUG 5 berstatus Draft/Submitted/Approved. Tombol Aksi langsung membuka detail dokumen di modul TUG 5.</td></tr>
+  <tr><td>Reorder Level Alarms</td><td>Daftar suku cadang di bawah batas Reorder Point, dengan tombol <span class="ui">Quick Order</span>.</td></tr>
+  <tr><td>Operations Audit Trail Logs</td><td>Riwayat aktivitas terbaru pengguna sistem.</td></tr>
+</table>
+<blockquote class="tip"><p>Mulailah setiap hari kerja dari Dashboard: periksa alarm stok minimum dan dokumen TUG 5 yang masih Draft/Submitted.</p></blockquote>
+
+<h2>5.2 Spare Part Master</h2>
+<div class="meta"><div><b>Menu:</b> Operations › Spare Part Master</div><div><b>Pengguna:</b> Super Admin, Petugas/Kepala Gudang</div><div><b>Judul layar:</b> Master Registers Module</div><div><b>Fungsi:</b> Master suku cadang, layout rak, dan supplier</div></div>
+
+<h3>5.2.1 Mencari &amp; Memfilter Suku Cadang</h3>
+<ul>
+  <li>Ketik nama part atau nomor MFG di kolom pencarian.</li>
+  <li>Gunakan filter <b>All Categories</b>, <b>All Locations</b>, dan <b>All Stock Statuses</b>.</li>
+  <li>Klik <span class="ui">Low Stock Alarms</span> untuk menampilkan hanya barang dengan stok rendah (baris bertanda <i>ALARM - LOW STOCK</i>).</li>
+  <li>Klik <span class="ui">Stock PDF</span> untuk mencetak laporan stok.</li>
+</ul>
+<p>Kolom tabel: SKU / MFG Part Number, Description, Storage Slot Location, Available Stock, Reserved, Minimum Limit, Actions.</p>
+
+<h3>5.2.2 Menambah Suku Cadang Baru</h3>
+<ol>
+  <li>Klik <span class="btn">New Spare</span>.</li>
+  <li>Isi formulir:
+    <table>
+      <tr><th style="width:38%">Field</th><th>Keterangan</th></tr>
+      <tr><td>SKU Identifier</td><td>Opsional — dibuat otomatis jika dikosongkan.</td></tr>
+      <tr><td>Genuine Maker Part Number *</td><td>Wajib. Nomor part asli pabrikan.</td></tr>
+      <tr><td>Item Description *</td><td>Wajib. Nama/deskripsi barang.</td></tr>
+      <tr><td>Alternative Part Code</td><td>Nomor part alternatif/pengganti.</td></tr>
+      <tr><td>Category, Brand, Maker, Unit</td><td>Kategori, merek, produsen, dan satuan (PCS, SET, KG, dst.).</td></tr>
+      <tr><td>Physical Storage Slot Location</td><td>Slot rak penyimpanan (A1–C3).</td></tr>
+      <tr><td>Associate Supplier / Vendor</td><td>Vendor pemasok.</td></tr>
+      <tr><td>Safety stock min, Reorder point, Maximum Stock</td><td>Parameter pengendalian stok.</td></tr>
+      <tr><td>Current stock counts</td><td>Jumlah stok saat ini.</td></tr>
+      <tr><td>Vessel Compatibility</td><td>Kapal yang kompatibel (contoh: MV. KARTINI BARUNA).</td></tr>
+      <tr><td>Barcode / QR Label, Technical Remarks</td><td>Kode barcode dan catatan teknis.</td></tr>
+    </table>
+  </li>
+  <li>Klik simpan. Jika Part Name/Part Number kosong, muncul peringatan <i>"Part Name and Part Number are required"</i>.</li>
+</ol>
+
+<h3>5.2.3 Melihat Detail, Mengubah, &amp; Memindahkan Lokasi</h3>
+<ul>
+  <li><b>View Details</b> — menampilkan stok, spesifikasi, QR Code, posisi gudang, dan informasi supplier.</li>
+  <li><b>Pindahkan Slot Penyimpanan</b> — di dalam detail, pilih slot baru lalu klik <span class="ui">Terapkan Pemindahan</span>. Riwayat pemindahan tercatat otomatis.</li>
+  <li><b>Edit / Stock Adjust</b> — mengubah data dan melakukan penyesuaian stok.</li>
+  <li><b>Hapus Suku Cadang</b> — memerlukan konfirmasi.</li>
+</ul>
+
+<h3>5.2.4 Matriks Tata Letak Rak Gudang (A1 – C3)</h3>
+<p>Gudang menggunakan sistem koordinat <b>Baris Rak + Tingkat Ketinggian</b>. Semakin besar angka, semakin tinggi posisi rak.</p>
+<table>
+  <tr><th>Baris</th><th>Peruntukan</th><th>Level 1 (Low)</th><th>Level 2 (Mid)</th><th>Level 3 (High)</th></tr>
+  <tr><td>RAK A</td><td>Fast Moving</td><td>A1</td><td>A2</td><td>A3</td></tr>
+  <tr><td>RAK B</td><td>Medium Weight</td><td>B1</td><td>B2</td><td>B3</td></tr>
+  <tr><td>RAK C</td><td>Electrical / Light</td><td>C1</td><td>C2</td><td>C3</td></tr>
+  <tr><td colspan="2"><i>Elevasi</i></td><td>&lt; 1,2 m</td><td>1,2 m – 2,5 m</td><td>2,5 m+ (wajib forklift/tangga)</td></tr>
+</table>
+<p>Untuk menambah slot: klik <span class="ui">Tambah Slot Lokasi</span>, isi Kode Koordinat (contoh A1), Fasilitas Gudang, Sector Zone, Row Grid Rack, Shelf Height Level, dan Container Bin ID. Slot yang masih berisi barang tidak dapat dihapus.</p>
+
+<h3>5.2.5 Supplier Register</h3>
+<p>Klik <span class="ui">Add Vendor</span>, isi Supplier Company Name*, kode inisial, Point-of-Contact*, Email*, telepon, dan alamat, lalu klik <span class="ui">Register Vendor</span>.</p>
+
+<h2>5.3 Catalog Sparepart &amp; QR Code</h2>
+<div class="meta"><div><b>Menu:</b> Operations › Catalog Sparepart</div><div><b>Pengguna:</b> Semua peran (hapus: Super Admin)</div><div><b>Fungsi:</b> Katalog visual tersinkron 100% dengan Spare Part Master</div><div><b>Output:</b> Label Barcode &amp; QR siap cetak</div></div>
+<h3>5.3.1 Mencari di Katalog</h3>
+<p>Gunakan kolom <i>"Cari nama, part number, SKU, barcode, pabrikan, atau hierarki..."</i> serta panel <b>Saringan &amp; Filtrasi Katalog Master</b>. Klik <span class="ui">[reset filter]</span> untuk mengembalikan tampilan. Setiap kartu menampilkan Part No, SKU, stok, satuan, berat, dan pabrikan.</p>
+<h3>5.3.2 Menambah Suku Cadang dari Katalog</h3>
+<ol>
+  <li>Klik <span class="btn">Tambah Suku Cadang</span>.</li>
+  <li>Isi Nama Sparepart, Nomor Part, SKU Code, dan Barcode Unik (klik <span class="ui">Acak Barcode</span> untuk membuat otomatis).</li>
+  <li>Pilih Satuan (PCS, SET, BOX, UNIT, MTR, ROLL, KIT, CAN, PAIL) dan Lokasi Gudang (WAREHOUSE MERAK / KANTOR PUSAT BAG).</li>
+  <li>Tentukan hierarki: <b>Sistem Root</b> (Main Engine Parts, Auxiliary Engine Spares, Turbocharger Parts, Pump Spares, Electrical Equipment, General Spares, Sparepart Kapal), <b>Sub-Sistem</b>, dan <b>Seksi/Bagian</b>.</li>
+  <li>Isi Stok Fisik Awal, Pabrikan, Kesesuaian Kapal, Bobot (Kg), Deskripsi, dan Spesifikasi Teknis.</li>
+  <li>Simpan — muncul notifikasi <i>"🚀 REGISTRASI BERHASIL!"</i>.</li>
+</ol>
+<h3>5.3.3 Label Barcode &amp; QR</h3>
+<ul>
+  <li>Buka <b>Detail</b> suku cadang untuk melihat pratinjau label.</li>
+  <li><span class="ui">Cetak Label Barcode &amp; QR</span> — mencetak label untuk ditempel di rak/barang.</li>
+  <li><span class="ui">Uji Buka di Browser</span> — membuka halaman publik scan (lihat 3.6).</li>
+  <li><span class="ui">Salin Link Scan</span> — menyalin tautan halaman publik ke clipboard.</li>
+</ul>
+<blockquote class="warn"><p>Penghapusan suku cadang dari katalog <b>hanya dapat dilakukan Super Admin</b> dan bersifat permanen.</p></blockquote>
+
+<h2>5.4 Stock Ledger Trail</h2>
+<div class="meta"><div><b>Menu:</b> Operations › Stock Ledger Trail</div><div><b>Pengguna:</b> Semua peran (lihat saja)</div><div><b>Fungsi:</b> Jejak audit seluruh mutasi stok</div><div><b>Sifat data:</b> Tidak dapat diubah (immutable)</div></div>
+<ol>
+  <li>Pilih tab filter: <span class="ui">All Movements</span>, <span class="ui">Inbound (+)</span>, atau <span class="ui">Outbound (-)</span>.</li>
+  <li>Cari berdasarkan kode, nomor referensi, atau inisial operator.</li>
+  <li>Baca kolom: Timestamp, Target Spare item, Direction (INBOUND/OUTBOUND), Quantity Delta, Running Balance (saldo berjalan), Ref Number, Operator ID, Remarks.</li>
+</ol>
+
+<!-- ============================ BAB 6 ============================ -->
+<h1><span class="bab">Bab 6</span>Modul Logistics Flow</h1>
+
+<h2>6.1 Permintaan Barang — TUG 5</h2>
+<div class="meta"><div><b>Menu:</b> Logistics Flow › Permintaan Barang (TUG 5)</div><div><b>Pengguna:</b> Petugas Gudang, Chief Engineer/Crew, Pejabat TTD</div><div><b>Judul layar:</b> Daftar Permintaan Barang-Barang (Material Umum)</div><div><b>Siklus status:</b> Draft → Submitted → Approved → Processed</div></div>
+
+<h3>6.1.1 Tampilan Daftar TUG 5</h3>
+<ul>
+  <li><b>Toolbar:</b> <span class="ui">📥 Ambil Data Inbound / TUG 10</span>, <span class="ui">Export ZIP Batch TUG 5</span>, <span class="ui">⚡ Sinkronisasi Register SPK</span>, dan tombol buat TUG 5 baru.</li>
+  <li><b>Filter:</b> Status Filter TUG 5, Periode Tanggal (dari s/d), tombol Reset Tanggal, dan pencarian nomor request/kapal/WO.</li>
+  <li><b>Kolom:</b> No. Request, Tanggal Pengajuan (klik untuk mengubah urutan), Kapal Penerima, Pemohon (Chief Eng.), Status Inbound, Kuantitas Item, Work Order No., Status Approval, Actions.</li>
+  <li><b>Status Inbound:</b> <i>✓ Sesuai (Lengkap)</i>, <i>⚠️ Tidak Sesuai (Terprogress)</i>, atau <i>⚪ Belum Inbound</i> (dengan tombol <span class="ui">+ Ambil Inbound</span>).</li>
+  <li><b>Pilih massal:</b> centang beberapa dokumen untuk menghapus sekaligus atau membatalkan approval Tahap 1.</li>
+</ul>
+
+<h3>6.1.2 Membuat TUG 5 Baru (Manual)</h3>
+<ol>
+  <li>Klik tombol buat TUG 5 baru — terbuka formulir <b>TUG 5 Requisition</b>.</li>
+  <li>Isi <b>Data Header Requisition</b>:
+    <table>
+      <tr><th style="width:40%">Field</th><th>Keterangan</th></tr>
+      <tr><td>Chief Engineer (Pemohon)</td><td>Nama pemohon/kepala bagian.</td></tr>
+      <tr><td>Tanggal Permintaan</td><td>Default hari ini.</td></tr>
+      <tr><td>Depo Logistik (Gudang)</td><td>Default <i>Gudang Merak</i>.</td></tr>
+      <tr><td>Nama Kapal (Vessel Destination)</td><td>Dipilih dari Database Kapal.</td></tr>
+      <tr><td>Work Order No. (PO Receiving / SPK)</td><td>Pilih dari daftar PO Inbound/SPK, atau ketik di <i>Input PO Manual</i>.</td></tr>
+      <tr><td>Kode Akun / Fungsi</td><td>Default <code>BPP</code> / <code>ARMADA</code>.</td></tr>
+      <tr><td>Alamat Pengantaran Logistik</td><td>Dermaga, pelabuhan, atau agen logistik.</td></tr>
+      <tr><td>Catatan Tambahan / Urgensi</td><td>Instruksi khusus, misalnya "Kritis / Overhaul".</td></tr>
+    </table>
+  </li>
+  <li>Jika WO terhubung, klik <span class="ui">Muat Suku Cadang Dari Inbound PO Ini</span> atau <span class="ui">Muat Suku Cadang Dari SPK</span> untuk mengisi item otomatis. Sistem menampilkan peringatan <i>"⚠️ Barang Belum Lengkap"</i> bila ada item yang belum datang.</li>
+  <li>Untuk menambah item manual: pilih suku cadang di <b>Pilih Suku Cadang Dari Gudang</b>, isi <b>Kebutuhan (Qty)</b>, <b>Rata2/Bulan</b>, dan <b>Keterangan Item</b>, lalu klik <span class="ui">Tambah</span>. Stok depo tampil otomatis.</li>
+  <li>Pada grid item, atur <b>Status Kedatangan</b>: <i>Sudah Datang</i>, <i>Belum Datang</i>, atau <i>Diretur</i>.</li>
+  <li>Klik <span class="ui">Simpan Draft</span> untuk menyimpan sementara, atau <span class="btn">Submit Permintaan</span> untuk mengajukan ke Staff Gudang.</li>
+</ol>
+
+<h3>6.1.3 Sinkronisasi Register SPK (Otomatis Massal)</h3>
+<ol>
+  <li>Klik <span class="ui">⚡ Sinkronisasi Register SPK</span>.</li>
+  <li>Sistem mendeteksi SPK yang belum memiliki TUG 5. Centang SPK yang diinginkan (atau <span class="ui">Pilih Semua</span>).</li>
+  <li>Klik <span class="btn">Ya, Sinkronkan Sekarang!</span>. TUG 5 terbentuk otomatis dengan status <b>DRAFT</b>, siap diproses Staff Gudang.</li>
+</ol>
+
+<h3>6.1.4 Ambil Data dari Inbound / TUG 10</h3>
+<p>Tombol <span class="ui">📥 Ambil Data Inbound / TUG 10</span> membuka dialog dengan tiga tab:</p>
+<table>
+  <tr><th style="width:30%">Tab</th><th>Cara Pakai</th></tr>
+  <tr><td>Review Inbound</td><td>Pilih data penerimaan di panel kiri (filter: Sesuai / Selisih / Belum Terhubung), periksa Qty SPK vs Qty Tiba, lalu tentukan tujuan: <i>Update TUG 5 terkait</i>, <i>Pilih TUG 5 eksisting</i>, atau <i>Buat TUG 5 baru otomatis</i>. Klik <span class="ui">📥 Masukkan Data ke TUG 5</span>. Item ditandai <b>Arrived (Tiba)</b>.</td></tr>
+  <tr><td>Review TUG 10</td><td>Pilih dokumen pengembalian TUG 10, periksa Qty Pakai/Qty Retur, lalu masukkan ke TUG 5 yang cocok atau buat TUG 5 baru dari TUG 10 tersebut.</td></tr>
+  <tr><td>Otomasi Massal</td><td>Pilih cakupan (Semua Belum Inbound / Dokumen Terpilih / Sesuai Filter), mode status (<i>Sesuai</i>, <i>Tidak Sesuai — Tetap Terprogress</i>, atau <i>🤖 Otomatis</i> mengikuti data inbound eksisting), tanggal dan catatan verifikasi, lalu klik <span class="ui">Proses Otomasi Massal</span>.</td></tr>
+</table>
+<blockquote><p>Status <b>Tidak Sesuai (Selisih)</b> tidak menahan proses: dokumen TUG 5 tetap <i>Terprogress</i> sehingga TTD dan pencetakan dapat dilanjutkan.</p></blockquote>
+
+<h3>6.1.5 Detail, Persetujuan &amp; TTD</h3>
+<ol>
+  <li>Klik <span class="ui">Detail / View Lengkap</span> pada baris dokumen.</li>
+  <li>Periksa: Informasi Kapal &amp; Pemohon, Referensi Akuntansi, Status Kelengkapan Inbound (dengan riwayat log), dan Rincian Daftar Material.</li>
+  <li>Pada panel <b>Status Persetujuan Berjenjang &amp; TTD Digital (4-Tahap)</b>, pejabat yang berwenang klik tombolnya:
+    <ul>
+      <li>Tahap 1: <span class="ui">Setujui &amp; TTD (Petugas Gudang)</span></li>
+      <li>Tahap 2: <span class="ui">Setujui &amp; TTD (Kepala Gudang)</span></li>
+      <li>Tahap 3: <span class="ui">Setujui &amp; TTD (Emir)</span></li>
+      <li>Tahap 4: <span class="ui">Sahkan &amp; TTD (Sumbono)</span></li>
+    </ul>
+  </li>
+  <li>Tombol alur status: <span class="ui">Submit</span> (Draft → Submitted), <span class="ui">Approve</span> (→ Approved), <span class="ui">Selesaikan Pengiriman</span> (→ Processed/Dispatched).</li>
+  <li>Klik <span class="ui">Preview &amp; Cetak TUG 5</span> untuk mencetak dokumen resmi.</li>
+</ol>
+<p>TTD juga dapat dilakukan langsung dari kolom <b>Approval &amp; Tanda Tangan</b> di tabel daftar.</p>
+
+<h3>6.1.6 Aksi Lain</h3>
+<ul>
+  <li><span class="ui">Cetak TUG 5 (PDF)</span>, <span class="ui">Edit Permintaan</span>, <span class="ui">Hapus TUG 5</span> (dengan konfirmasi).</li>
+  <li><span class="ui">Export ZIP Batch TUG 5</span> — unduh ZIP berisi PDF per nomor request dalam rentang tanggal (lihat Bab 9).</li>
+  <li><span class="ui">Cetak Dokumen Laporan Kosong / Nihil (A4)</span> — bila tidak ada data pada filter.</li>
+</ul>
+
+<h2>6.2 Permintaan Barang — TUG 6</h2>
+<div class="meta"><div><b>Menu:</b> Logistics Flow › Permintaan Barang (TUG 6)</div><div><b>Pengguna:</b> Petugas Gudang, Pemohon, Pejabat TTD</div><div><b>Judul layar:</b> Daftar Permintaan Barang-Barang (Sparepart)</div><div><b>Keunggulan:</b> Pemantauan suku cadang Critical</div></div>
+<p>Cara kerja TUG 6 sama dengan TUG 5 (formulir, Simpan Draft, Submit, TTD 4 tahap, cetak, ZIP batch, sinkronisasi SPK). Perbedaan utama:</p>
+<ul>
+  <li><b>Work Order (SPK WMS)</b> bersifat opsional. Pilih SPK lalu klik <span class="ui">Muat Suku Cadang Dari SPK</span>; item yang terdaftar di database Critical otomatis diberi tanda <span class="ui">🔴 ITEM CRITICAL</span>.</li>
+  <li>Tombol <span class="ui">Kosongkan Data</span> untuk mengosongkan seluruh data TUG 6 (gunakan dengan hati-hati).</li>
+  <li>Tombol <span class="ui">Cek Item Critical SPK Ini</span> membuka panel <b>CRITICAL MONITORING</b>.</li>
+</ul>
+<h3>6.2.1 Critical Monitoring</h3>
+<ol>
+  <li>Buka panel Critical Monitoring, lalu pilih <b>Nomor SPK ber-item Critical</b>.</li>
+  <li>Sistem membandingkan permintaan item critical pada <b>TUG 5</b> dengan realisasi pengeluaran pada <b>TUG 6</b>.</li>
+  <li>Baca ringkasan: <i>Total Item Critical</i>, <i>Terpenuhi Lengkap</i>, <i>Sebagian / Selisih</i>, dan <i>Belum Keluar di TUG 6</i>.</li>
+  <li>Gunakan filter (✅ Lengkap, ⚠️ Sebagian, ❌ Belum Keluar) dan klik <span class="ui">Export CSV Critical</span> bila perlu.</li>
+  <li>Klik <span class="ui">Buat Form TUG 6 Dari SPK Ini</span> untuk langsung membuat dokumen TUG 6.</li>
+</ol>
+
+<h2>6.3 Receiving (Inbound) — Penerimaan Barang</h2>
+<div class="meta"><div><b>Menu:</b> Logistics Flow › Receiving (Inbound)</div><div><b>Pengguna:</b> Petugas/Penjaga Gudang</div><div><b>Prinsip:</b> Langsung terverifikasi tanpa approval</div><div><b>Hasil:</b> Data siap dipakai untuk TUG 5</div></div>
+
+<h3>6.3.1 Penerimaan Berdasarkan List SPK</h3>
+<ol>
+  <li>Klik <span class="btn">Terima Barang Datang (List SPK)</span> dan pilih tab <b>Penerimaan Berdasarkan List SPK</b>.</li>
+  <li>Pilih <b>Nomor SPK / Perintah Kerja Datang *</b>, isi Nomor Surat Jalan (DN) dan <b>Tanggal Penerimaan Fisik *</b>.</li>
+  <li>Untuk setiap item: tentukan <b>Kesesuaian Item</b> (✓ Sesuai / ✕ Tidak Sesuai), isi <b>QTY Datang</b>, periksa Status QTY, dan tulis catatan per item.</li>
+  <li>Isi <b>Catatan Penjaga Gudang (Keseluruhan)</b>, unggah foto bukti fisik, dan goreskan paraf pada <b>✍️ Area Paraf Penjaga Gudang</b> (mouse atau layar sentuh).</li>
+  <li>Centang persetujuan verifikasi fisik lalu klik <span class="ui">Simpan Verifikasi Gudang</span>.</li>
+</ol>
+
+<h3>6.3.2 Penerimaan Manual / Non-SPK (Multi-Item)</h3>
+<ol>
+  <li>Pilih tab <b>Input Manual / Non-SPK</b>.</li>
+  <li>Klik <span class="ui">⚡ Buat No. PO Otomatis</span> atau isi <b>Nomor Referensi PO *</b> secara manual. Isi DN, Tanggal Penerimaan*, Nama Vendor, dan <b>Kapal Tujuan *</b>.</li>
+  <li>Unggah foto bukti fisik (JPG, PNG, WebP) dari galeri/kamera.</li>
+  <li>Klik <span class="ui">+ Tambah Item Barang</span> untuk setiap barang: nama (pilih dari master atau ketik baru), Part Number, Satuan, <b>Jumlah QTY Datang *</b>, Kategori, Lokasi Rak, catatan, dan foto item.</li>
+  <li>Simpan. Semua barang langsung masuk ke stok fisik gudang dan siap dipakai untuk TUG 5.</li>
+</ol>
+
+<h3>6.3.3 Status Penerimaan</h3>
+<table>
+  <tr><th style="width:34%">Label di Tabel</th><th>Arti</th></tr>
+  <tr><td>Sesuai (Siap TUG 5)</td><td>Semua barang sesuai jumlah &amp; spesifikasi (Accepted/Verified).</td></tr>
+  <tr><td>Ada Selisih / Partial</td><td>Sebagian barang kurang atau ditolak (Partial Reject).</td></tr>
+  <tr><td>Tidak Sesuai / Ditolak</td><td>Seluruh barang ditolak (Full Reject).</td></tr>
+  <tr><td>Menunggu Verifikasi</td><td>Belum diperiksa (Pending).</td></tr>
+</table>
+
+<h3>6.3.4 Menindaklanjuti Barang Susulan</h3>
+<p>Bila barang pengganti/susulan sudah tiba lengkap, buka <span class="ui">Lihat Detail Audit</span>, klik <span class="ui">Ubah Status Ke Sesuai</span>, isi catatan konfirmasi, lalu <span class="ui">Konfirmasi Status Sesuai</span>.</p>
+
+<h3>6.3.5 Fitur Lain</h3>
+<ul>
+  <li><b>Edit</b> — mengubah data &amp; mengganti foto (tersimpan ke cloud storage).</li>
+  <li><b>Push ke Master &amp; Catalog</b> (khusus Super Admin) — mendaftarkan barang masuk ke Spare Part Master &amp; Catalog dengan stok sama dengan QTY Diterima. Tersedia per item, per penerimaan, atau seluruh penerimaan.</li>
+  <li>Riwayat audit kronologis setiap penerimaan dan foto ukuran penuh dapat diunduh.</li>
+</ul>
+
+<h2>6.4 Dispatch (Outbound) — TUG 8</h2>
+<div class="meta"><div><b>Menu:</b> Logistics Flow › Dispatch (Outbound)</div><div><b>Pengguna:</b> Petugas Gudang, Koordinator Dispatch, Pejabat TTD</div><div><b>Judul layar:</b> Dispatch &amp; Outbound Logistics (TUG 8)</div><div><b>Output:</b> TUG 8 Note (Bon Pengeluaran) &amp; Surat Jalan</div></div>
+
+<h3>6.4.1 Tampilan Daftar</h3>
+<ul>
+  <li>Kartu ringkasan: <b>Drafts</b>, <b>In Progress</b>, <b>On Transit</b>, <b>Delivered</b>.</li>
+  <li>Filter: Status (termasuk <i>⚠️ Dispatched Parsial</i>), Vessel, dan periode (Semua / Minggu Ini / Bulan / Kustom). Tersedia tombol cetak TUG 5/6/8 sesuai rentang waktu.</li>
+  <li>Kolom: No. TUG 8, No. Dispatch/Carrier, Fisik Suku Cadang, Alokasi Driver/PIC, Metode Kurir, Status, Approval 4 Tahap, dan Actions.</li>
+</ul>
+
+<h3>6.4.2 Membuat TUG 8 dari Permintaan TUG 5</h3>
+<ol>
+  <li>Klik <span class="btn">Tambah Dispatch (TUG 8)</span> dan pilih sumber <b>📦 Sumber TUG 5 (Permintaan Kapal)</b>.</li>
+  <li>Ketik nomor TUG 5, nama kapal, No. SPK, atau nama suku cadang, lalu pilih dokumen. Data kapal, WO/SPK, tahap pengiriman, dan daftar barang terisi otomatis.</li>
+  <li>Periksa tabel barang: <i>Target SPK</i>, <i>Diterima Inbound</i>, <i>Pernah Dikirim (Tahap Lalu)</i>, <b>QTY Kirim (Tahap Ini)</b>, dan <i>Sisa Belum Kirim</i>.</li>
+  <li>Centang <b>Kirim?</b> atau isi QTY. Gunakan <span class="ui">⚡ Kirim Semua Sisa</span> untuk mengisi otomatis, atau <span class="ui">✕ Nolkan Semua (0)</span> untuk memilih item tertentu saja.</li>
+  <li>Isi <b>Informasi Pengiriman &amp; Transporter</b> (opsional): tanggal resmi keluar barang, gudang pengirim, pelabuhan tujuan, ekspedisi, nomor kendaraan/resi, driver/PIC, dan catatan.</li>
+  <li>Simpan. Dokumen TUG 8 terbit dan muncul di daftar.</li>
+</ol>
+<blockquote class="warn"><p><b>Pengiriman Parsial:</b> Jika ada item berstatus <i>Belum Datang</i> atau <i>Diretur</i> di TUG 5, hanya item "Sudah Datang" yang dikirim. Status SPK otomatis menjadi <b>INCOMPLETE</b>, dan sisa barang dapat dikirim kemudian melalui <i>pengiriman susulan</i>.</p></blockquote>
+
+<h3>6.4.3 Transfer Antar Kapal (Sumber TUG 10)</h3>
+<ol>
+  <li>Pilih sumber <b>🔄 Sumber TUG 10 (Transfer Antar Kapal)</b>.</li>
+  <li>Cari dan pilih Bon Pengembalian TUG 10 (kapal asal).</li>
+  <li>Pilih <b>Kapal Tujuan Transfer</b> dari master kapal, periksa QTY Transfer, lalu simpan.</li>
+  <li>TUG 8 terbit untuk kapal tujuan dan status TUG 10 otomatis menjadi <b>COMPLETED</b>.</li>
+</ol>
+
+<h3>6.4.4 Memperbarui Status Pengiriman</h3>
+<p>Buka <span class="ui">Edit Data Pengiriman (TUG 8)</span> lalu pilih status pada <b>Outbound State Transitions</b>:</p>
+<div class="flow">
+  <span class="s">Draft</span><span class="a">➜</span><span class="s">Picking</span><span class="a">➜</span><span class="s">Packed</span><span class="a">➜</span><span class="s">Ready To Dispatch</span><span class="a">➜</span><span class="s alt">Dispatched</span><span class="a">➜</span><span class="s">Delivered</span><span class="a">➜</span><span class="s ok">Completed</span>
+</div>
+<table>
+  <tr><th style="width:24%">Status</th><th>Arti Operasional</th></tr>
+  <tr><td>Draft</td><td>Surat Perintah Keluar baru dibuat.</td></tr>
+  <tr><td>Picking</td><td>Pengambilan suku cadang dari rak (stok dicadangkan).</td></tr>
+  <tr><td>Packed</td><td>Pengemasan &amp; seal kargo.</td></tr>
+  <tr><td>Ready To Dispatch</td><td>Siap dimuat ke transporter.</td></tr>
+  <tr><td><b>Dispatched</b></td><td>Kargo berangkat — <b>stok fisik dipotong</b> dan tercatat di Ledger.</td></tr>
+  <tr><td>Delivered</td><td>Diterima di kapal &amp; ditandatangani.</td></tr>
+  <tr><td>Completed</td><td>Kasus pengeluaran ditutup.</td></tr>
+</table>
+<p>Pada formulir edit juga dapat dikoreksi: kapal tujuan, No. TUG 8, No. Surat Jalan, tanggal transaksi, depot asal (Gudang Merak, Tanjung Priok Supply Depot, Surabaya Transit Hub, Batam Free Trade Storehouse), alamat tujuan, kurir, nomor resi, driver, catatan, serta rincian item (tambah/hapus suku cadang, QTY, harga satuan).</p>
+<blockquote class="danger"><p>Jika stok fisik tidak cukup saat diubah ke <i>Dispatched</i>, sistem menolak dengan pesan <i>"Stok tidak mencukupi untuk item ..."</i>. Lakukan penerimaan barang atau koreksi QTY terlebih dahulu.</p></blockquote>
+
+<h3>6.4.5 Riwayat Multi-Pengiriman &amp; Cetak</h3>
+<ul>
+  <li><b>Riwayat Log Multi-Pengiriman SPK</b> — menampilkan progres kumulatif: total target, sudah terkirim, sisa, serta rincian setiap tahap (tanggal, kurir, keterangan). Sisa ditandai warna merah.</li>
+  <li><b>Catatan Histori Logistik Kargo</b> — live tracker dari Draft hingga Delivered.</li>
+  <li><span class="ui">Cetak TUG 8 Note (PDF)</span> dan <span class="ui">Cetak Surat Jalan (PDF)</span>.</li>
+  <li>TTD 4 tahap tersedia di kolom Approval dan di formulir edit.</li>
+</ul>
+
+<h2>6.5 Pengembalian Barang — TUG 10</h2>
+<div class="meta"><div><b>Menu:</b> Logistics Flow › Pengembalian Barang (TUG 10)</div><div><b>Pengguna:</b> Petugas Gudang, Kru Kapal, Pejabat TTD</div><div><b>Judul layar:</b> Bahan &amp; Suku Cadang Kembali — TUG 10</div><div><b>Siklus status:</b> Draft → Submitted / Pending Verification → Approved / Rejected → Completed</div></div>
+
+<h3>6.5.1 Membuat TUG 10</h3>
+<ol>
+  <li>Klik <span class="btn">BUAT TUG 10 BARU</span>, lalu pilih mode:
+    <ul>
+      <li><b>1. Integrasi SPK / Work Order</b> — pilih SPK untuk memuat data suku cadang otomatis.</li>
+      <li><b>2. Pembuatan Manual (Tanpa SPK)</b> — tanpa mengaitkan SPK/TUG 8.</li>
+    </ul>
+  </li>
+  <li>Isi Tanggal TUG 10, <b>Nama Kapal Penerima *</b>, Nomor TUG 8 referensi, Status Disposisi TUG 8, dan Gudang Penyimpanan Target.</li>
+  <li>Pilih <b>Alasan Pengembalian</b>: Overstock / Sisa Proyek Perbaikan Kapal; Broken / Rusak Total (Klaim Jaminan Pabrik); Tidak Kompatibel / Salah Spesifikasi Mesin; Pekerjaan Dibatalkan / Diundur.</li>
+  <li>Tambahkan item:
+    <ul>
+      <li><b>Mode SPK:</b> pilih material, isi <i>Banyaknya Dikirim (TUG 8)</i>, <i>Banyaknya Dipakai Kapal</i>, dan <i>Banyaknya Kembali (TUG 10)</i>. Pilih <i>⚡ (+ BARU)</i> bila barang belum ada di daftar.</li>
+      <li><b>Mode Manual:</b> <span class="ui">✏️ Ketik Manual</span> (nama, part number, satuan, QTY turun) atau <span class="ui">📦 Pilih dari Master</span>.</li>
+    </ul>
+    Klik <span class="ui">TAMBAHKAN ITEM</span>.
+  </li>
+  <li>Klik <span class="ui">Simpan Draft</span> atau <span class="btn">Kirim &amp; Terbitkan TUG 10</span>.</li>
+</ol>
+<blockquote><p>Bila QTY kembali melebihi sisa (Dikirim − Dipakai), sistem meminta konfirmasi. Barang yang belum terdaftar di master akan dibuat otomatis saat TUG 10 disetujui dengan lokasi <b>Unassigned</b> — segera atur lokasinya di Spare Part Master.</p></blockquote>
+
+<h3>6.5.2 Verifikasi, Persetujuan &amp; Penolakan</h3>
+<ol>
+  <li>Klik <span class="ui">Lihat Detail TUG 10</span> untuk melihat nomor dokumen, tanggal, alasan, referensi SPK/TUG 8, dan rincian item (Dikirim, Dipakai, Dikembalikan).</li>
+  <li>Pejabat menandatangani berurutan: <span class="ui">TTD Sekarang</span> (Tahap 1–3) dan <span class="ui">Sahkan Sekarang</span> (Tahap 4).</li>
+  <li>Saat dokumen berstatus <b>Approved</b>, stok gudang otomatis bertambah sesuai QTY kembali dan tercatat di Ledger.</li>
+  <li>Untuk menolak: klik <b>Tolak</b>, isi alasan logistik (wajib), lalu <span class="ui">Tolak Sekarang</span>. Alasan terekam di log audit.</li>
+</ol>
+<p>Aksi lain: <span class="ui">Cetak TUG 10 (PDF)</span>, <span class="ui">Edit Keterangan</span>, <span class="ui">Hapus TUG 10</span>, serta filter periode (Semua/Minggu Ini/Bulan/Kustom) dan status.</p>
+
+<!-- ============================ BAB 7 ============================ -->
+<h1><span class="bab">Bab 7</span>Modul Documents &amp; Requisitions</h1>
+
+<h2>7.1 SPK — Surat Perintah Kerja</h2>
+<div class="meta"><div><b>Menu:</b> Documents &amp; Requisitions › SPK</div><div><b>Pengguna:</b> Logistik, Petugas/Kepala Gudang</div><div><b>Judul layar:</b> Manajemen Surat Perintah Kerja (SPK) Picking Gudang</div><div><b>Sifat:</b> Multi-Vessel &amp; Multi-Part</div></div>
+<h3>7.1.1 Menerbitkan SPK Baru</h3>
+<ol>
+  <li>Klik <span class="btn">Buat SPK Baru</span>.</li>
+  <li>Isi <b>Tujuan Port Pelabuhan Kapal Bersandar *</b> dan <b>Remarks / Catatan Petunjuk Pengiriman</b>.</li>
+  <li>Klik <span class="ui">Tambah Kapal Penerima</span> dan pilih kapal dari Master Database.</li>
+  <li>Pada setiap kapal, klik <span class="ui">Tambah Item Spares</span>, pilih suku cadang dan isi Qty. Lokasi rak barang ditampilkan untuk memudahkan picking.</li>
+  <li>Ulangi untuk kapal lain bila perlu, lalu klik <span class="btn">Penerbitan Surat Kerja SPK</span>.</li>
+</ol>
+<h3>7.1.2 Detail &amp; Lembar Picking</h3>
+<ul>
+  <li><span class="ui">Detail Penugasan SPK</span> — menampilkan pelabuhan, petugas logistik, tanggal, catatan, serta instruksi alokasi per kapal (item, volume pick, posisi rak). Lokasi rak dapat dipindahkan via <i>Pindahkan Koordinat Rak</i>.</li>
+  <li><span class="ui">Lembar Picking (Print)</span> — mencetak <b>PICKING ORDER</b> berisi daftar barang, nomor OEM, Qty Pick, letak rak &amp; elevasi, kolom centang selesai, serta kolom tanda tangan (Mempersiapkan, Petugas Picking, Verifikasi Checker).</li>
+  <li><span class="ui">Batalkan &amp; Hapus SPK</span> — dengan konfirmasi.</li>
+</ul>
+<h3>7.1.3 Status SPK</h3>
+<table>
+  <tr><th style="width:28%">Status</th><th>Arti</th></tr>
+  <tr><td>Draft</td><td>SPK baru dibuat.</td></tr>
+  <tr><td>Pending Picking</td><td>Menunggu pengambilan barang.</td></tr>
+  <tr><td>Picking in Progress</td><td>Barang sedang diambil dari rak.</td></tr>
+  <tr><td>Picked &amp; Ready</td><td>Barang siap dikirim.</td></tr>
+  <tr><td>Dispatched / Completed</td><td>Barang telah dikirim via TUG 8.</td></tr>
+  <tr><td>Incomplete</td><td>Ada barang yang belum datang saat TUG 5/TUG 8 diproses; pengiriman tetap dilakukan untuk barang yang siap (Urgent Delivery).</td></tr>
+</table>
+<blockquote class="tip"><p><b>Protokol Picking:</b> (1) Samakan nomor part dengan daftar OEM; (2) gunakan forklift/tangga pengaman untuk rak Level 3; (3) bubuhkan paraf basah pada lembar cetak setelah serah terima di dermaga.</p></blockquote>
+
+<h2>7.2 Laporan Keluar Masuk (TUG 11)</h2>
+<div class="meta"><div><b>Menu:</b> Documents &amp; Requisitions › Laporan Keluar Masuk</div><div><b>Pengguna:</b> Semua peran manajerial &amp; gudang</div><div><b>Judul layar:</b> Laporan Mutasi Barang Keluar Masuk Suku Cadang (TUG 11)</div><div><b>Output:</b> CSV (Excel) &amp; Cetak A4</div></div>
+<h3>7.2.1 Mengatur Filter Laporan</h3>
+<ol>
+  <li><b>Rentang Waktu:</b> Minggu Ini, Bulan Ini, atau Kustom (tanggal dari s/d).</li>
+  <li><b>Arah Aliran:</b> Semua Mutasi, Barang Masuk Saja (Inbound/PO), atau Barang Keluar Saja (Outbound/Supply).</li>
+  <li><b>Kategori Suku Cadang:</b> semua atau kategori tertentu.</li>
+  <li><b>Checklist Dokumen:</b> Inbound, TUG 5, TUG 8, TUG 10 (preset: Pilih Semua, Inbound + TUG 5 + 8, Inbound Saja).</li>
+  <li>Gunakan pencarian untuk nama part, SKU, nomor part, referensi dokumen, atau staff gudang.</li>
+</ol>
+<h3>7.2.2 Membaca Laporan</h3>
+<ul>
+  <li><b>Kartu statistik:</b> Total Inbound, Total Outbound, Dampak Bersih Stok (Net Impact), dan Suku Cadang Paling Aktif.</li>
+  <li><b>Grafik</b> tren mutasi harian: hijau = masuk, amber = keluar.</li>
+  <li><b>Rekap per SPK:</b> cari nomor SPK untuk melihat tabel QTY Masuk, QTY SPK, QTY Dikirim (TUG 8), QTY Kembali (TUG 10), QTY Terpakai (Net), dan foto fisik. Klik <span class="ui">Cetak Rekap SPK Ini (A4 PDF)</span>.</li>
+  <li><b>Lembar Kerja Ledger:</b> tanggal, nama suku cadang, kategori, aliran mutasi, referensi dokumen, staff, dan keterangan.</li>
+</ul>
+<h3>7.2.3 Ekspor &amp; Cetak</h3>
+<p>Klik <span class="ui">Ekspor CSV (Excel)</span> untuk mengunduh data, atau <span class="btn">Cetak Laporan</span> untuk membuka pratinjau cetak resmi dengan kolom tanda tangan (Dibuat, Diperiksa, Disetujui).</p>
+
+<!-- ============================ BAB 8 ============================ -->
+<h1><span class="bab">Bab 8</span>Modul Administration</h1>
+
+<h2>8.1 Database Kapal (Fleet Management)</h2>
+<div class="meta"><div><b>Menu:</b> Administration › Database Kapal</div><div><b>Pengguna:</b> Super Admin</div><div><b>Fungsi:</b> Master armada untuk semua modul</div><div><b>Integrasi:</b> Receiving, TUG 5/6/8/10, SPK</div></div>
+<ol>
+  <li>Lihat ringkasan: Total Master Armada, Status Active, Docking/Maintenance, Gudang Cadangan (Buffer).</li>
+  <li>Filter berdasarkan Status (Active, Maintenance, Docking, Standby, Inactive) dan Tipe Kapal; cari berdasarkan nama/kode.</li>
+  <li>Klik <span class="btn">Tambah Kapal Baru</span> dan isi: Nama Kapal* (otomatis HURUF KAPITAL), Kode Kapal (klik <span class="ui">Generate</span>), Tipe/Klasifikasi (Bulk Carrier Panamax/Supramax/Handymax/Handysize, Tug &amp; Barge Set, Motor Vessel, Warehouse Buffer), Kapasitas (DWT), Status Operasional, Bendera, Call Sign, dan Catatan.</li>
+  <li>Gunakan ikon Edit/Hapus pada setiap baris. Kapal yang dihapus tidak akan muncul lagi di pilihan modul lain.</li>
+  <li><span class="ui">Reset Armada Standar</span> mengembalikan data ke armada default PT. BAG (kapal tambahan dapat ter-reset).</li>
+</ol>
+
+<h2>8.2 Database User &amp; Role</h2>
+<div class="meta"><div><b>Menu:</b> Administration › Database User &amp; Role</div><div><b>Pengguna:</b> Super Admin</div><div><b>Sub-tab:</b> Daftar User · Matriks Role &amp; Hak Akses</div><div><b>Fungsi:</b> Kelola akun, password, dan peran</div></div>
+<ol>
+  <li>Klik <span class="btn">Tambah User Baru</span>.</li>
+  <li>Isi Username (untuk login), Nama Lengkap, Alamat Email, Password, dan pilih <b>Sistem Role</b>.</li>
+  <li>Simpan. Untuk mengubah data atau reset password, klik <span class="ui">Edit User</span>.</li>
+  <li>Tab <b>Matriks Role &amp; Hak Akses</b> menampilkan hierarki role dan batas kewenangan TTD berjenjang.</li>
+</ol>
+<blockquote class="warn"><p>Akun yang sedang Anda gunakan dan akun superadmin utama <b>tidak dapat dihapus</b>.</p></blockquote>
+
+<h2>8.3 Tanda Tangan Digital</h2>
+<div class="meta"><div><b>Menu:</b> Administration › Tanda Tangan Digital</div><div><b>Pengguna:</b> Super Admin / pejabat terkait</div><div><b>Fungsi:</b> Gambar TTD per jabatan</div><div><b>Dipakai di:</b> TUG 5, 6, 8, 10 &amp; SPK</div></div>
+<ol>
+  <li>Klik <span class="btn">Tambah Tanda Tangan</span>.</li>
+  <li>Pilih <b>Jabatan / Role Dokumen</b> atau <i>+ Kustom Role Lainnya...</i>, lalu isi <b>Nama Penanda Tangan</b>.</li>
+  <li>Pilih metode input:
+    <ul>
+      <li><b>Upload File Gambar</b> — PNG transparan atau JPG, maksimal 3 MB.</li>
+      <li><b>Gambar Manual</b> — gambar dengan mouse/layar sentuh; klik <span class="ui">Bersihkan Canvas</span> untuk mengulang.</li>
+    </ul>
+  </li>
+  <li>Periksa <b>Preview Tanda Tangan</b>, isi catatan (opsional), lalu simpan.</li>
+</ol>
+<p>Saat dokumen dicetak, gambar TTD otomatis disisipkan di atas nama pejabat sesuai jabatan. Tombol <span class="ui">Reset Default</span> mengembalikan TTD bawaan sistem.</p>
+
+<h2>8.4 Critical Spare Parts TUG 6 (Super Admin)</h2>
+<div class="meta"><div><b>Menu:</b> Administration › Critical Spare Parts TUG 6</div><div><b>Pengguna:</b> Khusus Super Admin</div><div><b>Sumber data awal:</b> FIKRI.xlsx (sheet CRITICAL) — 26 item</div><div><b>Fungsi:</b> Acuan deteksi item critical di TUG 5/TUG 6</div></div>
+<ul>
+  <li><span class="ui">Tambah Item Manual</span> — isi Nama Suku Cadang, Part Number, Kategori (Engine Component, Bearing, Fuel System, dll.), Mesin/Equipment, Tingkat Kritis (🔴 CRITICAL, 🟠 HIGH, 🔵 MEDIUM), Min Stock, Satuan, dan Justifikasi.</li>
+  <li>Filter per kategori dan tingkat; cari berdasarkan nama/part number/mesin.</li>
+  <li><span class="ui">Export CSV</span> dan <span class="ui">Reset Default Excel</span> (mengembalikan 26 data awal; perubahan manual akan ditimpa).</li>
+</ul>
+<p>Sistem mendeteksi status CRITICAL dengan mencocokkan kombinasi <b>Part Number</b> dan <b>Nama Komponen</b> dari master ini.</p>
+
+<h2>8.5 Login &amp; Logs Audit (Super Admin)</h2>
+<ul>
+  <li>Statistik: Total Sesi Login, Pengguna Aktif, Aktivitas Sistem, dan Status WMS.</li>
+  <li>Grafik tren harian Login vs Log Aktivitas (Keduanya / Login Saja / Logs Saja).</li>
+  <li>Filter: mode tampilan, rentang waktu (Hari Ini, 7, 14, 30 Hari, Semua), dan pencarian cepat (nama, role, dokumen, IP).</li>
+  <li>Tipe event: 🔐 LOGIN, 🚪 LOGOUT, 🔴 MAINTENANCE, 🚚 DISPATCH, 📥 RECEIVING, dll. Klik baris untuk melihat detail (termasuk data JSON).</li>
+  <li><span class="ui">Export CSV</span> dan <span class="ui">Refresh Data</span>. Waktu ditampilkan dalam WIB.</li>
+</ul>
+
+<h2>8.6 Mode Maintenance (Super Admin)</h2>
+<ol>
+  <li>Buka menu <b>Mode Maintenance</b> (lencana <i>OFF</i>/<i>AKTIF</i>).</li>
+  <li>Isi <b>Pesan Pemeliharaan</b> (bisa memakai template cepat) dan <b>Perkiraan Selesai</b>, lalu klik <span class="ui">Simpan Informasi Pesan</span>. Lihat hasilnya di <i>Live Preview</i>.</li>
+  <li>Klik <span class="btn">Aktifkan Mode Maintenance Sekarang</span> dan konfirmasi. Seluruh pengguna selain Super Admin langsung dialihkan ke layar pemeliharaan.</li>
+  <li>Setelah selesai, klik <span class="btn">Buka Akses Sistem (Nonaktifkan Maintenance)</span>.</li>
+  <li>Opsional — <b>Musik Pengiring (Audio Lounge)</b>: unggah file MP3/WAV/AAC/M4A/OGG (maks. 12 MB), isi judul lagu, uji putar, lalu <span class="ui">Simpan Pengaturan Musik</span>. <span class="ui">Reset Lagu</span> mengembalikan musik bawaan.</li>
+  <li>Riwayat aktivasi/deaktivasi/update pesan tercatat di tabel log beserta operator dan waktunya.</li>
+</ol>
+<blockquote class="danger"><p>Mengaktifkan maintenance memutus akses seluruh pengguna. Informasikan jadwal kepada pengguna sebelum mengaktifkan.</p></blockquote>
+
+<!-- ============================ BAB 9 ============================ -->
+<h1><span class="bab">Bab 9</span>Pencetakan Dokumen &amp; Ekspor Data</h1>
+
+<h2>9.1 Pratinjau Cetak Dokumen Resmi</h2>
+<p>Setiap tombol cetak (TUG 5, TUG 6, TUG 8 Note, Surat Jalan, TUG 10, Rekap SPK, Laporan Mutasi, Stock Report) membuka jendela pratinjau dengan kop resmi <b>PT. PELAYARAN BAHTERA ADHIGUNA (BAG)</b>.</p>
+<table>
+  <tr><th style="width:30%">Tombol</th><th>Fungsi</th></tr>
+  <tr><td>Download PDF</td><td>Mengunduh dokumen dalam format PDF.</td></tr>
+  <tr><td>Cetak Sekarang / Cetak Dokumen (A4)</td><td>Membuka dialog cetak browser (Ctrl + P) untuk printer fisik atau "Save as PDF".</td></tr>
+  <tr><td>Tampilkan N Baris / Halaman</td><td>Mengatur jumlah baris per halaman (10/15/25/50) untuk dokumen panjang.</td></tr>
+  <tr><td>Tutup Pratinjau</td><td>Menutup jendela (atau tekan Esc).</td></tr>
+</table>
+<p>Kolom tanda tangan (Petugas Gudang, Kepala Gudang, Mengetahui, Disetujui) otomatis terisi gambar TTD digital bila tahap persetujuan terkait sudah ditandatangani.</p>
+<blockquote class="tip"><p>Atur printer ke ukuran kertas <b>A4</b>, skala 100%, dan aktifkan "Background graphics" agar warna dan garis tabel tercetak sempurna.</p></blockquote>
+
+<h2>9.2 Export ZIP Batch</h2>
+<ol>
+  <li>Klik tombol <span class="ui">Export ZIP Batch TUG 5</span> / <span class="ui">TUG 6</span> (atau cetak sesuai rentang di modul TUG 8/TUG 10).</li>
+  <li>Pilih <b>Tanggal Mulai</b> dan <b>Tanggal Selesai</b>. Sistem menampilkan <i>Total Dokumen Ditemukan</i>.</li>
+  <li>Unduh file ZIP — berisi <b>1 file PDF per nomor request</b>.</li>
+  <li>Bila tidak ada data (0), sistem tetap menghasilkan 1 PDF <b>Laporan Kosong (Nihil)</b> untuk keperluan pelaporan.</li>
+</ol>
+
+<h2>9.3 Ekspor CSV</h2>
+<p>Tersedia di: Laporan Keluar Masuk, Critical Monitoring TUG 6, Critical Spare Parts, dan Login &amp; Logs Audit. File CSV dapat dibuka dengan Microsoft Excel.</p>
+
+<!-- ============================ BAB 10 ============================ -->
+<h1><span class="bab">Bab 10</span>Referensi Status &amp; Indikator</h1>
+<h2>10.1 Status Dokumen</h2>
+<table>
+  <tr><th style="width:20%">Dokumen</th><th>Urutan Status</th></tr>
+  <tr><td>TUG 5 / TUG 6</td><td>Draft → Submitted → Approved → Processed (atau Rejected)</td></tr>
+  <tr><td>TUG 8</td><td>Draft → Picking → Packed → Ready To Dispatch → Dispatched / In Transit → Delivered → Completed</td></tr>
+  <tr><td>TUG 10</td><td>Draft → Submitted → Pending Verification → Approved / Rejected → Completed</td></tr>
+  <tr><td>SPK</td><td>Draft → Pending Picking → Picking in Progress → Picked &amp; Ready → Dispatched / Completed (atau Incomplete)</td></tr>
+  <tr><td>Receiving</td><td>Pending → Accepted / Verified / Partial Reject / Full Reject</td></tr>
+</table>
+<h2>10.2 Status Item Barang</h2>
+<table>
+  <tr><th style="width:30%">Status</th><th>Arti</th></tr>
+  <tr><td>Sudah Datang (Arrived)</td><td>Barang sudah diterima gudang dan dapat dikirim.</td></tr>
+  <tr><td>Belum Datang (Pending)</td><td>Barang belum tiba; tidak ikut dikirim pada TUG 8.</td></tr>
+  <tr><td>Diretur (Returned)</td><td>Barang dikembalikan; tidak ikut dikirim.</td></tr>
+</table>
+<h2>10.3 Indikator Visual</h2>
+<table>
+  <tr><th style="width:36%">Indikator</th><th>Arti</th></tr>
+  <tr><td>Lencana merah angka di Spare Part Master</td><td>Jumlah barang dengan stok di bawah batas.</td></tr>
+  <tr><td>Lencana oranye angka di Dispatch</td><td>Jumlah pengiriman yang sedang aktif.</td></tr>
+  <tr><td>⏳ PENDING / ✓ SIGNED</td><td>Status tahap TTD.</td></tr>
+  <tr><td>Menunggu TTD (x/4) / Disetujui Penuh (4/4)</td><td>Progres persetujuan berjenjang dokumen.</td></tr>
+  <tr><td>🔴 ITEM CRITICAL</td><td>Item terdaftar sebagai suku cadang critical.</td></tr>
+  <tr><td>ALARM - LOW STOCK</td><td>Stok di bawah batas minimum.</td></tr>
+  <tr><td>⚠️ Dispatched Parsial</td><td>Pengiriman belum mencakup seluruh barang.</td></tr>
+</table>
+
+<!-- ============================ BAB 11 ============================ -->
+<h1><span class="bab">Bab 11</span>Pemecahan Masalah &amp; FAQ</h1>
+<table>
+  <tr><th style="width:34%">Masalah</th><th>Solusi</th></tr>
+  <tr><td>Tidak bisa login</td><td>Periksa username/password &amp; Caps Lock. Hubungi Super Admin untuk reset password.</td></tr>
+  <tr><td>Muncul layar "Sistem Sedang Ditutup Sementara"</td><td>Sistem sedang maintenance. Tunggu — halaman akan beralih otomatis saat selesai.</td></tr>
+  <tr><td>Muncul layar "WMS Connection Error"</td><td>Periksa koneksi internet lalu klik <i>Retry Connection handshake</i>.</td></tr>
+  <tr><td>Tombol TTD terkunci (🔒)</td><td>Tahap tersebut bukan wewenang akun Anda, atau tahap sebelumnya belum ditandatangani.</td></tr>
+  <tr><td>"Stok tidak mencukupi" saat Dispatch</td><td>Pastikan barang sudah diterima di Receiving, atau kurangi QTY kirim.</td></tr>
+  <tr><td>Data tidak sesuai/terlambat tampil</td><td>Klik tombol <i>Sync</i> di Dashboard atau muat ulang halaman (F5).</td></tr>
+  <tr><td>"Part ini sudah dimasukkan ke daftar!"</td><td>Item yang sama sudah ada di grid; ubah QTY pada baris yang ada.</td></tr>
+  <tr><td>Slot lokasi tidak bisa dihapus</td><td>Slot masih berisi barang. Pindahkan barang ke slot lain terlebih dahulu.</td></tr>
+  <tr><td>PDF gagal diunduh</td><td>Gunakan tombol <i>Cetak Sekarang</i> lalu pilih "Save as PDF".</td></tr>
+  <tr><td>Foto gagal diunggah</td><td>Gunakan format JPG/PNG/WebP dengan ukuran wajar dan koneksi stabil.</td></tr>
+</table>
+
+<h3>Pertanyaan yang Sering Diajukan</h3>
+<p><b>T: Apakah penerimaan barang perlu persetujuan manager?</b><br>J: Tidak. Penerimaan langsung terverifikasi oleh penjaga gudang dan dapat segera dipakai untuk TUG 5.</p>
+<p><b>T: Kapan stok gudang berkurang?</b><br>J: Saat dokumen TUG 8 berstatus <i>Dispatched</i> (atau Delivered/Completed). Pada status Picking–Ready To Dispatch stok hanya dicadangkan.</p>
+<p><b>T: Bagaimana jika sebagian barang belum datang?</b><br>J: Kirim barang yang sudah tersedia (pengiriman parsial). SPK berstatus Incomplete dan sisa barang dikirim melalui pengiriman susulan.</p>
+<p><b>T: Apakah dokumen kosong bisa dicetak?</b><br>J: Ya, gunakan fitur Cetak Laporan Kosong / Nihil.</p>
+<p><b>T: Bisakah memindahkan barang antar kapal?</b><br>J: Ya, buat TUG 10 dari kapal asal lalu terbitkan TUG 8 dengan sumber TUG 10 (Transfer Antar Kapal).</p>
+
+<!-- ============================ LAMPIRAN ============================ -->
+<h1><span class="bab">Lampiran A</span>Checklist Kerja Harian per Peran</h1>
+<h3>Petugas Gudang</h3>
+<ul>
+  <li>☐ Periksa Dashboard: alarm stok minimum &amp; TUG 5 aktif.</li>
+  <li>☐ Catat setiap barang datang di Receiving (foto, paraf, catatan).</li>
+  <li>☐ Proses TUG 5/TUG 6 baru dan berikan TTD Tahap 1.</li>
+  <li>☐ Lakukan picking sesuai SPK; perbarui status TUG 8 hingga Dispatched.</li>
+  <li>☐ Cetak TUG 8 Note &amp; Surat Jalan untuk driver.</li>
+  <li>☐ Verifikasi fisik barang kembali (TUG 10).</li>
+</ul>
+<h3>Kepala Gudang</h3>
+<ul>
+  <li>☐ Cek banner "Siap Anda Setujui" dan berikan TTD Tahap 2.</li>
+  <li>☐ Tinjau penerimaan berstatus Selisih/Partial dan tindak lanjut barang susulan.</li>
+  <li>☐ Pastikan barang dengan lokasi "Unassigned" segera ditempatkan di rak.</li>
+</ul>
+<h3>Manager Logistik &amp; VP Rendalhar</h3>
+<ul>
+  <li>☐ Berikan TTD Tahap 3 / Tahap 4 pada dokumen yang menunggu.</li>
+  <li>☐ Tinjau Laporan Keluar Masuk (TUG 11) dan rekap per SPK secara berkala.</li>
+  <li>☐ Pantau item Critical melalui Critical Monitoring TUG 6.</li>
+</ul>
+<h3>Super Admin</h3>
+<ul>
+  <li>☐ Kelola akun pengguna, peran, dan TTD digital.</li>
+  <li>☐ Pantau Login &amp; Logs Audit.</li>
+  <li>☐ Perbarui master kapal &amp; Critical Spare Parts.</li>
+  <li>☐ Jadwalkan dan kelola Mode Maintenance.</li>
+</ul>
+
+<h1><span class="bab">Lampiran B</span>Glosarium</h1>
+<table>
+  <tr><th style="width:26%">Istilah</th><th>Definisi</th></tr>
+  <tr><td>Bon Pengeluaran</td><td>Dokumen bukti barang keluar dari gudang (TUG 8 Note).</td></tr>
+  <tr><td>Bon Pengembalian</td><td>Dokumen bukti barang kembali ke gudang (TUG 10).</td></tr>
+  <tr><td>Chief Engineer</td><td>Kepala bagian mesin kapal; pemohon pada TUG 5/TUG 6.</td></tr>
+  <tr><td>Consignee</td><td>Penerima kiriman.</td></tr>
+  <tr><td>Docking</td><td>Kapal berada di galangan untuk perbaikan.</td></tr>
+  <tr><td>DWT</td><td>Deadweight Tonnage — kapasitas muat kapal.</td></tr>
+  <tr><td>Maker</td><td>Pabrikan/produsen suku cadang.</td></tr>
+  <tr><td>OEM</td><td>Original Equipment Manufacturer — nomor part asli.</td></tr>
+  <tr><td>Picking</td><td>Pengambilan barang dari rak sesuai daftar.</td></tr>
+  <tr><td>Rendalhar</td><td>Bagian Pengendalian dan Pemeliharaan.</td></tr>
+  <tr><td>Running Balance</td><td>Saldo stok berjalan setelah setiap transaksi.</td></tr>
+  <tr><td>Superintendent</td><td>Pengawas teknis armada.</td></tr>
+  <tr><td>Transporter</td><td>Ekspedisi/kurir pengangkut barang.</td></tr>
+  <tr><td>Unassigned</td><td>Barang belum memiliki lokasi rak.</td></tr>
+</table>
+
+<p style="margin-top:12mm; text-align:center; color:#64748b; font-size:9pt;">— Akhir Dokumen —<br>Buku Panduan Penggunaan WMS PT. Pelayaran Bahtera Adhiguna · Versi 1.0 · Oktober 2026</p>
+
+</body>
+</html>

@@ -22,6 +22,8 @@ import { api } from "../api.js";
 interface LoginViewProps {
   onLoginSuccess: (username: string) => void;
   loading: boolean;
+  sessionExpiredNotice?: string | null;
+  onClearNotice?: () => void;
 }
 
 const BahteraCorporateLogo = () => {
@@ -42,7 +44,12 @@ const BahteraCorporateLogo = () => {
   );
 };
 
-export default function LoginView({ onLoginSuccess, loading: appLoading }: LoginViewProps) {
+export default function LoginView({ 
+  onLoginSuccess, 
+  loading: appLoading,
+  sessionExpiredNotice,
+  onClearNotice 
+}: LoginViewProps) {
   const [username, setUsername] = useState<string>("");
   const [password, setPassword] = useState<string>("");
   const [showPassword, setShowPassword] = useState<boolean>(false);
@@ -134,6 +141,36 @@ export default function LoginView({ onLoginSuccess, loading: appLoading }: Login
 
           {/* Form Area */}
           <form onSubmit={handleFormSubmit} className="p-8 space-y-5">
+
+            {/* Session Expired (AFK Inactivity) Security Notice Banner */}
+            {sessionExpiredNotice && (
+              <div 
+                className="bg-amber-50 border border-amber-300 p-3.5 rounded-xl flex items-start gap-3 text-xs text-amber-900 shadow-sm animate-fade-in"
+                role="alert"
+              >
+                <div className="w-7 h-7 rounded-lg bg-amber-500/10 border border-amber-300 flex items-center justify-center shrink-0 mt-0.5 text-amber-600">
+                  <ShieldCheck className="w-4 h-4" />
+                </div>
+                <div className="flex-1 space-y-0.5">
+                  <p className="font-bold text-[11px] uppercase tracking-wider text-amber-900 font-sans">
+                    Sesi Berakhir Otomatis (AFK 30 Menit)
+                  </p>
+                  <p className="text-[11px] text-amber-800 leading-relaxed font-sans">
+                    {sessionExpiredNotice}
+                  </p>
+                </div>
+                {onClearNotice && (
+                  <button 
+                    type="button" 
+                    onClick={onClearNotice} 
+                    className="text-amber-500 hover:text-amber-800 text-sm font-bold px-1 transition-colors cursor-pointer"
+                    title="Tutup pesan"
+                  >
+                    ✕
+                  </button>
+                )}
+              </div>
+            )}
 
             {/* Username Input */}
             <div className="space-y-1.5">

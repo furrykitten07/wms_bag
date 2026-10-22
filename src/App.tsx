@@ -59,6 +59,7 @@ import MaintenanceAdminView from "./components/MaintenanceAdminView.js";
 import ScheduledMaintenanceModal from "./components/ScheduledMaintenanceModal.js";
 import LoginAndLogsView from "./components/LoginAndLogsView.js";
 import CriticalSparePartsAdminView from "./components/CriticalSparePartsAdminView.js";
+import SessionTimeoutManager from "./components/SessionTimeoutManager.js";
 import ErrorBoundary from "./components/ErrorBoundary.js";
 import { CriticalSparePart } from "./types.js";
 import { loadCriticalSpareParts } from "./utils/criticalSpareParts.js";
@@ -69,6 +70,7 @@ export default function App() {
   const [currentTab, setCurrentTab] = useState<string>("dashboard");
   const [loading, setLoading] = useState<boolean>(true);
   const [error, setError] = useState<string | null>(null);
+  const [sessionExpiredNotice, setSessionExpiredNotice] = useState<string | null>(null);
 
   // System Maintenance Configuration State
   const [maintenanceConfig, setMaintenanceConfig] = useState<MaintenanceConfig>({
@@ -193,17 +195,31 @@ export default function App() {
       const usrList = await api.getUsers();
       setSimulatedUsers(usrList);
       
-      // Restore user session if stored in localStorage
+      // Restore user session if stored in localStorage, checking 30-minute AFK timeout
       const savedUser = localStorage.getItem("wms_username");
+      const lastActivityStr = localStorage.getItem("wms_last_activity");
+      const lastActivityNum = lastActivityStr ? parseInt(lastActivityStr, 10) : 0;
+      const isSessionTimedOut = !lastActivityNum || (Date.now() - lastActivityNum > 30 * 60 * 1000);
+
       if (savedUser) {
-        const matchedSelf = usrList.find(u => u.username === savedUser);
-        if (matchedSelf) {
-          setCurrentUser(matchedSelf);
-          setIsAuthenticated(true);
-          setCurrentUserHeader(matchedSelf.username);
-        } else {
+        if (isSessionTimedOut) {
+          // Inactivity exceeded 30 minutes -> Auto Logout and show notice
+          localStorage.removeItem("wms_username");
+          localStorage.removeItem("wms_last_activity");
           setCurrentUser(null);
           setIsAuthenticated(false);
+          setSessionExpiredNotice("Sesi Anda sebelumnya telah berakhir secara otomatis demi keamanan website & data karena tidak ada aktivitas (AFK) selama lebih dari 30 menit. Silakan login kembali.");
+        } else {
+          const matchedSelf = usrList.find(u => u.username === savedUser);
+          if (matchedSelf) {
+            setCurrentUser(matchedSelf);
+            setIsAuthenticated(true);
+            setCurrentUserHeader(matchedSelf.username);
+            localStorage.setItem("wms_last_activity", Date.now().toString());
+          } else {
+            setCurrentUser(null);
+            setIsAuthenticated(false);
+          }
         }
       } else {
         setCurrentUser(null);
@@ -323,6 +339,8 @@ export default function App() {
     setLoading(true);
     try {
       localStorage.setItem("wms_username", usernameStr);
+      localStorage.setItem("wms_last_activity", Date.now().toString());
+      setSessionExpiredNotice(null);
       setCurrentUserHeader(usernameStr);
       
       const cleanStr = usernameStr.trim().toLowerCase();
@@ -381,19 +399,30 @@ export default function App() {
     }
   };
 
-  const handleLogout = () => {
+  const handleLogout = (reason?: string) => {
+    const isTimeout = reason === "AFK_TIMEOUT_30M";
     if (currentUser) {
       api.recordAuditLog({
-        action: "LOGOUT",
+        action: isTimeout ? "LOGOUT_TIMEOUT" : "LOGOUT",
         module: "AUTH",
         operator: currentUser.name || currentUser.username,
         details: {
           username: currentUser.username,
-          role: currentUser.role
+          role: currentUser.role,
+          reason: isTimeout ? "AFK_TIMEOUT_30M (Tidak ada pergerakan/aktivitas selama 30 menit)" : (reason || "User Manual Logout"),
+          device: typeof navigator !== "undefined" ? (navigator.userAgent.includes("Windows") ? "Desktop (Windows 11 / Chrome)" : navigator.userAgent.includes("Mac") ? "Desktop (Mac)" : navigator.userAgent.includes("Android") || navigator.userAgent.includes("iPhone") ? "Mobile Device" : "Browser Web") : "Web"
         }
       }).catch(() => {});
     }
+
+    if (isTimeout) {
+      setSessionExpiredNotice("Sesi Anda telah berakhir secara otomatis demi keamanan website dan data karena tidak ada pergerakan/aktivitas (AFK) selama 30 menit. Silakan login kembali.");
+    } else {
+      setSessionExpiredNotice(null);
+    }
+
     localStorage.removeItem("wms_username");
+    localStorage.removeItem("wms_last_activity");
     setCurrentUser(null);
     setIsAuthenticated(false);
     setCurrentTab("dashboard");
@@ -999,7 +1028,14 @@ export default function App() {
 
   // Intercept and display login if unauthenticated or active user is state-null
   if (!isAuthenticated || !currentUser) {
-    return <LoginView onLoginSuccess={handleLoginSuccess} loading={loading} />;
+    return (
+      <LoginView 
+        onLoginSuccess={handleLoginSuccess} 
+        loading={loading} 
+        sessionExpiredNotice={sessionExpiredNotice}
+        onClearNotice={() => setSessionExpiredNotice(null)}
+      />
+    );
   }
 
   // Error boundary Screen
@@ -1021,6 +1057,14 @@ export default function App() {
 
   return (
     <div className="h-screen flex flex-col bg-slate-50 text-slate-850 overflow-hidden print:h-auto print:overflow-visible font-sans">
+      {/* 30-Minute AFK Inactivity Session Timeout Manager */}
+      <SessionTimeoutManager 
+        isAuthenticated={isAuthenticated}
+        currentUser={currentUser}
+        onLogout={handleLogout}
+        timeoutMs={30 * 60 * 1000} // 30 minutes
+        warningMs={2 * 60 * 1000}  // 2 minutes warning countdown
+      />
       
       {/* Main UI Layout wrapper (hides during browser print) */}
       <div className="flex-1 flex flex-col overflow-hidden no-print">
