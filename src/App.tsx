@@ -50,6 +50,7 @@ import MaterialRequestView from "./components/MaterialRequestView.js";
 import MaterialRequestTUG6View from "./components/MaterialRequestTUG6View.js";
 import MaterialReturnView from "./components/MaterialReturnView.js";
 import SparePartCatalogView from "./components/SparePartCatalogView.js";
+import StockOnWarehouseView from "./components/StockOnWarehouseView.js";
 import UsersManagementView from "./components/UsersManagementView.js";
 import SignatureManagementView from "./components/SignatureManagementView.js";
 import VesselsManagementView from "./components/VesselsManagementView.js";
@@ -1379,6 +1380,20 @@ export default function App() {
               onDeletePart={handleDeletePart}
               role={currentUser?.role}
               currentUser={currentUser}
+            />
+          )}
+
+          {/* Stock On Warehouse View */}
+          {currentTab === "stock-on-warehouse" && (
+            <StockOnWarehouseView 
+              parts={parts}
+              receivingList={receivingList}
+              dispatchList={dispatchList}
+              locations={locations}
+              spkList={spkList}
+              vessels={vessels}
+              currentUser={currentUser}
+              onNavigateTab={setCurrentTab}
             />
           )}
 

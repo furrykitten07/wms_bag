@@ -23,7 +23,8 @@ import {
   Ship,
   Wrench,
   Activity,
-  AlertOctagon
+  AlertOctagon,
+  Warehouse
 } from "lucide-react";
 import { UserRole, User } from "../types.js";
 
@@ -102,6 +103,23 @@ export default function Sidebar({
           </div>
           <span className="bg-blue-100 text-blue-700 px-1.5 py-0.5 rounded text-[9px] font-black leading-none font-mono">
             NEW
+          </span>
+        </button>
+
+        <button
+          onClick={() => setCurrentTab("stock-on-warehouse")}
+          className={`flex items-center justify-between px-3 py-2.5 rounded-md text-xs font-semibold tracking-tight transition-all duration-150 ${
+            currentTab === "stock-on-warehouse" 
+              ? "bg-white text-emerald-700 border border-slate-200 shadow-xs font-bold" 
+              : "text-slate-650 hover:bg-slate-200/70 hover:text-slate-900"
+          }`}
+        >
+          <div className="flex items-center gap-2.5">
+            <Warehouse className={`w-4 h-4 ${currentTab === "stock-on-warehouse" ? "text-emerald-600" : "text-slate-400"} shrink-0`} />
+            <span>Stock On Warehouse</span>
+          </div>
+          <span className="bg-emerald-100 text-emerald-800 px-1.5 py-0.5 rounded text-[9px] font-black leading-none font-mono">
+            LIVE
           </span>
         </button>
 
