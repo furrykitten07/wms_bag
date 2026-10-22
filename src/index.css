@@ -20,7 +20,7 @@ body {
     margin: 8mm 10mm;
   }
   
-  html, body, #root, #root > div, body > div {
+  html, body, #root, #root > div, body > div, main, main > * {
     background: white !important;
     color: black !important;
     height: auto !important;
@@ -61,6 +61,62 @@ body {
     margin: 0 !important;
     overflow: visible !important;
     box-shadow: none !important;
+  }
+
+  /* Isolate print layout for Stock On Warehouse Rekap Modal */
+  body.printing-stock-rekap-active > *:not(.stock-rekap-print-modal),
+  body:has(.stock-rekap-print-modal) > *:not(.stock-rekap-print-modal) {
+    display: none !important;
+  }
+  body.printing-stock-rekap-active #root,
+  body:has(.stock-rekap-print-modal) #root {
+    display: none !important;
+  }
+  body.printing-stock-rekap-active,
+  body:has(.stock-rekap-print-modal) {
+    background: white !important;
+    padding: 0 !important;
+    margin: 0 !important;
+  }
+  .stock-rekap-print-modal {
+    position: static !important;
+    inset: auto !important;
+    background: white !important;
+    display: block !important;
+    padding: 0 !important;
+    margin: 0 !important;
+    width: 100% !important;
+    height: auto !important;
+    min-height: auto !important;
+    max-height: none !important;
+    overflow: visible !important;
+  }
+  .stock-rekap-print-modal > div {
+    position: static !important;
+    border: none !important;
+    box-shadow: none !important;
+    width: 100% !important;
+    max-width: 100% !important;
+    height: auto !important;
+    min-height: auto !important;
+    max-height: none !important;
+    margin: 0 !important;
+    padding: 0 !important;
+    overflow: visible !important;
+    border-radius: 0 !important;
+    display: block !important;
+  }
+  #stock-rekap-printable-area {
+    position: static !important;
+    overflow: visible !important;
+    max-height: none !important;
+    height: auto !important;
+    min-height: auto !important;
+    padding: 0 !important;
+    margin: 0 !important;
+    background: white !important;
+    display: block !important;
+    width: 100% !important;
   }
 
   /* Isolate print layout for Inbound Barcode/QR Modal */

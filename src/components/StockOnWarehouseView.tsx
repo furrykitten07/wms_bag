@@ -4,6 +4,9 @@
  */
 
 import React, { useState, useMemo } from "react";
+import { createPortal } from "react-dom";
+import jsPDF from "jspdf";
+import html2canvas from "html2canvas";
 import { 
   Warehouse, 
   Package, 
@@ -35,6 +38,8 @@ import {
   FileSpreadsheet,
   FileText,
   SlidersHorizontal,
+  Loader2,
+  CheckCircle,
   X
 } from "lucide-react";
 import { 
@@ -112,6 +117,10 @@ export default function StockOnWarehouseView({
 
   // Drilldown modal for specific PO/SPK or Spare Part
   const [detailModalItem, setDetailModalItem] = useState<any | null>(null);
+
+  // Print Rekapitulasi Modal state
+  const [isRekapModalOpen, setIsRekapModalOpen] = useState<boolean>(false);
+  const [isGeneratingPDF, setIsGeneratingPDF] = useState<boolean>(false);
 
   // Toggle expand/collapse
   const toggleExpand = (key: string) => {
@@ -748,7 +757,59 @@ export default function StockOnWarehouseView({
   };
 
   const handlePrint = () => {
+    setIsRekapModalOpen(true);
+  };
+
+  const executeBrowserPrint = () => {
+    document.body.classList.add("printing-stock-rekap-active");
     window.print();
+    setTimeout(() => {
+      document.body.classList.remove("printing-stock-rekap-active");
+    }, 1000);
+  };
+
+  const handleDownloadPDF = async () => {
+    const element = document.getElementById("stock-rekap-printable-card");
+    if (!element) return;
+    setIsGeneratingPDF(true);
+    try {
+      const canvas = await html2canvas(element, {
+        scale: 2,
+        useCORS: true,
+        logging: false,
+        backgroundColor: "#ffffff"
+      } as any);
+      const imgData = canvas.toDataURL("image/png");
+      const pdf = new jsPDF({
+        orientation: "portrait",
+        unit: "mm",
+        format: "a4"
+      });
+      const pdfWidth = pdf.internal.pageSize.getWidth();
+      const pdfHeight = (canvas.height * pdfWidth) / canvas.width;
+      
+      let heightLeft = pdfHeight;
+      let position = 0;
+      const pageHeight = pdf.internal.pageSize.getHeight();
+
+      pdf.addImage(imgData, "PNG", 0, position, pdfWidth, pdfHeight);
+      heightLeft -= pageHeight;
+
+      while (heightLeft > 0) {
+        position = heightLeft - pdfHeight;
+        pdf.addPage();
+        pdf.addImage(imgData, "PNG", 0, position, pdfWidth, pdfHeight);
+        heightLeft -= pageHeight;
+      }
+
+      const dateStr = new Date().toISOString().slice(0, 10);
+      pdf.save(`REKAP_STOCK_ON_WAREHOUSE_${dateStr}.pdf`);
+    } catch (err) {
+      console.error("Gagal export PDF:", err);
+      alert("Gagal mengunduh PDF. Silakan gunakan tombol 'Cetak Sekarang' dan pilih 'Save as PDF'.");
+    } finally {
+      setIsGeneratingPDF(false);
+    }
   };
 
   return (
@@ -1598,6 +1659,313 @@ export default function StockOnWarehouseView({
         )}
 
       </div>
+
+      {/* MODAL RESMI CETAK REKAPITULASI STOK FISIK GUDANG (A4 PDF & PRINT) */}
+      {isRekapModalOpen && typeof document !== "undefined" && createPortal(
+        <div className="fixed inset-0 bg-slate-950/80 backdrop-blur-xs flex items-center justify-center z-[9999] p-2 sm:p-4 print:p-0 print:bg-white print:static print:inset-auto stock-rekap-print-modal">
+          <div className="bg-white rounded-2xl shadow-2xl border border-slate-200 w-full max-w-5xl max-h-[95vh] flex flex-col overflow-hidden print:border-none print:shadow-none print:max-w-none print:max-h-none print:w-full print:rounded-none">
+            
+            {/* Top Action Bar (Hidden on Print) */}
+            <div className="bg-slate-900 text-white px-6 py-3.5 border-b border-slate-800 flex flex-wrap items-center justify-between gap-4 no-print shrink-0">
+              <div className="flex items-center gap-3">
+                <div className="w-9 h-9 rounded-xl bg-emerald-500/20 text-emerald-400 border border-emerald-500/30 flex items-center justify-center">
+                  <Printer className="w-5 h-5" />
+                </div>
+                <div>
+                  <h3 className="text-sm font-bold tracking-wide">
+                    Cetak Rekap Ketersediaan Stok Fisik Gudang (Stock On Warehouse)
+                  </h3>
+                  <p className="text-[11px] text-slate-400">
+                    Format Resmi A4 • PT. Pelayaran Bahtera Adhiguna • Gudang Merak
+                  </p>
+                </div>
+              </div>
+
+              <div className="flex items-center gap-2">
+                <button
+                  type="button"
+                  disabled={isGeneratingPDF}
+                  onClick={handleDownloadPDF}
+                  className="px-3.5 py-1.5 bg-slate-800 hover:bg-slate-700 text-slate-200 border border-slate-700 rounded-lg text-xs font-bold flex items-center gap-1.5 transition-all cursor-pointer disabled:opacity-50"
+                  title="Unduh file dokumen dalam format PDF"
+                >
+                  {isGeneratingPDF ? (
+                    <>
+                      <Loader2 className="w-3.5 h-3.5 animate-spin text-emerald-400" />
+                      <span>Membuat PDF...</span>
+                    </>
+                  ) : (
+                    <>
+                      <Download className="w-3.5 h-3.5 text-emerald-400" />
+                      <span>Unduh PDF</span>
+                    </>
+                  )}
+                </button>
+
+                <button
+                  type="button"
+                  onClick={executeBrowserPrint}
+                  className="px-4 py-1.5 bg-emerald-600 hover:bg-emerald-500 text-white rounded-lg text-xs font-bold flex items-center gap-1.5 shadow-md shadow-emerald-900/30 transition-all cursor-pointer"
+                  title="Cetak langsung ke printer atau Simpan sebagai PDF (A4)"
+                >
+                  <Printer className="w-3.5 h-3.5" />
+                  <span>Cetak Sekarang (Print A4)</span>
+                </button>
+
+                <button
+                  type="button"
+                  onClick={() => setIsRekapModalOpen(false)}
+                  className="p-1.5 text-slate-400 hover:text-white hover:bg-slate-800 rounded-lg transition-colors cursor-pointer ml-2"
+                  title="Tutup Preview"
+                >
+                  <X className="w-5 h-5" />
+                </button>
+              </div>
+            </div>
+
+            {/* Printable Scrollable Sheet Area */}
+            <div id="stock-rekap-printable-area" className="p-4 sm:p-6 overflow-y-auto flex-1 bg-slate-100/70 print:bg-white print:p-0">
+              <div id="stock-rekap-printable-card" className="max-w-4xl mx-auto bg-white border border-slate-300 shadow-xl rounded-sm p-6 sm:p-8 md:p-10 print:p-0 print:border-none print:shadow-none print:max-w-full print:w-full">
+                
+                {/* 1. Official Letterhead */}
+                <div className="border-b-2 border-double border-slate-900 pb-3 mb-4 flex justify-between items-start">
+                  <div className="flex items-center gap-3">
+                    <img 
+                      src="/bag-logo.jpg" 
+                      alt="BAG Logo" 
+                      className="h-12 md:h-14 w-auto object-contain shrink-0" 
+                      onError={(e)=>{ (e.target as HTMLElement).style.display='none'; }} 
+                    />
+                    <div>
+                      <h1 className="font-display font-bold text-base md:text-lg leading-tight uppercase tracking-tight text-slate-950">
+                        PT. PELAYARAN BAHTERA ADHIGUNA (BAG)
+                      </h1>
+                      <p className="text-[9.5px] md:text-[10px] text-slate-600 font-mono leading-relaxed">
+                        Maritime Logistics and Spares Warehouse<br />
+                        Jl. Yos Sudarso No 193 Tanjung Sekong, Merak, Banten<br />
+                        Phone: (021) 229-099-01 • Email: warehouse.merak@bahteraadhiguna.co.id
+                      </p>
+                    </div>
+                  </div>
+                  <div className="text-right">
+                    <span className="inline-block px-2.5 py-1 bg-slate-900 text-white font-mono text-[9px] font-bold rounded uppercase tracking-wider">
+                      FORM WH-REKAP-01
+                    </span>
+                    <div className="text-[10px] text-slate-500 font-mono mt-1">
+                      ERP WMS BALANCER
+                    </div>
+                  </div>
+                </div>
+
+                {/* 2. Document Title */}
+                <div className="text-center my-4 pb-3 border-b border-slate-300">
+                  <h2 className="text-base md:text-lg font-black tracking-wide uppercase text-slate-950 font-display">
+                    LAPORAN REKAPITULASI KETERSEDIAAN STOK FISIK GUDANG
+                  </h2>
+                  <p className="text-[10.5px] font-mono text-slate-600 font-semibold uppercase mt-0.5">
+                    (REAL-TIME STOCK ON WAREHOUSE BALANCER • INBOUND RECEIVING VS OUTBOUND TUG 8)
+                  </p>
+                </div>
+
+                {/* 3. Meta Particulars */}
+                <div className="grid grid-cols-2 gap-4 border border-slate-900/80 p-3 rounded text-xs font-mono uppercase bg-slate-50/60 mb-4 print:border-slate-800">
+                  <div className="space-y-1.5 text-[10px]">
+                    <div className="flex">
+                      <span className="w-32 text-slate-500 shrink-0">Fasilitas Gudang:</span>
+                      <strong className="text-slate-950 font-bold">WAREHOUSE MERAK (WH-MERAK)</strong>
+                    </div>
+                    <div className="flex">
+                      <span className="w-32 text-slate-500 shrink-0">Tanggal Cetak:</span>
+                      <strong className="text-slate-950 font-bold">
+                        {new Date().toLocaleDateString("id-ID", { weekday: "long", year: "numeric", month: "long", day: "numeric" })}
+                      </strong>
+                    </div>
+                    <div className="flex">
+                      <span className="w-32 text-slate-500 shrink-0">Filter Armada:</span>
+                      <strong className="text-blue-900 font-bold">
+                        {selectedVessel === "all" ? "Semua Armada Kapal" : selectedVessel}
+                      </strong>
+                    </div>
+                  </div>
+                  <div className="space-y-1.5 text-[10px]">
+                    <div className="flex">
+                      <span className="w-32 text-slate-500 shrink-0">Petugas Cetak:</span>
+                      <strong className="text-slate-950 font-bold">
+                        {currentUser?.name || "MAGHFUR MUHAMMAD ALFIN"} ({currentUser?.role || "Warehouse Admin"})
+                      </strong>
+                    </div>
+                    <div className="flex">
+                      <span className="w-32 text-slate-500 shrink-0">Status Sistem:</span>
+                      <strong className="text-emerald-700 font-bold">TERVALIDASI REAL-TIME WMS</strong>
+                    </div>
+                    <div className="flex">
+                      <span className="w-32 text-slate-500 shrink-0">Dokumen PO/SPK:</span>
+                      <strong className="text-slate-950 font-bold">{summaryKPIs.activePOsWithStock} PO Aktif Tersedia</strong>
+                    </div>
+                  </div>
+                </div>
+
+                {/* 4. KPI Indicators Summary Badges */}
+                <div className="grid grid-cols-4 gap-2 mb-4 font-mono">
+                  <div className="p-2 border border-emerald-400 bg-emerald-50/60 rounded text-center">
+                    <span className="text-[9px] text-emerald-800 font-bold block uppercase">Sisa Stok Fisik Gudang</span>
+                    <strong className="text-sm md:text-base font-black text-emerald-950">{summaryKPIs.totalRemaining.toLocaleString()} Unit</strong>
+                  </div>
+                  <div className="p-2 border border-blue-400 bg-blue-50/60 rounded text-center">
+                    <span className="text-[9px] text-blue-800 font-bold block uppercase">Total Barang Masuk (In)</span>
+                    <strong className="text-sm md:text-base font-black text-blue-950">{summaryKPIs.totalInbound.toLocaleString()} Unit</strong>
+                  </div>
+                  <div className="p-2 border border-indigo-400 bg-indigo-50/60 rounded text-center">
+                    <span className="text-[9px] text-indigo-800 font-bold block uppercase">Total Terkirim (Out)</span>
+                    <strong className="text-sm md:text-base font-black text-indigo-950">{summaryKPIs.totalOutbound.toLocaleString()} Unit</strong>
+                  </div>
+                  <div className="p-2 border border-slate-400 bg-slate-50 rounded text-center">
+                    <span className="text-[9px] text-slate-700 font-bold block uppercase">PO/SPK Fisik Tersedia</span>
+                    <strong className="text-sm md:text-base font-black text-slate-950">{summaryKPIs.activePOsWithStock} Dokumen</strong>
+                  </div>
+                </div>
+
+                {/* 5. Detailed Breakdown Table (Grouped per PO/SPK) */}
+                <div className="space-y-4 mb-6">
+                  {filteredPOSPKBalances.length === 0 ? (
+                    <div className="text-center py-8 text-slate-400 text-xs font-mono border border-dashed border-slate-300 rounded">
+                      Tidak ada data stok gudang yang sesuai dengan kriteria filter saat ini.
+                    </div>
+                  ) : (
+                    filteredPOSPKBalances.map((group, gIdx) => {
+                      const availableItems = group.items.filter(i => showArchivedDispatched ? true : i.remainingStock > 0);
+                      if (availableItems.length === 0) return null;
+
+                      return (
+                        <div key={group.groupKey || gIdx} className="border border-slate-800 rounded overflow-hidden break-inside-avoid mb-3">
+                          {/* Group Banner */}
+                          <div className="bg-slate-100 border-b border-slate-800 px-3.5 py-1.5 flex flex-wrap items-center justify-between gap-2 text-xs font-mono text-slate-900">
+                            <div className="flex items-center gap-2">
+                              <span className="font-extrabold text-blue-900">
+                                PO/SPK: {group.spkNumber}
+                              </span>
+                              <span className="text-slate-400">•</span>
+                              <span className="text-slate-700 font-medium truncate max-w-xs">
+                                Vendor: {group.vendorName}
+                              </span>
+                              <span className="text-slate-400">•</span>
+                              <span className="text-indigo-900 font-bold">
+                                Kapal: {group.vesselName}
+                              </span>
+                            </div>
+                            <div className="flex items-center gap-3 text-[10.5px]">
+                              <span>Tgl Masuk: <strong>{group.receivedDate}</strong></span>
+                              <span className="px-2 py-0.5 rounded font-black text-[10px] bg-emerald-100 text-emerald-800 border border-emerald-300">
+                                Sisa Gudang: {group.totalRemaining} Unit
+                              </span>
+                            </div>
+                          </div>
+
+                          {/* Group Items Table */}
+                          <table className="w-full text-xs text-left border-collapse">
+                            <thead className="bg-slate-50 border-b border-slate-300 text-[9.5px] font-bold text-slate-700 uppercase tracking-wider">
+                              <tr>
+                                <th className="px-2 py-1.5 border-r border-slate-300 text-center w-8">#</th>
+                                <th className="px-3 py-1.5 border-r border-slate-300">NAMA SUKU CADANG</th>
+                                <th className="px-3 py-1.5 border-r border-slate-300 text-center w-28">PART NUMBER</th>
+                                <th className="px-3 py-1.5 border-r border-slate-300 w-32">LOKASI RAK</th>
+                                <th className="px-2 py-1.5 border-r border-slate-300 text-center w-16 text-blue-800">MASUK</th>
+                                <th className="px-2 py-1.5 border-r border-slate-300 text-center w-16 text-indigo-800">TERKIRIM</th>
+                                <th className="px-2 py-1.5 border-r border-slate-300 text-center w-16 text-emerald-900 font-black bg-emerald-50/50">SISA GUDANG</th>
+                                <th className="px-2 py-1.5 border-r border-slate-300 text-center w-12">STN</th>
+                                <th className="px-2 py-1.5 text-center w-20">STATUS</th>
+                              </tr>
+                            </thead>
+                            <tbody className="divide-y divide-slate-200 text-[10.5px]">
+                              {availableItems.map((itm, iIdx) => (
+                                <tr key={iIdx} className="hover:bg-slate-50/50">
+                                  <td className="px-2 py-1.5 border-r border-slate-300 text-center font-mono text-slate-500">
+                                    {iIdx + 1}
+                                  </td>
+                                  <td className="px-3 py-1.5 border-r border-slate-300 font-medium text-slate-900">
+                                    <div>{itm.partName}</div>
+                                    {itm.barcode && itm.barcode !== "-" && (
+                                      <div className="text-[9px] text-slate-400 font-mono">BC: {itm.barcode}</div>
+                                    )}
+                                  </td>
+                                  <td className="px-3 py-1.5 border-r border-slate-300 text-center font-mono text-slate-700">
+                                    {itm.partNumber || "-"}
+                                  </td>
+                                  <td className="px-3 py-1.5 border-r border-slate-300 text-slate-600 truncate max-w-[120px]">
+                                    {itm.locationName}
+                                  </td>
+                                  <td className="px-2 py-1.5 border-r border-slate-300 text-center font-mono font-bold text-blue-800">
+                                    {itm.qtyReceived}
+                                  </td>
+                                  <td className="px-2 py-1.5 border-r border-slate-300 text-center font-mono font-bold text-indigo-800">
+                                    {itm.qtyDispatched}
+                                  </td>
+                                  <td className="px-2 py-1.5 border-r border-slate-300 text-center font-mono font-black text-emerald-950 bg-emerald-50/40">
+                                    {itm.remainingStock}
+                                  </td>
+                                  <td className="px-2 py-1.5 border-r border-slate-300 text-center font-mono text-slate-600">
+                                    {itm.unit}
+                                  </td>
+                                  <td className="px-2 py-1.5 text-center font-mono text-[9.5px]">
+                                    {itm.remainingStock > 0 ? (
+                                      <span className="font-bold text-emerald-700">Tersedia</span>
+                                    ) : (
+                                      <span className="text-slate-400">Habis</span>
+                                    )}
+                                  </td>
+                                </tr>
+                              ))}
+                            </tbody>
+                          </table>
+                        </div>
+                      );
+                    })
+                  )}
+                </div>
+
+                {/* 6. Digital Signatures (Tanda Tangan Resmi Berjenjang) */}
+                <div className="pt-4 border-t-2 border-slate-900 grid grid-cols-2 gap-8 break-inside-avoid">
+                  <div className="text-center font-mono">
+                    <div className="text-[10px] text-slate-500 uppercase font-semibold">Dibuat & Diperiksa Oleh,</div>
+                    <div className="text-[11px] font-bold text-slate-900 uppercase mt-0.5">Petugas Gudang Logistik</div>
+                    <div className="h-16 flex items-center justify-center my-1.5">
+                      <div className="px-3 py-1 bg-slate-50 border border-slate-300 rounded text-[9.5px] text-slate-600 font-mono">
+                        ✓ Terverifikasi Digital Sistem WMS
+                      </div>
+                    </div>
+                    <div className="font-bold text-xs uppercase text-slate-950 border-t border-slate-400 pt-1 inline-block min-w-[180px]">
+                      Aldi Hidayat
+                    </div>
+                    <div className="text-[9.5px] text-slate-500">Petugas Gudang Merak</div>
+                  </div>
+
+                  <div className="text-center font-mono">
+                    <div className="text-[10px] text-slate-500 uppercase font-semibold">Mengetahui & Menyetujui,</div>
+                    <div className="text-[11px] font-bold text-slate-900 uppercase mt-0.5">Kepala Gudang Merak</div>
+                    <div className="h-16 flex items-center justify-center my-1.5">
+                      <div className="px-3 py-1 bg-emerald-50 border border-emerald-300 rounded text-[9.5px] text-emerald-800 font-mono font-bold">
+                        ✓ Tervalidasi Kepala Gudang
+                      </div>
+                    </div>
+                    <div className="font-bold text-xs uppercase text-slate-950 border-t border-slate-400 pt-1 inline-block min-w-[180px]">
+                      MAGHFUR MUHAMMAD ALFIN
+                    </div>
+                    <div className="text-[9.5px] text-slate-500">Kepala Gudang Merak (PT. BAG)</div>
+                  </div>
+                </div>
+
+                {/* 7. Document Security Footer */}
+                <div className="mt-6 pt-2 border-t border-slate-200 text-center text-[9px] text-slate-400 font-mono flex items-center justify-between">
+                  <span>Dicetak otomatis dari Sistem WMS PT. Pelayaran Bahtera Adhiguna</span>
+                  <span>Dokumen Rekapitulasi Fisik Stok Gudang Merak</span>
+                </div>
+
+              </div>
+            </div>
+          </div>
+        </div>,
+        document.body
+      )}
 
     </div>
   );
