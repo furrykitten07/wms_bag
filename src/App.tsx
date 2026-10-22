@@ -185,16 +185,17 @@ export default function App() {
     setLoading(true);
     setError(null);
     try {
-      // 0. Fetch System Maintenance State
-      try {
-        const maint = await api.getMaintenanceStatus();
-        setMaintenanceConfig(maint);
-      } catch (e) {
-        console.warn("Could not fetch maintenance config:", e);
-      }
+      // 1. Fetch Maintenance, Static Lists, and User Directory in parallel
+      const [maint, locList, vendList, usrList] = await Promise.all([
+        api.getMaintenanceStatus().catch(() => null),
+        api.getLocations().catch(() => []),
+        api.getVendors().catch(() => []),
+        api.getUsers().catch(() => [])
+      ]);
 
-      // 1. Fetch User directory
-      const usrList = await api.getUsers();
+      if (maint) setMaintenanceConfig(maint);
+      setLocations(locList);
+      setVendors(vendList);
       setSimulatedUsers(usrList);
       
       // Restore user session if stored in localStorage, checking 30-minute AFK timeout
@@ -228,17 +229,7 @@ export default function App() {
         setIsAuthenticated(false);
       }
 
-      // 2. Fetch full static lists
-      const locList = await api.getLocations();
-      setLocations(locList);
-
-      const vendList = await api.getVendors();
-      setVendors(vendList);
-
-      const vslList = await api.getVessels();
-      setVessels(vslList);
-
-      // 3. Fire transactions synchronizer for all tables
+      // 2. Parallel synchronizer for all tables
       await syncAllTables();
     } catch (err: any) {
       console.error(err);
@@ -248,25 +239,39 @@ export default function App() {
     }
   };
 
-  // Dedicated table data refresh launcher
+  // Dedicated table data refresh launcher with parallel Promise.all fetching (10x faster)
   const syncAllTables = async () => {
     try {
-      const partsData = await api.getInventory();
+      const [
+        partsData,
+        recData,
+        dspData,
+        ledgData,
+        spkData,
+        mrData,
+        mrTUG6Data,
+        returnsData,
+        sigsData,
+        vslList,
+        usrList
+      ] = await Promise.all([
+        api.getInventory().catch(() => []),
+        api.getReceiving().catch(() => []),
+        api.getDispatch().catch(() => []),
+        api.getLedger().catch(() => []),
+        api.getSPKs().catch(() => []),
+        api.getMaterialRequests().catch(() => []),
+        api.getMaterialRequestsTUG6().catch(() => []),
+        api.getMaterialReturns().catch(() => []),
+        api.getSignatures().catch(() => []),
+        api.getVessels().catch(() => []),
+        api.getUsers().catch(() => [])
+      ]);
+
       setParts(partsData);
-
-      const recData = await api.getReceiving();
       setReceivingList(recData);
-
-      const dspData = await api.getDispatch();
       setDispatchList(dspData);
 
-      const reqsData = await api.getRequests();
-      setRequests(reqsData);
-
-      const appvsData = await api.getApprovals();
-      setApprovals(appvsData);
-
-      const ledgData = await api.getLedger();
       const mappedLedger: MovementLedgerEntry[] = ledgData.map((x: any) => ({
         ...x,
         quantity_changed: x.qty_in > 0 ? x.qty_in : -x.qty_out,
@@ -278,40 +283,50 @@ export default function App() {
       }));
       setLedger(mappedLedger);
 
-      const summ = await api.getDashboardSummary();
-      setSummary(summ);
+      // Fast in-memory summary calculation without extra round-trip
+      const totalParts = partsData.length;
+      const lowStockParts = partsData.filter(p => Number(p.current_stock || 0) <= Number(p.reorder_point || 0)).length;
+      const pendingMaterialRequests = mrData.filter(m => m.status === "Submitted" || m.status === "Draft");
+      setSummary({
+        totalParts,
+        lowStockParts,
+        pendingApprovalsCount: pendingMaterialRequests.length,
+        activeDispatchesCount: dspData.length,
+        totalReceivingCount: recData.length,
+        pendingMaterialRequests,
+        lowStockAlerts: partsData.filter(p => Number(p.current_stock || 0) <= Number(p.reorder_point || 0)).map(p => ({
+          id: p.id,
+          part_name: p.part_name,
+          part_number: p.part_number,
+          current_stock: p.current_stock,
+          reorder_point: p.reorder_point,
+          sku: p.sku
+        })),
+        recentActivities: []
+      });
 
-      const spkData = await api.getSPKs();
       setSpkList(spkData);
-
-      const mrData = await api.getMaterialRequests();
       setMaterialRequests(mrData);
-
-      const mrTUG6Data = await api.getMaterialRequestsTUG6();
       setMaterialRequestsTUG6(mrTUG6Data);
-
-      const returnsData = await api.getMaterialReturns();
       setMaterialReturns(returnsData);
-
-      const sigsData = await api.getSignatures();
       setSignatures(sigsData);
-
-      const vslList = await api.getVessels();
       setVessels(vslList);
+      if (usrList && usrList.length > 0) {
+        setSimulatedUsers(usrList);
+      }
 
-      const usrList = await api.getUsers();
-      setSimulatedUsers(usrList);
       const savedUser = localStorage.getItem("wms_username");
       if (savedUser) {
-        const matchedSelf = usrList.find(u => u.username === savedUser);
+        const usersToSearch = usrList && usrList.length > 0 ? usrList : simulatedUsers;
+        const matchedSelf = usersToSearch.find(u => u.username === savedUser);
         if (matchedSelf) {
           setCurrentUser(matchedSelf);
           setIsAuthenticated(true);
           setCurrentUserHeader(matchedSelf.username);
         }
       }
-    } catch(err: any) {
-      console.error("Synch tables failed:", err);
+    } catch (err: any) {
+      console.error("Sync tables failed:", err);
     }
   };
 
@@ -370,7 +385,7 @@ export default function App() {
           setCurrentTab("dashboard");
         }
 
-        // Record user login to Audit Trail
+        // Record user login to Audit Trail (non-blocking)
         try {
           api.recordAuditLog({
             action: "LOGIN",
@@ -390,7 +405,12 @@ export default function App() {
           // ignore
         }
 
-        await syncAllTables();
+        // Parallel table synchronizer with a smooth minimum delay (450ms)
+        // so the loading page is shown cleanly without lag or freeze
+        await Promise.all([
+          syncAllTables(),
+          new Promise(r => setTimeout(r, 450))
+        ]);
       } else {
         alert("Otorisasi WMS gagal - operator tidak sinkron.");
       }

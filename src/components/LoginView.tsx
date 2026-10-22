@@ -79,7 +79,7 @@ export default function LoginView({
         setIsSuccessState(true);
         setTimeout(() => {
           onLoginSuccess(cleanUsername);
-        }, 750);
+        }, 400);
       } else {
         setErrorMsg("Username atau Password salah.");
         setLocalLoading(false);

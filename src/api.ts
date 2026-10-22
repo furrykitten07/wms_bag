@@ -2139,6 +2139,17 @@ async function fetcher<T>(url: string, options: RequestInit = {}): Promise<T> {
         return localVendors as any;
       }
 
+      // Fast handlers for requests, approvals, and dashboard summary to eliminate slow HTTP 404 network fetches
+      if (path.startsWith("/api/requests")) {
+        return [] as any;
+      }
+      if (path.startsWith("/api/approvals")) {
+        return [] as any;
+      }
+      if (path === "/api/dashboard/summary") {
+        return getLocalFallbackData<T>("/api/dashboard/summary", options);
+      }
+
       // --- AUTH: LOGIN ---
       if (path === "/api/auth/login" && method === "POST") {
         const inputUsername = (body.username || "").trim().toLowerCase();
