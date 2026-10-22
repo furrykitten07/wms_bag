@@ -2552,6 +2552,108 @@ export const api = {
     });
   },
 
+  async batchUpsertSpareParts(partsToUpsert: Partial<SparePart>[]): Promise<SparePart[]> {
+    if (!partsToUpsert || partsToUpsert.length === 0) return [];
+
+    const now = new Date().toISOString();
+    const barcodeCache = (() => {
+      try {
+        const s = localStorage.getItem("wms_part_barcode_cache");
+        return s ? JSON.parse(s) : {};
+      } catch {
+        return {};
+      }
+    })();
+
+    const normalizedParts: SparePart[] = partsToUpsert.map((p, idx) => {
+      const generatedBarcode = p.barcode || barcodeCache[p.id || ""] || `BC-${Math.floor(10000000 + Math.random() * 90000000)}`;
+      const isHq = String(p.location_id || p.location_name || p.remarks || "").toLowerCase().includes("pusat");
+      const locId = isHq ? "loc-kantor-pusat" : "loc-wh-merak";
+      const locName = isHq ? "KANTOR PUSAT BAG" : "WAREHOUSE MERAK";
+
+      let cleanRemarks = p.remarks || p.description || "";
+      cleanRemarks = cleanRemarks.replace(/\[BC:[^\]]+\]/g, "").replace(/\[LOC:[^\]]+\]/g, "").trim();
+      const finalRemarks = `[BC:${generatedBarcode}] [LOC:${locName}] ${cleanRemarks}`.trim();
+
+      const finalPn = (p.part_number && p.part_number !== "-") ? p.part_number : `PN-${Date.now().toString().slice(-4)}`;
+      const finalSku = p.sku || `SKU-${finalPn.replace(/[^a-zA-Z0-9]/g, "").slice(0, 10) || Date.now().toString().slice(-4)}`;
+
+      const finalPart: SparePart = {
+        id: p.id || `sp-${Date.now()}-${idx}-${Math.floor(Math.random() * 1000)}`,
+        part_name: p.part_name || "Suku Cadang Inbound",
+        part_number: finalPn,
+        sku: finalSku,
+        barcode: generatedBarcode,
+        qr_code: (p as any).qr_code || generatedBarcode,
+        unit: p.unit || "PCS",
+        category: p.category || "General Spares",
+        maker: p.maker || "OEM / Supplier",
+        brand: p.brand || "OEM",
+        minimum_stock: p.minimum_stock !== undefined ? p.minimum_stock : 2,
+        maximum_stock: p.maximum_stock !== undefined ? p.maximum_stock : 100,
+        reorder_point: p.reorder_point !== undefined ? p.reorder_point : 5,
+        current_stock: Math.max(0, Number(p.current_stock || 0)),
+        reserved_stock: p.reserved_stock !== undefined ? p.reserved_stock : 0,
+        location_id: locId,
+        location_name: locName,
+        vessel_compatibility: p.vessel_compatibility || "Semua Armada Kapal",
+        description: p.description || "",
+        remarks: finalRemarks,
+        vendor_id: (p as any).vendor_id || "v-1",
+        created_by: (p as any).created_by || "system",
+        updated_by: (p as any).updated_by || "system",
+        created_at: p.created_at || now,
+        updated_at: now
+      };
+
+      if (finalPart.id) {
+        barcodeCache[finalPart.id] = generatedBarcode;
+      }
+
+      return finalPart;
+    });
+
+    // 1. Cache barcodes immediately in localStorage
+    try {
+      localStorage.setItem("wms_part_barcode_cache", JSON.stringify(barcodeCache));
+    } catch {}
+
+    // 2. Synchronize local spare parts state in memory and localStorage
+    const currentLocal = loadLocalSpareParts();
+    const updatedMap = new Map(normalizedParts.map(p => [p.id, p]));
+    const mergedLocal = [
+      ...normalizedParts,
+      ...currentLocal.filter(p => !updatedMap.has(p.id))
+    ];
+    saveLocalSpareParts(mergedLocal);
+    localSpareParts = mergedLocal;
+
+    // 3. Supabase High-Speed Bulk Upsert
+    if (isSupabaseConfigured) {
+      try {
+        const rows = normalizedParts.map(p => sanitizeRecord(p, VALID_PART_COLUMNS));
+        const chunkSize = 100;
+        for (let i = 0; i < rows.length; i += chunkSize) {
+          const chunk = rows.slice(i, i + chunkSize);
+          const { error } = await supabase.from("spare_parts").upsert(chunk, { onConflict: "id" });
+          if (error) {
+            console.warn("Supabase batch upsert fallback:", error);
+            await Promise.allSettled(chunk.map(r => supabase.from("spare_parts").upsert([r])));
+          }
+        }
+      } catch (err) {
+        console.warn("Supabase batchUpsertSpareParts error:", err);
+      }
+    }
+
+    if (typeof window !== "undefined") {
+      window.dispatchEvent(new Event("storage"));
+      window.dispatchEvent(new Event("catalog_updated"));
+    }
+
+    return normalizedParts;
+  },
+
   // Locations & Vendors
   async getLocations(): Promise<WarehouseLocation[]> {
     return fetcher<WarehouseLocation[]>("/api/warehouse/locations");

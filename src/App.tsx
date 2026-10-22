@@ -547,6 +547,23 @@ export default function App() {
     await syncAllTables();
   };
 
+  // PARTS ACTION: BULK UPSERT (BLAZING FAST BATCH FOR INBOUND PUSH)
+  const handleBatchUpsertParts = async (partsData: Partial<SparePart>[]) => {
+    const updatedParts = await api.batchUpsertSpareParts(partsData);
+    
+    // Immediate optimistic in-memory update so the UI updates immediately
+    setParts(prev => {
+      const updatedMap = new Map(updatedParts.map(p => [p.id, p]));
+      const remaining = prev.filter(p => !updatedMap.has(p.id));
+      return [...updatedParts, ...remaining];
+    });
+
+    // Single background refresh of dependent stats without blocking UI
+    syncAllTables().catch(err => console.warn("Background sync error:", err));
+
+    return updatedParts;
+  };
+
   // PARTS ACTION: HARD PURGE
   const handleDeletePart = async (id: string) => {
     await api.deleteSparePart(id);
@@ -595,8 +612,10 @@ export default function App() {
 
   // RECEIVING ACTION: SIMULATE NEW ARRIVAL DELIVERY
   const handleAddReceiving = async (recData: Partial<InboundReceiving>) => {
-    // 1. Proactively ensure every item in the inbound receiving is registered in Spare Part Master
+    // 1. Proactively ensure every item in the inbound receiving is registered in Spare Part Master via batch upsert
     if (recData.items && Array.isArray(recData.items)) {
+      const partsToUpsert: Partial<SparePart>[] = [];
+
       for (let i = 0; i < recData.items.length; i++) {
         const itm = recData.items[i];
         if (!itm) continue;
@@ -613,11 +632,16 @@ export default function App() {
           match = parts.find(p => p.part_name?.toLowerCase() === pName.toLowerCase());
         }
 
+        const generatedBc = itm.barcode || match?.barcode || `BC-${Math.floor(10000000 + Math.random() * 90000000)}`;
+        itm.barcode = generatedBc;
+
         if (!match && (pName || pNum)) {
-          const generatedBc = itm.barcode || `BC-${Math.floor(10000000 + Math.random() * 90000000)}`;
           const cleanPn = pNum || `PN-${Date.now().toString().slice(-5)}${i + 1}`;
-          const newPartPayload: Partial<SparePart> = {
-            id: pId && !pId.startsWith("temp-") && !pId.startsWith("item-") ? pId : `sp-${Date.now()}-${i}-${Math.floor(Math.random() * 1000)}`,
+          const newPartId = pId && !pId.startsWith("temp-") && !pId.startsWith("item-") ? pId : `sp-${Date.now()}-${i}-${Math.floor(Math.random() * 1000)}`;
+          itm.spare_part_id = newPartId;
+
+          partsToUpsert.push({
+            id: newPartId,
             part_name: pName || "Suku Cadang Inbound",
             part_number: cleanPn,
             sku: itm.sku || `SKU-${cleanPn.replace(/[^a-zA-Z0-9]/g, "").slice(0, 10) || Date.now().toString().slice(-4)}`,
@@ -633,25 +657,21 @@ export default function App() {
             location_id: itm.location_id || "loc-1",
             vessel_compatibility: recData.vessel_name ? `Kapal ${recData.vessel_name}` : "Semua Armada Kapal",
             description: itm.description || itm.keeper_notes || `Suku cadang otomatis dari penerimaan Inbound PO ${recData.purchase_order_num || ""}`
-          };
-          try {
-            await handleAddPart(newPartPayload);
-            itm.spare_part_id = newPartPayload.id;
-            itm.barcode = generatedBc;
-          } catch (pErr) {
-            console.warn("Failed to auto-create spare part for inbound item:", pErr);
-          }
+          });
         } else if (match) {
-          const generatedBc = match.barcode || itm.barcode || `BC-${Math.floor(10000000 + Math.random() * 90000000)}`;
-          itm.barcode = generatedBc;
-          try {
-            await handleUpdatePart(match.id, { 
-              barcode: generatedBc,
-              part_number: (hasDistinctPn ? pNum : match.part_number)
-            });
-          } catch (uErr) {
-            console.warn("Failed to update spare part in inbound:", uErr);
-          }
+          partsToUpsert.push({
+            ...match,
+            barcode: generatedBc,
+            part_number: (hasDistinctPn ? pNum : match.part_number)
+          });
+        }
+      }
+
+      if (partsToUpsert.length > 0) {
+        try {
+          await handleBatchUpsertParts(partsToUpsert);
+        } catch (bErr) {
+          console.warn("Failed to batch upsert parts in inbound:", bErr);
         }
       }
     }
@@ -1410,6 +1430,7 @@ export default function App() {
               onAddReceiving={handleAddReceiving}
               onAddPart={handleAddPart}
               onUpdatePart={handleUpdatePart}
+              onBatchUpsertParts={handleBatchUpsertParts}
               onVerifyReceiving={handleVerifyReceiving}
               onDeleteReceiving={handleDeleteReceiving}
               onPreviewDocument={(rec) => {
