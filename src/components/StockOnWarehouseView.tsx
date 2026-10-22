@@ -69,18 +69,19 @@ interface StockOnWarehouseViewProps {
 const cleanStr = (val: any): string => 
   (val || "").toString().trim().toLowerCase().replace(/\s+/g, " ");
 
-// Generate a reliable matching key for spare parts
+const invalidPns = ["", "-", "--", "---", "none", "null", "undefined", "n/a", "na", "pn-generic", "generic", "0"];
+
+// Generate a reliable matching key for spare parts (prioritize valid ID before part number)
 export const getPartKey = (itm: any): string => {
   if (!itm) return "unknown";
-  const pn = cleanStr(itm.part_number);
-  const invalidPns = ["", "-", "--", "---", "none", "null", "undefined", "n/a", "na", "pn-generic", "generic", "0"];
-  if (pn && !invalidPns.includes(pn)) {
-    return `pn:${pn}`;
-  }
   const id = (itm.spare_part_id || itm.id || "").toString().trim();
   const isDummyId = !id || id === "-" || id.startsWith("temp-") || id.startsWith("item-") || id === "undefined" || id === "null";
   if (!isDummyId) {
     return `id:${id.toLowerCase()}`;
+  }
+  const pn = cleanStr(itm.part_number);
+  if (pn && !invalidPns.includes(pn)) {
+    return `pn:${pn}`;
   }
   const name = cleanStr(itm.spare_part_name || itm.part_name);
   if (name) {
@@ -246,7 +247,7 @@ export default function StockOnWarehouseView({
         if (!group.itemsMap.has(partKey)) {
           group.itemsMap.set(partKey, {
             partKey,
-            sparePartId: item.spare_part_id || matchedMaster?.id || `sp-${Math.random()}`,
+            sparePartId: item.spare_part_id || (item as any).id || matchedMaster?.id || `sp-${Math.random()}`,
             partName: resolvedName,
             partNumber: resolvedPn,
             unit: resolvedUnit,
@@ -271,43 +272,89 @@ export default function StockOnWarehouseView({
     (dispatchList || []).forEach(dsp => {
       if (!dsp || !dsp.items || dsp.items.length === 0) return;
 
-      const dspSPK = cleanStr(dsp.spk_number || dsp.work_order_ref);
-      const dspRef = cleanStr(dsp.request_reference);
+      // Build target references strictly from this dispatch
+      const dspRefs = new Set<string>();
+      const rawWo = cleanStr(dsp.work_order_ref);
+      const rawSpk = cleanStr(dsp.spk_number);
+      const rawReqRef = cleanStr(dsp.request_reference);
+      const rawNotes = dsp.notes || "";
+
+      if (rawWo && rawWo !== "-" && rawWo !== "null" && rawWo !== "undefined") dspRefs.add(rawWo);
+      if (rawSpk && rawSpk !== "-" && rawSpk !== "null" && rawSpk !== "undefined") dspRefs.add(rawSpk);
+      if (rawReqRef && rawReqRef !== "-" && rawReqRef !== "null" && rawReqRef !== "undefined") dspRefs.add(rawReqRef);
+
+      // Extract Inbound PO / SPK references from notes if present
+      // Examples: "Diimpor otomatis dari Inbound Receiving: P36679" or "INBOUND: P36935"
+      const m1 = rawNotes.match(/Inbound\s+Receiving:\s*([A-Za-z0-9_.\/-]+)/i);
+      if (m1 && m1[1]) dspRefs.add(cleanStr(m1[1]));
+      const m2 = rawNotes.match(/INBOUND:\s*([A-Za-z0-9_.\/-]+)/i);
+      if (m2 && m2[1]) dspRefs.add(cleanStr(m2[1]));
+      const m3 = rawNotes.match(/PO[:\s]+([A-Za-z0-9_.\/-]+)/i);
+      if (m3 && m3[1]) dspRefs.add(cleanStr(m3[1]));
+      const m4 = rawNotes.match(/SPK[:\s]+([A-Za-z0-9_.\/-]+)/i);
+      if (m4 && m4[1]) dspRefs.add(cleanStr(m4[1]));
+
       const dspTUG8 = dsp.tug8_number || dsp.dispatch_number || `TUG8-${dsp.id}`;
       const dspDate = dsp.dispatch_date || dsp.created_at || "";
       const dspVessel = dsp.vessel_name || "-";
+
+      // If dispatch does NOT have any valid PO/SPK reference, do NOT match any group
+      if (dspRefs.size === 0) return;
+
+      const refList = Array.from(dspRefs);
 
       // Match target PO / SPK groups
       groupMap.forEach(group => {
         const grpSPK = cleanStr(group.spkNumber);
         const grpPO = cleanStr(group.poNumber);
 
-        const isMatch = Boolean(
-          (grpSPK && grpSPK !== "-" && (dspSPK.includes(grpSPK) || grpSPK.includes(dspSPK) || dspRef.includes(grpSPK))) ||
-          (grpPO && grpPO !== "po-non-registered" && (dspSPK.includes(grpPO) || grpPO.includes(dspSPK) || dspRef.includes(grpPO)))
-        );
+        const isMatch = refList.some(ref => {
+          if (!ref || ref.length < 2) return false;
+          if (grpPO && grpPO !== "po-non-registered") {
+            if (ref === grpPO) return true;
+            if (ref.length >= 4 && grpPO.length >= 4 && (ref.includes(grpPO) || grpPO.includes(ref))) return true;
+          }
+          if (grpSPK && grpSPK !== "-" && grpSPK !== "null") {
+            if (ref === grpSPK) return true;
+            if (ref.length >= 4 && grpSPK.length >= 4 && (ref.includes(grpSPK) || grpSPK.includes(ref))) return true;
+          }
+          return false;
+        });
 
         if (isMatch) {
           // Deduct matching items
           dsp.items.forEach(dItem => {
             if (!dItem) return;
-            const dKey = getPartKey(dItem);
             const qtyOut = Number(dItem.qty_dispatched ?? dItem.qty_approved ?? dItem.requested_qty ?? 0);
             if (qtyOut <= 0) return;
 
-            // Find matching item in this PO/SPK
-            let targetItem = group.itemsMap.get(dKey);
+            const dId = (dItem.spare_part_id || (dItem as any).id || "").toString().trim().toLowerCase();
+            const dPn = cleanStr(dItem.part_number);
+            const dName = cleanStr(dItem.spare_part_name || (dItem as any).part_name);
+
+            // Hierarchical matching for items within the PO/SPK group:
+            // 1. By exact spare_part_id / id (if non-dummy)
+            let targetItem: any = null;
+            if (dId && !dId.startsWith("temp-") && !dId.startsWith("item-") && dId !== "-" && dId !== "null" && dId !== "undefined") {
+              targetItem = Array.from(group.itemsMap.values()).find(i => 
+                (i.sparePartId && i.sparePartId.toLowerCase() === dId) || (i.partKey === `id:${dId}`)
+              );
+            }
+
+            // 2. By distinct Part Number
+            if (!targetItem && dPn && !invalidPns.includes(dPn)) {
+              targetItem = Array.from(group.itemsMap.values()).find(i => cleanStr(i.partNumber) === dPn);
+            }
+
+            // 3. By Part Name
+            if (!targetItem && dName) {
+              targetItem = Array.from(group.itemsMap.values()).find(i => cleanStr(i.partName) === dName);
+            }
+
+            // 4. Fallback to partKey
             if (!targetItem) {
-              // Try match by part number
-              const dPn = cleanStr(dItem.part_number);
-              if (dPn && dPn !== "-") {
-                for (const itm of group.itemsMap.values()) {
-                  if (cleanStr(itm.partNumber) === dPn) {
-                    targetItem = itm;
-                    break;
-                  }
-                }
-              }
+              const dKey = getPartKey(dItem);
+              targetItem = group.itemsMap.get(dKey);
             }
 
             if (targetItem) {
