@@ -129,7 +129,7 @@ export default function PublicSparePartView({ partId, onBackToApp }: PublicSpare
                     vessel_compatibility: rec.vessel_name ? `Kapal ${rec.vessel_name}` : "Semua Armada Kapal",
                     description: itm.keeper_notes || itm.description || `Suku cadang otomatis dari Penerimaan Inbound PO ${rec.purchase_order_num || ""}`,
                     remarks: `[BC:${itm.barcode || cleanSearch}] [LOC:WAREHOUSE MERAK]`
-                  };
+                  } as SparePart;
                   break;
                 }
               }

@@ -175,7 +175,8 @@ export default function CriticalSparePartsAdminView({
     setFormPartNo(part.part_no);
     setFormCategory(part.category || "Engine Component");
     setFormEquipment(part.equipment || "Main Engine");
-    setFormLevel(part.criticality_level || "CRITICAL");
+    const lvl = (part.criticality_level === "HIGH" || part.criticality_level === "MEDIUM") ? part.criticality_level : "CRITICAL";
+    setFormLevel(lvl);
     setFormMinStock(part.min_stock ?? 1);
     setFormUnit(part.unit || "PCS");
     setFormNotes(part.notes || "");

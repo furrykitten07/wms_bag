@@ -7,6 +7,7 @@ export enum UserRole {
   SUPER_ADMIN = "Super Admin",
   KEPALA_GUDANG = "Kepala Gudang",
   WAREHOUSE_STAFF = "Petugas Gudang",
+  STAFF_GUDANG = "Petugas Gudang",
   WAREHOUSE_ADMIN = "Warehouse Admin",
   VERIFIER_RENDALHAR = "Verifikator Rendalhar",
   LOGISTICS_MANAGER = "Manager Logistik",
@@ -44,6 +45,8 @@ export interface User {
   email: string;
   role: UserRole;
   vesselName?: string; // Applicable for Vessel Crew
+  vessel_name?: string;
+  warehouse_name?: string;
   password?: string;
 }
 
@@ -119,6 +122,9 @@ export interface SparePart {
   }[];
   image_url?: string;
   description?: string;
+  remarks?: string;
+  location_name?: string;
+  unit_price?: number;
   created_by: string;
   updated_by: string;
   created_at: string;
@@ -183,10 +189,20 @@ export interface InboundReceiving {
     qc_status: "Verified" | "Rejected" | "Pending" | "Approved";
     status?: string;
     reject_reason?: string;
-    item_matched?: "Sesuai" | "Tidak Sesuai" | boolean;
+    item_matched?: "Sesuai" | "Tidak Sesuai" | boolean | string;
     qty_matched_status?: string;
     keeper_notes?: string;
     photo_url?: string;
+    barcode?: string;
+    sku?: string;
+    category?: string;
+    qty?: number;
+    quantity?: number;
+    location_id?: string;
+    description?: string;
+    maker?: string;
+    vessel_compatibility?: string;
+    vessel_name?: string;
   }>;
   status: ReceivingStatus;
   keeper_notes?: string;
@@ -404,12 +420,14 @@ export interface MaterialRequestItem {
   part_number: string;
   unit: string;
   avg_monthly_usage?: number; // Pemakaian rata-rata per bulan
-  remaining_stock: number; // Sisa Persediaan
+  remaining_stock?: number; // Sisa Persediaan
   requested_qty: number; // Permintaan
   approved_qty?: number; // Jumlah yang disetujui
   unit_price?: number; // Harga satuan
   notes?: string; // Keterangan
   item_status?: "Arrived" | "Pending" | "Returned"; // Status kedatangan barang
+  is_critical?: boolean;
+  critical_info?: Partial<CriticalSparePart>;
 }
 
 export interface MaterialRequest {
@@ -487,6 +505,8 @@ export interface MaterialReturnItem {
   requested_qty?: number;
   item_status?: "Arrived" | "Pending" | "Returned";
   notes?: string;
+  return_reason?: string;
+  condition?: string;
 }
 
 export interface MaterialReturn {
@@ -502,6 +522,7 @@ export interface MaterialReturn {
   work_order_ref?: string;
   dispatch_reference?: string; // TUG 8 dispatch reference
   return_reason?: string;
+  remarks?: string;
   notes?: string;
   status: MaterialReturnStatus;
   items: MaterialReturnItem[];
@@ -568,7 +589,7 @@ export interface CriticalSparePart {
   part_no: string;
   category?: string; // e.g. "Engine Component", "Bearing", "Gasket & Seal", "Piston & Ring", "Fuel Injection", etc.
   equipment?: string; // e.g. "Main Engine", "Auxiliary Engine", "Generator", "Piping & Valves"
-  criticality_level?: "CRITICAL" | "HIGH" | "MEDIUM";
+  criticality_level?: "CRITICAL" | "HIGH" | "MEDIUM" | "NORMAL" | string;
   min_stock?: number;
   unit?: string;
   notes?: string;

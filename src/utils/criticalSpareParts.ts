@@ -181,7 +181,7 @@ export interface SPKCriticalComparisonItem {
   part_name: string;
   part_number: string;
   unit: string;
-  critical_info: CriticalSparePart;
+  critical_info?: Partial<CriticalSparePart>;
   match_reason: string;
   is_critical?: boolean;
   // TUG 5 Info
@@ -255,6 +255,9 @@ export function matchCriticalPartsForSPK(
           part_number: (isCritical && matchedCritical?.part_no && matchedCritical.part_no !== "-") ? matchedCritical.part_no : cleanPN,
           unit: item.unit || matchedCritical?.unit || "PCS",
           critical_info: matchedCritical || {
+            id: `crit-reg-${key}`,
+            part_name: (item.spare_part_name || "Suku Cadang"),
+            part_no: cleanPN,
             category: "Reguler",
             equipment: "-",
             criticality_level: "NORMAL",
@@ -304,6 +307,9 @@ export function matchCriticalPartsForSPK(
           part_number: (isCritical && matchedCritical?.part_no && matchedCritical.part_no !== "-") ? matchedCritical.part_no : cleanPN,
           unit: item.unit || matchedCritical?.unit || "PCS",
           critical_info: matchedCritical || {
+            id: `crit-reg-${key}`,
+            part_name: (item.spare_part_name || "Suku Cadang"),
+            part_no: cleanPN,
             category: "Reguler",
             equipment: "-",
             criticality_level: "NORMAL",

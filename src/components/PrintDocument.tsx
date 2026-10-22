@@ -381,7 +381,7 @@ export default function PrintDocument({
         logging: false,
         backgroundColor: "#ffffff",
         windowWidth: 794
-      });
+      } as any);
 
       // Generate multi-page A4 PDF using jsPDF
       const pdf = new jsPDF({

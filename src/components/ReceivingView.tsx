@@ -403,6 +403,8 @@ export default function ReceivingView({
     location_id?: string;
     current_stock?: number;
     description?: string;
+    maker?: string;
+    vessel_compatibility?: string;
   }) => {
     try {
       const generatedBarcode = part.barcode || `BC-${Math.floor(10000000 + Math.random() * 90000000)}`;

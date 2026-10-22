@@ -58,6 +58,7 @@ export interface CatalogItem {
   location_id?: string;
   location_name?: string;
   reorder_point?: number;
+  category?: string;
 }
 
 interface SparePartCatalogViewProps {
@@ -353,7 +354,7 @@ export default function SparePartCatalogView({
               location_id: itm.location_id || "loc-1",
               vessel_compatibility: rec.vessel_name ? `Kapal ${rec.vessel_name}` : "Semua Armada Kapal",
               description: itm.keeper_notes || itm.description || `Suku cadang otomatis dari Penerimaan Inbound PO ${rec.purchase_order_num || ""}`
-            };
+            } as SparePart;
 
             combinedParts.push(syntheticPart);
             existingIds.add(fallbackId);
@@ -782,6 +783,7 @@ export default function SparePartCatalogView({
         barcode: newBarcode.trim(),
         unit: newUnit,
         category: newSystem.trim(),
+        description: newDescription.trim() || `${newPartName.trim()} — Terdaftar via Catalog Sparepart.`,
         current_stock: initialStockNum,
         location_id: finalLocationId,
         location_name: newLocationChoice,

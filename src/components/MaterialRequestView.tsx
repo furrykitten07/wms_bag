@@ -49,7 +49,8 @@ import {
   Layers,
   Check,
   ExternalLink,
-  Plus
+  Plus,
+  Sparkles
 } from "lucide-react";
 import { 
   User as UserType, 
@@ -192,6 +193,7 @@ export default function MaterialRequestView({
   const [workOrderRef, setWorkOrderRef] = useState<string>("");
   const [accountCode, setAccountCode] = useState<string>("BPP");
   const [functionCode, setFunctionCode] = useState<string>("ARMADA");
+  const [remarks, setRemarks] = useState<string>("");
   const [formItems, setFormItems] = useState<Partial<MaterialRequestItem>[]>([]);
 
   const vesselOptions = useMemo(() => {

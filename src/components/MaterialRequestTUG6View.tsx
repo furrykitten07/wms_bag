@@ -303,8 +303,8 @@ export default function MaterialRequestTUG6View({
       const matchSearch =
         item.part_name.toLowerCase().includes(q) ||
         item.part_number.toLowerCase().includes(q) ||
-        (item.critical_info.category && item.critical_info.category.toLowerCase().includes(q)) ||
-        (item.critical_info.equipment && item.critical_info.equipment.toLowerCase().includes(q));
+        (item.critical_info?.category && item.critical_info.category.toLowerCase().includes(q)) ||
+        (item.critical_info?.equipment && item.critical_info.equipment.toLowerCase().includes(q));
 
       if (!matchSearch) return false;
 
@@ -3286,10 +3286,10 @@ export default function MaterialRequestTUG6View({
                                   {/* Kategori & Mesin */}
                                   <td className="py-3 px-3">
                                     <div className="font-semibold text-slate-800 text-[11px]">
-                                      {item.critical_info.category || "General Critical"}
+                                      {item.critical_info?.category || (item.is_critical ? "General Critical" : "Reguler")}
                                     </div>
                                     <div className="text-[10px] text-slate-500 font-mono">
-                                      {item.critical_info.equipment || "-"}
+                                      {item.critical_info?.equipment || "-"}
                                     </div>
                                   </td>
 
@@ -3351,7 +3351,7 @@ export default function MaterialRequestTUG6View({
                                   {/* Alasan Kritis / Justifikasi */}
                                   <td className="py-3 px-4 text-slate-600 text-[11px] leading-relaxed max-w-xs">
                                     {item.is_critical 
-                                      ? (item.critical_info.notes || item.match_reason || "Komponen vital operasional kapal & sistem armada maritim.")
+                                      ? (item.critical_info?.notes || item.match_reason || "Komponen vital operasional kapal & sistem armada maritim.")
                                       : (item.match_reason || "Suku cadang reguler SPK")}
                                   </td>
                                 </tr>
@@ -3396,15 +3396,15 @@ export default function MaterialRequestTUG6View({
                         idx + 1,
                         `"${item.part_name.replace(/"/g, '""')}"`,
                         `"${item.part_number.replace(/"/g, '""')}"`,
-                        `"${(item.critical_info.category || "").replace(/"/g, '""')}"`,
-                        `"${(item.critical_info.equipment || "").replace(/"/g, '""')}"`,
+                        `"${(item.critical_info?.category || (item.is_critical ? "General Critical" : "Reguler")).replace(/"/g, '""')}"`,
+                        `"${(item.critical_info?.equipment || "-").replace(/"/g, '""')}"`,
                         item.tug5_qty,
                         `"${(item.tug5_request_numbers || []).join("; ")}"`,
                         item.tug6_qty,
                         `"${(item.tug6_request_numbers || []).join("; ")}"`,
                         `"${item.unit}"`,
                         `"${item.fulfillment_status}"`,
-                        `"${((item.critical_info.notes || item.match_reason || "") as string).replace(/"/g, '""')}"`
+                        `"${((item.critical_info?.notes || item.match_reason || "") as string).replace(/"/g, '""')}"`
                       ]);
                       const csvContent = "data:text/csv;charset=utf-8," + [headers.join(","), ...rows.map(e => e.join(","))].join("\n");
                       const encodedUri = encodeURI(csvContent);

@@ -429,7 +429,7 @@ function ensureSparePartsFromInboundItems(
         remarks: `[BC:${generatedBarcode}] [LOC:WAREHOUSE MERAK] ${itm.description || itm.keeper_notes || ''}`.trim(),
         created_at: new Date().toISOString(),
         updated_at: new Date().toISOString()
-      };
+      } as SparePart;
 
       localSpareParts = [newPart, ...localSpareParts];
       partsChanged = true;
@@ -2518,7 +2518,7 @@ export const api = {
                   vessel_compatibility: rec.vessel_name ? `Kapal ${rec.vessel_name}` : "Semua Armada Kapal",
                   description: itm.keeper_notes || itm.description || `Suku cadang otomatis dari Penerimaan Inbound PO ${rec.purchase_order_num || ""}`,
                   remarks: `[BC:${itm.barcode || clean}] [LOC:WAREHOUSE MERAK]`
-                };
+                } as SparePart;
                 return synthetic;
               }
             }
