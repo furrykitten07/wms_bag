@@ -22,9 +22,11 @@ import {
   Anchor,
   Eye,
   ChevronDown,
-  AlertTriangle
+  AlertTriangle,
+  History
 } from "lucide-react";
-import { SparePart, WarehouseLocation, Vendor, UserRole } from "../types.js";
+import { SparePart, WarehouseLocation, Vendor, UserRole, InboundReceiving, MovementLedgerEntry } from "../types.js";
+import SparePartLogModal from "./SparePartLogModal.js";
 
 interface MasterPartsViewProps {
   parts: SparePart[];
@@ -39,6 +41,8 @@ interface MasterPartsViewProps {
   onAddLocation?: (loc: Partial<WarehouseLocation>) => Promise<any>;
   onUpdateLocation?: (id: string, loc: Partial<WarehouseLocation>) => Promise<any>;
   onDeleteLocation?: (id: string) => Promise<any>;
+  receivingList?: InboundReceiving[];
+  ledger?: MovementLedgerEntry[];
 }
 
 export default function MasterPartsView({
@@ -54,6 +58,8 @@ export default function MasterPartsView({
   onAddLocation,
   onUpdateLocation,
   onDeleteLocation,
+  receivingList = [],
+  ledger = []
 }: MasterPartsViewProps) {
   // Filters state
   const [search, setSearch] = useState("");
@@ -86,6 +92,7 @@ export default function MasterPartsView({
 
   // Part Modals state
   const [selectedViewPart, setSelectedViewPart] = useState<SparePart | null>(null);
+  const [selectedLogPart, setSelectedLogPart] = useState<SparePart | null>(null);
   const [activeActionId, setActiveActionId] = useState<string | null>(null);
   const [isPartModalOpen, setIsPartModalOpen] = useState(false);
   const [editingPart, setEditingPart] = useState<SparePart | null>(null);
@@ -509,6 +516,19 @@ export default function MasterPartsView({
                                       >
                                         <Eye className="w-3.5 h-3.5 text-blue-500" />
                                         <span>View Details</span>
+                                      </button>
+
+                                      <button
+                                        type="button"
+                                        onClick={(e) => {
+                                          e.stopPropagation();
+                                          setActiveActionId(null);
+                                          setSelectedLogPart(part);
+                                        }}
+                                        className="w-full px-4 py-2 text-xs font-semibold hover:bg-slate-100 text-slate-800 flex items-center gap-2 cursor-pointer transition-colors text-left"
+                                      >
+                                        <History className="w-3.5 h-3.5 text-slate-600" />
+                                        <span>Lihat Log &amp; Riwayat</span>
                                       </button>
                                       
                                       <button
@@ -1659,6 +1679,16 @@ export default function MasterPartsView({
           </div>
         );
       })()}
+
+      {/* Minimalist Spare Part Log & History Modal */}
+      <SparePartLogModal 
+        isOpen={Boolean(selectedLogPart)}
+        onClose={() => setSelectedLogPart(null)}
+        part={selectedLogPart}
+        receivingList={receivingList}
+        ledger={ledger}
+        locations={locations}
+      />
 
     </div>
   );

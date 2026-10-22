@@ -1363,6 +1363,8 @@ export default function App() {
               onAddLocation={handleAddLocation}
               onUpdateLocation={handleUpdateLocation}
               onDeleteLocation={handleDeleteLocation}
+              receivingList={receivingList}
+              ledger={ledger}
             />
           )}
 
