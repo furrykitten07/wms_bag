@@ -23,10 +23,25 @@ import {
   Eye,
   ChevronDown,
   AlertTriangle,
-  History
+  History,
+  Truck,
+  Phone,
+  Mail,
+  Copy,
+  Check,
+  FileText,
+  LayoutGrid,
+  ListFilter,
+  CheckCircle2,
+  ShieldCheck,
+  User,
+  ExternalLink,
+  ArrowUpDown,
+  RotateCcw
 } from "lucide-react";
 import { SparePart, WarehouseLocation, Vendor, UserRole, InboundReceiving, MovementLedgerEntry } from "../types.js";
 import SparePartLogModal from "./SparePartLogModal.js";
+import { api } from "../api.js";
 
 interface MasterPartsViewProps {
   parts: SparePart[];
@@ -37,12 +52,59 @@ interface MasterPartsViewProps {
   onUpdatePart: (id: string, part: Partial<SparePart>) => Promise<any>;
   onDeletePart: (id: string) => Promise<any>;
   onAddVendor: (v: Partial<Vendor>) => Promise<any>;
+  onUpdateVendor?: (id: string, v: Partial<Vendor>) => Promise<any>;
+  onDeleteVendor?: (id: string) => Promise<any>;
   onExportStockReport: () => void;
   onAddLocation?: (loc: Partial<WarehouseLocation>) => Promise<any>;
   onUpdateLocation?: (id: string, loc: Partial<WarehouseLocation>) => Promise<any>;
   onDeleteLocation?: (id: string) => Promise<any>;
   receivingList?: InboundReceiving[];
   ledger?: MovementLedgerEntry[];
+}
+
+// Vendor visual theme helpers
+const VENDOR_GRADIENTS = [
+  { gradient: "from-blue-600 to-indigo-700", ring: "ring-blue-200", badge: "bg-blue-50 text-blue-700 border-blue-200" },
+  { gradient: "from-cyan-600 to-blue-700", ring: "ring-cyan-200", badge: "bg-cyan-50 text-cyan-700 border-cyan-200" },
+  { gradient: "from-emerald-600 to-teal-700", ring: "ring-emerald-200", badge: "bg-emerald-50 text-emerald-700 border-emerald-200" },
+  { gradient: "from-purple-600 to-indigo-700", ring: "ring-purple-200", badge: "bg-purple-50 text-purple-700 border-purple-200" },
+  { gradient: "from-amber-600 to-orange-700", ring: "ring-amber-200", badge: "bg-amber-50 text-amber-800 border-amber-200" },
+  { gradient: "from-rose-600 to-red-700", ring: "ring-rose-200", badge: "bg-rose-50 text-rose-700 border-rose-200" },
+  { gradient: "from-slate-700 to-slate-900", ring: "ring-slate-300", badge: "bg-slate-100 text-slate-700 border-slate-200" },
+];
+
+function getVendorStyle(name: string) {
+  let hash = 0;
+  for (let i = 0; i < (name || "").length; i++) {
+    hash = name.charCodeAt(i) + ((hash << 5) - hash);
+  }
+  const idx = Math.abs(hash) % VENDOR_GRADIENTS.length;
+  return VENDOR_GRADIENTS[idx];
+}
+
+function getVendorInitials(name: string) {
+  if (!name) return "VN";
+  const clean = name.replace(/^PT\.?\s+/i, "").replace(/^CV\.?\s+/i, "").replace(/^UD\.?\s+/i, "").trim();
+  const parts = clean.split(/\s+/).filter(Boolean);
+  if (parts.length >= 2) {
+    return (parts[0][0] + parts[1][0]).toUpperCase();
+  }
+  return clean.slice(0, 2).toUpperCase();
+}
+
+function formatVendorDate(isoString?: string): string {
+  if (!isoString) return "-";
+  try {
+    const d = new Date(isoString);
+    if (isNaN(d.getTime())) return isoString;
+    return d.toLocaleDateString("id-ID", {
+      day: "numeric",
+      month: "short",
+      year: "numeric"
+    });
+  } catch {
+    return isoString;
+  }
 }
 
 export default function MasterPartsView({
@@ -54,6 +116,8 @@ export default function MasterPartsView({
   onUpdatePart,
   onDeletePart,
   onAddVendor,
+  onUpdateVendor,
+  onDeleteVendor,
   onExportStockReport,
   onAddLocation,
   onUpdateLocation,
@@ -78,17 +142,146 @@ export default function MasterPartsView({
   // Active view tab inside parts panel
   const [viewSubTab, setViewSubTab] = useState<"parts" | "vendors" | "locations">("parts");
   const [vendorSearch, setVendorSearch] = useState("");
+  const [vendorFilter, setVendorFilter] = useState<"all" | "inbound" | "has_parts" | "complete" | "incomplete">("all");
+  const [vendorSort, setVendorSort] = useState<"name_asc" | "name_desc" | "inbound_desc" | "parts_desc">("name_asc");
+  const [vendorViewMode, setVendorViewMode] = useState<"cards" | "table">("cards");
+  const [isVendorModalOpen, setIsVendorModalOpen] = useState(false);
+  const [editingVendor, setEditingVendor] = useState<Vendor | null>(null);
+  const [selectedVendorDetail, setSelectedVendorDetail] = useState<Vendor | null>(null);
+  const [vendorDetailTab, setVendorDetailTab] = useState<"inbound" | "parts">("inbound");
+  const [copiedKey, setCopiedKey] = useState<string | null>(null);
+  const [isSubmittingVendor, setIsSubmittingVendor] = useState(false);
+  const [vendorForm, setVendorForm] = useState<Partial<Vendor>>({
+    name: "",
+    code: "",
+    email: "",
+    phone: "",
+    address: "",
+    contactPerson: "",
+  });
 
-  const filteredVendors = useMemo(() => {
-    if (!vendorSearch.trim()) return vendors;
-    const q = vendorSearch.trim().toLowerCase();
-    return vendors.filter(v => 
-      v.name.toLowerCase().includes(q) || 
-      (v.code && v.code.toLowerCase().includes(q)) ||
-      ((v.contactPerson || (v as any).contact_person) && (v.contactPerson || (v as any).contact_person).toLowerCase().includes(q)) ||
-      (v.address && v.address.toLowerCase().includes(q))
-    );
-  }, [vendors, vendorSearch]);
+  // Pre-calculate inbound and part relationships for each vendor
+  const vendorStats = useMemo(() => {
+    const statsMap = new Map<string, { 
+      inboundCount: number; 
+      partsCount: number; 
+      inboundDocs: InboundReceiving[]; 
+      linkedParts: SparePart[];
+      isOEM: boolean;
+      isComplete: boolean;
+    }>();
+
+    const oemKeywords = ["wartsila", "wärtsilä", "man energy", "nagasaki", "yanmar", "daihatsu", "caterpillar", "alfa laval", "cummins", "mitsubishi", "komatsu"];
+
+    vendors.forEach(v => {
+      const vNameNorm = (v.name || "").trim().toLowerCase();
+      const vId = v.id;
+
+      // Inbound matching
+      const matchingInbounds = receivingList.filter(r => {
+        if (r.vendor_id && r.vendor_id === vId) return true;
+        if (r.vendor_name && vNameNorm && r.vendor_name.trim().toLowerCase() === vNameNorm) return true;
+        return false;
+      });
+
+      // Linked parts matching
+      const matchingParts = parts.filter(p => {
+        if (p.vendor_id && p.vendor_id === vId) return true;
+        if (vNameNorm) {
+          if (p.maker && (p.maker.toLowerCase().includes(vNameNorm) || vNameNorm.includes(p.maker.toLowerCase()))) return true;
+          if (p.brand && (p.brand.toLowerCase().includes(vNameNorm) || vNameNorm.includes(p.brand.toLowerCase()))) return true;
+        }
+        return false;
+      });
+
+      const isOEM = oemKeywords.some(k => vNameNorm.includes(k));
+      const email = (v.email || "").trim();
+      const phone = (v.phone || "").trim();
+      const hasEmail = Boolean(email && email !== "-" && email.includes("@"));
+      const hasPhone = Boolean(phone && phone !== "-" && phone.length > 5);
+
+      statsMap.set(v.id, {
+        inboundCount: matchingInbounds.length,
+        partsCount: matchingParts.length,
+        inboundDocs: matchingInbounds,
+        linkedParts: matchingParts,
+        isOEM,
+        isComplete: hasEmail && hasPhone
+      });
+    });
+
+    return statsMap;
+  }, [vendors, receivingList, parts]);
+
+  const vendorKpis = useMemo(() => {
+    let activeInboundCount = 0;
+    let totalInboundDocs = 0;
+    let totalLinkedParts = 0;
+    let completeCount = 0;
+
+    vendors.forEach(v => {
+      const s = vendorStats.get(v.id);
+      if (s) {
+        if (s.inboundCount > 0) activeInboundCount++;
+        totalInboundDocs += s.inboundCount;
+        totalLinkedParts += s.partsCount;
+        if (s.isComplete) completeCount++;
+      }
+    });
+
+    return {
+      totalVendors: vendors.length,
+      activeInboundCount,
+      totalInboundDocs,
+      totalLinkedParts,
+      completeCount,
+      incompleteCount: vendors.length - completeCount
+    };
+  }, [vendors, vendorStats]);
+
+  const filteredAndSortedVendors = useMemo(() => {
+    let result = vendors;
+
+    if (vendorSearch.trim()) {
+      const q = vendorSearch.trim().toLowerCase();
+      result = result.filter(v => 
+        (v.name && v.name.toLowerCase().includes(q)) || 
+        (v.code && v.code.toLowerCase().includes(q)) ||
+        ((v.contactPerson || (v as any).contact_person) && (v.contactPerson || (v as any).contact_person).toLowerCase().includes(q)) ||
+        (v.address && v.address.toLowerCase().includes(q)) ||
+        (v.email && v.email.toLowerCase().includes(q)) ||
+        (v.phone && v.phone.toLowerCase().includes(q))
+      );
+    }
+
+    if (vendorFilter === "inbound") {
+      result = result.filter(v => (vendorStats.get(v.id)?.inboundCount || 0) > 0);
+    } else if (vendorFilter === "has_parts") {
+      result = result.filter(v => (vendorStats.get(v.id)?.partsCount || 0) > 0);
+    } else if (vendorFilter === "complete") {
+      result = result.filter(v => vendorStats.get(v.id)?.isComplete);
+    } else if (vendorFilter === "incomplete") {
+      result = result.filter(v => !vendorStats.get(v.id)?.isComplete);
+    }
+
+    return [...result].sort((a, b) => {
+      if (vendorSort === "name_asc") return a.name.localeCompare(b.name);
+      if (vendorSort === "name_desc") return b.name.localeCompare(a.name);
+      if (vendorSort === "inbound_desc") {
+        const aCount = vendorStats.get(a.id)?.inboundCount || 0;
+        const bCount = vendorStats.get(b.id)?.inboundCount || 0;
+        return bCount - aCount;
+      }
+      if (vendorSort === "parts_desc") {
+        const aCount = vendorStats.get(a.id)?.partsCount || 0;
+        const bCount = vendorStats.get(b.id)?.partsCount || 0;
+        return bCount - aCount;
+      }
+      return 0;
+    });
+  }, [vendors, vendorSearch, vendorFilter, vendorSort, vendorStats]);
+
+  const filteredVendors = filteredAndSortedVendors;
 
   // Location Modals state
   const [isLocationModalOpen, setIsLocationModalOpen] = useState(false);
@@ -128,16 +321,6 @@ export default function MasterPartsView({
     description: "",
   });
 
-  // Vendor Modal State
-  const [isVendorModalOpen, setIsVendorModalOpen] = useState(false);
-  const [vendorForm, setVendorForm] = useState<Partial<Vendor>>({
-    name: "",
-    code: "",
-    email: "",
-    phone: "",
-    address: "",
-    contactPerson: "",
-  });
 
   // Category array definitions
   const categories = [
@@ -205,16 +388,85 @@ export default function MasterPartsView({
     }
   };
 
+  const handleOpenAddVendorModal = () => {
+    setEditingVendor(null);
+    setVendorForm({
+      name: "",
+      code: `VND-${Math.floor(100 + Math.random() * 900)}`,
+      email: "",
+      phone: "",
+      address: "",
+      contactPerson: "",
+    });
+    setIsVendorModalOpen(true);
+  };
+
+  const handleOpenEditVendorModal = (v: Vendor) => {
+    setEditingVendor(v);
+    setVendorForm({
+      name: v.name,
+      code: v.code || "",
+      email: (v.email && v.email !== "-") ? v.email : "",
+      phone: (v.phone && v.phone !== "-") ? v.phone : "",
+      address: (v.address && v.address !== "Kantor / Gudang Mitra" && v.address !== "-") ? v.address : "",
+      contactPerson: (v.contactPerson || (v as any).contact_person) !== "PIC Logistik & Supplier" ? (v.contactPerson || (v as any).contact_person || "") : "",
+    });
+    setIsVendorModalOpen(true);
+  };
+
+  const handleDeleteVendorAction = async (v: Vendor) => {
+    if (!window.confirm(`Apakah Anda yakin ingin menghapus vendor "${v.name}"? Data yang sudah terhubung dengan dokumen penerimaan mungkin terpengaruh.`)) {
+      return;
+    }
+    try {
+      if (onDeleteVendor) {
+        await onDeleteVendor(v.id);
+      } else {
+        await api.deleteVendor(v.id);
+      }
+    } catch (err: any) {
+      alert("Gagal menghapus vendor: " + (err.message || err));
+    }
+  };
+
+  const handleCopy = (text: string, key: string) => {
+    if (!text || text === "-") return;
+    navigator.clipboard.writeText(text);
+    setCopiedKey(key);
+    setTimeout(() => setCopiedKey(null), 2000);
+  };
+
   const submitVendorForm = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!vendorForm.name) {
-      alert("Supplier / Vendor Name is required!");
+    if (!vendorForm.name?.trim()) {
+      alert("Nama Perusahaan / Vendor wajib diisi!");
       return;
     }
 
+    setIsSubmittingVendor(true);
     try {
-      await onAddVendor(vendorForm);
+      const payload: Partial<Vendor> = {
+        name: vendorForm.name.trim(),
+        code: vendorForm.code?.trim() || `VND-${vendorForm.name.replace(/[^A-Za-z0-9]/g, "").slice(0, 3).toUpperCase()}-${Math.floor(10 + Math.random() * 90)}`,
+        contactPerson: vendorForm.contactPerson?.trim() || "PIC Logistik & Supplier",
+        contact_person: vendorForm.contactPerson?.trim() || "PIC Logistik & Supplier",
+        email: vendorForm.email?.trim() || "-",
+        phone: vendorForm.phone?.trim() || "-",
+        address: vendorForm.address?.trim() || "Kantor / Gudang Mitra"
+      };
+
+      if (editingVendor) {
+        if (onUpdateVendor) {
+          await onUpdateVendor(editingVendor.id, payload);
+        } else {
+          await api.updateVendor(editingVendor.id, payload);
+        }
+      } else {
+        await onAddVendor(payload);
+      }
+
       setIsVendorModalOpen(false);
+      setEditingVendor(null);
       setVendorForm({
         name: "",
         code: "",
@@ -224,7 +476,9 @@ export default function MasterPartsView({
         contactPerson: "",
       });
     } catch (err: any) {
-      alert(err.message || "Failed to register vendor");
+      alert("Gagal menyimpan vendor: " + (err.message || "Unknown error"));
+    } finally {
+      setIsSubmittingVendor(false);
     }
   };
 
@@ -625,77 +879,569 @@ export default function MasterPartsView({
 
       {/* VIEW: VENDORS REGISTER */}
       {viewSubTab === "vendors" && (
-        <div className="flex flex-col gap-6">
-          <section className="bg-white border border-slate-200 p-4 rounded-md shadow-xs flex flex-col sm:flex-row justify-between items-start sm:items-center gap-3 no-print">
-            <div>
-              <h3 className="font-bold font-display text-xs text-slate-750 uppercase tracking-wider">
-                Supplier Register ({filteredVendors.length} / {vendors.length})
-              </h3>
-              <p className="text-[10px] text-slate-500 font-mono mt-0.5">
-                Active port and manufacturer provisioning representatives
-              </p>
+        <div className="flex flex-col gap-6 animate-fade-in">
+          {/* TOP METRIC CARDS */}
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 no-print">
+            {/* Card 1: Total Mitra */}
+            <div className="bg-white border border-slate-200 rounded-xl p-4 shadow-xs relative overflow-hidden flex items-center gap-3.5 hover:shadow-sm transition-shadow">
+              <div className="w-12 h-12 rounded-xl bg-gradient-to-br from-blue-500 to-indigo-600 flex items-center justify-center text-white shadow-sm shrink-0">
+                <Building2 className="w-6 h-6" />
+              </div>
+              <div className="min-w-0">
+                <div className="text-[11px] font-bold text-slate-500 uppercase tracking-wider font-mono">Total Mitra Vendor</div>
+                <div className="text-2xl font-bold font-display text-slate-900 mt-0.5">{vendorKpis.totalVendors} <span className="text-xs font-normal text-slate-500">Perusahaan</span></div>
+                <div className="text-[10px] text-slate-500 truncate mt-0.5">Direktori resmi mitra logistik &amp; armada</div>
+              </div>
             </div>
-            <div className="flex items-center gap-3 w-full sm:w-auto">
-              <div className="relative flex-1 sm:w-64">
-                <Search className="absolute left-2.5 top-2.5 h-3.5 w-3.5 text-slate-400" />
+
+            {/* Card 2: Mitra Inbound Aktif */}
+            <div className="bg-white border border-slate-200 rounded-xl p-4 shadow-xs relative overflow-hidden flex items-center gap-3.5 hover:shadow-sm transition-shadow">
+              <div className="w-12 h-12 rounded-xl bg-gradient-to-br from-emerald-500 to-teal-600 flex items-center justify-center text-white shadow-sm shrink-0">
+                <Truck className="w-6 h-6" />
+              </div>
+              <div className="min-w-0">
+                <div className="text-[11px] font-bold text-slate-500 uppercase tracking-wider font-mono">Mitra Inbound Aktif</div>
+                <div className="text-2xl font-bold font-display text-emerald-600 mt-0.5">{vendorKpis.activeInboundCount} <span className="text-xs font-normal text-slate-500">Vendor</span></div>
+                <div className="text-[10px] text-slate-500 truncate mt-0.5">{vendorKpis.totalInboundDocs} dokumen penerimaan tercatat</div>
+              </div>
+            </div>
+
+            {/* Card 3: Spare Part Terkait */}
+            <div className="bg-white border border-slate-200 rounded-xl p-4 shadow-xs relative overflow-hidden flex items-center gap-3.5 hover:shadow-sm transition-shadow">
+              <div className="w-12 h-12 rounded-xl bg-gradient-to-br from-purple-500 to-indigo-600 flex items-center justify-center text-white shadow-sm shrink-0">
+                <Package className="w-6 h-6" />
+              </div>
+              <div className="min-w-0">
+                <div className="text-[11px] font-bold text-slate-500 uppercase tracking-wider font-mono">Katalog Suku Cadang</div>
+                <div className="text-2xl font-bold font-display text-purple-700 mt-0.5">{vendorKpis.totalLinkedParts} <span className="text-xs font-normal text-slate-500">Item</span></div>
+                <div className="text-[10px] text-slate-500 truncate mt-0.5">Tersinkron dengan katalog master</div>
+              </div>
+            </div>
+
+            {/* Card 4: Kelengkapan Kontak */}
+            <div className="bg-white border border-slate-200 rounded-xl p-4 shadow-xs relative overflow-hidden flex items-center gap-3.5 hover:shadow-sm transition-shadow">
+              <div className="w-12 h-12 rounded-xl bg-gradient-to-br from-amber-500 to-orange-600 flex items-center justify-center text-white shadow-sm shrink-0">
+                <CheckCircle2 className="w-6 h-6" />
+              </div>
+              <div className="min-w-0">
+                <div className="text-[11px] font-bold text-slate-500 uppercase tracking-wider font-mono">Kelengkapan Profil</div>
+                <div className="text-2xl font-bold font-display text-slate-900 mt-0.5">{vendorKpis.completeCount} <span className="text-xs font-normal text-slate-500">/ {vendorKpis.totalVendors}</span></div>
+                <div className="text-[10px] text-slate-500 truncate mt-0.5">{vendorKpis.incompleteCount > 0 ? `${vendorKpis.incompleteCount} vendor perlu update kontak` : "Semua kontak terverifikasi"}</div>
+              </div>
+            </div>
+          </div>
+
+          {/* CONTROLS & FILTER BAR */}
+          <section className="bg-white border border-slate-200 p-4 rounded-xl shadow-xs space-y-3 no-print">
+            {/* Top Row: Search + Sort + Toggle + Add Button */}
+            <div className="flex flex-col lg:flex-row justify-between items-stretch lg:items-center gap-3">
+              {/* Search Box */}
+              <div className="relative flex-1">
+                <Search className="absolute left-3 top-2.5 h-4 w-4 text-slate-400" />
                 <input
                   type="text"
-                  placeholder="Cari nama atau kode vendor..."
+                  placeholder="Cari nama perusahaan, kode vendor, PIC, telepon, email, alamat..."
                   value={vendorSearch}
                   onChange={(e) => setVendorSearch(e.target.value)}
-                  className="bg-slate-50 border border-slate-250 rounded text-xs pl-8 pr-3 py-1.5 w-full focus:outline-none focus:ring-1 focus:ring-blue-500 font-sans"
+                  className="bg-slate-50 border border-slate-250 rounded-lg text-xs pl-9 pr-8 py-2 w-full focus:outline-none focus:ring-2 focus:ring-blue-500 focus:bg-white font-sans transition-all"
                 />
+                {vendorSearch && (
+                  <button
+                    onClick={() => setVendorSearch("")}
+                    className="absolute right-2.5 top-2.5 text-slate-400 hover:text-slate-600 p-0.5 cursor-pointer"
+                  >
+                    <X className="w-3.5 h-3.5" />
+                  </button>
+                )}
               </div>
-              {role !== UserRole.VESSEL_CREW && (
+
+              {/* Controls right */}
+              <div className="flex flex-wrap items-center gap-2">
+                {/* Sort selector */}
+                <div className="flex items-center gap-1.5 bg-slate-50 border border-slate-250 rounded-lg px-2.5 py-1.5 text-xs text-slate-600">
+                  <ArrowUpDown className="w-3.5 h-3.5 text-slate-400 shrink-0" />
+                  <select
+                    value={vendorSort}
+                    onChange={(e: any) => setVendorSort(e.target.value)}
+                    className="bg-transparent text-xs text-slate-700 font-semibold focus:outline-none cursor-pointer"
+                  >
+                    <option value="name_asc">Nama (A - Z)</option>
+                    <option value="name_desc">Nama (Z - A)</option>
+                    <option value="inbound_desc">Inbound Terbanyak</option>
+                    <option value="parts_desc">Spare Part Terbanyak</option>
+                  </select>
+                </div>
+
+                {/* View Toggle */}
+                <div className="inline-flex items-center p-0.5 bg-slate-100 border border-slate-250 rounded-lg">
+                  <button
+                    type="button"
+                    onClick={() => setVendorViewMode("cards")}
+                    title="Tampilan Kartu Modern"
+                    className={`px-2.5 py-1.5 rounded-md text-xs font-semibold flex items-center gap-1.5 cursor-pointer transition-all ${
+                      vendorViewMode === "cards" ? "bg-white text-blue-600 shadow-xs font-bold" : "text-slate-600 hover:text-slate-900"
+                    }`}
+                  >
+                    <LayoutGrid className="w-3.5 h-3.5" />
+                    <span className="hidden sm:inline">Kartu</span>
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setVendorViewMode("table")}
+                    title="Tampilan Tabel Ringkas"
+                    className={`px-2.5 py-1.5 rounded-md text-xs font-semibold flex items-center gap-1.5 cursor-pointer transition-all ${
+                      vendorViewMode === "table" ? "bg-white text-blue-600 shadow-xs font-bold" : "text-slate-600 hover:text-slate-900"
+                    }`}
+                  >
+                    <ListFilter className="w-3.5 h-3.5" />
+                    <span className="hidden sm:inline">Tabel</span>
+                  </button>
+                </div>
+
+                {/* Add Vendor Button */}
+                {role !== UserRole.VESSEL_CREW && (
+                  <button
+                    type="button"
+                    onClick={handleOpenAddVendorModal}
+                    className="bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-500 hover:to-indigo-500 text-white font-bold text-xs px-3.5 py-2 rounded-lg shadow-sm hover:shadow transition-all inline-flex items-center gap-1.5 cursor-pointer shrink-0"
+                  >
+                    <Plus className="w-4 h-4" />
+                    <span>Tambah Vendor</span>
+                  </button>
+                )}
+              </div>
+            </div>
+
+            {/* Filter Chips Bar */}
+            <div className="flex flex-wrap items-center gap-2 pt-1 border-t border-slate-100">
+              <span className="text-[10px] font-bold font-mono text-slate-400 uppercase tracking-wider mr-1">Filter:</span>
+              <button
+                type="button"
+                onClick={() => setVendorFilter("all")}
+                className={`px-2.5 py-1 rounded-full text-xs font-semibold cursor-pointer transition-colors ${
+                  vendorFilter === "all" ? "bg-slate-900 text-white" : "bg-slate-100 text-slate-600 hover:bg-slate-200"
+                }`}
+              >
+                Semua Vendor ({vendors.length})
+              </button>
+              <button
+                type="button"
+                onClick={() => setVendorFilter("inbound")}
+                className={`px-2.5 py-1 rounded-full text-xs font-semibold flex items-center gap-1 cursor-pointer transition-colors ${
+                  vendorFilter === "inbound" ? "bg-emerald-600 text-white" : "bg-emerald-50 text-emerald-700 hover:bg-emerald-100 border border-emerald-200/60"
+                }`}
+              >
+                <Truck className="w-3 h-3" />
+                Mitra Inbound ({vendorKpis.activeInboundCount})
+              </button>
+              <button
+                type="button"
+                onClick={() => setVendorFilter("has_parts")}
+                className={`px-2.5 py-1 rounded-full text-xs font-semibold flex items-center gap-1 cursor-pointer transition-colors ${
+                  vendorFilter === "has_parts" ? "bg-purple-600 text-white" : "bg-purple-50 text-purple-700 hover:bg-purple-100 border border-purple-200/60"
+                }`}
+              >
+                <Package className="w-3 h-3" />
+                Ada Spare Part ({vendors.filter(v => (vendorStats.get(v.id)?.partsCount || 0) > 0).length})
+              </button>
+              <button
+                type="button"
+                onClick={() => setVendorFilter("complete")}
+                className={`px-2.5 py-1 rounded-full text-xs font-semibold flex items-center gap-1 cursor-pointer transition-colors ${
+                  vendorFilter === "complete" ? "bg-blue-600 text-white" : "bg-blue-50 text-blue-700 hover:bg-blue-100 border border-blue-200/60"
+                }`}
+              >
+                <CheckCircle2 className="w-3 h-3" />
+                Kontak Lengkap ({vendorKpis.completeCount})
+              </button>
+              {vendorKpis.incompleteCount > 0 && (
                 <button
-                  onClick={() => setIsVendorModalOpen(true)}
-                  className="bg-blue-600 hover:bg-blue-500 text-white font-bold text-[10px] uppercase font-mono px-3 py-2 rounded transition-colors inline-flex items-center gap-1 cursor-pointer shrink-0"
+                  type="button"
+                  onClick={() => setVendorFilter("incomplete")}
+                  className={`px-2.5 py-1 rounded-full text-xs font-semibold flex items-center gap-1 cursor-pointer transition-colors ${
+                    vendorFilter === "incomplete" ? "bg-amber-600 text-white" : "bg-amber-50 text-amber-700 hover:bg-amber-100 border border-amber-200/60"
+                  }`}
                 >
-                  <Plus className="w-3.5 h-3.5" />
-                  Add Vendor
+                  <AlertTriangle className="w-3 h-3" />
+                  Perlu Update Data ({vendorKpis.incompleteCount})
                 </button>
               )}
             </div>
           </section>
 
-          {filteredVendors.length === 0 ? (
-            <div className="p-8 text-center bg-white border border-slate-200 rounded-md text-slate-500 text-xs font-mono">
-              Tidak ada vendor yang cocok dengan pencarian "{vendorSearch}"
+          {filteredAndSortedVendors.length === 0 ? (
+            <div className="p-12 text-center bg-white border border-slate-200 rounded-xl shadow-xs flex flex-col items-center justify-center">
+              <Building2 className="w-12 h-12 text-slate-300 mb-3" />
+              <h4 className="font-bold text-slate-800 text-sm">Tidak Ada Vendor Ditemukan</h4>
+              <p className="text-xs text-slate-500 mt-1 max-w-sm">
+                Tidak ada mitra vendor yang cocok dengan kriteria pencarian "{vendorSearch}" atau filter yang aktif.
+              </p>
+              <button
+                onClick={() => { setVendorSearch(""); setVendorFilter("all"); }}
+                className="mt-4 px-3 py-1.5 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-md text-xs font-semibold transition-colors cursor-pointer"
+              >
+                Reset Filter &amp; Pencarian
+              </button>
+            </div>
+          ) : vendorViewMode === "cards" ? (
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              {filteredAndSortedVendors.map((vendor) => {
+                const stats = vendorStats.get(vendor.id) || { inboundCount: 0, partsCount: 0, inboundDocs: [], linkedParts: [], isOEM: false, isComplete: false };
+                const style = getVendorStyle(vendor.name);
+                const initials = getVendorInitials(vendor.name);
+                const contactPerson = vendor.contactPerson || (vendor as any).contact_person || "-";
+                const hasEmail = vendor.email && vendor.email !== "-" && vendor.email.includes("@");
+                const hasPhone = vendor.phone && vendor.phone !== "-" && vendor.phone.length > 5;
+                const hasAddress = vendor.address && vendor.address !== "-" && vendor.address !== "Kantor / Gudang Mitra";
+
+                return (
+                  <div 
+                    key={vendor.id} 
+                    className="bg-white border border-slate-200 hover:border-blue-400 rounded-xl shadow-xs hover:shadow-md transition-all duration-200 flex flex-col justify-between overflow-hidden group"
+                  >
+                    {/* Card Top */}
+                    <div className="p-4 space-y-3.5">
+                      {/* Header: Avatar, Name, Code & Action Buttons */}
+                      <div className="flex items-start justify-between gap-3">
+                        <div className="flex items-start gap-3 min-w-0">
+                          {/* Dynamic Gradient Avatar */}
+                          <div className={`w-11 h-11 rounded-xl bg-gradient-to-br ${style.gradient} flex items-center justify-center text-white font-display font-bold text-sm shadow-sm ring-2 ${style.ring} shrink-0`}>
+                            {initials}
+                          </div>
+                          
+                          {/* Company Name & Code */}
+                          <div className="min-w-0">
+                            <h4 className="font-bold text-slate-900 text-sm group-hover:text-blue-600 transition-colors leading-snug truncate" title={vendor.name}>
+                              {vendor.name}
+                            </h4>
+                            <div className="flex flex-wrap items-center gap-1.5 mt-1">
+                              <span className="font-mono text-[10px] bg-slate-100 text-slate-700 font-bold px-2 py-0.5 rounded border border-slate-250 uppercase tracking-wider">
+                                {vendor.code || "VND-GEN"}
+                              </span>
+                              {stats.isOEM && (
+                                <span className="inline-flex items-center gap-1 text-[9px] font-bold bg-purple-50 text-purple-700 border border-purple-200 px-2 py-0.5 rounded-full">
+                                  <ShieldCheck className="w-2.5 h-2.5" /> Principal OEM
+                                </span>
+                              )}
+                              {stats.inboundCount > 0 && (
+                                <span className="inline-flex items-center gap-1 text-[9px] font-bold bg-emerald-50 text-emerald-700 border border-emerald-200 px-2 py-0.5 rounded-full">
+                                  <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse" />
+                                  Inbound Aktif
+                                </span>
+                              )}
+                            </div>
+                          </div>
+                        </div>
+
+                        {/* Action Buttons Top */}
+                        <div className="flex items-center gap-1 shrink-0">
+                          {role !== UserRole.VESSEL_CREW && (
+                            <button
+                              type="button"
+                              title="Edit Profil Vendor"
+                              onClick={() => handleOpenEditVendorModal(vendor)}
+                              className="p-1.5 text-slate-400 hover:text-blue-600 hover:bg-blue-50 rounded-md transition-colors cursor-pointer"
+                            >
+                              <Edit3 className="w-4 h-4" />
+                            </button>
+                          )}
+                          {role === UserRole.SUPER_ADMIN && (
+                            <button
+                              type="button"
+                              title="Hapus Vendor"
+                              onClick={() => handleDeleteVendorAction(vendor)}
+                              className="p-1.5 text-slate-400 hover:text-rose-600 hover:bg-rose-50 rounded-md transition-colors cursor-pointer"
+                            >
+                              <Trash2 className="w-4 h-4" />
+                            </button>
+                          )}
+                        </div>
+                      </div>
+
+                      {/* Metrics Mini-Strip */}
+                      <div className="grid grid-cols-2 gap-2 bg-slate-50/80 rounded-lg p-2.5 border border-slate-150">
+                        <div className="flex items-center gap-2">
+                          <div className="w-7 h-7 rounded-md bg-emerald-100 text-emerald-700 flex items-center justify-center shrink-0">
+                            <Truck className="w-3.5 h-3.5" />
+                          </div>
+                          <div className="min-w-0">
+                            <div className="text-[9px] uppercase font-mono font-bold text-slate-400">Penerimaan Inbound</div>
+                            <div className="text-xs font-bold text-slate-800">
+                              {stats.inboundCount > 0 ? (
+                                <span className="text-emerald-700 font-display">{stats.inboundCount} Dokumen</span>
+                              ) : (
+                                <span className="text-slate-400 font-normal">Belum ada</span>
+                              )}
+                            </div>
+                          </div>
+                        </div>
+
+                        <div className="flex items-center gap-2">
+                          <div className="w-7 h-7 rounded-md bg-purple-100 text-purple-700 flex items-center justify-center shrink-0">
+                            <Package className="w-3.5 h-3.5" />
+                          </div>
+                          <div className="min-w-0">
+                            <div className="text-[9px] uppercase font-mono font-bold text-slate-400">Katalog Sparepart</div>
+                            <div className="text-xs font-bold text-slate-800">
+                              {stats.partsCount > 0 ? (
+                                <span className="text-purple-700 font-display">{stats.partsCount} Item</span>
+                              ) : (
+                                <span className="text-slate-400 font-normal">0 Item</span>
+                              )}
+                            </div>
+                          </div>
+                        </div>
+                      </div>
+
+                      {/* Structured Contact Details */}
+                      <div className="space-y-2 text-xs pt-1">
+                        {/* PIC */}
+                        <div className="flex items-center gap-2.5 text-slate-600">
+                          <div className="w-5 h-5 rounded-full bg-slate-100 flex items-center justify-center shrink-0 text-slate-500">
+                            <User className="w-3 h-3" />
+                          </div>
+                          <span className="text-slate-400 text-[11px] w-20 shrink-0">Penanggung Jawab:</span>
+                          <span className="font-semibold text-slate-800 truncate">{contactPerson}</span>
+                        </div>
+
+                        {/* Email */}
+                        <div className="flex items-center justify-between gap-2 text-slate-600">
+                          <div className="flex items-center gap-2.5 min-w-0">
+                            <div className="w-5 h-5 rounded-full bg-blue-50 flex items-center justify-center shrink-0 text-blue-600">
+                              <Mail className="w-3 h-3" />
+                            </div>
+                            <span className="text-slate-400 text-[11px] w-20 shrink-0">Email:</span>
+                            {hasEmail ? (
+                              <a 
+                                href={`mailto:${vendor.email}`}
+                                className="font-mono text-blue-600 hover:text-blue-800 hover:underline truncate text-[11px]"
+                                title={vendor.email}
+                              >
+                                {vendor.email}
+                              </a>
+                            ) : (
+                              <span className="text-slate-400 italic text-[11px]">Belum didaftarkan</span>
+                            )}
+                          </div>
+                          {hasEmail ? (
+                            <button
+                              type="button"
+                              title="Salin Email"
+                              onClick={() => handleCopy(vendor.email, `mail-${vendor.id}`)}
+                              className="text-slate-400 hover:text-slate-700 p-1 cursor-pointer shrink-0"
+                            >
+                              {copiedKey === `mail-${vendor.id}` ? <Check className="w-3.5 h-3.5 text-emerald-600" /> : <Copy className="w-3.5 h-3.5" />}
+                            </button>
+                          ) : (
+                            <button
+                              type="button"
+                              onClick={() => handleOpenEditVendorModal(vendor)}
+                              className="text-[10px] text-blue-600 hover:underline font-semibold cursor-pointer shrink-0"
+                            >
+                              + Lengkapi
+                            </button>
+                          )}
+                        </div>
+
+                        {/* Phone */}
+                        <div className="flex items-center justify-between gap-2 text-slate-600">
+                          <div className="flex items-center gap-2.5 min-w-0">
+                            <div className="w-5 h-5 rounded-full bg-emerald-50 flex items-center justify-center shrink-0 text-emerald-600">
+                              <Phone className="w-3 h-3" />
+                            </div>
+                            <span className="text-slate-400 text-[11px] w-20 shrink-0">Telepon:</span>
+                            {hasPhone ? (
+                              <a 
+                                href={`tel:${vendor.phone}`}
+                                className="font-mono text-slate-800 hover:text-emerald-700 truncate text-[11px]"
+                              >
+                                {vendor.phone}
+                              </a>
+                            ) : (
+                              <span className="text-slate-400 italic text-[11px]">Belum didaftarkan</span>
+                            )}
+                          </div>
+                          {hasPhone ? (
+                            <button
+                              type="button"
+                              title="Salin Nomor Telepon"
+                              onClick={() => handleCopy(vendor.phone, `tel-${vendor.id}`)}
+                              className="text-slate-400 hover:text-slate-700 p-1 cursor-pointer shrink-0"
+                            >
+                              {copiedKey === `tel-${vendor.id}` ? <Check className="w-3.5 h-3.5 text-emerald-600" /> : <Copy className="w-3.5 h-3.5" />}
+                            </button>
+                          ) : (
+                            <button
+                              type="button"
+                              onClick={() => handleOpenEditVendorModal(vendor)}
+                              className="text-[10px] text-blue-600 hover:underline font-semibold cursor-pointer shrink-0"
+                            >
+                              + Lengkapi
+                            </button>
+                          )}
+                        </div>
+
+                        {/* Address */}
+                        <div className="flex items-start gap-2.5 text-slate-600">
+                          <div className="w-5 h-5 rounded-full bg-amber-50 flex items-center justify-center shrink-0 text-amber-600 mt-0.5">
+                            <MapPin className="w-3 h-3" />
+                          </div>
+                          <span className="text-slate-400 text-[11px] w-20 shrink-0">Alamat:</span>
+                          <span className="text-slate-700 text-[11px] line-clamp-1" title={vendor.address}>
+                            {hasAddress ? vendor.address : (vendor.address || "Kantor / Gudang Mitra")}
+                          </span>
+                        </div>
+                      </div>
+                    </div>
+
+                    {/* Card Footer Actions */}
+                    <div className="bg-slate-50 border-t border-slate-150 p-3 px-4 flex items-center justify-between gap-2">
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setSelectedVendorDetail(vendor);
+                          setVendorDetailTab("inbound");
+                        }}
+                        className="inline-flex items-center gap-1.5 text-xs font-semibold text-slate-700 hover:text-blue-600 bg-white hover:bg-slate-100 border border-slate-250 hover:border-slate-350 px-3 py-1.5 rounded-lg shadow-2xs transition-all cursor-pointer"
+                      >
+                        <Eye className="w-3.5 h-3.5 text-blue-500" />
+                        <span>Lihat Riwayat &amp; Part</span>
+                        {(stats.inboundCount > 0 || stats.partsCount > 0) && (
+                          <span className="text-[10px] bg-blue-50 text-blue-700 font-bold px-1.5 py-0.2 rounded-full border border-blue-200">
+                            {stats.inboundCount + stats.partsCount}
+                          </span>
+                        )}
+                      </button>
+
+                      {role !== UserRole.VESSEL_CREW && (
+                        <button
+                          type="button"
+                          onClick={() => handleOpenEditVendorModal(vendor)}
+                          className="text-xs font-semibold text-blue-600 hover:text-blue-800 hover:bg-blue-50 px-2.5 py-1.5 rounded-md transition-colors cursor-pointer inline-flex items-center gap-1"
+                        >
+                          <Edit3 className="w-3.5 h-3.5" />
+                          <span>Edit Info</span>
+                        </button>
+                      )}
+                    </div>
+                  </div>
+                );
+              })}
             </div>
           ) : (
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-              {filteredVendors.map((vendor) => (
-                <div key={vendor.id} className="bg-white border border-slate-200 rounded-md p-5 shadow-xs flex flex-col gap-3 hover:border-slate-350 transition-colors">
-                  <div className="flex justify-between items-start">
-                    <div>
-                      <h4 className="font-bold text-slate-900 text-sm">{vendor.name}</h4>
-                      <span className="font-mono text-[9px] bg-blue-50 text-blue-800 px-1.5 font-bold rounded mt-1 inline-block uppercase">
-                        Code: {vendor.code}
-                      </span>
-                    </div>
-                    <Building2 className="w-5 h-5 text-slate-400" />
-                  </div>
-                  
-                  <div className="border-t border-slate-100 pt-3 space-y-1.5 text-xs text-slate-600 font-medium">
-                    <div className="grid grid-cols-3">
-                      <span className="text-slate-400">Contact Person:</span>
-                      <span className="col-span-2 text-slate-900 font-bold">{vendor.contactPerson || (vendor as any).contact_person || "-"}</span>
-                    </div>
-                    <div className="grid grid-cols-3">
-                      <span className="text-slate-400">Email:</span>
-                      <span className="col-span-2 font-mono text-blue-600 truncate">{vendor.email || "-"}</span>
-                    </div>
-                    <div className="grid grid-cols-3">
-                      <span className="text-slate-400">Tel Phone:</span>
-                      <span className="col-span-2 font-mono">{vendor.phone || "-"}</span>
-                    </div>
-                    <div className="grid grid-cols-3">
-                      <span className="text-slate-400">Address:</span>
-                      <span className="col-span-2 truncate">{vendor.address || "-"}</span>
-                    </div>
-                  </div>
-                </div>
-              ))}
+            /* Table View Mode */
+            <div className="bg-white border border-slate-200 rounded-xl shadow-xs overflow-hidden">
+              <div className="overflow-x-auto">
+                <table className="w-full text-left text-xs">
+                  <thead className="bg-slate-50 border-b border-slate-200 text-slate-500 font-mono uppercase text-[10px] tracking-wider">
+                    <tr>
+                      <th className="py-3 px-4">Nama Vendor &amp; Kode</th>
+                      <th className="py-3 px-4">Penanggung Jawab (PIC)</th>
+                      <th className="py-3 px-4">Kontak (Email / Telp)</th>
+                      <th className="py-3 px-4">Alamat Depo / Gudang</th>
+                      <th className="py-3 px-4 text-center">Inbound TUG 5</th>
+                      <th className="py-3 px-4 text-center">Katalog Part</th>
+                      <th className="py-3 px-4 text-right">Aksi</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-slate-100">
+                    {filteredAndSortedVendors.map((vendor) => {
+                      const stats = vendorStats.get(vendor.id) || { inboundCount: 0, partsCount: 0, inboundDocs: [], linkedParts: [], isOEM: false, isComplete: false };
+                      const style = getVendorStyle(vendor.name);
+                      const initials = getVendorInitials(vendor.name);
+                      const contactPerson = vendor.contactPerson || (vendor as any).contact_person || "-";
+                      const hasEmail = vendor.email && vendor.email !== "-" && vendor.email.includes("@");
+                      const hasPhone = vendor.phone && vendor.phone !== "-" && vendor.phone.length > 5;
+
+                      return (
+                        <tr key={vendor.id} className="hover:bg-slate-50/80 transition-colors">
+                          <td className="py-3 px-4">
+                            <div className="flex items-center gap-3">
+                              <div className={`w-8 h-8 rounded-lg bg-gradient-to-br ${style.gradient} text-white font-bold text-xs flex items-center justify-center shrink-0`}>
+                                {initials}
+                              </div>
+                              <div className="min-w-0">
+                                <div className="font-bold text-slate-900 truncate">{vendor.name}</div>
+                                <div className="flex items-center gap-1.5 mt-0.5">
+                                  <span className="font-mono text-[9px] bg-slate-100 text-slate-600 px-1.5 py-0.2 rounded border border-slate-200">
+                                    {vendor.code || "VND"}
+                                  </span>
+                                  {stats.isOEM && (
+                                    <span className="text-[9px] font-bold text-purple-700 bg-purple-50 px-1.5 py-0.2 rounded border border-purple-200">OEM</span>
+                                  )}
+                                </div>
+                              </div>
+                            </div>
+                          </td>
+                          <td className="py-3 px-4 font-semibold text-slate-800">
+                            {contactPerson}
+                          </td>
+                          <td className="py-3 px-4 font-mono text-[11px]">
+                            <div>{hasEmail ? <a href={`mailto:${vendor.email}`} className="text-blue-600 hover:underline">{vendor.email}</a> : <span className="text-slate-400 italic font-sans">-</span>}</div>
+                            <div className="text-slate-600">{hasPhone ? vendor.phone : <span className="text-slate-400 italic font-sans">-</span>}</div>
+                          </td>
+                          <td className="py-3 px-4 text-slate-600 max-w-xs truncate text-[11px]" title={vendor.address}>
+                            {vendor.address || "Kantor / Gudang Mitra"}
+                          </td>
+                          <td className="py-3 px-4 text-center">
+                            {stats.inboundCount > 0 ? (
+                              <span className="inline-flex items-center gap-1 font-display font-bold text-emerald-700 bg-emerald-50 border border-emerald-200 px-2 py-0.5 rounded-full text-[10px]">
+                                <Truck className="w-3 h-3" /> {stats.inboundCount} Dokumen
+                              </span>
+                            ) : (
+                              <span className="text-slate-400 font-mono text-[11px]">-</span>
+                            )}
+                          </td>
+                          <td className="py-3 px-4 text-center">
+                            {stats.partsCount > 0 ? (
+                              <span className="inline-flex items-center gap-1 font-display font-bold text-purple-700 bg-purple-50 border border-purple-200 px-2 py-0.5 rounded-full text-[10px]">
+                                <Package className="w-3 h-3" /> {stats.partsCount} Item
+                              </span>
+                            ) : (
+                              <span className="text-slate-400 font-mono text-[11px]">-</span>
+                            )}
+                          </td>
+                          <td className="py-3 px-4 text-right">
+                            <div className="inline-flex items-center gap-1">
+                              <button
+                                type="button"
+                                onClick={() => {
+                                  setSelectedVendorDetail(vendor);
+                                  setVendorDetailTab("inbound");
+                                }}
+                                className="p-1.5 text-slate-600 hover:text-blue-600 hover:bg-slate-100 rounded-md transition-colors cursor-pointer"
+                                title="Lihat Detail Riwayat &amp; Part"
+                              >
+                                <Eye className="w-4 h-4" />
+                              </button>
+                              {role !== UserRole.VESSEL_CREW && (
+                                <button
+                                  type="button"
+                                  onClick={() => handleOpenEditVendorModal(vendor)}
+                                  className="p-1.5 text-slate-600 hover:text-blue-600 hover:bg-slate-100 rounded-md transition-colors cursor-pointer"
+                                  title="Edit Vendor"
+                                >
+                                  <Edit3 className="w-4 h-4" />
+                                </button>
+                              )}
+                              {role === UserRole.SUPER_ADMIN && (
+                                <button
+                                  type="button"
+                                  onClick={() => handleDeleteVendorAction(vendor)}
+                                  className="p-1.5 text-slate-600 hover:text-rose-600 hover:bg-rose-50 rounded-md transition-colors cursor-pointer"
+                                  title="Hapus Vendor"
+                                >
+                                  <Trash2 className="w-4 h-4" />
+                                </button>
+                              )}
+                            </div>
+                          </td>
+                        </tr>
+                      );
+                    })}
+                  </tbody>
+                </table>
+              </div>
             </div>
           )}
         </div>
@@ -1167,120 +1913,398 @@ export default function MasterPartsView({
       )}
 
       {/* MODAL FORM: CREATE NEW VENDOR */}
+      {/* MODAL FORM: CREATE OR EDIT VENDOR */}
       {isVendorModalOpen && (
         <div className="fixed inset-0 bg-slate-950/60 backdrop-blur-xs flex items-center justify-center z-50 p-4">
-          <div className="bg-white text-slate-800 rounded-lg shadow-xl w-full max-w-md overflow-hidden flex flex-col border border-slate-200">
-            <div className="bg-slate-900 text-white px-5 py-4 flex justify-between items-center border-b border-slate-800">
-              <h3 className="font-display font-semibold text-xs uppercase tracking-widest flex items-center gap-1.5">
-                <Building2 className="w-4 h-4 text-blue-400" /> Catalog New Supplier Vendor
-              </h3>
-              <button onClick={() => setIsVendorModalOpen(false)} className="text-slate-400 hover:text-white cursor-pointer">
+          <div className="bg-white text-slate-800 rounded-xl shadow-2xl w-full max-w-lg overflow-hidden flex flex-col border border-slate-200 animate-in fade-in zoom-in-95 duration-150">
+            <div className="bg-gradient-to-r from-slate-900 via-slate-850 to-blue-950 text-white px-6 py-4 flex justify-between items-center border-b border-slate-800">
+              <div className="flex items-center gap-2.5">
+                <div className="w-8 h-8 rounded-lg bg-blue-600/30 border border-blue-400/30 flex items-center justify-center text-blue-400">
+                  <Building2 className="w-4 h-4" />
+                </div>
+                <div>
+                  <h3 className="font-display font-bold text-sm tracking-wide">
+                    {editingVendor ? "Edit Informasi Mitra Vendor" : "Pendaftaran Mitra Vendor Baru"}
+                  </h3>
+                  <p className="text-[11px] text-slate-400 font-sans">
+                    {editingVendor ? `Perbarui profil & kontak ${editingVendor.name}` : "Tambahkan vendor pemasok atau manufaktur resmi"}
+                  </p>
+                </div>
+              </div>
+              <button 
+                onClick={() => {
+                  setIsVendorModalOpen(false);
+                  setEditingVendor(null);
+                }} 
+                className="text-slate-400 hover:text-white p-1 rounded-md hover:bg-slate-800 transition-colors cursor-pointer"
+              >
                 <X className="w-5 h-5" />
               </button>
             </div>
 
-            <form onSubmit={submitVendorForm} className="p-6 space-y-4 font-sans">
+            <form onSubmit={submitVendorForm} className="p-6 space-y-4 font-sans text-xs">
               <div>
-                <label className="text-[10px] uppercase font-bold text-slate-500 font-mono block mb-1">
-                  Supplier Company Name *
+                <label className="text-[11px] font-bold text-slate-700 block mb-1">
+                  Nama Perusahaan Vendor / Principal <span className="text-rose-500">*</span>
                 </label>
                 <input
                   type="text"
                   required
                   value={vendorForm.name}
                   onChange={(e) => setVendorForm({ ...vendorForm, name: e.target.value })}
-                  className="w-full bg-slate-50 border border-slate-250 rounded text-xs px-2.5 py-2 text-slate-900 font-semibold"
-                  placeholder="e.g. Wärtsilä Corporation"
+                  className="w-full bg-slate-50 border border-slate-250 focus:border-blue-500 focus:bg-white rounded-lg px-3 py-2 text-slate-900 font-semibold focus:outline-none focus:ring-1 focus:ring-blue-500 transition-all"
+                  placeholder="Contoh: PT. Wärtsilä Indonesia atau PT. Pancanaka Perkasa"
                 />
               </div>
 
-              <div>
-                <label className="text-[10px] uppercase font-bold text-slate-500 font-mono block mb-1">
-                  Supplier Identifier Code (Initials)
-                </label>
-                <input
-                  type="text"
-                  value={vendorForm.code}
-                  onChange={(e) => setVendorForm({ ...vendorForm, code: e.target.value })}
-                  className="w-full bg-slate-50 border border-slate-250 rounded text-xs px-2.5 py-2 font-mono uppercase"
-                  placeholder="e.g. VND-WRT-01"
-                />
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                <div>
+                  <div className="flex items-center justify-between mb-1">
+                    <label className="text-[11px] font-bold text-slate-700">
+                      Kode Vendor (ID)
+                    </label>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        const base = (vendorForm.name || "VND").replace(/[^A-Za-z0-9]/g, "").slice(0, 3).toUpperCase();
+                        setVendorForm({ ...vendorForm, code: `VND-${base || "SPL"}-${Math.floor(100 + Math.random() * 900)}` });
+                      }}
+                      className="text-[10px] text-blue-600 hover:underline font-semibold cursor-pointer"
+                    >
+                      Generate Auto
+                    </button>
+                  </div>
+                  <input
+                    type="text"
+                    value={vendorForm.code}
+                    onChange={(e) => setVendorForm({ ...vendorForm, code: e.target.value.toUpperCase() })}
+                    className="w-full bg-slate-50 border border-slate-250 focus:border-blue-500 focus:bg-white rounded-lg px-3 py-2 font-mono uppercase focus:outline-none focus:ring-1 focus:ring-blue-500"
+                    placeholder="e.g. VND-WTS-01"
+                  />
+                </div>
+
+                <div>
+                  <label className="text-[11px] font-bold text-slate-700 block mb-1">
+                    Penanggung Jawab (PIC)
+                  </label>
+                  <input
+                    type="text"
+                    value={vendorForm.contactPerson}
+                    onChange={(e) => setVendorForm({ ...vendorForm, contactPerson: e.target.value })}
+                    className="w-full bg-slate-50 border border-slate-250 focus:border-blue-500 focus:bg-white rounded-lg px-3 py-2 focus:outline-none focus:ring-1 focus:ring-blue-500"
+                    placeholder="Nama PIC Logistik / Sales"
+                  />
+                </div>
+              </div>
+
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                <div>
+                  <label className="text-[11px] font-bold text-slate-700 block mb-1">
+                    Alamat Email Resmi
+                  </label>
+                  <input
+                    type="email"
+                    value={vendorForm.email}
+                    onChange={(e) => setVendorForm({ ...vendorForm, email: e.target.value })}
+                    className="w-full bg-slate-50 border border-slate-250 focus:border-blue-500 focus:bg-white rounded-lg px-3 py-2 font-mono focus:outline-none focus:ring-1 focus:ring-blue-500"
+                    placeholder="sales@vendor.co.id"
+                  />
+                </div>
+
+                <div>
+                  <label className="text-[11px] font-bold text-slate-700 block mb-1">
+                    Nomor Telepon / WhatsApp
+                  </label>
+                  <input
+                    type="text"
+                    value={vendorForm.phone}
+                    onChange={(e) => setVendorForm({ ...vendorForm, phone: e.target.value })}
+                    className="w-full bg-slate-50 border border-slate-250 focus:border-blue-500 focus:bg-white rounded-lg px-3 py-2 font-mono focus:outline-none focus:ring-1 focus:ring-blue-500"
+                    placeholder="+62 21 ... atau 0812..."
+                  />
+                </div>
               </div>
 
               <div>
-                <label className="text-[10px] uppercase font-bold text-slate-500 font-mono block mb-1">
-                  Point-of-Contact agent *
+                <label className="text-[11px] font-bold text-slate-700 block mb-1">
+                  Alamat Kantor Depo / Workshop
                 </label>
-                <input
-                  type="text"
-                  required
-                  value={vendorForm.contactPerson}
-                  onChange={(e) => setVendorForm({ ...vendorForm, contactPerson: e.target.value })}
-                  className="w-full bg-slate-50 border border-slate-250 rounded text-xs px-2.5 py-2"
-                  placeholder="e.g. Hans Lindqvist"
-                />
-              </div>
-
-              <div>
-                <label className="text-[10px] uppercase font-bold text-slate-500 font-mono block mb-1">
-                  Email Address *
-                </label>
-                <input
-                  type="email"
-                  required
-                  value={vendorForm.email}
-                  onChange={(e) => setVendorForm({ ...vendorForm, email: e.target.value })}
-                  className="w-full bg-slate-50 border border-slate-250 rounded text-xs px-2.5 py-2 font-mono"
-                  placeholder="spareparts@supplier.com"
-                />
-              </div>
-
-              <div>
-                <label className="text-[10px] uppercase font-bold text-slate-500 font-mono block mb-1">
-                  Phone Number
-                </label>
-                <input
-                  type="text"
-                  value={vendorForm.phone}
-                  onChange={(e) => setVendorForm({ ...vendorForm, phone: e.target.value })}
-                  className="w-full bg-slate-50 border border-slate-250 rounded text-xs px-2.5 py-2 font-mono"
-                  placeholder="+358 10 990 0000"
-                />
-              </div>
-
-              <div>
-                <label className="text-[10px] uppercase font-bold text-slate-500 font-mono block mb-1">
-                  Supplier Depot Address
-                </label>
-                <input
-                  type="text"
+                <textarea
+                  rows={2}
                   value={vendorForm.address}
                   onChange={(e) => setVendorForm({ ...vendorForm, address: e.target.value })}
-                  className="w-full bg-slate-50 border border-slate-250 rounded text-xs px-2.5 py-2"
-                  placeholder="Helsinki, Finland"
+                  className="w-full bg-slate-50 border border-slate-250 focus:border-blue-500 focus:bg-white rounded-lg px-3 py-2 focus:outline-none focus:ring-1 focus:ring-blue-500 resize-none"
+                  placeholder="Lokasi pergudangan atau alamat kantor mitra..."
                 />
               </div>
 
-              <div className="bg-slate-900 border-t border-slate-100 p-4 -mx-6 -mb-6 flex justify-end gap-3 font-mono">
+              <div className="bg-slate-50 border-t border-slate-200 p-4 -mx-6 -mb-6 flex justify-end items-center gap-3">
                 <button
                   type="button"
-                  onClick={() => setIsVendorModalOpen(false)}
-                  className="px-4 py-2 bg-slate-800 hover:bg-slate-700 text-slate-300 rounded text-xs font-bold uppercase cursor-pointer"
+                  onClick={() => {
+                    setIsVendorModalOpen(false);
+                    setEditingVendor(null);
+                  }}
+                  className="px-4 py-2 bg-white hover:bg-slate-100 text-slate-700 border border-slate-250 rounded-lg text-xs font-semibold cursor-pointer transition-colors"
                 >
-                  Cancel
+                  Batal
                 </button>
                 <button
                   type="submit"
-                  className="px-5 py-2 bg-blue-600 hover:bg-blue-500 text-white rounded text-xs font-bold uppercase cursor-pointer"
+                  disabled={isSubmittingVendor}
+                  className="px-5 py-2 bg-blue-600 hover:bg-blue-500 disabled:opacity-50 text-white rounded-lg text-xs font-bold cursor-pointer transition-colors shadow-sm inline-flex items-center gap-1.5"
                 >
-                  Register Vendor
+                  {isSubmittingVendor ? (
+                    <span>Menyimpan...</span>
+                  ) : (
+                    <>
+                      <Check className="w-3.5 h-3.5" />
+                      <span>{editingVendor ? "Simpan Perubahan" : "Daftarkan Vendor"}</span>
+                    </>
+                  )}
                 </button>
               </div>
-
             </form>
           </div>
         </div>
       )}
+
+      {/* MODAL: DETAIL RIWAYAT & SUKU CADANG VENDOR */}
+      {selectedVendorDetail && (() => {
+        const vendor = selectedVendorDetail;
+        const stats = vendorStats.get(vendor.id) || { inboundCount: 0, partsCount: 0, inboundDocs: [], linkedParts: [], isOEM: false, isComplete: false };
+        const style = getVendorStyle(vendor.name);
+        const initials = getVendorInitials(vendor.name);
+        const contactPerson = vendor.contactPerson || (vendor as any).contact_person || "-";
+
+        return (
+          <div className="fixed inset-0 bg-slate-950/65 backdrop-blur-xs flex items-center justify-center z-50 p-4 animate-in fade-in duration-150">
+            <div className="bg-white text-slate-800 rounded-2xl shadow-2xl w-full max-w-4xl max-h-[90vh] overflow-hidden flex flex-col border border-slate-200">
+              {/* Header Profile */}
+              <div className="bg-gradient-to-r from-slate-900 via-slate-850 to-blue-950 text-white p-6 border-b border-slate-800">
+                <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
+                  <div className="flex items-center gap-4">
+                    <div className={`w-14 h-14 rounded-2xl bg-gradient-to-br ${style.gradient} flex items-center justify-center text-white font-display font-bold text-xl shadow-md ring-4 ${style.ring}`}>
+                      {initials}
+                    </div>
+                    <div>
+                      <div className="flex flex-wrap items-center gap-2">
+                        <h3 className="font-display font-bold text-lg text-white">
+                          {vendor.name}
+                        </h3>
+                        <span className="font-mono text-[10px] bg-white/10 text-white border border-white/20 font-bold px-2 py-0.5 rounded uppercase">
+                          {vendor.code || "VND"}
+                        </span>
+                        {stats.isOEM && (
+                          <span className="text-[10px] font-bold bg-purple-500/20 text-purple-200 border border-purple-400/30 px-2 py-0.5 rounded-full inline-flex items-center gap-1">
+                            <ShieldCheck className="w-3 h-3 text-purple-300" /> Principal OEM
+                          </span>
+                        )}
+                      </div>
+                      <p className="text-xs text-slate-300 font-sans mt-1">
+                        PIC: <span className="text-white font-semibold">{contactPerson}</span> &bull; {vendor.address || "Kantor / Gudang Mitra"}
+                      </p>
+                    </div>
+                  </div>
+
+                  <button
+                    onClick={() => setSelectedVendorDetail(null)}
+                    className="text-slate-400 hover:text-white p-1.5 rounded-lg hover:bg-white/10 transition-colors cursor-pointer self-end sm:self-auto"
+                  >
+                    <X className="w-5 h-5" />
+                  </button>
+                </div>
+
+                {/* Quick Info Badges */}
+                <div className="flex flex-wrap items-center gap-3 mt-4 pt-3 border-t border-white/10 text-xs">
+                  <div className="flex items-center gap-1.5 text-slate-300">
+                    <Mail className="w-3.5 h-3.5 text-blue-400" />
+                    <span>{vendor.email && vendor.email !== "-" ? vendor.email : "Email belum terdaftar"}</span>
+                  </div>
+                  <span className="text-slate-600">&bull;</span>
+                  <div className="flex items-center gap-1.5 text-slate-300">
+                    <Phone className="w-3.5 h-3.5 text-emerald-400" />
+                    <span>{vendor.phone && vendor.phone !== "-" ? vendor.phone : "Telepon belum terdaftar"}</span>
+                  </div>
+                </div>
+              </div>
+
+              {/* Subtabs Switcher */}
+              <div className="bg-slate-100 border-b border-slate-200 px-6 pt-3 flex gap-4">
+                <button
+                  type="button"
+                  onClick={() => setVendorDetailTab("inbound")}
+                  className={`pb-3 text-xs font-bold uppercase tracking-wider font-mono flex items-center gap-2 border-b-2 transition-colors cursor-pointer ${
+                    vendorDetailTab === "inbound" 
+                      ? "border-blue-600 text-blue-600" 
+                      : "border-transparent text-slate-500 hover:text-slate-800"
+                  }`}
+                >
+                  <Truck className="w-4 h-4" />
+                  <span>Riwayat Dokumen Inbound ({stats.inboundCount})</span>
+                </button>
+
+                <button
+                  type="button"
+                  onClick={() => setVendorDetailTab("parts")}
+                  className={`pb-3 text-xs font-bold uppercase tracking-wider font-mono flex items-center gap-2 border-b-2 transition-colors cursor-pointer ${
+                    vendorDetailTab === "parts" 
+                      ? "border-blue-600 text-blue-600" 
+                      : "border-transparent text-slate-500 hover:text-slate-800"
+                  }`}
+                >
+                  <Package className="w-4 h-4" />
+                  <span>Katalog Suku Cadang Terkait ({stats.partsCount})</span>
+                </button>
+              </div>
+
+              {/* Modal Body: Tab Content */}
+              <div className="flex-1 overflow-y-auto p-6 font-sans">
+                {vendorDetailTab === "inbound" && (
+                  stats.inboundDocs.length === 0 ? (
+                    <div className="text-center py-12 bg-slate-50 border border-slate-200 rounded-xl">
+                      <Truck className="w-10 h-10 text-slate-300 mx-auto mb-2" />
+                      <h4 className="font-bold text-slate-700 text-sm">Belum Ada Riwayat Penerimaan</h4>
+                      <p className="text-xs text-slate-500 mt-1 max-w-sm mx-auto">
+                        Vendor ini belum tercatat memasok material pada formulir penerimaan barang (Inbound TUG 5).
+                      </p>
+                    </div>
+                  ) : (
+                    <div className="border border-slate-200 rounded-xl overflow-hidden shadow-2xs">
+                      <table className="w-full text-left text-xs">
+                        <thead className="bg-slate-50 border-b border-slate-200 text-slate-500 font-mono uppercase text-[10px]">
+                          <tr>
+                            <th className="py-2.5 px-3">Tanggal</th>
+                            <th className="py-2.5 px-3">No. PO / SPK</th>
+                            <th className="py-2.5 px-3">No. Surat Jalan</th>
+                            <th className="py-2.5 px-3">Kapal / Alokasi</th>
+                            <th className="py-2.5 px-3 text-center">Jumlah Item</th>
+                            <th className="py-2.5 px-3 text-center">Status</th>
+                          </tr>
+                        </thead>
+                        <tbody className="divide-y divide-slate-100">
+                          {stats.inboundDocs.map((rec) => (
+                            <tr key={rec.id} className="hover:bg-slate-50/70 transition-colors">
+                              <td className="py-2.5 px-3 text-slate-600 font-mono text-[11px]">
+                                {formatVendorDate(rec.received_date || (rec as any).created_at)}
+                              </td>
+                              <td className="py-2.5 px-3 font-mono font-bold text-blue-700">
+                                {rec.purchase_order_num || rec.spk_number || "-"}
+                              </td>
+                              <td className="py-2.5 px-3 font-mono text-slate-700">
+                                {rec.delivery_note_num || "-"}
+                              </td>
+                              <td className="py-2.5 px-3 text-slate-700 font-medium">
+                                {rec.vessel_name || "Gudang Utama Merak"}
+                              </td>
+                              <td className="py-2.5 px-3 text-center font-bold text-slate-800">
+                                {rec.items?.length || 1} Item
+                              </td>
+                              <td className="py-2.5 px-3 text-center">
+                                <span className={`inline-block font-mono text-[9px] font-bold px-2 py-0.5 rounded-full uppercase ${
+                                  rec.status === "Verified" ? "bg-emerald-50 text-emerald-700 border border-emerald-200" :
+                                  rec.status === "Accepted" ? "bg-blue-50 text-blue-700 border border-blue-200" :
+                                  "bg-amber-50 text-amber-700 border border-amber-200"
+                                }`}>
+                                  {rec.status || "Pending"}
+                                </span>
+                              </td>
+                            </tr>
+                          ))}
+                        </tbody>
+                      </table>
+                    </div>
+                  )
+                )}
+
+                {vendorDetailTab === "parts" && (
+                  stats.linkedParts.length === 0 ? (
+                    <div className="text-center py-12 bg-slate-50 border border-slate-200 rounded-xl">
+                      <Package className="w-10 h-10 text-slate-300 mx-auto mb-2" />
+                      <h4 className="font-bold text-slate-700 text-sm">Belum Ada Suku Cadang Terkait</h4>
+                      <p className="text-xs text-slate-500 mt-1 max-w-sm mx-auto">
+                        Tidak ada spare part pada katalog yang memiliki maker / vendor ID "{vendor.name}".
+                      </p>
+                    </div>
+                  ) : (
+                    <div className="border border-slate-200 rounded-xl overflow-hidden shadow-2xs">
+                      <table className="w-full text-left text-xs">
+                        <thead className="bg-slate-50 border-b border-slate-200 text-slate-500 font-mono uppercase text-[10px]">
+                          <tr>
+                            <th className="py-2.5 px-3">Part Number</th>
+                            <th className="py-2.5 px-3">Nama Suku Cadang</th>
+                            <th className="py-2.5 px-3">Kategori</th>
+                            <th className="py-2.5 px-3 text-center">Stok Saat Ini</th>
+                            <th className="py-2.5 px-3">Lokasi Rak</th>
+                          </tr>
+                        </thead>
+                        <tbody className="divide-y divide-slate-100">
+                          {stats.linkedParts.map((p) => {
+                            const loc = locations.find(l => l.id === p.location_id);
+                            return (
+                              <tr key={p.id} className="hover:bg-slate-50/70 transition-colors">
+                                <td className="py-2.5 px-3 font-mono font-bold text-blue-700">
+                                  {p.part_number}
+                                </td>
+                                <td className="py-2.5 px-3 font-semibold text-slate-900">
+                                  {p.part_name}
+                                </td>
+                                <td className="py-2.5 px-3 text-slate-600">
+                                  {p.category}
+                                </td>
+                                <td className="py-2.5 px-3 text-center">
+                                  <span className={`font-bold font-mono text-xs ${
+                                    p.current_stock <= (p.minimum_stock || 1) ? "text-rose-600" : "text-slate-800"
+                                  }`}>
+                                    {p.current_stock} {p.unit || "PCS"}
+                                  </span>
+                                </td>
+                                <td className="py-2.5 px-3 font-mono text-[11px] text-slate-600">
+                                  {loc ? `${loc.code} (${loc.shelf || "Level 1"})` : "WH-MERAK"}
+                                </td>
+                              </tr>
+                            );
+                          })}
+                        </tbody>
+                      </table>
+                    </div>
+                  )
+                )}
+              </div>
+
+              {/* Modal Footer */}
+              <div className="bg-slate-50 border-t border-slate-200 px-6 py-3.5 flex justify-between items-center">
+                <span className="text-[11px] text-slate-500 font-mono">
+                  Kode: <span className="font-bold text-slate-800">{vendor.code || "VND"}</span>
+                </span>
+                <div className="flex items-center gap-2">
+                  {role !== UserRole.VESSEL_CREW && (
+                    <button
+                      type="button"
+                      onClick={() => {
+                        const target = vendor;
+                        setSelectedVendorDetail(null);
+                        handleOpenEditVendorModal(target);
+                      }}
+                      className="px-3.5 py-1.5 bg-white hover:bg-slate-100 border border-slate-250 text-blue-600 rounded-lg text-xs font-semibold cursor-pointer inline-flex items-center gap-1 transition-colors"
+                    >
+                      <Edit3 className="w-3.5 h-3.5" />
+                      <span>Edit Profil Vendor</span>
+                    </button>
+                  )}
+                  <button
+                    type="button"
+                    onClick={() => setSelectedVendorDetail(null)}
+                    className="px-4 py-1.5 bg-slate-900 hover:bg-slate-800 text-white rounded-lg text-xs font-bold cursor-pointer transition-colors"
+                  >
+                    Tutup
+                  </button>
+                </div>
+              </div>
+            </div>
+          </div>
+        );
+      })()}
 
       {/* MODAL FORM: CREATE OR EDIT STORAGE SLOT LOCATION */}
       {isLocationModalOpen && (

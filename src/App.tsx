@@ -570,9 +570,19 @@ export default function App() {
     await syncAllTables();
   };
 
-  // VENDOR ACTION: REGISTER
+  // VENDOR ACTIONS: REGISTER, UPDATE, DELETE
   const handleAddVendor = async (vData: Partial<Vendor>) => {
     await api.createVendor(vData);
+    await syncAllTables();
+  };
+
+  const handleUpdateVendor = async (id: string, vData: Partial<Vendor>) => {
+    await api.updateVendor(id, vData);
+    await syncAllTables();
+  };
+
+  const handleDeleteVendor = async (id: string) => {
+    await api.deleteVendor(id);
     await syncAllTables();
   };
 
@@ -1380,6 +1390,8 @@ export default function App() {
               onUpdatePart={handleUpdatePart}
               onDeletePart={handleDeletePart}
               onAddVendor={handleAddVendor}
+              onUpdateVendor={handleUpdateVendor}
+              onDeleteVendor={handleDeleteVendor}
               onExportStockReport={handleOpenReportDoc}
               onAddLocation={handleAddLocation}
               onUpdateLocation={handleUpdateLocation}

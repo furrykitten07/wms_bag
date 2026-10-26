@@ -717,6 +717,21 @@ function getLocalFallbackData<T>(url: string, options: RequestInit = {}): T {
     localVendors = [newV, ...localVendors.filter(v => v.id !== newV.id)];
     return newV as any;
   }
+  if (path.startsWith("/api/vendors/") && options.method === "PUT") {
+    const id = path.split("/").pop();
+    localVendors = localVendors.map(v => v.id === id ? { 
+      ...v, 
+      ...body, 
+      contactPerson: body.contactPerson || body.contact_person || v.contactPerson,
+      contact_person: body.contact_person || body.contactPerson || (v as any).contact_person
+    } : v);
+    return localVendors.find(v => v.id === id) as any;
+  }
+  if (path.startsWith("/api/vendors/") && options.method === "DELETE") {
+    const id = path.split("/").pop();
+    localVendors = localVendors.filter(v => v.id !== id);
+    return { success: true } as any;
+  }
   if (path.startsWith("/api/vendors")) return localVendors as any;
   if (path.startsWith("/api/spk")) return localSPKs as any;
   if (path === "/api/receiving" && options.method === "POST") {
