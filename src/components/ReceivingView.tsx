@@ -3983,61 +3983,73 @@ export default function ReceivingView({
                       </button>
                     </div>
 
-                    <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-3">
-                      <div>
-                        <label className="text-[10px] uppercase font-bold text-slate-600 font-mono block mb-1">
-                          Nomor Referensi PO / Dokumen *
-                        </label>
+                    <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-3.5">
+                      {/* Col 1: Nomor PO / Dokumen */}
+                      <div className="flex flex-col">
+                        <div className="h-6 flex items-center justify-between mb-1.5">
+                          <label className="text-[10px] uppercase font-bold text-slate-600 font-mono flex items-center gap-1.5 truncate">
+                            <FileText className="w-3.5 h-3.5 text-blue-600 shrink-0" />
+                            <span className="truncate">No. Referensi PO *</span>
+                          </label>
+                        </div>
                         <input
                           type="text"
                           required
                           value={manualPoNum}
                           onChange={(e) => setManualPoNum(e.target.value)}
                           placeholder="PO-2026-M8841"
-                          className="w-full bg-white border border-slate-300 p-2 text-xs font-mono font-bold text-slate-900 rounded-lg focus:ring-1 focus:ring-blue-500 outline-none"
+                          className="h-10 w-full bg-white border border-slate-300 px-3 text-xs font-mono font-bold text-slate-900 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none shadow-2xs transition-all"
                         />
                       </div>
 
-                      <div>
-                        <label className="text-[10px] uppercase font-bold text-slate-600 font-mono block mb-1">
-                          Nomor Surat Jalan (DN)
-                        </label>
+                      {/* Col 2: Nomor Surat Jalan (DN) */}
+                      <div className="flex flex-col">
+                        <div className="h-6 flex items-center justify-between mb-1.5">
+                          <label className="text-[10px] uppercase font-bold text-slate-600 font-mono flex items-center gap-1.5 truncate">
+                            <Tag className="w-3.5 h-3.5 text-blue-600 shrink-0" />
+                            <span className="truncate">No. Surat Jalan (DN)</span>
+                          </label>
+                        </div>
                         <input
                           type="text"
                           value={manualDnNum}
                           onChange={(e) => setManualDnNum(e.target.value)}
                           placeholder="DN-VND-442"
-                          className="w-full bg-white border border-slate-300 p-2 text-xs font-mono text-slate-900 rounded-lg focus:ring-1 focus:ring-blue-500 outline-none"
+                          className="h-10 w-full bg-white border border-slate-300 px-3 text-xs font-mono text-slate-900 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none shadow-2xs transition-all"
                         />
                       </div>
 
-                      <div>
-                        <label className="text-[10px] uppercase font-bold text-slate-600 font-mono block mb-1 flex items-center gap-1">
-                          <Calendar className="w-3 h-3 text-blue-600" />
-                          <span>Tanggal Penerimaan *</span>
-                        </label>
+                      {/* Col 3: Tanggal Penerimaan */}
+                      <div className="flex flex-col">
+                        <div className="h-6 flex items-center justify-between mb-1.5">
+                          <label className="text-[10px] uppercase font-bold text-slate-600 font-mono flex items-center gap-1.5 truncate">
+                            <Calendar className="w-3.5 h-3.5 text-blue-600 shrink-0" />
+                            <span className="truncate">Tgl Penerimaan *</span>
+                          </label>
+                        </div>
                         <input
                           type="date"
                           required
                           value={manualReceivedDate}
                           onChange={(e) => setManualReceivedDate(e.target.value)}
-                          className="w-full bg-white border border-slate-300 p-2 text-xs font-mono font-bold text-slate-900 rounded-lg focus:ring-1 focus:ring-blue-500 outline-none"
+                          className="h-10 w-full bg-white border border-slate-300 px-3 text-xs font-mono font-bold text-slate-900 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none shadow-2xs transition-all"
                         />
                       </div>
 
-                      <div className="relative">
-                        <label className="text-[10px] uppercase font-bold text-slate-600 font-mono block mb-1 flex items-center justify-between">
-                          <span className="flex items-center gap-1">
-                            <Building2 className="w-3 h-3 text-blue-600" />
-                            <span>Nama Vendor / Asal Pengirim *</span>
-                          </span>
+                      {/* Col 4: Nama Vendor / Asal Pengirim */}
+                      <div className="flex flex-col relative">
+                        <div className="h-6 flex items-center justify-between mb-1.5">
+                          <label className="text-[10px] uppercase font-bold text-slate-600 font-mono flex items-center gap-1.5 truncate">
+                            <Building2 className="w-3.5 h-3.5 text-blue-600 shrink-0" />
+                            <span className="truncate">Vendor / Pengirim *</span>
+                          </label>
                           {isNewVendor && (
-                            <span className="bg-indigo-100 text-indigo-900 border border-indigo-250 text-[9px] font-mono font-black px-1.5 py-0.2 rounded-full flex items-center gap-0.5">
+                            <span className="bg-indigo-100 text-indigo-900 border border-indigo-250 text-[9px] font-mono font-black px-1.5 py-0.5 rounded-full flex items-center gap-0.5 shrink-0">
                               <Sparkles className="w-2.5 h-2.5 text-indigo-600" />
-                              ✨ Vendor Baru (Disimpan ke Master)
+                              ✨ Baru
                             </span>
                           )}
-                        </label>
+                        </div>
                         <div className="relative">
                           <input
                             type="text"
@@ -4049,10 +4061,10 @@ export default function ReceivingView({
                               setManualVendorId("");
                               setIsVendorSearchOpen(true);
                             }}
-                            placeholder="Ketik nama vendor baru atau cari vendor terdaftar..."
-                            className="w-full bg-white border border-slate-300 p-2 pr-8 text-xs font-bold text-slate-900 rounded-lg focus:ring-2 focus:ring-blue-500 focus:bg-white outline-none"
+                            placeholder="Ketik / cari vendor..."
+                            className="h-10 w-full bg-white border border-slate-300 pl-3 pr-8 text-xs font-bold text-slate-900 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 focus:bg-white outline-none shadow-2xs transition-all"
                           />
-                          <Search className="w-3.5 h-3.5 text-slate-400 absolute right-2.5 top-3 pointer-events-none" />
+                          <Search className="w-3.5 h-3.5 text-slate-400 absolute right-2.5 top-1/2 -translate-y-1/2 pointer-events-none" />
                         </div>
 
                         {/* Autocomplete Dropdown List */}
@@ -4113,15 +4125,18 @@ export default function ReceivingView({
                         )}
                       </div>
 
-                      <div>
-                        <label className="text-[10px] uppercase font-bold text-slate-600 font-mono block mb-1 flex items-center gap-1">
-                          <Ship className="w-3 h-3 text-blue-600" />
-                          <span>Kapal Tujuan (Vessel) *</span>
-                        </label>
+                      {/* Col 5: Kapal Tujuan */}
+                      <div className="flex flex-col">
+                        <div className="h-6 flex items-center justify-between mb-1.5">
+                          <label className="text-[10px] uppercase font-bold text-slate-600 font-mono flex items-center gap-1.5 truncate">
+                            <Ship className="w-3.5 h-3.5 text-blue-600 shrink-0" />
+                            <span className="truncate">Kapal Tujuan (Vessel) *</span>
+                          </label>
+                        </div>
                         <select
                           value={manualVesselName}
                           onChange={(e) => setManualVesselName(e.target.value)}
-                          className="w-full bg-white border border-slate-300 p-2 text-xs font-bold text-slate-900 rounded-lg focus:ring-1 focus:ring-blue-500 outline-none cursor-pointer"
+                          className="h-10 w-full bg-white border border-slate-300 px-3 text-xs font-bold text-slate-900 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none cursor-pointer shadow-2xs transition-all"
                         >
                           {vesselOptions.map(v => (
                             <option key={v} value={v}>{v}</option>
