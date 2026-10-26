@@ -54,7 +54,7 @@ import {
   QrCode
 } from "lucide-react";
 import QRCode from "react-qr-code";
-import { InboundReceiving, ReceivingStatus, SparePart, UserRole, SPKWorkOrder, WarehouseLocation, Vessel, User, normalizeUserRole } from "../types.js";
+import { InboundReceiving, ReceivingStatus, SparePart, UserRole, SPKWorkOrder, WarehouseLocation, Vessel, User, normalizeUserRole, Vendor } from "../types.js";
 import { demoSPKs } from "../demoSeedData.js";
 import { api } from "../api.js";
 import { supabase } from "../supabaseClient.js";
@@ -85,12 +85,14 @@ interface ReceivingViewProps {
   parts: SparePart[];
   spkList?: SPKWorkOrder[];
   locations?: WarehouseLocation[];
+  vendors?: Vendor[];
   vessels?: Vessel[];
   role: UserRole;
   currentUser?: User | null;
   onAddReceiving: (rec: Partial<InboundReceiving>) => Promise<any>;
   onAddPart?: (partData: Partial<SparePart>) => Promise<any>;
   onUpdatePart?: (id: string, partData: Partial<SparePart>) => Promise<any>;
+  onAddVendor?: (vData: Partial<Vendor>) => Promise<any>;
   onBatchUpsertParts?: (partsData: Partial<SparePart>[]) => Promise<any>;
   onVerifyReceiving: (id: string, update: Partial<InboundReceiving> | any) => Promise<any>;
   onPreviewDocument: (rec: InboundReceiving) => void;
@@ -102,12 +104,14 @@ export default function ReceivingView({
   parts,
   spkList,
   locations = [],
+  vendors = [],
   vessels,
   role,
   currentUser,
   onAddReceiving,
   onAddPart,
   onUpdatePart,
+  onAddVendor,
   onBatchUpsertParts,
   onVerifyReceiving,
   onPreviewDocument,
@@ -1038,12 +1042,29 @@ export default function ReceivingView({
   const [manualPoNum, setManualPoNum] = useState("");
   const [manualDnNum, setManualDnNum] = useState("");
   const [manualReceivedDate, setManualReceivedDate] = useState<string>(() => new Date().toISOString().split("T")[0]);
-  const [manualVendorName, setManualVendorName] = useState("Vendor Non-SPK / Manual");
+  const [manualVendorName, setManualVendorName] = useState("");
+  const [manualVendorId, setManualVendorId] = useState("");
+  const [isVendorSearchOpen, setIsVendorSearchOpen] = useState(false);
   const [manualVesselName, setManualVesselName] = useState("MV. KARTINI BARUNA");
   const [manualPhotoUrl, setManualPhotoUrl] = useState("");
   const [manualOverallNotes, setManualOverallNotes] = useState("");
   const [isSavingManual, setIsSavingManual] = useState(false);
   const [previewPhotoModal, setPreviewPhotoModal] = useState<string | null>(null);
+
+  const isNewVendor = Boolean(
+    manualVendorName.trim().length > 0 &&
+    !(vendors || []).some(v => v.name.trim().toLowerCase() === manualVendorName.trim().toLowerCase())
+  );
+
+  const matchedVendors = useMemo(() => {
+    const list = (vendors || []).filter(v => v && v.name && v.name !== "Vendor Non-SPK / Manual");
+    const q = manualVendorName.trim().toLowerCase();
+    if (!q) return list.slice(0, 10);
+    return list.filter(v => 
+      v.name.toLowerCase().includes(q) || 
+      (v.code && v.code.toLowerCase().includes(q))
+    ).slice(0, 10);
+  }, [vendors, manualVendorName]);
 
   interface ManualItemRow {
     tempId: string;
@@ -2084,9 +2105,9 @@ export default function ReceivingView({
             barcode: uniqueBarcode,
             unit: finalUnit,
             category: finalCat,
-            vendor_id: "vnd-1",
+            vendor_id: manualVendorId || "vnd-1",
             brand: "Generic",
-            maker: manualVendorName || "OEM / Supplier",
+            maker: manualVendorName.trim() || "OEM / Supplier",
             minimum_stock: 2,
             maximum_stock: 100,
             reorder_point: 5,
@@ -2141,6 +2162,48 @@ export default function ReceivingView({
         });
       }
 
+      // Check vendor registration: Auto-register if new vendor!
+      const trimmedVendorName = manualVendorName.trim();
+      let finalVendorId = manualVendorId;
+      let vendorCreatedMsg = "";
+
+      if (trimmedVendorName) {
+        const existingVendor = (vendors || []).find(v => v.name.trim().toLowerCase() === trimmedVendorName.toLowerCase());
+        if (existingVendor) {
+          finalVendorId = existingVendor.id;
+        } else {
+          // Auto-generate new vendor in database
+          const cleanVName = trimmedVendorName.replace(/^pt\.?\s*/i, "").replace(/^cv\.?\s*/i, "").trim();
+          const initials = cleanVName.replace(/[^a-zA-Z0-9]/g, "").slice(0, 4).toUpperCase() || "VND";
+          const newVendorCode = `VND-${initials}-${Math.floor(100 + Math.random() * 900)}`;
+          const slug = cleanVName.toLowerCase().replace(/[^a-z0-9]/g, "-").slice(0, 20).replace(/-+$/, "");
+          const newVendorId = `vnd-${slug || "custom"}-${Date.now().toString().slice(-4)}`;
+
+          const newVendorData: Partial<Vendor> = {
+            id: newVendorId,
+            name: trimmedVendorName,
+            code: newVendorCode,
+            contactPerson: "PIC Supplier",
+            contact_person: "PIC Supplier",
+            phone: "-",
+            email: "-",
+            address: "Terdaftar dari Penerimaan Inbound"
+          };
+
+          try {
+            if (onAddVendor) {
+              await onAddVendor(newVendorData);
+            } else {
+              await api.createVendor(newVendorData);
+            }
+            finalVendorId = newVendorId;
+            vendorCreatedMsg = `\n\n🏢 Vendor Baru "${trimmedVendorName}" (Kode: ${newVendorCode}) telah resmi didaftarkan ke Sparepart Master (Registered Vendors)!`;
+          } catch (vErr) {
+            console.warn("Failed to auto-register vendor:", vErr);
+          }
+        }
+      }
+
       // Create Receiving Inbound record
       const initialLogs = [{
         timestamp: new Date().toISOString(),
@@ -2156,8 +2219,8 @@ export default function ReceivingView({
       await onAddReceiving({
         purchase_order_num: manualPoNum.trim(),
         delivery_note_num: manualDnNum.trim() || `DN-MANUAL-${Math.floor(1000 + Math.random() * 9000)}`,
-        vendor_id: "vnd-manual",
-        vendor_name: manualVendorName.trim() || "Vendor Non-SPK / Manual",
+        vendor_id: finalVendorId || "vnd-manual",
+        vendor_name: trimmedVendorName || "Vendor Logistik",
         vessel_name: manualVesselName || "MV. KARTINI BARUNA",
         items: preparedItems,
         status: ReceivingStatus.ACCEPTED,
@@ -2172,7 +2235,9 @@ export default function ReceivingView({
       setManualPoNum("");
       setManualDnNum("");
       setManualReceivedDate(new Date().toISOString().split("T")[0]);
-      setManualVendorName("Vendor Non-SPK / Manual");
+      setManualVendorName("");
+      setManualVendorId("");
+      setIsVendorSearchOpen(false);
       setManualVesselName("MV. KARTINI BARUNA");
       setManualPhotoUrl("");
       setManualOverallNotes("");
@@ -2181,7 +2246,7 @@ export default function ReceivingView({
       const newMsg = newItemsCreated.length > 0 
         ? `\n\n✨ ${newItemsCreated.length} item baru telah otomatis didaftarkan ke Sparepart Master & Catalog Sparepart:\n• ${newItemsCreated.join("\n• ")}`
         : "";
-      alert(`✅ Berhasil menyimpan penerimaan manual (${preparedItems.length} item)!${newMsg}`);
+      alert(`✅ Berhasil menyimpan penerimaan manual (${preparedItems.length} item)!${vendorCreatedMsg}${newMsg}`);
     } catch (e: any) {
       alert(e.message || "Gagal menyimpan penerimaan barang manual");
     } finally {
@@ -3960,17 +4025,92 @@ export default function ReceivingView({
                         />
                       </div>
 
-                      <div>
-                        <label className="text-[10px] uppercase font-bold text-slate-600 font-mono block mb-1">
-                          Nama Vendor / Asal Pengirim
+                      <div className="relative">
+                        <label className="text-[10px] uppercase font-bold text-slate-600 font-mono block mb-1 flex items-center justify-between">
+                          <span className="flex items-center gap-1">
+                            <Building2 className="w-3 h-3 text-blue-600" />
+                            <span>Nama Vendor / Asal Pengirim *</span>
+                          </span>
+                          {isNewVendor && (
+                            <span className="bg-indigo-100 text-indigo-900 border border-indigo-250 text-[9px] font-mono font-black px-1.5 py-0.2 rounded-full flex items-center gap-0.5">
+                              <Sparkles className="w-2.5 h-2.5 text-indigo-600" />
+                              ✨ Vendor Baru (Disimpan ke Master)
+                            </span>
+                          )}
                         </label>
-                        <input
-                          type="text"
-                          value={manualVendorName}
-                          onChange={(e) => setManualVendorName(e.target.value)}
-                          placeholder="PT. Bahtera Logistik / Vendor Bebas"
-                          className="w-full bg-white border border-slate-300 p-2 text-xs text-slate-900 rounded-lg focus:ring-1 focus:ring-blue-500 outline-none font-semibold"
-                        />
+                        <div className="relative">
+                          <input
+                            type="text"
+                            required
+                            value={manualVendorName}
+                            onFocus={() => setIsVendorSearchOpen(true)}
+                            onChange={(e) => {
+                              setManualVendorName(e.target.value);
+                              setManualVendorId("");
+                              setIsVendorSearchOpen(true);
+                            }}
+                            placeholder="Ketik nama vendor baru atau cari vendor terdaftar..."
+                            className="w-full bg-white border border-slate-300 p-2 pr-8 text-xs font-bold text-slate-900 rounded-lg focus:ring-2 focus:ring-blue-500 focus:bg-white outline-none"
+                          />
+                          <Search className="w-3.5 h-3.5 text-slate-400 absolute right-2.5 top-3 pointer-events-none" />
+                        </div>
+
+                        {/* Autocomplete Dropdown List */}
+                        {isVendorSearchOpen && (
+                          <div className="absolute left-0 right-0 top-full mt-1 bg-white border border-slate-200 rounded-lg shadow-xl z-40 max-h-52 overflow-y-auto divide-y divide-slate-100">
+                            <div className="p-1.5 bg-slate-100 text-[9px] font-mono font-bold text-slate-600 uppercase flex items-center justify-between sticky top-0 z-10">
+                              <span>Pilih Dari Vendor Terdaftar ({matchedVendors.length}):</span>
+                              <button 
+                                type="button" 
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  setIsVendorSearchOpen(false);
+                                }}
+                                className="text-slate-400 hover:text-slate-600 text-xs px-1 cursor-pointer"
+                              >
+                                ✕
+                              </button>
+                            </div>
+                            {matchedVendors.length > 0 ? (
+                              matchedVendors.map(v => (
+                                <button
+                                  key={v.id}
+                                  type="button"
+                                  onClick={() => {
+                                    setManualVendorName(v.name);
+                                    setManualVendorId(v.id);
+                                    setIsVendorSearchOpen(false);
+                                  }}
+                                  className="w-full text-left p-2.5 hover:bg-blue-50 flex items-center justify-between text-xs cursor-pointer transition-colors"
+                                >
+                                  <div>
+                                    <p className="font-bold text-slate-900">{v.name}</p>
+                                    <span className="font-mono text-[10px] text-slate-500 font-semibold">
+                                      Kode: {v.code} {v.contactPerson && v.contactPerson !== "-" ? `| PIC: ${v.contactPerson}` : ""}
+                                    </span>
+                                  </div>
+                                  <div className="text-right shrink-0">
+                                    <span className="font-mono text-[9px] font-bold text-blue-700 bg-blue-50 px-1.5 py-0.5 rounded uppercase">
+                                      {v.code}
+                                    </span>
+                                  </div>
+                                </button>
+                              ))
+                            ) : (
+                              <div className="p-3 text-center text-slate-500 text-xs font-mono">
+                                Tidak ada vendor terdaftar yang cocok dengan "{manualVendorName}"
+                              </div>
+                            )}
+                            {isNewVendor && (
+                              <div 
+                                className="p-2 text-center bg-blue-50/70 text-[10px] font-mono text-blue-700 font-bold hover:bg-blue-100 cursor-pointer"
+                                onClick={() => setIsVendorSearchOpen(false)}
+                              >
+                                ✨ Gunakan sebagai vendor baru: "{manualVendorName}" (Otomatis disimpan ke database)
+                              </div>
+                            )}
+                          </div>
+                        )}
                       </div>
 
                       <div>

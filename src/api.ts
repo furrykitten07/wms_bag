@@ -703,7 +703,20 @@ function getLocalFallbackData<T>(url: string, options: RequestInit = {}): T {
     return { success: true, message: "Deleted" } as any;
   }
   if (path.startsWith("/api/inventory")) return loadLocalSpareParts() as any;
-  if (path.startsWith("/api/warehouse/locations")) return localLocations as any;
+  if (path === "/api/vendors" && options.method === "POST") {
+    const newV: Vendor = {
+      id: body.id || `vnd-${Date.now()}`,
+      name: body.name || "Vendor Baru",
+      code: body.code || `VND-${Date.now().toString().slice(-4)}`,
+      email: body.email || "-",
+      phone: body.phone || "-",
+      address: body.address || "-",
+      contactPerson: body.contactPerson || body.contact_person || "PIC Supplier",
+      contact_person: body.contact_person || body.contactPerson || "PIC Supplier"
+    };
+    localVendors = [newV, ...localVendors.filter(v => v.id !== newV.id)];
+    return newV as any;
+  }
   if (path.startsWith("/api/vendors")) return localVendors as any;
   if (path.startsWith("/api/spk")) return localSPKs as any;
   if (path === "/api/receiving" && options.method === "POST") {
@@ -2131,12 +2144,78 @@ async function fetcher<T>(url: string, options: RequestInit = {}): Promise<T> {
         return localLocations as any;
       }
       if (path.startsWith("/api/vendors") && method === "GET") {
-        const { data, error } = await supabase.from("vendors").select("*");
+        const { data, error } = await supabase.from("vendors").select("*").order("name", { ascending: true });
         if (!error && data) {
-          localVendors = data as any;
-          return data as any;
+          localVendors = data.map((v: any) => ({
+            ...v,
+            contactPerson: v.contact_person || v.contactPerson || "-"
+          })) as any;
+          return localVendors as any;
         }
         return localVendors as any;
+      }
+      if (path === "/api/vendors" && method === "POST") {
+        const newId = body.id || `vnd-${Date.now()}-${Math.floor(100 + Math.random() * 900)}`;
+        const cleanName = (body.name || "").trim();
+        const initials = cleanName
+          .replace(/^pt\.?\s*/i, "")
+          .replace(/^cv\.?\s*/i, "")
+          .replace(/[^a-zA-Z0-9]/g, "")
+          .slice(0, 4)
+          .toUpperCase() || "VND";
+        const newCode = (body.code || `VND-${initials}-${Math.floor(100 + Math.random() * 900)}`).trim().toUpperCase();
+
+        const vendorPayload = {
+          id: newId,
+          name: cleanName,
+          code: newCode,
+          contact_person: body.contact_person || body.contactPerson || "PIC Supplier",
+          phone: body.phone || "-",
+          email: body.email || "-",
+          address: body.address || "Indonesia"
+        };
+        const { data, error } = await supabase.from("vendors").upsert(vendorPayload).select().single();
+        if (error) {
+          console.error("Supabase vendor insert error:", error);
+          throw new Error(error.message);
+        }
+        const createdVendor: Vendor = {
+          ...data,
+          contactPerson: data.contact_person || data.contactPerson || "-"
+        };
+        localVendors = [createdVendor, ...localVendors.filter(v => v.id !== createdVendor.id)];
+        return createdVendor as any;
+      }
+      if (path.startsWith("/api/vendors/") && method === "PUT") {
+        const id = path.split("/").pop();
+        const updatePayload: any = {};
+        if (body.name) updatePayload.name = body.name.trim();
+        if (body.code) updatePayload.code = body.code.trim();
+        if (body.contactPerson || body.contact_person) updatePayload.contact_person = body.contactPerson || body.contact_person;
+        if (body.phone) updatePayload.phone = body.phone;
+        if (body.email) updatePayload.email = body.email;
+        if (body.address) updatePayload.address = body.address;
+        const { data, error } = await supabase.from("vendors").update(updatePayload).eq("id", id).select().single();
+        if (error) {
+          console.error("Supabase vendor update error:", error);
+          throw new Error(error.message);
+        }
+        const updatedVendor: Vendor = {
+          ...data,
+          contactPerson: data.contact_person || data.contactPerson || "-"
+        };
+        localVendors = localVendors.map(v => v.id === id ? updatedVendor : v);
+        return updatedVendor as any;
+      }
+      if (path.startsWith("/api/vendors/") && method === "DELETE") {
+        const id = path.split("/").pop();
+        const { error } = await supabase.from("vendors").delete().eq("id", id);
+        if (error) {
+          console.error("Supabase vendor delete error:", error);
+          throw new Error(error.message);
+        }
+        localVendors = localVendors.filter(v => v.id !== id);
+        return { success: true } as any;
       }
 
       // Fast handlers for requests, approvals, and dashboard summary to eliminate slow HTTP 404 network fetches
@@ -2712,6 +2791,19 @@ export const api = {
     return fetcher<Vendor>("/api/vendors", {
       method: "POST",
       body: JSON.stringify(data),
+    });
+  },
+
+  async updateVendor(id: string, data: Partial<Vendor>): Promise<Vendor> {
+    return fetcher<Vendor>(`/api/vendors/${id}`, {
+      method: "PUT",
+      body: JSON.stringify(data),
+    });
+  },
+
+  async deleteVendor(id: string): Promise<{ success: boolean }> {
+    return fetcher<{ success: boolean }>(`/api/vendors/${id}`, {
+      method: "DELETE",
     });
   },
 

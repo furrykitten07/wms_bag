@@ -1424,12 +1424,14 @@ export default function App() {
               parts={parts}
               spkList={spkList}
               locations={locations}
+              vendors={vendors}
               vessels={vessels}
               role={currentUser!.role}
               currentUser={currentUser}
               onAddReceiving={handleAddReceiving}
               onAddPart={handleAddPart}
               onUpdatePart={handleUpdatePart}
+              onAddVendor={handleAddVendor}
               onBatchUpsertParts={handleBatchUpsertParts}
               onVerifyReceiving={handleVerifyReceiving}
               onDeleteReceiving={handleDeleteReceiving}

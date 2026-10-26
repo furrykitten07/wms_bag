@@ -3,7 +3,7 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
-import React, { useState } from "react";
+import React, { useState, useMemo } from "react";
 import { 
   Building2, 
   MapPin, 
@@ -77,6 +77,18 @@ export default function MasterPartsView({
 
   // Active view tab inside parts panel
   const [viewSubTab, setViewSubTab] = useState<"parts" | "vendors" | "locations">("parts");
+  const [vendorSearch, setVendorSearch] = useState("");
+
+  const filteredVendors = useMemo(() => {
+    if (!vendorSearch.trim()) return vendors;
+    const q = vendorSearch.trim().toLowerCase();
+    return vendors.filter(v => 
+      v.name.toLowerCase().includes(q) || 
+      (v.code && v.code.toLowerCase().includes(q)) ||
+      ((v.contactPerson || (v as any).contact_person) && (v.contactPerson || (v as any).contact_person).toLowerCase().includes(q)) ||
+      (v.address && v.address.toLowerCase().includes(q))
+    );
+  }, [vendors, vendorSearch]);
 
   // Location Modals state
   const [isLocationModalOpen, setIsLocationModalOpen] = useState(false);
@@ -614,56 +626,78 @@ export default function MasterPartsView({
       {/* VIEW: VENDORS REGISTER */}
       {viewSubTab === "vendors" && (
         <div className="flex flex-col gap-6">
-          <section className="bg-white border border-slate-200 p-4 rounded-md shadow-xs flex justify-between items-center no-print">
+          <section className="bg-white border border-slate-200 p-4 rounded-md shadow-xs flex flex-col sm:flex-row justify-between items-start sm:items-center gap-3 no-print">
             <div>
-              <h3 className="font-bold font-display text-xs text-slate-750 uppercase tracking-wider">Supplier Register</h3>
-              <p className="text-[10px] text-slate-500 font-mono mt-0.5">Active port and manufacturer provisioning representatives</p>
+              <h3 className="font-bold font-display text-xs text-slate-750 uppercase tracking-wider">
+                Supplier Register ({filteredVendors.length} / {vendors.length})
+              </h3>
+              <p className="text-[10px] text-slate-500 font-mono mt-0.5">
+                Active port and manufacturer provisioning representatives
+              </p>
             </div>
-            {role !== UserRole.VESSEL_CREW && (
-              <button
-                onClick={() => setIsVendorModalOpen(true)}
-                className="bg-blue-600 hover:bg-blue-500 text-white font-bold text-[10px] uppercase font-mono px-3 py-1.5 rounded transition-colors inline-flex items-center gap-1 cursor-pointer"
-              >
-                <Plus className="w-3.5 h-3.5" />
-                Add Vendor
-              </button>
-            )}
+            <div className="flex items-center gap-3 w-full sm:w-auto">
+              <div className="relative flex-1 sm:w-64">
+                <Search className="absolute left-2.5 top-2.5 h-3.5 w-3.5 text-slate-400" />
+                <input
+                  type="text"
+                  placeholder="Cari nama atau kode vendor..."
+                  value={vendorSearch}
+                  onChange={(e) => setVendorSearch(e.target.value)}
+                  className="bg-slate-50 border border-slate-250 rounded text-xs pl-8 pr-3 py-1.5 w-full focus:outline-none focus:ring-1 focus:ring-blue-500 font-sans"
+                />
+              </div>
+              {role !== UserRole.VESSEL_CREW && (
+                <button
+                  onClick={() => setIsVendorModalOpen(true)}
+                  className="bg-blue-600 hover:bg-blue-500 text-white font-bold text-[10px] uppercase font-mono px-3 py-2 rounded transition-colors inline-flex items-center gap-1 cursor-pointer shrink-0"
+                >
+                  <Plus className="w-3.5 h-3.5" />
+                  Add Vendor
+                </button>
+              )}
+            </div>
           </section>
 
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-            {vendors.map((vendor) => (
-              <div key={vendor.id} className="bg-white border border-slate-200 rounded-md p-5 shadow-xs flex flex-col gap-3 hover:border-slate-350 transition-colors">
-                <div className="flex justify-between items-start">
-                  <div>
-                    <h4 className="font-bold text-slate-900 text-sm">{vendor.name}</h4>
-                    <span className="font-mono text-[9px] bg-blue-50 text-blue-800 px-1.5 font-bold rounded mt-1 inline-block uppercase">
-                      Code: {vendor.code}
-                    </span>
+          {filteredVendors.length === 0 ? (
+            <div className="p-8 text-center bg-white border border-slate-200 rounded-md text-slate-500 text-xs font-mono">
+              Tidak ada vendor yang cocok dengan pencarian "{vendorSearch}"
+            </div>
+          ) : (
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              {filteredVendors.map((vendor) => (
+                <div key={vendor.id} className="bg-white border border-slate-200 rounded-md p-5 shadow-xs flex flex-col gap-3 hover:border-slate-350 transition-colors">
+                  <div className="flex justify-between items-start">
+                    <div>
+                      <h4 className="font-bold text-slate-900 text-sm">{vendor.name}</h4>
+                      <span className="font-mono text-[9px] bg-blue-50 text-blue-800 px-1.5 font-bold rounded mt-1 inline-block uppercase">
+                        Code: {vendor.code}
+                      </span>
+                    </div>
+                    <Building2 className="w-5 h-5 text-slate-400" />
                   </div>
-                  <Building2 className="w-5 h-5 text-slate-400" />
+                  
+                  <div className="border-t border-slate-100 pt-3 space-y-1.5 text-xs text-slate-600 font-medium">
+                    <div className="grid grid-cols-3">
+                      <span className="text-slate-400">Contact Person:</span>
+                      <span className="col-span-2 text-slate-900 font-bold">{vendor.contactPerson || (vendor as any).contact_person || "-"}</span>
+                    </div>
+                    <div className="grid grid-cols-3">
+                      <span className="text-slate-400">Email:</span>
+                      <span className="col-span-2 font-mono text-blue-600 truncate">{vendor.email || "-"}</span>
+                    </div>
+                    <div className="grid grid-cols-3">
+                      <span className="text-slate-400">Tel Phone:</span>
+                      <span className="col-span-2 font-mono">{vendor.phone || "-"}</span>
+                    </div>
+                    <div className="grid grid-cols-3">
+                      <span className="text-slate-400">Address:</span>
+                      <span className="col-span-2 truncate">{vendor.address || "-"}</span>
+                    </div>
+                  </div>
                 </div>
-                
-                <div className="border-t border-slate-100 pt-3 space-y-1.5 text-xs text-slate-600 font-medium">
-                  <div className="grid grid-cols-3">
-                    <span className="text-slate-400">Contact Person:</span>
-                    <span className="col-span-2 text-slate-900 font-bold">{vendor.contactPerson}</span>
-                  </div>
-                  <div className="grid grid-cols-3">
-                    <span className="text-slate-400">Email:</span>
-                    <span className="col-span-2 font-mono text-blue-600 truncate">{vendor.email}</span>
-                  </div>
-                  <div className="grid grid-cols-3">
-                    <span className="text-slate-400">Tel Phone:</span>
-                    <span className="col-span-2 font-mono">{vendor.phone}</span>
-                  </div>
-                  <div className="grid grid-cols-3">
-                    <span className="text-slate-400">Address:</span>
-                    <span className="col-span-2 truncate">{vendor.address}</span>
-                  </div>
-                </div>
-              </div>
-            ))}
-          </div>
+              ))}
+            </div>
+          )}
         </div>
       )}
 

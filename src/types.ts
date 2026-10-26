@@ -58,6 +58,8 @@ export interface Vendor {
   phone: string;
   address: string;
   contactPerson: string;
+  contact_person?: string;
+  created_at?: string;
 }
 
 export interface WarehouseLocation {
