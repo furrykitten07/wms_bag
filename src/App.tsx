@@ -68,6 +68,19 @@ import { loadCriticalSpareParts } from "./utils/criticalSpareParts.js";
 
 import { AlertCircle, RefreshCw, Layers, Wrench } from "lucide-react";
 
+const ALLOWED_VIEWER_TABS = [
+  "dashboard",
+  "master-parts",
+  "sparepart-catalog",
+  "stock-on-warehouse",
+  "ledger",
+  "material-requests",
+  "material-requests-tug6",
+  "receiving",
+  "dispatch",
+  "reports"
+];
+
 export default function App() {
   const [currentTab, setCurrentTab] = useState<string>("dashboard");
   const [loading, setLoading] = useState<boolean>(true);
@@ -181,6 +194,27 @@ export default function App() {
     const interval = setInterval(checkMaintenance, 12000);
     return () => clearInterval(interval);
   }, []);
+
+  const isSuperAdmin = Boolean(
+    currentUser && (
+      currentUser.role === UserRole.SUPER_ADMIN || 
+      (currentUser.username && currentUser.username.toLowerCase() === "superadmin")
+    )
+  );
+
+  const isViewer = Boolean(
+    currentUser && (
+      currentUser.role === UserRole.VIEWER || 
+      (currentUser.username && currentUser.username.toLowerCase() === "viewer")
+    )
+  );
+
+  // Security guard for Viewer role: redirect to dashboard if navigating to unauthorized tab
+  useEffect(() => {
+    if (isViewer && !ALLOWED_VIEWER_TABS.includes(currentTab)) {
+      setCurrentTab("dashboard");
+    }
+  }, [isViewer, currentTab]);
 
   const bootApp = async () => {
     setLoading(true);
@@ -1059,38 +1093,7 @@ export default function App() {
     );
   }
 
-  const isSuperAdmin = Boolean(
-    currentUser && (
-      currentUser.role === UserRole.SUPER_ADMIN || 
-      (currentUser.username && currentUser.username.toLowerCase() === "superadmin")
-    )
-  );
 
-  const isViewer = Boolean(
-    currentUser && (
-      currentUser.role === UserRole.VIEWER || 
-      (currentUser.username && currentUser.username.toLowerCase() === "viewer")
-    )
-  );
-
-  const ALLOWED_VIEWER_TABS = [
-    "dashboard",
-    "master-parts",
-    "sparepart-catalog",
-    "stock-on-warehouse",
-    "ledger",
-    "material-requests",
-    "material-requests-tug6",
-    "receiving",
-    "dispatch",
-    "reports"
-  ];
-
-  useEffect(() => {
-    if (isViewer && !ALLOWED_VIEWER_TABS.includes(currentTab)) {
-      setCurrentTab("dashboard");
-    }
-  }, [isViewer, currentTab]);
 
   // INTERCEPT: If Maintenance Mode is Active AND active user is NOT Super Admin:
   // Directly render MaintenanceScreen! Normal users cannot see Login or Dashboard.
