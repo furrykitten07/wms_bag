@@ -1046,9 +1046,10 @@ export default function MaterialRequestTUG6View({
             <span>Export ZIP Batch TUG 6</span>
           </button>
 
-          <button
-            onClick={handleSyncSPK}
-            disabled={isSyncing}
+          {currentUser.role !== UserRole.VIEWER && (
+            <button
+              onClick={handleSyncSPK}
+              disabled={isSyncing}
             className={`px-4 py-3 font-bold text-xs uppercase rounded-lg flex items-center justify-center gap-2 transition-all shadow-sm border cursor-pointer text-center relative ${
               isSyncing
                 ? "bg-slate-100 border-slate-200 text-slate-400 cursor-not-allowed"
@@ -1063,9 +1064,10 @@ export default function MaterialRequestTUG6View({
                 {unmatchedCount} BARU
               </span>
             )}
-          </button>
+            </button>
+          )}
 
-          {onClearAllRequests && (requests || []).length > 0 && (
+          {onClearAllRequests && (requests || []).length > 0 && currentUser.role !== UserRole.VIEWER && (
             <button
               type="button"
               onClick={onClearAllRequests}
@@ -1231,15 +1233,17 @@ export default function MaterialRequestTUG6View({
               >
                 Batal Pilih
               </button>
-              <button
-                type="button"
-                disabled={isBulkDeleting}
-                onClick={handleBulkDelete}
-                className="px-4 py-1.5 bg-rose-600 hover:bg-rose-700 active:bg-rose-800 disabled:opacity-50 text-white text-[11px] font-mono font-black uppercase rounded-lg shadow-xs cursor-pointer flex items-center gap-1.5 transition-all"
-              >
-                <Trash2 className="w-3.5 h-3.5" />
-                <span>{isBulkDeleting ? "Menghapus..." : `Hapus (${selectedMRIds.length}) Terpilih`}</span>
-              </button>
+              {currentUser.role !== UserRole.VIEWER && (
+                <button
+                  type="button"
+                  disabled={isBulkDeleting}
+                  onClick={handleBulkDelete}
+                  className="px-4 py-1.5 bg-rose-600 hover:bg-rose-700 active:bg-rose-800 disabled:opacity-50 text-white text-[11px] font-mono font-black uppercase rounded-lg shadow-xs cursor-pointer flex items-center gap-1.5 transition-all"
+                >
+                  <Trash2 className="w-3.5 h-3.5" />
+                  <span>{isBulkDeleting ? "Menghapus..." : `Hapus (${selectedMRIds.length}) Terpilih`}</span>
+                </button>
+              )}
             </div>
           </div>
         )}
@@ -1628,7 +1632,7 @@ export default function MaterialRequestTUG6View({
                                       <span>Cek Item Critical (SPK &amp; TUG 5)</span>
                                     </button>
 
-                                    {["Draft", "Rejected"].includes(mr.status) && (
+                                    {["Draft", "Rejected"].includes(mr.status) && currentUser.role !== UserRole.VIEWER && (
                                       <button
                                         type="button"
                                         onClick={(e) => {
@@ -1645,22 +1649,24 @@ export default function MaterialRequestTUG6View({
                                   </div>
 
                                   {/* SECTION 3: HAPUS */}
-                                  <div className="pt-1">
-                                    <button
-                                      type="button"
-                                      onClick={async (e) => {
-                                        e.stopPropagation();
-                                        setActiveActionId(null);
-                                        if (confirm(`Apakah Anda yakin ingin menghapus Permintaan Barang (TUG 6) dengan nomor ${mr.request_number} ini?`)) {
-                                          await onDeleteRequest(mr.id);
-                                        }
-                                      }}
-                                      className="w-full px-2.5 py-2 text-xs font-bold hover:bg-rose-50 text-rose-600 rounded-lg flex items-center gap-2.5 cursor-pointer transition-colors text-left"
-                                    >
-                                      <Trash2 className="w-4 h-4 text-rose-500 shrink-0" />
-                                      <span>Hapus TUG 6</span>
-                                    </button>
-                                  </div>
+                                  {currentUser.role !== UserRole.VIEWER && (
+                                    <div className="pt-1">
+                                      <button
+                                        type="button"
+                                        onClick={async (e) => {
+                                          e.stopPropagation();
+                                          setActiveActionId(null);
+                                          if (confirm(`Apakah Anda yakin ingin menghapus Permintaan Barang (TUG 6) dengan nomor ${mr.request_number} ini?`)) {
+                                            await onDeleteRequest(mr.id);
+                                          }
+                                        }}
+                                        className="w-full px-2.5 py-2 text-xs font-bold hover:bg-rose-50 text-rose-600 rounded-lg flex items-center gap-2.5 cursor-pointer transition-colors text-left"
+                                      >
+                                        <Trash2 className="w-4 h-4 text-rose-500 shrink-0" />
+                                        <span>Hapus TUG 6</span>
+                                      </button>
+                                    </div>
+                                  )}
 
                                 </div>
                               </>
@@ -2261,7 +2267,7 @@ export default function MaterialRequestTUG6View({
               <div className="flex gap-2">
                 
                 {/* Edit for draft and rejected */}
-                {["Draft", "Rejected"].includes(activeMR.status) && (
+                {["Draft", "Rejected"].includes(activeMR.status) && currentUser.role !== UserRole.VIEWER && (
                   <button
                     onClick={() => {
                       setIsDetailsOpen(false);

@@ -244,6 +244,13 @@ export default function UsersManagementView({
             Vessel Crew
           </span>
         );
+      case UserRole.VIEWER:
+        return (
+          <span className="inline-flex items-center gap-1 bg-amber-50 text-amber-800 px-2.5 py-0.5 rounded-full text-[10px] font-bold border border-amber-200 uppercase tracking-wider">
+            <Eye className="w-3 h-3 text-amber-600" />
+            Viewer / Tamu Read-Only
+          </span>
+        );
       default:
         return (
           <span className="inline-flex items-center gap-1 bg-slate-50 text-slate-700 px-2.5 py-0.5 rounded-full text-[10px] font-bold border border-slate-200 uppercase tracking-wider">
@@ -707,6 +714,7 @@ export default function UsersManagementView({
                   <option value={UserRole.SUPER_ADMIN}>Super Admin (Pemilik Sistem - Fikri Haikal)</option>
                   <option value={UserRole.SUPERINTENDENT}>Superintendent (Pemeriksa / Verifikator TUG)</option>
                   <option value={UserRole.VESSEL_CREW}>Vessel Crew (Kru Kapal)</option>
+                  <option value={UserRole.VIEWER}>Viewer / Tamu Read-Only (Hanya Lihat &amp; Unduh Laporan)</option>
                 </select>
               </div>
 

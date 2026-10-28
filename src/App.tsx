@@ -32,7 +32,7 @@ import {
   Vessel,
   MaintenanceConfig
 } from "./types.js";
-import { ChevronRight, ShieldAlert, CheckCircle } from "lucide-react";
+import { ChevronRight, ShieldAlert, CheckCircle, Eye } from "lucide-react";
 
 // Import modular sub-components
 import Sidebar from "./components/Sidebar.js";
@@ -374,7 +374,9 @@ export default function App() {
         setIsAuthenticated(true);
         
         // Auto routing based on tasks affinity
-        if (usernameStr === "staff_gudang_1") {
+        if (matched.role === UserRole.VIEWER || matched.username === "viewer") {
+          setCurrentTab("dashboard");
+        } else if (usernameStr === "staff_gudang_1") {
           setCurrentTab("receiving");
         } else if (usernameStr === "staff_gudang_2") {
           setCurrentTab("dispatch");
@@ -1064,6 +1066,32 @@ export default function App() {
     )
   );
 
+  const isViewer = Boolean(
+    currentUser && (
+      currentUser.role === UserRole.VIEWER || 
+      (currentUser.username && currentUser.username.toLowerCase() === "viewer")
+    )
+  );
+
+  const ALLOWED_VIEWER_TABS = [
+    "dashboard",
+    "master-parts",
+    "sparepart-catalog",
+    "stock-on-warehouse",
+    "ledger",
+    "material-requests",
+    "material-requests-tug6",
+    "receiving",
+    "dispatch",
+    "reports"
+  ];
+
+  useEffect(() => {
+    if (isViewer && !ALLOWED_VIEWER_TABS.includes(currentTab)) {
+      setCurrentTab("dashboard");
+    }
+  }, [isViewer, currentTab]);
+
   // INTERCEPT: If Maintenance Mode is Active AND active user is NOT Super Admin:
   // Directly render MaintenanceScreen! Normal users cannot see Login or Dashboard.
   if (maintenanceConfig.is_maintenance && !isSuperAdmin) {
@@ -1180,6 +1208,33 @@ export default function App() {
           
           {/* Interactive Per-TUG Digital Signature Notification Banner */}
           {currentUser && (() => {
+            if (isViewer) {
+              return (
+                <div className="bg-slate-900 text-slate-100 px-6 py-2.5 flex flex-col xl:flex-row xl:items-center justify-between gap-3 border-b border-slate-800 shadow-sm shrink-0 font-sans">
+                  <div className="flex items-center gap-3 min-w-0">
+                    <div className="p-2 rounded-lg border text-sm flex items-center justify-center shrink-0 bg-amber-500/10 border-amber-500/30 text-amber-400">
+                      <Eye className="w-4.5 h-4.5" />
+                    </div>
+                    <div className="min-w-0 text-xs">
+                      <div className="flex items-center gap-2 flex-wrap">
+                        <span className="font-bold text-amber-400 uppercase tracking-wide text-[11px] font-mono">
+                          Mode Akses: Viewer / Tamu Read-Only
+                        </span>
+                        <span className="text-slate-500 font-mono text-[10px]">•</span>
+                        <span className="text-slate-300 text-[11px] font-medium">
+                          <strong className="text-slate-100 font-bold">{currentUser.name}</strong>
+                          <span className="text-slate-400 ml-1">({currentUser.email || "viewer@wmsbag.id"})</span>
+                        </span>
+                      </div>
+                      <div className="text-[11px] font-sans mt-0.5 text-slate-300">
+                        Anda memiliki hak akses untuk melihat sistem logistik dan mengunduh laporan resmi: TUG 5, TUG 6, Inbound Receiving, Outbound Dispatch, Master Suku Cadang, dan Laporan Keluar Masuk.
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              );
+            }
+
             const u = (currentUser.username || "").toLowerCase();
             const r = (currentUser.role || "").toLowerCase();
             
@@ -1481,7 +1536,7 @@ export default function App() {
           )}
 
           {/* SPK (Surat Perintah Kerja) Work Orders */}
-          {currentTab === "spk-orders" && (
+          {currentTab === "spk-orders" && !isViewer && (
             <SPKView 
               spkList={spkList}
               parts={parts}
@@ -1586,7 +1641,7 @@ export default function App() {
           )}
 
           {/* Material Returns (TUG 10 Form Generator) */}
-          {currentTab === "material-returns" && (
+          {currentTab === "material-returns" && !isViewer && (
             <MaterialReturnView 
               returns={materialReturns}
               parts={parts}
@@ -1603,7 +1658,7 @@ export default function App() {
           )}
 
           {/* Database Kapal (Fleet Management - Super Admin) */}
-          {currentTab === "vessels-management" && (
+          {currentTab === "vessels-management" && !isViewer && (
             <VesselsManagementView 
               vessels={vessels}
               currentUser={currentUser}
@@ -1616,7 +1671,7 @@ export default function App() {
           )}
 
           {/* Database User & Role Management (Super Admin only) */}
-          {currentTab === "users-management" && (
+          {currentTab === "users-management" && !isViewer && (
             <UsersManagementView 
               users={simulatedUsers}
               currentUser={currentUser}
@@ -1628,7 +1683,7 @@ export default function App() {
           )}
 
           {/* Digital Signatures Management */}
-          {currentTab === "signature-management" && (
+          {currentTab === "signature-management" && !isViewer && (
             <SignatureManagementView 
               signatures={signatures}
               onAddSignature={handleAddSignature}

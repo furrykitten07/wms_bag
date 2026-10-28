@@ -243,6 +243,13 @@ export default function SparePartCatalogView({
     return false;
   }, [role, currentUser]);
 
+  const isViewer = useMemo(() => {
+    if (role === UserRole.VIEWER || currentUser?.role === UserRole.VIEWER) return true;
+    const localUser = typeof window !== "undefined" ? (localStorage.getItem("wms_username") || "") : "";
+    if (localUser.toLowerCase() === "viewer") return true;
+    return false;
+  }, [role, currentUser]);
+
   // Listen to catalog updates from receiving or other tabs
   useEffect(() => {
     const handleUpdate = () => {
@@ -824,12 +831,14 @@ export default function SparePartCatalogView({
           </p>
         </div>
         <div className="flex items-center gap-3 mt-3 md:mt-0">
-          <button
-            onClick={handleOpenCreateModal}
-            className="px-4 py-2.5 bg-blue-600 hover:bg-blue-500 border border-blue-700 text-white font-bold text-xs uppercase rounded-lg flex items-center gap-2 transition-all shadow-sm cursor-pointer"
-          >
-            <Plus className="w-4 h-4" /> Tambah Suku Cadang
-          </button>
+          {!isViewer && (
+            <button
+              onClick={handleOpenCreateModal}
+              className="px-4 py-2.5 bg-blue-600 hover:bg-blue-500 border border-blue-700 text-white font-bold text-xs uppercase rounded-lg flex items-center gap-2 transition-all shadow-sm cursor-pointer"
+            >
+              <Plus className="w-4 h-4" /> Tambah Suku Cadang
+            </button>
+          )}
           <div className="bg-slate-900 text-white px-3.5 py-2 rounded-lg text-xs font-bold font-mono shadow-sm flex items-center gap-2">
             <Package className="w-4 h-4 text-blue-400" />
             <span>TOTAL DATA: {allCatalogItems.length} ITEM</span>
@@ -1186,26 +1195,28 @@ export default function SparePartCatalogView({
                               </div>
                             </button>
 
-                            <button
-                              type="button"
-                              onClick={() => {
-                                setActiveDropdownId(null);
-                                setSelectedItem(item);
-                                setEditItemForm(JSON.parse(JSON.stringify(item)));
-                                setIsEditingItem(true);
-                                setEditValidationError("");
-                                setIsPrintModalOpen(true);
-                              }}
-                              className="w-full px-3 py-2 text-xs font-semibold text-slate-700 hover:bg-amber-50 hover:text-amber-800 flex items-center gap-2.5 transition-colors cursor-pointer text-left"
-                            >
-                              <div className="w-6 h-6 rounded-md bg-amber-50 text-amber-700 flex items-center justify-center shrink-0 border border-amber-200">
-                                <Edit2 className="w-3.5 h-3.5" />
-                              </div>
-                              <div className="flex-1 min-w-0">
-                                <span className="block font-bold text-slate-800 text-[11px] leading-tight">Edit Suku Cadang</span>
-                                <span className="block text-[9.5px] text-slate-400 font-normal leading-tight mt-0.5">Ubah nama, nomor part, spesifikasi</span>
-                              </div>
-                            </button>
+                            {!isViewer && (
+                              <button
+                                type="button"
+                                onClick={() => {
+                                  setActiveDropdownId(null);
+                                  setSelectedItem(item);
+                                  setEditItemForm(JSON.parse(JSON.stringify(item)));
+                                  setIsEditingItem(true);
+                                  setEditValidationError("");
+                                  setIsPrintModalOpen(true);
+                                }}
+                                className="w-full px-3 py-2 text-xs font-semibold text-slate-700 hover:bg-amber-50 hover:text-amber-800 flex items-center gap-2.5 transition-colors cursor-pointer text-left"
+                              >
+                                <div className="w-6 h-6 rounded-md bg-amber-50 text-amber-700 flex items-center justify-center shrink-0 border border-amber-200">
+                                  <Edit2 className="w-3.5 h-3.5" />
+                                </div>
+                                <div className="flex-1 min-w-0">
+                                  <span className="block font-bold text-slate-800 text-[11px] leading-tight">Edit Suku Cadang</span>
+                                  <span className="block text-[9.5px] text-slate-400 font-normal leading-tight mt-0.5">Ubah nama, nomor part, spesifikasi</span>
+                                </div>
+                              </button>
+                            )}
 
                             <button
                               type="button"
@@ -2011,16 +2022,18 @@ export default function SparePartCatalogView({
                     >
                       Tutup
                     </button>
-                    <button
-                      onClick={() => {
-                        setEditItemForm(JSON.parse(JSON.stringify(selectedItem)));
-                        setIsEditingItem(true);
-                        setEditValidationError("");
-                      }}
-                      className="px-4 py-2.5 bg-slate-800 hover:bg-slate-700 border border-slate-900 text-white font-bold text-xs uppercase rounded-lg flex items-center gap-1.5 transition-all cursor-pointer"
-                    >
-                      <Edit2 className="w-3.5 h-3.5" /> Edit Suku Cadang
-                    </button>
+                    {!isViewer && (
+                      <button
+                        onClick={() => {
+                          setEditItemForm(JSON.parse(JSON.stringify(selectedItem)));
+                          setIsEditingItem(true);
+                          setEditValidationError("");
+                        }}
+                        className="px-4 py-2.5 bg-slate-800 hover:bg-slate-700 border border-slate-900 text-white font-bold text-xs uppercase rounded-lg flex items-center gap-1.5 transition-all cursor-pointer"
+                      >
+                        <Edit2 className="w-3.5 h-3.5" /> Edit Suku Cadang
+                      </button>
+                    )}
                     <button
                       onClick={executePrint}
                       className="px-5 py-2.5 rounded bg-blue-600 hover:bg-blue-500 border border-blue-700 text-white text-xs font-bold uppercase tracking-wider flex items-center gap-1.5 cursor-pointer shadow-sm transition-all"

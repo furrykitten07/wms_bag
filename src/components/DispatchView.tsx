@@ -1453,21 +1453,23 @@ export default function DispatchView({
             </div>
           </div>
 
-          <button
-            onClick={() => {
-              setDispatchSource("tug5");
-              setSelectedTug5Id("");
-              setSelectedTug10Id("");
-              setTug5SearchQuery("");
-              setTug10SearchQuery("");
-              setIsTug5DropdownOpen(false);
-              setIsTug10DropdownOpen(false);
-              setIsCreateModalOpen(true);
-            }}
-            className="flex items-center justify-center gap-2 bg-blue-600 hover:bg-blue-500 text-white font-mono text-xs uppercase font-extrabold px-5 py-3 rounded-lg shadow-md hover:shadow-blue-500/20 transition-all cursor-pointer font-sans"
-          >
-            <Truck className="w-4 h-4" /> Tambah Dispatch (TUG 8)
-          </button>
+          {role !== UserRole.VIEWER && (
+            <button
+              onClick={() => {
+                setDispatchSource("tug5");
+                setSelectedTug5Id("");
+                setSelectedTug10Id("");
+                setTug5SearchQuery("");
+                setTug10SearchQuery("");
+                setIsTug5DropdownOpen(false);
+                setIsTug10DropdownOpen(false);
+                setIsCreateModalOpen(true);
+              }}
+              className="flex items-center justify-center gap-2 bg-blue-600 hover:bg-blue-500 text-white font-mono text-xs uppercase font-extrabold px-5 py-3 rounded-lg shadow-md hover:shadow-blue-500/20 transition-all cursor-pointer font-sans"
+            >
+              <Truck className="w-4 h-4" /> Tambah Dispatch (TUG 8)
+            </button>
+          )}
         </div>
       </div>
 
@@ -3019,7 +3021,7 @@ export default function DispatchView({
 
               {/* Right side Commit buttons */}
               <div className="flex justify-end gap-3 w-full sm:w-auto shrink-0">
-                {role !== UserRole.VESSEL_CREW && onDeleteDispatch && (
+                {role !== UserRole.VESSEL_CREW && role !== UserRole.VIEWER && onDeleteDispatch && (
                   <button
                     type="button"
                     disabled={isLoading}
@@ -3049,7 +3051,7 @@ export default function DispatchView({
                   Close Detail Panel
                 </button>
                 
-                {role !== UserRole.VESSEL_CREW && (
+                {role !== UserRole.VESSEL_CREW && role !== UserRole.VIEWER && (
                   <button
                     type="button"
                     disabled={isLoading}
@@ -5031,7 +5033,7 @@ export default function DispatchView({
                 }}
                 className="w-full px-2.5 py-2 text-xs font-bold bg-blue-50 hover:bg-blue-100 text-blue-800 rounded-lg border border-blue-200/80 flex items-center gap-2 cursor-pointer transition-colors text-left shadow-2xs"
               >
-                {role !== UserRole.VESSEL_CREW ? (
+                {role !== UserRole.VESSEL_CREW && role !== UserRole.VIEWER ? (
                   <>
                     <Edit3 className="w-3.5 h-3.5 text-blue-600 shrink-0" />
                     <div className="flex flex-col">
@@ -5079,7 +5081,7 @@ export default function DispatchView({
             </div>
 
             {/* SECTION 3: HAPUS DATA */}
-            {onDeleteDispatch && (
+            {onDeleteDispatch && role !== UserRole.VIEWER && (
               <div className="pt-1">
                 <button
                   type="button"

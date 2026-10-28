@@ -151,26 +151,41 @@ export function getCurrentUserHeader(): string {
 }
 
 function loadLocalUsers(): User[] {
+  const defaultList: User[] = [
+    { id: "usr-1", username: "superadmin", name: "Fikri Haikal (Superadmin)", email: "superadmin@maritime-logistics.com", role: UserRole.SUPER_ADMIN, password: "admin123" },
+    { id: "usr-2", username: "alfin", name: "MAGHFUR MUHAMMAD ALFIN", email: "alfin.rendalhar@maritime-logistics.com", role: UserRole.KEPALA_GUDANG, password: "admin123" },
+    { id: "usr-3", username: "aldi", name: "Aldi Hidayat", email: "aldi.hidayat@maritime-logistics.com", role: UserRole.WAREHOUSE_STAFF, password: "admin123" },
+    { id: "usr-4", username: "emir", name: "Mohamat Emir Ferdian", email: "emir.ferdian@maritime-logistics.com", role: UserRole.LOGISTICS_MANAGER, password: "admin123" },
+    { id: "usr-5", username: "sumbono", name: "Sumbono", email: "sumbono@maritime-logistics.com", role: UserRole.VP_RENDALHAR, password: "admin123" },
+    { id: "usr-viewer", username: "viewer", name: "Viewer / Tamu Read-Only", email: "viewer@wmsbag.id", role: UserRole.VIEWER, password: "viewer123" }
+  ];
+
   try {
     const saved = localStorage.getItem("wms_local_users");
     if (saved) {
       const parsed = JSON.parse(saved);
       if (Array.isArray(parsed) && parsed.length > 0) {
-        return parsed.map((u: any) => ({
+        const users = parsed.map((u: any) => ({
           ...u,
           role: normalizeUserRole(u.role),
           vesselName: u.vesselName || u.vessel_name || undefined
         }));
+        if (!users.some((u: any) => u.username?.toLowerCase() === "viewer" || u.email?.toLowerCase() === "viewer@wmsbag.id")) {
+          users.push({
+            id: "usr-viewer",
+            username: "viewer",
+            name: "Viewer / Tamu Read-Only",
+            email: "viewer@wmsbag.id",
+            role: UserRole.VIEWER,
+            password: "viewer123"
+          });
+          saveLocalUsers(users);
+        }
+        return users;
       }
     }
   } catch (e) {}
-  return [
-    { id: "usr-1", username: "superadmin", name: "Fikri Haikal (Superadmin)", email: "superadmin@maritime-logistics.com", role: UserRole.SUPER_ADMIN, password: "admin123" },
-    { id: "usr-2", username: "alfin", name: "MAGHFUR MUHAMMAD ALFIN", email: "alfin.rendalhar@maritime-logistics.com", role: UserRole.KEPALA_GUDANG, password: "admin123" },
-    { id: "usr-3", username: "aldi", name: "Aldi Hidayat", email: "aldi.hidayat@maritime-logistics.com", role: UserRole.WAREHOUSE_STAFF, password: "admin123" },
-    { id: "usr-4", username: "emir", name: "Mohamat Emir Ferdian", email: "emir.ferdian@maritime-logistics.com", role: UserRole.LOGISTICS_MANAGER, password: "admin123" },
-    { id: "usr-5", username: "sumbono", name: "Sumbono", email: "sumbono@maritime-logistics.com", role: UserRole.VP_RENDALHAR, password: "admin123" }
-  ];
+  return defaultList;
 }
 
 function saveLocalUsers(data: User[]) {
@@ -534,7 +549,8 @@ function getLocalFallbackData<T>(url: string, options: RequestInit = {}): T {
   const body = options.body ? JSON.parse(options.body as string) : {};
 
   if (path === "/api/auth/login") {
-    const matched = localUsers.find(u => u.username.toLowerCase() === (body.username || "").toLowerCase()) || localUsers[0];
+    const inputU = (body.username || "").trim().toLowerCase();
+    const matched = localUsers.find(u => u.username.toLowerCase() === inputU || u.email?.toLowerCase() === inputU) || localUsers[0];
     return { success: true, user: matched } as any;
   }
   if (path === "/api/auth/me") {
@@ -2267,7 +2283,11 @@ async function fetcher<T>(url: string, options: RequestInit = {}): Promise<T> {
         }
 
         if (!error && data) {
-          if (!inputPassword || data.password === inputPassword || inputPassword === "admin123") {
+          const passValid = !inputPassword || 
+            data.password === inputPassword || 
+            inputPassword === "admin123" || 
+            (data.username === "viewer" && inputPassword === "viewer123");
+          if (passValid) {
             const normalizedUser = {
               ...data,
               role: normalizeUserRole(data.role),
@@ -2278,7 +2298,7 @@ async function fetcher<T>(url: string, options: RequestInit = {}): Promise<T> {
           }
         }
         // Fallback to local
-        const matched = localUsers.find(u => u.username.toLowerCase() === inputUsername) || localUsers[0];
+        const matched = localUsers.find(u => u.username.toLowerCase() === inputUsername || u.email?.toLowerCase() === inputUsername) || localUsers[0];
         setCurrentUserHeader(matched.username);
         return { success: true, user: matched } as any;
       }

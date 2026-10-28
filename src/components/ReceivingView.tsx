@@ -2366,7 +2366,7 @@ export default function ReceivingView({
             </button>
           )}
 
-          {role !== UserRole.VESSEL_CREW && (
+          {role !== UserRole.VESSEL_CREW && role !== UserRole.VIEWER && (
             <button
               onClick={() => {
                 setReceivingSourceMode("spk");
@@ -2851,25 +2851,27 @@ export default function ReceivingView({
                                   </button>
 
                                   {/* 3. Edit Data & Ganti Foto */}
-                                  <button
-                                    type="button"
-                                    onClick={(e) => {
-                                      e.stopPropagation();
-                                      setActiveActionId(null);
-                                      handleOpenEditModal(item);
-                                    }}
-                                    className="w-full px-3 py-2 text-xs font-bold rounded-lg hover:bg-amber-50 text-amber-800 flex items-center gap-2 cursor-pointer transition-colors text-left"
-                                    title="Edit Data & Ganti Foto Penerimaan"
-                                  >
-                                    <Pencil className="w-4 h-4 text-amber-600 shrink-0" />
-                                    <div className="truncate">
-                                      <div className="leading-tight">Edit Penerimaan</div>
-                                      <div className="text-[9.5px] text-slate-400 font-normal font-sans">Ubah data & ganti bukti foto</div>
-                                    </div>
-                                  </button>
+                                  {role !== UserRole.VIEWER && (
+                                    <button
+                                      type="button"
+                                      onClick={(e) => {
+                                        e.stopPropagation();
+                                        setActiveActionId(null);
+                                        handleOpenEditModal(item);
+                                      }}
+                                      className="w-full px-3 py-2 text-xs font-bold rounded-lg hover:bg-amber-50 text-amber-800 flex items-center gap-2 cursor-pointer transition-colors text-left"
+                                      title="Edit Data & Ganti Foto Penerimaan"
+                                    >
+                                      <Pencil className="w-4 h-4 text-amber-600 shrink-0" />
+                                      <div className="truncate">
+                                        <div className="leading-tight">Edit Penerimaan</div>
+                                        <div className="text-[9.5px] text-slate-400 font-normal font-sans">Ubah data & ganti bukti foto</div>
+                                      </div>
+                                    </button>
+                                  )}
 
                                   {/* 4. Hapus Penerimaan */}
-                                  {onDeleteReceiving && (
+                                  {onDeleteReceiving && role !== UserRole.VIEWER && (
                                     <>
                                       <div className="border-t border-slate-100 my-1" />
                                       <button
@@ -3601,7 +3603,7 @@ export default function ReceivingView({
                 >
                   Tutup
                 </button>
-                {detailTab === "items" && (
+                {detailTab === "items" && role !== UserRole.VIEWER && (
                   <button
                     type="button"
                     onClick={handleCommitVerification}

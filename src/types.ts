@@ -14,6 +14,7 @@ export enum UserRole {
   VP_RENDALHAR = "VP RENDALHAR",
   SUPERINTENDENT = "Superintendent",
   VESSEL_CREW = "Vessel Crew",
+  VIEWER = "Viewer",
 }
 
 export function normalizeUserRole(rawRole: any): UserRole {
@@ -21,6 +22,7 @@ export function normalizeUserRole(rawRole: any): UserRole {
   const roleStr = String(rawRole).trim();
   const normalized = roleStr.toUpperCase().replace(/[\s_-]+/g, "_");
 
+  if (normalized.includes("VIEWER") || normalized.includes("AUDITOR") || normalized.includes("TAMU") || normalized.includes("READONLY")) return UserRole.VIEWER;
   if (normalized.includes("SUPER_ADMIN") || normalized === "SUPERADMIN") return UserRole.SUPER_ADMIN;
   if (normalized.includes("KEPALA_GUDANG") || normalized.includes("KEPALA")) return UserRole.KEPALA_GUDANG;
   if (normalized.includes("PETUGAS") || normalized.includes("STAFF_GUDANG") || normalized === "WAREHOUSE_STAFF") return UserRole.WAREHOUSE_STAFF;

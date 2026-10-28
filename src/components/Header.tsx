@@ -35,7 +35,7 @@ export default function Header({ currentUser, onLogout }: HeaderProps) {
         <div className="flex flex-col items-end leading-tight">
           <span className="text-white font-display text-xs tracking-tight">{currentUser.name}</span>
           <span className="text-[10px] text-zinc-400 font-mono font-bold tracking-widest uppercase flex items-center gap-1">
-            <span className={`w-1.5 h-1.5 rounded-full ${currentUser.role === UserRole.SUPER_ADMIN ? 'bg-red-500' : currentUser.role === UserRole.SUPERINTENDENT ? 'bg-amber-400' : 'bg-green-400'}`}></span>
+            <span className={`w-1.5 h-1.5 rounded-full ${currentUser.role === UserRole.SUPER_ADMIN ? 'bg-red-500' : currentUser.role === UserRole.VIEWER ? 'bg-amber-400' : currentUser.role === UserRole.SUPERINTENDENT ? 'bg-amber-400' : 'bg-green-400'}`}></span>
             {currentUser.role}
           </span>
         </div>

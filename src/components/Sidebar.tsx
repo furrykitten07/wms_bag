@@ -24,7 +24,8 @@ import {
   Wrench,
   Activity,
   AlertOctagon,
-  Warehouse
+  Warehouse,
+  Eye
 } from "lucide-react";
 import { UserRole, User } from "../types.js";
 
@@ -47,6 +48,7 @@ export default function Sidebar({
   counts,
   isMaintenanceActive
 }: SidebarProps) {
+  const isViewer = currentUser?.role === UserRole.VIEWER || currentUser?.username?.toLowerCase() === "viewer";
   return (
     <nav className="w-72 bg-slate-100 border-r border-slate-200 flex flex-col shrink-0 text-slate-750 font-sans selection:bg-blue-100 select-none">
       
@@ -217,45 +219,49 @@ export default function Sidebar({
           )}
         </button>
 
-        <button
-          onClick={() => setCurrentTab("material-returns")}
-          className={`flex items-center justify-between px-3 py-2.5 rounded-md text-xs font-semibold tracking-tight transition-all duration-150 ${
-            currentTab === "material-returns" 
-              ? "bg-white text-blue-600 border border-slate-200 shadow-xs font-bold" 
-              : "text-slate-650 hover:bg-slate-200/70 hover:text-slate-900"
-          }`}
-        >
-          <div className="flex items-center gap-2.5">
-            <FileText className={`w-4 h-4 ${currentTab === "material-returns" ? "text-blue-500" : "text-slate-400"} shrink-0`} />
-            <span className="truncate">Pengembalian Barang</span>
-          </div>
-          <span className={`px-2 py-0.5 rounded text-[8px] font-mono font-bold uppercase shrink-0 tracking-wider ${
-            currentTab === "material-returns" 
-              ? "bg-blue-100 text-blue-800 border border-blue-200/40" 
-              : "bg-slate-200 text-slate-500"
-          }`}>
-            TUG 10
-          </span>
-        </button>
+        {!isViewer && (
+          <button
+            onClick={() => setCurrentTab("material-returns")}
+            className={`flex items-center justify-between px-3 py-2.5 rounded-md text-xs font-semibold tracking-tight transition-all duration-150 ${
+              currentTab === "material-returns" 
+                ? "bg-white text-blue-600 border border-slate-200 shadow-xs font-bold" 
+                : "text-slate-650 hover:bg-slate-200/70 hover:text-slate-900"
+            }`}
+          >
+            <div className="flex items-center gap-2.5">
+              <FileText className={`w-4 h-4 ${currentTab === "material-returns" ? "text-blue-500" : "text-slate-400"} shrink-0`} />
+              <span className="truncate">Pengembalian Barang</span>
+            </div>
+            <span className={`px-2 py-0.5 rounded text-[8px] font-mono font-bold uppercase shrink-0 tracking-wider ${
+              currentTab === "material-returns" 
+                ? "bg-blue-100 text-blue-800 border border-blue-200/40" 
+                : "bg-slate-200 text-slate-500"
+            }`}>
+              TUG 10
+            </span>
+          </button>
+        )}
 
         {/* REQUISITION & DOCUMENTS */}
         <div className="text-[10px] font-bold text-slate-400 uppercase px-2 mt-4 mb-2 tracking-widest font-display">
-          Documents & Requisitions
+          Documents &amp; Reports
         </div>
 
-        <button
-          onClick={() => setCurrentTab("spk-orders")}
-          className={`flex items-center justify-between px-3 py-2.5 rounded-md text-xs font-semibold tracking-tight transition-all duration-150 ${
-            currentTab === "spk-orders" 
-              ? "bg-white text-blue-600 border border-slate-200 shadow-xs font-bold" 
-              : "text-slate-650 hover:bg-slate-200/70 hover:text-slate-900"
-          }`}
-        >
-          <div className="flex items-center gap-2.5">
-            <FileText className={`w-4 h-4 ${currentTab === "spk-orders" ? "text-blue-500" : "text-slate-400"} shrink-0`} />
-            <span>SPK</span>
-          </div>
-        </button>
+        {!isViewer && (
+          <button
+            onClick={() => setCurrentTab("spk-orders")}
+            className={`flex items-center justify-between px-3 py-2.5 rounded-md text-xs font-semibold tracking-tight transition-all duration-150 ${
+              currentTab === "spk-orders" 
+                ? "bg-white text-blue-600 border border-slate-200 shadow-xs font-bold" 
+                : "text-slate-650 hover:bg-slate-200/70 hover:text-slate-900"
+            }`}
+          >
+            <div className="flex items-center gap-2.5">
+              <FileText className={`w-4 h-4 ${currentTab === "spk-orders" ? "text-blue-500" : "text-slate-400"} shrink-0`} />
+              <span>SPK</span>
+            </div>
+          </button>
+        )}
 
         <button
           onClick={() => setCurrentTab("reports")}
@@ -272,51 +278,68 @@ export default function Sidebar({
         </button>
 
         {/* ADMINISTRATION (DATABASE USER & ROLE, DIGITAL SIGNATURES) */}
-        <div className="text-[10px] font-bold text-slate-400 uppercase px-2 mt-4 mb-2 tracking-widest font-display">
-          Administration
-        </div>
+        {!isViewer && (
+          <>
+            <div className="text-[10px] font-bold text-slate-400 uppercase px-2 mt-4 mb-2 tracking-widest font-display">
+              Administration
+            </div>
 
-        <button
-          onClick={() => setCurrentTab("vessels-management")}
-          className={`flex items-center justify-between px-3 py-2.5 rounded-md text-xs font-semibold tracking-tight transition-all duration-150 ${
-            currentTab === "vessels-management" 
-              ? "bg-white text-blue-600 border border-slate-200 shadow-xs font-bold" 
-              : "text-slate-650 hover:bg-slate-200/70 hover:text-slate-900"
-          }`}
-        >
-          <div className="flex items-center gap-2.5">
-            <Ship className={`w-4 h-4 ${currentTab === "vessels-management" ? "text-blue-500" : "text-slate-400"} shrink-0`} />
-            <span>Database Kapal</span>
-          </div>
-        </button>
+            <button
+              onClick={() => setCurrentTab("vessels-management")}
+              className={`flex items-center justify-between px-3 py-2.5 rounded-md text-xs font-semibold tracking-tight transition-all duration-150 ${
+                currentTab === "vessels-management" 
+                  ? "bg-white text-blue-600 border border-slate-200 shadow-xs font-bold" 
+                  : "text-slate-650 hover:bg-slate-200/70 hover:text-slate-900"
+              }`}
+            >
+              <div className="flex items-center gap-2.5">
+                <Ship className={`w-4 h-4 ${currentTab === "vessels-management" ? "text-blue-500" : "text-slate-400"} shrink-0`} />
+                <span>Database Kapal</span>
+              </div>
+            </button>
 
-        <button
-          onClick={() => setCurrentTab("users-management")}
-          className={`flex items-center justify-between px-3 py-2.5 rounded-md text-xs font-semibold tracking-tight transition-all duration-150 ${
-            currentTab === "users-management" 
-              ? "bg-white text-blue-600 border border-slate-200 shadow-xs font-bold" 
-              : "text-slate-650 hover:bg-slate-200/70 hover:text-slate-900"
-          }`}
-        >
-          <div className="flex items-center gap-2.5">
-            <UsersRound className={`w-4 h-4 ${currentTab === "users-management" ? "text-blue-500" : "text-slate-400"} shrink-0`} />
-            <span>Database User & Role</span>
-          </div>
-        </button>
+            <button
+              onClick={() => setCurrentTab("users-management")}
+              className={`flex items-center justify-between px-3 py-2.5 rounded-md text-xs font-semibold tracking-tight transition-all duration-150 ${
+                currentTab === "users-management" 
+                  ? "bg-white text-blue-600 border border-slate-200 shadow-xs font-bold" 
+                  : "text-slate-650 hover:bg-slate-200/70 hover:text-slate-900"
+              }`}
+            >
+              <div className="flex items-center gap-2.5">
+                <UsersRound className={`w-4 h-4 ${currentTab === "users-management" ? "text-blue-500" : "text-slate-400"} shrink-0`} />
+                <span>Database User & Role</span>
+              </div>
+            </button>
 
-        <button
-          onClick={() => setCurrentTab("signature-management")}
-          className={`flex items-center justify-between px-3 py-2.5 rounded-md text-xs font-semibold tracking-tight transition-all duration-150 ${
-            currentTab === "signature-management" 
-              ? "bg-white text-blue-600 border border-slate-200 shadow-xs font-bold" 
-              : "text-slate-650 hover:bg-slate-200/70 hover:text-slate-900"
-          }`}
-        >
-          <div className="flex items-center gap-2.5">
-            <FileSignature className={`w-4 h-4 ${currentTab === "signature-management" ? "text-blue-500" : "text-slate-400"} shrink-0`} />
-            <span>Tanda Tangan Digital</span>
+            <button
+              onClick={() => setCurrentTab("signature-management")}
+              className={`flex items-center justify-between px-3 py-2.5 rounded-md text-xs font-semibold tracking-tight transition-all duration-150 ${
+                currentTab === "signature-management" 
+                  ? "bg-white text-blue-600 border border-slate-200 shadow-xs font-bold" 
+                  : "text-slate-650 hover:bg-slate-200/70 hover:text-slate-900"
+              }`}
+            >
+              <div className="flex items-center gap-2.5">
+                <FileSignature className={`w-4 h-4 ${currentTab === "signature-management" ? "text-blue-500" : "text-slate-400"} shrink-0`} />
+                <span>Tanda Tangan Digital</span>
+              </div>
+            </button>
+          </>
+        )}
+
+        {/* Viewer Mode Card */}
+        {isViewer && (
+          <div className="mx-1 mt-6 p-3 bg-amber-50/90 border border-amber-200/80 rounded-xl text-amber-900 text-[11px] leading-relaxed shadow-xs">
+            <div className="flex items-center gap-1.5 font-bold text-[10px] uppercase font-mono tracking-wider text-amber-900 mb-1">
+              <Eye className="w-3.5 h-3.5 text-amber-700" />
+              <span>Akses: Viewer / Read-Only</span>
+            </div>
+            <p className="text-[10px] text-amber-800">
+              Hak akses khusus melihat sistem dan mengunduh laporan (TUG 5, TUG 6, Inbound, Outbound, Master, dan Laporan Keluar Masuk).
+            </p>
           </div>
-        </button>
+        )}
 
         {/* Khusus Role Super Admin: Login & Activity Logs & Mode Maintenance */}
         {(currentUser?.role === UserRole.SUPER_ADMIN || currentUser?.username?.toLowerCase() === "superadmin") && (
