@@ -3,7 +3,72 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
-import { CriticalSparePart, MaterialRequest, MaterialRequestItem } from "../types.js";
+import { CriticalSparePart, MaterialRequest, MaterialRequestItem, SparePart } from "../types.js";
+
+const INVALID_PART_NUMBERS = new Set([
+  "", "-", "--", "---", "none", "null", "undefined", "n/a", "na", "pn-generic", "generic", "0", "(-)", "nihil", "?"
+]);
+
+/**
+ * Checks if a string represents an actual, meaningful part number rather than a placeholder like "-" or "N/A"
+ */
+export function isRealPartNumber(pn?: string | null): boolean {
+  if (!pn) return false;
+  const clean = String(pn).trim().toLowerCase();
+  return !INVALID_PART_NUMBERS.has(clean);
+}
+
+/**
+ * Robustly matches an item to a SparePart in the master database.
+ * Crucially ignores generic placeholders (e.g. part_number="-") to prevent
+ * unrelated items from incorrectly matching the first item in the database.
+ */
+export function findMatchingSparePart(
+  parts: SparePart[],
+  item: { spare_part_id?: string; spare_part_name?: string; part_name?: string; part_number?: string }
+): SparePart | undefined {
+  if (!parts || !parts.length || !item) return undefined;
+
+  // 1. Match by real ID (exclude synthetic or temporary IDs)
+  const itmId = (item.spare_part_id || "").trim();
+  const isDummyId = (id: string) =>
+    !id || id === "-" || id.startsWith("temp-") || id.startsWith("item-") || id.startsWith("sp-");
+  
+  if (itmId && !isDummyId(itmId)) {
+    const byId = parts.find(p => p.id === itmId);
+    if (byId) return byId;
+  }
+
+  // 2. Match by real Part Number (ONLY if both item and part have a genuine part number)
+  const itemPn = (item.part_number || "").toString().trim().toLowerCase();
+  if (isRealPartNumber(itemPn)) {
+    const byPn = parts.find(p => {
+      const pPn = (p.part_number || "").toString().trim().toLowerCase();
+      return isRealPartNumber(pPn) && pPn === itemPn;
+    });
+    if (byPn) return byPn;
+  }
+
+  // 3. Match by exact normalized Part Name
+  const rawName = (item.spare_part_name || item.part_name || "")
+    .toString()
+    .trim()
+    .toLowerCase()
+    .replace(/\s+/g, " ");
+  if (rawName && rawName !== "-" && rawName !== "(-)") {
+    const byName = parts.find(p => {
+      const pName = (p.part_name || "")
+        .toString()
+        .trim()
+        .toLowerCase()
+        .replace(/\s+/g, " ");
+      return pName === rawName;
+    });
+    if (byName) return byName;
+  }
+
+  return undefined;
+}
 
 /**
  * 26 Default Critical Spare Parts extracted from data/FIKRI.xlsx sheet "CRITICAL"

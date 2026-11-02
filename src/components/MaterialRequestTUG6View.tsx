@@ -3,7 +3,7 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
-import React, { useState, useMemo } from "react";
+import React, { useState, useMemo, useEffect } from "react";
 import { 
   FileText, 
   PlusCircle, 
@@ -64,7 +64,9 @@ import { createEmptyTUGReportRequest } from "../utils/zipDocumentGenerator.js";
 import {
   checkIsCriticalPart,
   matchCriticalPartsForSPK,
-  SPKCriticalComparisonItem
+  SPKCriticalComparisonItem,
+  findMatchingSparePart,
+  isRealPartNumber
 } from "../utils/criticalSpareParts.js";
 
 const ALDI_SIGNATURE_URL = `data:image/svg+xml;utf8,<svg xmlns="http://www.w3.org/2000/svg" width="220" height="70" viewBox="0 0 220 70"><path d="M 20 42 C 45 15, 60 55, 90 28 C 110 15, 130 52, 160 32 C 180 22, 190 48, 200 40" stroke="%230f2b5c" stroke-width="2.5" fill="none" stroke-linecap="round"/><path d="M 35 52 L 185 48" stroke="%231e293b" stroke-width="1.8" fill="none" stroke-linecap="round"/><text x="75" y="62" font-family="cursive" font-size="11" font-weight="bold" fill="%230f2b5c">Aldi Hidayat</text></svg>`;
@@ -123,6 +125,47 @@ export default function MaterialRequestTUG6View({
   const [startDate, setStartDate] = useState<string>("");
   const [endDate, setEndDate] = useState<string>("");
   const [sortOrder, setSortOrder] = useState<"desc" | "asc">("desc");
+
+  // Self-heal any requests that were corrupted with "Peralatan Predictive Maintenance Machinery Analyzer"
+  useEffect(() => {
+    if (!requests || requests.length === 0 || !tug5Requests || tug5Requests.length === 0) return;
+
+    requests.forEach(r => {
+      if (!r || !Array.isArray(r.items) || r.items.length === 0) return;
+      const badItems = r.items.filter(it => it && it.spare_part_name === "Peralatan Predictive Maintenance Machinery Analyzer");
+      if (badItems.length > 1) {
+        const targetSpk = (r.spk_number || r.work_order_ref || "").trim().toLowerCase();
+        const matchedTUG5 = tug5Requests.find(m => {
+          const mSpk = (m.spk_number || m.work_order_ref || "").trim().toLowerCase();
+          return mSpk && targetSpk && (mSpk === targetSpk || mSpk.includes(targetSpk) || targetSpk.includes(mSpk));
+        });
+
+        if (matchedTUG5 && Array.isArray(matchedTUG5.items) && matchedTUG5.items.length === r.items.length) {
+          const healedItems = matchedTUG5.items.map((t5Itm, idx) => {
+            const isCrit = Boolean(
+              checkIsCriticalPart(t5Itm, criticalParts || []).isCritical ||
+              (t5Itm.spare_part_name || "").toUpperCase().includes("PISTON CROWN")
+            );
+            return {
+              ...r.items[idx],
+              spare_part_id: t5Itm.spare_part_id || r.items[idx]?.spare_part_id || `item-tug6-heal-${idx}`,
+              spare_part_name: t5Itm.spare_part_name,
+              part_number: t5Itm.part_number || "-",
+              unit: t5Itm.unit || "PCS",
+              remaining_stock: t5Itm.remaining_stock ?? 10,
+              requested_qty: t5Itm.requested_qty || r.items[idx]?.requested_qty || 1,
+              is_critical: isCrit,
+              notes: isCrit
+                ? (t5Itm.notes?.includes("[ITEM CRITICAL]") ? t5Itm.notes : `[ITEM CRITICAL] ${t5Itm.notes || "Suku cadang kritis armada kapal"}`)
+                : (t5Itm.notes || "")
+            };
+          });
+
+          onUpdateRequest(r.id, { items: healedItems });
+        }
+      }
+    });
+  }, [requests, tug5Requests, criticalParts, onUpdateRequest]);
 
   // Extract all available months dynamically from TUG 6 requests
   const availableMonths = useMemo(() => {
@@ -434,12 +477,17 @@ export default function MaterialRequestTUG6View({
         spk.vessels.forEach(vessel => {
           vessel.items.forEach(itm => {
             const isCrit = checkIsCriticalPart({ spare_part_name: itm.spare_part_name, part_number: itm.part_number }, criticalParts || []).isCritical;
-            const matchedPart = parts.find(p => p.id === itm.spare_part_id || p.part_number === itm.part_number);
+            const matchedPart = findMatchingSparePart(parts, itm);
+            const finalName = itm.spare_part_name || (itm as any).part_name || matchedPart?.part_name || "Suku Cadang";
+            const finalPn = (itm.part_number && itm.part_number !== "-" && itm.part_number !== "(-)")
+              ? itm.part_number
+              : (matchedPart?.part_number && matchedPart.part_number !== "-" ? matchedPart.part_number : (itm.part_number || "-"));
+            const finalUnit = itm.unit || matchedPart?.unit || "PCS";
             allItems.push({
               spare_part_id: matchedPart?.id || itm.spare_part_id,
-              spare_part_name: matchedPart?.part_name || itm.spare_part_name,
-              part_number: matchedPart?.part_number || itm.part_number,
-              unit: matchedPart?.unit || itm.unit || "PCS",
+              spare_part_name: finalName,
+              part_number: finalPn,
+              unit: finalUnit,
               avg_monthly_usage: 1,
               remaining_stock: matchedPart?.current_stock || 0,
               requested_qty: itm.qty_to_pick,
@@ -565,7 +613,7 @@ export default function MaterialRequestTUG6View({
 
     // Include ALL items from the SPK, tagging items that match Critical Spare Parts master
     const finalFormItems: Partial<MaterialRequestItem>[] = rawItems.map((item, idx) => {
-      const matchedPart = parts.find(p => p.id === item.spare_part_id || (p.part_number && item.part_number && p.part_number.trim().toLowerCase() === item.part_number.trim().toLowerCase()));
+      const matchedPart = findMatchingSparePart(parts, item);
       
       const checkCrit = checkIsCriticalPart(item, criticalParts);
       let itemNotes = item.notes ? item.notes.trim() : "";
@@ -577,13 +625,22 @@ export default function MaterialRequestTUG6View({
         }
       }
 
+      // CRITICAL: Always preserve item.spare_part_name from TUG 5 / SPK!
+      // Never overwrite with matchedPart.part_name unless item name is missing.
+      const finalName = item.spare_part_name || item.part_name || matchedPart?.part_name || "Suku Cadang";
+      const finalPn = (item.part_number && item.part_number !== "-" && item.part_number !== "(-)")
+        ? item.part_number
+        : (matchedPart?.part_number && matchedPart.part_number !== "-" ? matchedPart.part_number : (item.part_number || "-"));
+      const finalUnit = item.unit || matchedPart?.unit || "PCS";
+      const finalStock = item.remaining_stock ?? matchedPart?.current_stock ?? 0;
+
       return {
         spare_part_id: matchedPart?.id || item.spare_part_id || `item-tug6-${Date.now()}-${idx}`,
-        spare_part_name: matchedPart?.part_name || item.spare_part_name,
-        part_number: matchedPart?.part_number || item.part_number || "-",
-        unit: matchedPart?.unit || item.unit || "PCS",
+        spare_part_name: finalName,
+        part_number: finalPn,
+        unit: finalUnit,
         avg_monthly_usage: item.avg_monthly_usage ?? 1,
-        remaining_stock: matchedPart?.current_stock ?? item.remaining_stock ?? 0,
+        remaining_stock: finalStock,
         requested_qty: Number(item.requested_qty) || 1,
         notes: itemNotes,
         is_critical: checkCrit.isCritical,
@@ -2489,14 +2546,19 @@ export default function MaterialRequestTUG6View({
                               onClick={() => {
                                 const matchedItems = matchedSPK.vessels.flatMap(v =>
                                   v.items.map(it => {
-                                    const matchedPart = parts.find(p => p.id === it.spare_part_id || p.part_number === it.part_number);
+                                    const matchedPart = findMatchingSparePart(parts, it);
                                     const checkCrit = checkIsCriticalPart({ spare_part_name: it.spare_part_name, part_number: it.part_number }, criticalParts);
                                     const isCrit = checkCrit.isCritical;
+                                    const finalName = it.spare_part_name || (it as any).part_name || matchedPart?.part_name || "Suku Cadang";
+                                    const finalPn = (it.part_number && it.part_number !== "-" && it.part_number !== "(-)")
+                                      ? it.part_number
+                                      : (matchedPart?.part_number && matchedPart.part_number !== "-" ? matchedPart.part_number : (it.part_number || "-"));
+                                    const finalUnit = it.unit || matchedPart?.unit || "PCS";
                                     return {
                                       spare_part_id: matchedPart?.id || it.spare_part_id,
-                                      spare_part_name: matchedPart?.part_name || it.spare_part_name,
-                                      part_number: matchedPart?.part_number || it.part_number,
-                                      unit: matchedPart?.unit || it.unit,
+                                      spare_part_name: finalName,
+                                      part_number: finalPn,
+                                      unit: finalUnit,
                                       avg_monthly_usage: 1,
                                       remaining_stock: matchedPart?.current_stock || 0,
                                       requested_qty: it.qty_to_pick,

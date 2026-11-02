@@ -68,6 +68,7 @@ import {
 } from "../types.js";
 import { api } from "../api.js";
 import { FLEET_VESSELS } from "./ReceivingView.js";
+import { findMatchingSparePart } from "../utils/criticalSpareParts.js";
 import BatchPrintZipModal from "./BatchPrintZipModal.js";
 import { createEmptyTUGReportRequest } from "../utils/zipDocumentGenerator.js";
 
@@ -1040,12 +1041,17 @@ export default function MaterialRequestView({
         
         spk.vessels.forEach(vessel => {
           vessel.items.forEach(itm => {
-            const matchedPart = parts.find(p => p.id === itm.spare_part_id || p.part_number === itm.part_number);
+            const matchedPart = findMatchingSparePart(parts, itm);
+            const finalName = itm.spare_part_name || (itm as any).part_name || matchedPart?.part_name || "Suku Cadang";
+            const finalPn = (itm.part_number && itm.part_number !== "-" && itm.part_number !== "(-)")
+              ? itm.part_number
+              : (matchedPart?.part_number && matchedPart.part_number !== "-" ? matchedPart.part_number : (itm.part_number || "-"));
+            const finalUnit = itm.unit || matchedPart?.unit || "PCS";
             allItems.push({
               spare_part_id: matchedPart?.id || itm.spare_part_id,
-              spare_part_name: matchedPart?.part_name || itm.spare_part_name,
-              part_number: matchedPart?.part_number || itm.part_number,
-              unit: matchedPart?.unit || itm.unit || "PCS",
+              spare_part_name: finalName,
+              part_number: finalPn,
+              unit: finalUnit,
               avg_monthly_usage: 1,
               remaining_stock: matchedPart?.current_stock || 0,
               requested_qty: itm.qty_to_pick,
@@ -3184,12 +3190,17 @@ export default function MaterialRequestView({
                                 onClick={() => {
                                   if (confirm(`Muat ${inbItems.length} item dari Inbound PO ${matchedInb.purchase_order_num} ke dalam Form TUG 5?`)) {
                                     const loadedItems: MaterialRequestItem[] = inbItems.map(it => {
-                                      const matchedPart = parts.find(p => p.id === it.spare_part_id || p.part_number === it.part_number);
+                                      const matchedPart = findMatchingSparePart(parts, { spare_part_id: it.spare_part_id, spare_part_name: it.part_name || it.spare_part_name, part_number: it.part_number });
+                                      const finalName = it.part_name || it.spare_part_name || matchedPart?.part_name || "Suku Cadang";
+                                      const finalPn = (it.part_number && it.part_number !== "-" && it.part_number !== "(-)")
+                                        ? it.part_number
+                                        : (matchedPart?.part_number && matchedPart.part_number !== "-" ? matchedPart.part_number : (it.part_number || "-"));
+                                      const finalUnit = it.unit || matchedPart?.unit || "PCS";
                                       return {
                                         spare_part_id: matchedPart?.id || it.spare_part_id,
-                                        spare_part_name: it.part_name || it.spare_part_name || matchedPart?.part_name || "Suku Cadang",
-                                        part_number: it.part_number || matchedPart?.part_number || "-",
-                                        unit: it.unit || matchedPart?.unit || "PCS",
+                                        spare_part_name: finalName,
+                                        part_number: finalPn,
+                                        unit: finalUnit,
                                         avg_monthly_usage: 1,
                                         remaining_stock: matchedPart?.current_stock || 0,
                                         requested_qty: it.qty_received || it.qty_ordered || 1,
@@ -3229,12 +3240,17 @@ export default function MaterialRequestView({
                               if (confirm(`Muat seluruh ${totalItemsCount} suku cadang dari semua kapal di dalam SPK ${matchedSPK.spk_number} ke dalam Form TUG 5?`)) {
                                 const loadedItems = matchedSPK.vessels.flatMap(v =>
                                   v.items.map(it => {
-                                    const matchedPart = parts.find(p => p.id === it.spare_part_id || p.part_number === it.part_number);
+                                    const matchedPart = findMatchingSparePart(parts, it);
+                                    const finalName = it.spare_part_name || (it as any).part_name || matchedPart?.part_name || "Suku Cadang";
+                                    const finalPn = (it.part_number && it.part_number !== "-" && it.part_number !== "(-)")
+                                      ? it.part_number
+                                      : (matchedPart?.part_number && matchedPart.part_number !== "-" ? matchedPart.part_number : (it.part_number || "-"));
+                                    const finalUnit = it.unit || matchedPart?.unit || "PCS";
                                     return {
                                       spare_part_id: matchedPart?.id || it.spare_part_id,
-                                      spare_part_name: matchedPart?.part_name || it.spare_part_name,
-                                      part_number: matchedPart?.part_number || it.part_number,
-                                      unit: matchedPart?.unit || it.unit,
+                                      spare_part_name: finalName,
+                                      part_number: finalPn,
+                                      unit: finalUnit,
                                       avg_monthly_usage: 1,
                                       remaining_stock: matchedPart?.current_stock || 0,
                                       requested_qty: it.qty_to_pick,

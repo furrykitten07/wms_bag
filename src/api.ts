@@ -500,8 +500,38 @@ export function loadLocalMaterialRequestsTUG6(): MaterialRequest[] {
     }
     const saved = localStorage.getItem(MANUAL_TUG6_STORAGE_KEY);
     if (saved) {
-      const parsed = JSON.parse(saved);
+      let parsed = JSON.parse(saved);
       if (Array.isArray(parsed)) {
+        let changed = false;
+        parsed = parsed.map((r: MaterialRequest) => {
+          if (!r || !Array.isArray(r.items)) return r;
+          const badCount = r.items.filter(it => it && it.spare_part_name === "Peralatan Predictive Maintenance Machinery Analyzer").length;
+          if (badCount > 1) {
+            const targetSpk = (r.spk_number || r.work_order_ref || "").trim().toLowerCase();
+            const matchedTUG5 = demoMaterialRequests.find(m => {
+              const mSpk = (m.spk_number || m.work_order_ref || "").trim().toLowerCase();
+              return mSpk && targetSpk && (mSpk === targetSpk || mSpk.includes(targetSpk) || targetSpk.includes(mSpk));
+            });
+            if (matchedTUG5 && Array.isArray(matchedTUG5.items) && matchedTUG5.items.length === r.items.length) {
+              changed = true;
+              return {
+                ...r,
+                items: matchedTUG5.items.map((t5Itm, idx) => ({
+                  ...r.items[idx],
+                  spare_part_id: t5Itm.spare_part_id || r.items[idx]?.spare_part_id || `item-tug6-heal-${idx}`,
+                  spare_part_name: t5Itm.spare_part_name,
+                  part_number: t5Itm.part_number || "-",
+                  unit: t5Itm.unit || "PCS",
+                  remaining_stock: t5Itm.remaining_stock ?? 10
+                }))
+              };
+            }
+          }
+          return r;
+        });
+        if (changed) {
+          saveLocalMaterialRequestsTUG6(parsed);
+        }
         return parsed.filter(r => r && (r.tug_type === "TUG6" || r.request_number?.startsWith("MR6-")));
       }
     }
@@ -1290,6 +1320,30 @@ async function fetcher<T>(url: string, options: RequestInit = {}): Promise<T> {
         return { success: true, count: 0 } as any;
       }
       if (path === "/api/material-requests-tug6" && method === "GET") {
+        try {
+          const { data: supaMR6, error } = await supabase
+            .from("material_requests")
+            .select("*")
+            .like("request_number", "MR6-%")
+            .order("created_at", { ascending: false });
+          if (!error && Array.isArray(supaMR6) && supaMR6.length > 0) {
+            const mapped = supaMR6.map(r => ({ ...r, tug_type: "TUG6" as const }));
+            const validLocal = loadLocalMaterialRequestsTUG6();
+            const mergedMap = new Map<string, MaterialRequest>();
+            mapped.forEach(m => mergedMap.set(m.id, m));
+            validLocal.forEach(m => {
+              if (!mergedMap.has(m.id)) {
+                mergedMap.set(m.id, m);
+              }
+            });
+            const merged = Array.from(mergedMap.values());
+            localMaterialRequestsTUG6 = merged;
+            saveLocalMaterialRequestsTUG6(merged);
+            return merged as any;
+          }
+        } catch (e) {
+          console.warn("Supabase TUG 6 fetch exception:", e);
+        }
         // Return only manually created TUG 6 items
         const validLocal = loadLocalMaterialRequestsTUG6();
         localMaterialRequestsTUG6 = validLocal;
