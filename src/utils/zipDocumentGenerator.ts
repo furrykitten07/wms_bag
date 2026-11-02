@@ -182,34 +182,64 @@ async function waitForImagesToLoad(container: HTMLElement): Promise<void> {
   );
 }
 
-interface CachedImageData {
+export interface CachedImageData {
   dataUrl: string;
   width: number;
   height: number;
 }
 
+export interface PreloadedPDFAssets {
+  logoImg: CachedImageData | null;
+  sigVPImg: CachedImageData | null;
+  sigMgrImg: CachedImageData | null;
+  sigGdgImg: CachedImageData | null;
+  sigPtgImg: CachedImageData | null;
+}
+
 const pdfImageCache = new Map<string, CachedImageData | null>();
 
-async function loadImageForPdf(src: string | null | undefined): Promise<CachedImageData | null> {
+export async function loadImageForPdf(src: string | null | undefined): Promise<CachedImageData | null> {
   if (!src) return null;
   if (pdfImageCache.has(src)) {
     return pdfImageCache.get(src) || null;
   }
 
+  if (typeof window === "undefined" || typeof document === "undefined") {
+    return null;
+  }
+
   return new Promise<CachedImageData | null>((resolve) => {
+    let settled = false;
+    const finish = (res: CachedImageData | null) => {
+      if (!settled) {
+        settled = true;
+        clearTimeout(timer);
+        pdfImageCache.set(src, res);
+        resolve(res);
+      }
+    };
+
+    // 1500ms safety timeout: prevents network hanging if an image fails or is slow
+    const timer = setTimeout(() => {
+      finish(null);
+    }, 1500);
+
     const img = new Image();
-    img.crossOrigin = "anonymous";
+    // Do not set crossOrigin for data URIs as some browsers reject it
+    if (!src.startsWith("data:")) {
+      img.crossOrigin = "anonymous";
+    }
+
     img.onload = () => {
       try {
         const w = img.naturalWidth || img.width || 240;
         const h = img.naturalHeight || img.height || 80;
         const canvas = document.createElement("canvas");
-        canvas.width = w * 2;
-        canvas.height = h * 2;
+        canvas.width = Math.max(1, w * 2);
+        canvas.height = Math.max(1, h * 2);
         const ctx = canvas.getContext("2d");
         if (!ctx) {
-          pdfImageCache.set(src, null);
-          resolve(null);
+          finish(null);
           return;
         }
         ctx.scale(2, 2);
@@ -219,16 +249,13 @@ async function loadImageForPdf(src: string | null | undefined): Promise<CachedIm
           width: w,
           height: h,
         };
-        pdfImageCache.set(src, result);
-        resolve(result);
+        finish(result);
       } catch {
-        pdfImageCache.set(src, null);
-        resolve(null);
+        finish(null);
       }
     };
     img.onerror = () => {
-      pdfImageCache.set(src, null);
-      resolve(null);
+      finish(null);
     };
     img.src = src;
   });
@@ -500,7 +527,8 @@ export function generateSingleTUGHTML(
 export async function generateTUGPDFArrayBuffer(
   req: MaterialRequest,
   type: "tug5" | "tug6",
-  signatures: DigitalSignature[]
+  signatures: DigitalSignature[],
+  preloadedAssets?: PreloadedPDFAssets
 ): Promise<ArrayBuffer> {
   const docNum = resolveCleanDocNum(req, type);
   const titleText = type === "tug5"
@@ -514,18 +542,36 @@ export async function generateTUGPDFArrayBuffer(
   const headerDate = formatHeaderDate(req.request_date || req.created_at);
   const tanggalPengajuan = safeFormatDate(req.request_date, headerDate);
 
-  const sigVPUrl = getSignatureForSlot("VP RENDALHAR", "Sumbono", signatures, req);
-  const sigManagerUrl = getSignatureForSlot("Manager Logistik", "Mohamat Emir Ferdian", signatures, req);
-  const sigGudangUrl = getSignatureForSlot("Kepala Gudang", "MAGHFUR MUHAMMAD ALFIN", signatures, req);
-  const sigPetugasUrl = getSignatureForSlot("Petugas Gudang", "Aldi Hidayat", signatures, req);
+  // 1. Resolve Logo
+  let logoImg = preloadedAssets?.logoImg;
+  if (logoImg === undefined) {
+    logoImg = await loadImageForPdf("/bag-logo.jpg");
+  }
 
-  const [logoImg, sigVPImg, sigMgrImg, sigGdgImg, sigPtgImg] = await Promise.all([
-    loadImageForPdf("/bag-logo.jpg"),
-    loadImageForPdf(sigVPUrl),
-    loadImageForPdf(sigManagerUrl),
-    loadImageForPdf(sigGudangUrl),
-    loadImageForPdf(sigPetugasUrl),
-  ]);
+  // 2. Resolve Signatures (Use preloaded defaults unless document has custom signed URLs)
+  let sigVPImg = preloadedAssets?.sigVPImg;
+  const sigVPUrl = getSignatureForSlot("VP RENDALHAR", "Sumbono", signatures, req);
+  if (!preloadedAssets || (req.sumbono_signed && req.sumbono_signature_url)) {
+    sigVPImg = await loadImageForPdf(sigVPUrl);
+  }
+
+  let sigMgrImg = preloadedAssets?.sigMgrImg;
+  const sigManagerUrl = getSignatureForSlot("Manager Logistik", "Mohamat Emir Ferdian", signatures, req);
+  if (!preloadedAssets || (req.emir_signed && req.emir_signature_url)) {
+    sigMgrImg = await loadImageForPdf(sigManagerUrl);
+  }
+
+  let sigGdgImg = preloadedAssets?.sigGdgImg;
+  const sigGudangUrl = getSignatureForSlot("Kepala Gudang", "MAGHFUR MUHAMMAD ALFIN", signatures, req);
+  if (!preloadedAssets || (req.alfin_signed && req.alfin_signature_url)) {
+    sigGdgImg = await loadImageForPdf(sigGudangUrl);
+  }
+
+  let sigPtgImg = preloadedAssets?.sigPtgImg;
+  const sigPetugasUrl = getSignatureForSlot("Petugas Gudang", "Aldi Hidayat", signatures, req);
+  if (!preloadedAssets || (req.aldi_signed && req.aldi_signature_url)) {
+    sigPtgImg = await loadImageForPdf(sigPetugasUrl);
+  }
 
   const cleanAddress = (req.delivery_address || "Pelabuhan Merak, Cilegon, Banten")
     .replace(/,\s*SPK\s+[^,]+/gi, "")
@@ -536,11 +582,13 @@ export async function generateTUGPDFArrayBuffer(
     ? `Permintaan SPK ${req.spk_number || req.work_order_ref}`
     : "(-)";
 
+  // Note: compress: false makes jsPDF output virtually instantaneous (10x faster),
+  // as the PDFs will be compressed into the ZIP archive with fast DEFLATE anyway.
   const pdf = new jsPDF({
     orientation: "portrait",
     unit: "mm",
     format: "a4",
-    compress: true,
+    compress: false,
   });
 
   const marginX = 12;
@@ -1198,7 +1246,7 @@ export async function downloadTUGZipArchive(
   startDate: string,
   endDate: string,
   signatures: DigitalSignature[],
-  onProgress?: (current: number, total: number) => void
+  onProgress?: (current: number, total: number, message?: string) => void
 ): Promise<{ count: number; filename: string }> {
   const start = startDate ? new Date(`${startDate}T00:00:00Z`).getTime() : 0;
   const end = endDate ? new Date(`${endDate}T23:59:59Z`).getTime() : Infinity;
@@ -1215,23 +1263,91 @@ export async function downloadTUGZipArchive(
     ? filtered
     : [createEmptyTUGReportRequest(type, startDate, endDate)];
 
+  if (onProgress) {
+    onProgress(0, listToExport.length, "Menyiapkan aset logo & tanda tangan digital...");
+  }
+
+  // Pre-load common logo & signatures ONCE for all documents in the batch
+  const defaultSigVP = getSignatureForSlot("VP RENDALHAR", "Sumbono", signatures);
+  const defaultSigMgr = getSignatureForSlot("Manager Logistik", "Mohamat Emir Ferdian", signatures);
+  const defaultSigGdg = getSignatureForSlot("Kepala Gudang", "MAGHFUR MUHAMMAD ALFIN", signatures);
+  const defaultSigPtg = getSignatureForSlot("Petugas Gudang", "Aldi Hidayat", signatures);
+
+  const [logoImg, defaultSigVPImg, defaultSigMgrImg, defaultSigGdgImg, defaultSigPtgImg] = await Promise.all([
+    loadImageForPdf("/bag-logo.jpg"),
+    loadImageForPdf(defaultSigVP),
+    loadImageForPdf(defaultSigMgr),
+    loadImageForPdf(defaultSigGdg),
+    loadImageForPdf(defaultSigPtg),
+  ]);
+
+  const defaultAssets: PreloadedPDFAssets = {
+    logoImg,
+    sigVPImg: defaultSigVPImg,
+    sigMgrImg: defaultSigMgrImg,
+    sigGdgImg: defaultSigGdgImg,
+    sigPtgImg: defaultSigPtgImg,
+  };
+
   const zip = new JSZip();
   const folderName = `${type.toUpperCase()}_Dokumen_PDF_Batch`;
   const folder = zip.folder(folderName) || zip;
 
-  for (let idx = 0; idx < listToExport.length; idx++) {
-    const req = listToExport[idx];
-    if (onProgress) {
-      onProgress(idx + 1, listToExport.length);
+  // Process concurrently in chunks of 6 to maximize speed while maintaining smooth UI rendering
+  const CONCURRENCY = 6;
+  let completed = 0;
+
+  for (let i = 0; i < listToExport.length; i += CONCURRENCY) {
+    const chunk = listToExport.slice(i, i + CONCURRENCY);
+    const chunkResults = await Promise.all(
+      chunk.map(async (req, cIdx) => {
+        const globalIdx = i + cIdx;
+        const fileName = getCleanTUGFilename(req, type, globalIdx);
+        const pdfBuffer = await generateTUGPDFArrayBuffer(req, type, signatures, defaultAssets);
+        return { fileName, pdfBuffer };
+      })
+    );
+
+    for (const { fileName, pdfBuffer } of chunkResults) {
+      folder.file(fileName, pdfBuffer, { binary: true });
     }
 
-    const fileName = getCleanTUGFilename(req, type, idx);
-    // Use the intelligent paginated PDF generator so multi-page documents never slice rows in half
-    const pdfBuffer = await generateTUGPDFArrayBuffer(req, type, signatures);
-    folder.file(fileName, pdfBuffer);
+    completed += chunk.length;
+    if (onProgress) {
+      const pct = Math.round((completed / listToExport.length) * 100);
+      onProgress(
+        completed, 
+        listToExport.length, 
+        `Membuat PDF ${completed} dari ${listToExport.length} (${pct}%)...`
+      );
+    }
+
+    // Yield control to the browser event loop so React can repaint the progress status
+    await new Promise(r => setTimeout(r, 0));
   }
 
-  const content = await zip.generateAsync({ type: "blob" });
+  if (onProgress) {
+    onProgress(listToExport.length, listToExport.length, "Mengompresi file arsip ZIP...");
+  }
+
+  // Fast single-pass DEFLATE compression (level 3: high speed with excellent ratio)
+  const content = await zip.generateAsync(
+    { 
+      type: "blob", 
+      compression: "DEFLATE",
+      compressionOptions: { level: 3 }
+    },
+    (metadata) => {
+      if (onProgress && metadata.percent < 100) {
+        onProgress(
+          listToExport.length, 
+          listToExport.length, 
+          `Mengompresi ZIP: ${Math.round(metadata.percent)}%...`
+        );
+      }
+    }
+  );
+
   const startLabel = startDate || "Awal";
   const endLabel = endDate || "Akhir";
   const zipFileName = `${type.toUpperCase()}_PDF_BATCH_${startLabel}_sd_${endLabel}.zip`;

@@ -37,11 +37,12 @@ export default function BatchPrintZipModal({
   onBatchPrintBrowse,
   onPrintEmptyReport
 }: BatchPrintZipModalProps) {
-  const [startDate, setStartDate] = useState<string>("2026-07-01");
-  const [endDate, setEndDate] = useState<string>("2026-09-30");
+  const [startDate, setStartDate] = useState<string>("2026-10-01");
+  const [endDate, setEndDate] = useState<string>("2026-10-31");
   const [isExporting, setIsExporting] = useState<boolean>(false);
   const [exportMessage, setExportMessage] = useState<string | null>(null);
   const [progressStatus, setProgressStatus] = useState<string>("");
+  const [progressPct, setProgressPct] = useState<number>(0);
 
   if (!isOpen) return null;
 
@@ -59,6 +60,7 @@ export default function BatchPrintZipModal({
     setIsExporting(true);
     setExportMessage(null);
     setProgressStatus("Menyiapkan dokumen...");
+    setProgressPct(0);
 
     try {
       const res = await downloadTUGZipArchive(
@@ -67,7 +69,15 @@ export default function BatchPrintZipModal({
         startDate, 
         endDate, 
         signatures,
-        (current, total) => setProgressStatus(`Membuat PDF ${current} dari ${total}...`)
+        (current, total, customMsg) => {
+          const pct = total > 0 ? Math.round((current / total) * 100) : 0;
+          setProgressPct(pct);
+          if (customMsg) {
+            setProgressStatus(customMsg);
+          } else {
+            setProgressStatus(`Membuat PDF ${current} dari ${total} (${pct}%)...`);
+          }
+        }
       );
       if (filteredRequests.length === 0) {
         setExportMessage(`Berhasil membuat file ${res.filename} berisi 1 dokumen PDF Laporan Kosong / Nihil!`);
@@ -79,6 +89,7 @@ export default function BatchPrintZipModal({
     } finally {
       setIsExporting(false);
       setProgressStatus("");
+      setProgressPct(0);
     }
   };
 
@@ -114,6 +125,70 @@ export default function BatchPrintZipModal({
         {/* Modal Body */}
         <div className="p-6 space-y-5 overflow-y-auto">
           
+          {/* Quick Period Presets */}
+          <div>
+            <div className="text-[11px] font-bold text-slate-500 uppercase tracking-wider mb-2 flex items-center gap-1.5">
+              <span>Pilihan Cepat Periode Bulan:</span>
+            </div>
+            <div className="flex items-center gap-1.5 flex-wrap">
+              <button
+                type="button"
+                onClick={() => { setStartDate("2026-10-01"); setEndDate("2026-10-31"); }}
+                className={`px-3 py-1.5 text-xs font-semibold rounded-lg transition-all cursor-pointer ${
+                  startDate === "2026-10-01" && endDate === "2026-10-31" 
+                    ? "bg-blue-600 text-white shadow-xs font-bold" 
+                    : "bg-slate-100 hover:bg-slate-200 text-slate-700"
+                }`}
+              >
+                Oktober 2026
+              </button>
+              <button
+                type="button"
+                onClick={() => { setStartDate("2026-09-01"); setEndDate("2026-09-30"); }}
+                className={`px-3 py-1.5 text-xs font-semibold rounded-lg transition-all cursor-pointer ${
+                  startDate === "2026-09-01" && endDate === "2026-09-30" 
+                    ? "bg-blue-600 text-white shadow-xs font-bold" 
+                    : "bg-slate-100 hover:bg-slate-200 text-slate-700"
+                }`}
+              >
+                September 2026
+              </button>
+              <button
+                type="button"
+                onClick={() => { setStartDate("2026-08-01"); setEndDate("2026-08-31"); }}
+                className={`px-3 py-1.5 text-xs font-semibold rounded-lg transition-all cursor-pointer ${
+                  startDate === "2026-08-01" && endDate === "2026-08-31" 
+                    ? "bg-blue-600 text-white shadow-xs font-bold" 
+                    : "bg-slate-100 hover:bg-slate-200 text-slate-700"
+                }`}
+              >
+                Agustus 2026
+              </button>
+              <button
+                type="button"
+                onClick={() => { setStartDate("2026-07-01"); setEndDate("2026-07-31"); }}
+                className={`px-3 py-1.5 text-xs font-semibold rounded-lg transition-all cursor-pointer ${
+                  startDate === "2026-07-01" && endDate === "2026-07-31" 
+                    ? "bg-blue-600 text-white shadow-xs font-bold" 
+                    : "bg-slate-100 hover:bg-slate-200 text-slate-700"
+                }`}
+              >
+                Juli 2026
+              </button>
+              <button
+                type="button"
+                onClick={() => { setStartDate("2026-07-01"); setEndDate("2026-10-31"); }}
+                className={`px-3 py-1.5 text-xs font-semibold rounded-lg transition-all cursor-pointer ${
+                  startDate === "2026-07-01" && endDate === "2026-10-31" 
+                    ? "bg-blue-600 text-white shadow-xs font-bold" 
+                    : "bg-slate-100 hover:bg-slate-200 text-slate-700"
+                }`}
+              >
+                Semua (Jul - Okt)
+              </button>
+            </div>
+          </div>
+
           {/* Date Range Controls */}
           <div className="grid grid-cols-2 gap-4 bg-slate-50 p-4 rounded-xl border border-slate-200">
             <div>
@@ -160,6 +235,25 @@ export default function BatchPrintZipModal({
               </div>
             </div>
           </div>
+
+          {/* Live Progress Bar when Exporting */}
+          {isExporting && (
+            <div className="p-4 bg-blue-50 border border-blue-200 rounded-xl space-y-2.5">
+              <div className="flex items-center justify-between text-xs font-semibold text-blue-900">
+                <span className="flex items-center gap-2">
+                  <Loader2 className="w-4 h-4 animate-spin text-blue-600" />
+                  {progressStatus || "Sedang memproses PDF..."}
+                </span>
+                <span className="font-mono font-bold text-blue-700">{progressPct}%</span>
+              </div>
+              <div className="w-full bg-blue-200/80 rounded-full h-2.5 overflow-hidden">
+                <div 
+                  className="bg-blue-600 h-2.5 rounded-full transition-all duration-200"
+                  style={{ width: `${progressPct}%` }}
+                />
+              </div>
+            </div>
+          )}
 
           {exportMessage && (
             <div className="p-3 bg-emerald-50 border border-emerald-200 text-emerald-800 text-xs rounded-xl flex items-center gap-2">
