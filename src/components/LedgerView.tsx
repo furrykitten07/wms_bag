@@ -16,7 +16,6 @@ import {
   Calendar,
   ChevronDown,
   Boxes,
-  Download,
   RefreshCw,
   Ship,
   Package,
@@ -312,61 +311,6 @@ export default function LedgerView({
     setTimeout(() => setCopiedCode(null), 2000);
   };
 
-  // CSV Export Handler
-  const handleExportCSV = () => {
-    if (filteredMovements.length === 0) {
-      alert("Tidak ada data pergerakan stok untuk diexport.");
-      return;
-    }
-
-    const headers = [
-      "No",
-      "Tanggal & Waktu",
-      "No. Dokumen / Referensi",
-      "Arah Pergerakan",
-      "Nama Suku Cadang",
-      "Part Number",
-      "Kapal / Armada",
-      "Qty Masuk (Inbound)",
-      "Qty Keluar (Outbound)",
-      "Saldo Akhir",
-      "Petugas / Operator",
-      "Keterangan & Detail"
-    ];
-
-    const rows = filteredMovements.map((m, idx) => {
-      const correlatedPart = parts.find(p => p.id === m.spare_part_id);
-      const isPositive = m.qty_in > 0;
-      const partName = correlatedPart ? correlatedPart.part_name : (m.spare_part_name || "-");
-      const partNumber = correlatedPart ? correlatedPart.part_number : (m.part_number || "-");
-
-      return [
-        idx + 1,
-        `"${new Date(m.transaction_date).toLocaleString("id-ID")}"`,
-        `"${m.reference_number || '-'}"`,
-        isPositive ? "INBOUND (+)" : "OUTBOUND (-)",
-        `"${partName.replace(/"/g, '""')}"`,
-        `"${partNumber.replace(/"/g, '""')}"`,
-        `"${(m.vessel_name || '-').replace(/"/g, '""')}"`,
-        m.qty_in || 0,
-        m.qty_out || 0,
-        m.after_stock !== undefined ? m.after_stock : "-",
-        `"${(m.created_by || '-').replace(/"/g, '""')}"`,
-        `"${(m.remarks || '-').replace(/"/g, '""')}"`
-      ];
-    });
-
-    const csvContent = "\uFEFF" + [headers.join(","), ...rows.map(r => r.join(","))].join("\r\n");
-    const blob = new Blob([csvContent], { type: "text/csv;charset=utf-8;" });
-    const url = URL.createObjectURL(blob);
-    const link = document.createElement("a");
-    link.href = url;
-    link.setAttribute("download", `Stock_Ledger_Trail_${new Date().toISOString().split("T")[0]}.csv`);
-    document.body.appendChild(link);
-    link.click();
-    document.body.removeChild(link);
-  };
-
   return (
     <div className="flex-1 flex flex-col p-4 sm:p-6 gap-5 overflow-y-auto font-sans bg-slate-50 min-h-0 selection:bg-blue-100">
       
@@ -385,18 +329,6 @@ export default function LedgerView({
           <p className="text-xs text-slate-500 font-sans mt-0.5 max-w-2xl">
             Catatan log audit kriptografis berkelanjutan dari seluruh pergerakan penerimaan fisik barang (Inbound PO), pengeluaran kapal (Outbound TUG 8), serta retur gudang (TUG 10).
           </p>
-        </div>
-
-        <div className="flex items-center gap-2.5 shrink-0 self-start md:self-auto">
-          <button
-            type="button"
-            onClick={handleExportCSV}
-            className="px-3.5 py-2 bg-emerald-600 hover:bg-emerald-500 text-white rounded-xl text-xs font-mono font-bold flex items-center gap-2 shadow-xs transition-colors cursor-pointer"
-            title="Download audit trail ke file CSV / Excel"
-          >
-            <Download className="w-3.5 h-3.5" />
-            <span>Export CSV</span>
-          </button>
         </div>
       </div>
 
