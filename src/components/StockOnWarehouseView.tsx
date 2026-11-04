@@ -61,7 +61,7 @@ interface StockOnWarehouseViewProps {
   spkList?: SPKWorkOrder[];
   vessels?: Vessel[];
   currentUser?: User | null;
-  onNavigateTab?: (tab: string) => void;
+  onNavigateTab?: (tab: string, payload?: { search?: string; dispatchId?: string }) => void;
   onPreviewReceivingDoc?: (rec: InboundReceiving) => void;
   onPreviewDispatchDoc?: (dsp: OutboundDispatch) => void;
 }
@@ -458,6 +458,8 @@ export default function StockOnWarehouseView({
         }>;
       }>;
       uniqueDispatches: Array<{
+        dispatchId?: string;
+        dispatchNumber?: string;
         tug8Number: string;
         dispatchDate: string;
         vesselName: string;
@@ -479,11 +481,13 @@ export default function StockOnWarehouseView({
       }
 
       // Collect unique dispatches
-      const dspSet = new Map<string, { tug8Number: string; dispatchDate: string; vesselName: string }>();
+      const dspSet = new Map<string, { dispatchId?: string; dispatchNumber?: string; tug8Number: string; dispatchDate: string; vesselName: string }>();
       itemsArr.forEach(i => {
         i.matchedDispatches.forEach(d => {
           if (!dspSet.has(d.tug8Number)) {
             dspSet.set(d.tug8Number, {
+              dispatchId: d.dispatchId,
+              dispatchNumber: d.dispatchNumber,
               tug8Number: d.tug8Number,
               dispatchDate: d.dispatchDate,
               vesselName: d.vesselName
@@ -1408,9 +1412,21 @@ export default function StockOnWarehouseView({
                                             <div className="flex flex-col gap-1">
                                               {itm.matchedDispatches.map((d, dIdx) => (
                                                 <div key={dIdx} className="flex items-center gap-1.5 text-[10px]">
-                                                  <span className="font-bold text-indigo-700 bg-indigo-50 px-1 py-0.2 rounded">
-                                                    {d.tug8Number}
-                                                  </span>
+                                                  {onNavigateTab ? (
+                                                    <button
+                                                      type="button"
+                                                      onClick={() => onNavigateTab("dispatch", { search: d.tug8Number, dispatchId: d.dispatchId })}
+                                                      className="font-bold text-indigo-700 bg-indigo-50 hover:bg-indigo-100 border border-indigo-200 hover:border-indigo-400 px-1.5 py-0.5 rounded cursor-pointer transition-colors inline-flex items-center gap-1 group/btn"
+                                                      title={`Buka & sorot dokumen TUG 8 (${d.tug8Number}) di Menu Dispatch`}
+                                                    >
+                                                      <span>{d.tug8Number}</span>
+                                                      <ExternalLink className="w-2.5 h-2.5 opacity-60 group-hover/btn:opacity-100" />
+                                                    </button>
+                                                  ) : (
+                                                    <span className="font-bold text-indigo-700 bg-indigo-50 px-1 py-0.2 rounded">
+                                                      {d.tug8Number}
+                                                    </span>
+                                                  )}
                                                   <span className="text-slate-500">
                                                     (-{d.qtyDispatched} {itm.unit}) &bull; {d.vesselName}
                                                   </span>
@@ -1459,20 +1475,42 @@ export default function StockOnWarehouseView({
 
                             <div className="flex items-center gap-2">
                               {group.uniqueDispatches.length > 0 && (
-                                <div className="flex items-center gap-1 text-[11px] text-indigo-700 font-mono">
+                                <div className="flex items-center gap-1 text-[11px] text-indigo-700 font-mono flex-wrap">
                                   <span>TUG 8 Terkait:</span>
                                   {group.uniqueDispatches.map(d => (
-                                    <span key={d.tug8Number} className="bg-indigo-50 border border-indigo-200 px-1.5 py-0.2 rounded font-bold">
-                                      {d.tug8Number}
-                                    </span>
+                                    onNavigateTab ? (
+                                      <button
+                                        key={d.tug8Number}
+                                        type="button"
+                                        onClick={() => onNavigateTab("dispatch", { search: d.tug8Number, dispatchId: d.dispatchId })}
+                                        className="bg-indigo-50 hover:bg-indigo-100 text-indigo-700 border border-indigo-200 hover:border-indigo-400 px-2 py-0.5 rounded font-bold text-[11px] cursor-pointer transition-all inline-flex items-center gap-1 group/badge"
+                                        title={`Buka & sorot dokumen TUG 8 (${d.tug8Number}) di Menu Dispatch`}
+                                      >
+                                        <span>{d.tug8Number}</span>
+                                        <ExternalLink className="w-2.5 h-2.5 opacity-60 group-hover/badge:opacity-100" />
+                                      </button>
+                                    ) : (
+                                      <span key={d.tug8Number} className="bg-indigo-50 border border-indigo-200 px-1.5 py-0.2 rounded font-bold">
+                                        {d.tug8Number}
+                                      </span>
+                                    )
                                   ))}
                                 </div>
                               )}
 
                               {onNavigateTab && (
                                 <button
-                                  onClick={() => onNavigateTab("dispatch")}
-                                  className="px-3 py-1.5 bg-indigo-50 hover:bg-indigo-100 text-indigo-700 font-bold rounded-lg text-xs transition-colors cursor-pointer flex items-center gap-1"
+                                  type="button"
+                                  onClick={() => {
+                                    const targetDsp = group.uniqueDispatches[0];
+                                    const searchVal = targetDsp?.tug8Number || (group.spkNumber && group.spkNumber !== "-" ? group.spkNumber : group.poNumber);
+                                    onNavigateTab("dispatch", {
+                                      search: searchVal,
+                                      dispatchId: targetDsp?.dispatchId
+                                    });
+                                  }}
+                                  className="px-3 py-1.5 bg-indigo-50 hover:bg-indigo-100 text-indigo-700 font-bold rounded-lg text-xs transition-colors cursor-pointer flex items-center gap-1 shrink-0"
+                                  title="Buka dokumen pengiriman TUG 8 terkait di Menu Dispatch (Outbound)"
                                 >
                                   <span>Buka Menu Dispatch (TUG 8)</span>
                                   <ExternalLink className="w-3 h-3" />

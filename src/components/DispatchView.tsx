@@ -40,7 +40,8 @@ import {
   Layers,
   PackageCheck,
   Edit3,
-  Plus
+  Plus,
+  Sparkles
 } from "lucide-react";
 import { OutboundDispatch, DispatchStatus, UserRole, SparePart, MaterialRequest, SPKWorkOrder, MaterialReturn, InboundReceiving, ReceivingStatus, Vessel } from "../types.js";
 import { FLEET_VESSELS } from "./ReceivingView.js";
@@ -64,6 +65,9 @@ interface DispatchViewProps {
   onDeleteDispatch?: (id: string) => Promise<any>;
   receivingList?: InboundReceiving[];
   vessels?: Vessel[];
+  targetSearch?: string | null;
+  targetDispatchId?: string | null;
+  onClearTargetSearch?: () => void;
 }
 
 const ALDI_SIGNATURE_URL = `data:image/svg+xml;utf8,<svg xmlns="http://www.w3.org/2000/svg" width="220" height="70" viewBox="0 0 220 70"><path d="M 20 42 C 45 15, 60 55, 90 28 C 110 15, 130 52, 160 32 C 180 22, 190 48, 200 40" stroke="%230f2b5c" stroke-width="2.5" fill="none" stroke-linecap="round"/><path d="M 35 52 L 185 48" stroke="%231e293b" stroke-width="1.8" fill="none" stroke-linecap="round"/><text x="75" y="62" font-family="cursive" font-size="11" font-weight="bold" fill="%230f2b5c">Aldi Hidayat</text></svg>`;
@@ -150,7 +154,10 @@ export default function DispatchView({
   onUpdateReturn,
   onDeleteDispatch,
   receivingList = [],
-  vessels = []
+  vessels = [],
+  targetSearch,
+  targetDispatchId,
+  onClearTargetSearch
 }: DispatchViewProps) {
   const [activeActionId, setActiveActionId] = useState<string | null>(null);
   const [actionMenuCoords, setActionMenuCoords] = useState<{
@@ -276,6 +283,55 @@ export default function DispatchView({
   // Selected dispatch IDs state for Bulk Delete Checklist
   const [selectedDspIds, setSelectedDspIds] = useState<string[]>([]);
   const [isBulkDeleting, setIsBulkDeleting] = useState<boolean>(false);
+
+  const [highlightedDispatchId, setHighlightedDispatchId] = useState<string | null>(null);
+
+  // Handle incoming focus navigation from other menus (e.g. Stock On Warehouse)
+  React.useEffect(() => {
+    if (targetSearch || targetDispatchId) {
+      if (targetSearch) {
+        setSearch(targetSearch);
+      }
+      setDatePreset("ALL");
+      setStatusFilter("All");
+      setVesselFilter("All");
+      setDspPage(1);
+
+      if (targetDispatchId) {
+        setHighlightedDispatchId(targetDispatchId);
+      } else if (targetSearch) {
+        const s = targetSearch.toLowerCase().trim();
+        const matched = (dispatchList || []).find(d => {
+          if (!d) return false;
+          const dId = (d.id || "").toLowerCase();
+          const tug8 = (d.tug8_number || "").toLowerCase();
+          const dspNum = (d.dispatch_number || "").toLowerCase();
+          const bonNum = (d.bon_pengeluaran_number || "").toLowerCase();
+          const sjNum = (d.surat_jalan_number || "").toLowerCase();
+          const woRef = (d.work_order_ref || "").toLowerCase();
+          const spkNum = (d.spk_number || "").toLowerCase();
+          const notes = (d.notes || "").toLowerCase();
+          return (
+            dId === s ||
+            tug8 === s ||
+            dspNum === s ||
+            bonNum === s ||
+            sjNum === s ||
+            woRef === s ||
+            spkNum === s ||
+            notes.includes(s)
+          );
+        });
+        if (matched) {
+          setHighlightedDispatchId(matched.id);
+        }
+      }
+
+      if (onClearTargetSearch) {
+        onClearTargetSearch();
+      }
+    }
+  }, [targetSearch, targetDispatchId, dispatchList, onClearTargetSearch]);
 
   React.useEffect(() => {
     setDspPage(1);
@@ -1172,12 +1228,31 @@ export default function DispatchView({
     const dispNum = d.dispatch_number || "";
     const tug8Num = d.tug8_number || "";
     const reqRef = d.request_reference || "";
+    const woRef = d.work_order_ref || "";
+    const spkNum = d.spk_number || "";
+    const bonNum = d.bon_pengeluaran_number || "";
+    const sjNum = d.surat_jalan_number || "";
+    const notes = d.notes || "";
+    const courier = d.courier_name || d.driver_name || d.transporter_name || "";
+    const sLower = search.toLowerCase().trim();
 
     const matchesSearch = 
-      vName.toLowerCase().includes(search.toLowerCase()) || 
-      dispNum.toLowerCase().includes(search.toLowerCase()) || 
-      tug8Num.toLowerCase().includes(search.toLowerCase()) || 
-      reqRef.toLowerCase().includes(search.toLowerCase());
+      !sLower ||
+      (d.id && d.id.toLowerCase() === sLower) ||
+      vName.toLowerCase().includes(sLower) || 
+      dispNum.toLowerCase().includes(sLower) || 
+      tug8Num.toLowerCase().includes(sLower) || 
+      reqRef.toLowerCase().includes(sLower) ||
+      woRef.toLowerCase().includes(sLower) ||
+      spkNum.toLowerCase().includes(sLower) ||
+      bonNum.toLowerCase().includes(sLower) ||
+      sjNum.toLowerCase().includes(sLower) ||
+      notes.toLowerCase().includes(sLower) ||
+      courier.toLowerCase().includes(sLower) ||
+      (d.items && d.items.some(i => 
+        (i.part_number && i.part_number.toLowerCase().includes(sLower)) ||
+        (i.spare_part_name && i.spare_part_name.toLowerCase().includes(sLower))
+      ));
 
     const matchesStatus = 
       statusFilter === "All" || 
@@ -1364,6 +1439,32 @@ export default function DispatchView({
   const dspTotalPages = Math.ceil(filtered.length / dspPerPage) || 1;
   const paginatedDsp = filtered.slice((dspPage - 1) * dspPerPage, dspPage * dspPerPage);
 
+  // Ensure the page containing the highlighted dispatch is currently displayed
+  React.useEffect(() => {
+    if (highlightedDispatchId && filtered.length > 0) {
+      const idx = filtered.findIndex(d => d.id === highlightedDispatchId);
+      if (idx !== -1) {
+        const targetPage = Math.floor(idx / dspPerPage) + 1;
+        if (targetPage !== dspPage) {
+          setDspPage(targetPage);
+        }
+      }
+    }
+  }, [highlightedDispatchId, filtered, dspPerPage, dspPage]);
+
+  // Smooth scroll to the highlighted dispatch row
+  React.useEffect(() => {
+    if (highlightedDispatchId) {
+      const timer = setTimeout(() => {
+        const el = document.getElementById(`dispatch-row-${highlightedDispatchId}`);
+        if (el) {
+          el.scrollIntoView({ behavior: "smooth", block: "center" });
+        }
+      }, 300);
+      return () => clearTimeout(timer);
+    }
+  }, [highlightedDispatchId, paginatedDsp]);
+
   const activeDispatchItem = useMemo(() => {
     if (!activeActionId) return null;
     return dispatchList.find(d => d.id === activeActionId) || null;
@@ -1484,12 +1585,25 @@ export default function DispatchView({
           <div className="relative w-full sm:w-80">
             <input
               type="text"
-              placeholder="Cari kapal, nomor TUG 8, nomor dispatch..."
+              placeholder="Cari kapal, no. TUG 8, PO/SPK, dispatch..."
               value={search}
               onChange={(e) => setSearch(e.target.value)}
-              className="w-full bg-slate-50 border border-slate-250 text-slate-800 p-2.5 pl-9 text-xs rounded-lg outline-none focus:border-blue-600 focus:bg-white placeholder:text-slate-450 font-sans font-medium"
+              className="w-full bg-slate-50 border border-slate-250 text-slate-800 p-2.5 pl-9 pr-8 text-xs rounded-lg outline-none focus:border-blue-600 focus:bg-white placeholder:text-slate-450 font-sans font-medium"
             />
             <Search className="w-4 h-4 text-slate-400 absolute left-3 top-3.5" />
+            {search && (
+              <button
+                type="button"
+                onClick={() => {
+                  setSearch("");
+                  setHighlightedDispatchId(null);
+                }}
+                className="absolute right-2.5 top-3 p-0.5 text-slate-400 hover:text-slate-600 cursor-pointer rounded-full hover:bg-slate-200 transition-colors"
+                title="Hapus pencarian"
+              >
+                <X className="w-3.5 h-3.5" />
+              </button>
+            )}
           </div>
 
           {/* Controls: Status, Vessel, Print */}
@@ -1698,6 +1812,30 @@ export default function DispatchView({
         </div>
 
         <div className="flex-1 overflow-auto pb-48">
+          {highlightedDispatchId && (
+            <div className="mx-6 my-3 p-3 bg-amber-50/95 border border-amber-300 rounded-xl flex items-center justify-between gap-3 text-xs text-amber-900 shadow-xs animate-in fade-in slide-in-from-top-2 duration-300">
+              <div className="flex items-center gap-2 font-medium">
+                <span className="flex h-2.5 w-2.5 relative">
+                  <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-amber-400 opacity-75"></span>
+                  <span className="relative inline-flex rounded-full h-2.5 w-2.5 bg-amber-500"></span>
+                </span>
+                <span>
+                  Fokus Dokumen Pengiriman: Menampilkan & menyorot dokumen TUG 8 yang dipilih dari <strong>Stock On Warehouse</strong>.
+                </span>
+              </div>
+              <button 
+                type="button"
+                onClick={() => {
+                  setHighlightedDispatchId(null);
+                  setSearch("");
+                }}
+                className="px-2.5 py-1 bg-white hover:bg-amber-100 border border-amber-300 rounded-lg text-amber-800 font-bold text-[11px] cursor-pointer transition-colors shadow-2xs shrink-0"
+              >
+                Reset & Tampilkan Semua
+              </button>
+            </div>
+          )}
+
           {filtered.length === 0 ? (
             <div className="p-16 text-center">
               <ClipboardList className="w-10 h-10 text-slate-300 mx-auto mb-2" />
@@ -1745,12 +1883,18 @@ export default function DispatchView({
                     return `${qty}x ${pNum}`;
                   }).join(", ");
                   const isSelected = selectedDspIds.includes(item.id);
+                  const isHighlighted = item.id === highlightedDispatchId;
 
                   return (
                     <tr 
                       key={item.id} 
-                      className={`transition-colors font-semibold ${
-                        isSelected ? "bg-rose-50/60" : "hover:bg-blue-50/30"
+                      id={`dispatch-row-${item.id}`}
+                      className={`transition-all duration-300 font-semibold ${
+                        isHighlighted 
+                          ? "bg-amber-100/75 ring-2 ring-amber-500 ring-inset shadow-md" 
+                          : isSelected 
+                            ? "bg-rose-50/60" 
+                            : "hover:bg-blue-50/30"
                       }`}
                     >
                       <td className="p-3.5 text-center" onClick={(e) => e.stopPropagation()}>
@@ -1792,6 +1936,11 @@ export default function DispatchView({
                         <span className="font-mono text-xs font-black text-rose-800 bg-rose-50 border border-rose-100 rounded px-2 py-0.5 block w-fit">
                           {item.tug8_number || item.bon_pengeluaran_number || "AWAITING"}
                         </span>
+                        {isHighlighted && (
+                          <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[9px] font-black uppercase font-mono bg-amber-500 text-white shadow-2xs mt-1 animate-pulse">
+                            <Sparkles className="w-2.5 h-2.5" /> Terpilih dari SOW
+                          </span>
+                        )}
                         <span className="text-[9px] text-slate-400 font-mono mt-1 block">Tgl. Terbit: {item.dispatch_date ? new Date(item.dispatch_date).toLocaleDateString("id-ID") : "-"}</span>
                       </td>
 

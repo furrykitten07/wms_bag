@@ -113,6 +113,10 @@ export default function App() {
   // Navigation Auto Open Request Detail State
   const [autoOpenMRId, setAutoOpenMRId] = useState<string | null>(null);
 
+  // Navigation Auto Focus Dispatch State
+  const [targetDispatchSearch, setTargetDispatchSearch] = useState<string | null>(null);
+  const [targetDispatchId, setTargetDispatchId] = useState<string | null>(null);
+
   // In-Memory dynamic DB tables
   const [parts, setParts] = useState<SparePart[]>([]);
   const [locations, setLocations] = useState<WarehouseLocation[]>([]);
@@ -1483,7 +1487,15 @@ export default function App() {
               spkList={spkList}
               vessels={vessels}
               currentUser={currentUser}
-              onNavigateTab={setCurrentTab}
+              onNavigateTab={(tab, payload) => {
+                if (payload?.search) {
+                  setTargetDispatchSearch(payload.search);
+                }
+                if (payload?.dispatchId) {
+                  setTargetDispatchId(payload.dispatchId);
+                }
+                setCurrentTab(tab);
+              }}
             />
           )}
 
@@ -1535,6 +1547,12 @@ export default function App() {
               materialReturns={materialReturns}
               onUpdateReturn={handleUpdateMaterialReturn}
               vessels={vessels}
+              targetSearch={targetDispatchSearch}
+              targetDispatchId={targetDispatchId}
+              onClearTargetSearch={() => {
+                setTargetDispatchSearch(null);
+                setTargetDispatchId(null);
+              }}
             />
           )}
 
