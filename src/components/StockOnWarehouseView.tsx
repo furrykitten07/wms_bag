@@ -114,6 +114,16 @@ export default function StockOnWarehouseView({
   const [sortBy, setSortBy] = useState<"remaining_desc" | "remaining_asc" | "date_desc" | "date_asc" | "name_asc">("date_desc");
   const [showArchivedDispatched, setShowArchivedDispatched] = useState<boolean>(false);
 
+  // Per-PO/SPK breakdown item expansion (reveals dispatched items of a specific PO/SPK without affecting global page status)
+  const [showAllItemsPerGroup, setShowAllItemsPerGroup] = useState<Record<string, boolean>>({});
+
+  const toggleShowAllItemsForGroup = (groupKey: string) => {
+    setShowAllItemsPerGroup(prev => ({
+      ...prev,
+      [groupKey]: !prev[groupKey]
+    }));
+  };
+
   // Expandable row state in PO/SPK view
   const [expandedKeys, setExpandedKeys] = useState<Record<string, boolean>>({});
 
@@ -621,11 +631,6 @@ export default function StockOnWarehouseView({
   const filteredPOSPKBalances = useMemo(() => {
     let list = [...poSPKBalances];
 
-    // By default, exclude PO/SPKs that are fully dispatched (0 warehouse stock)
-    if (!showArchivedDispatched) {
-      list = list.filter(p => p.totalRemaining > 0);
-    }
-
     // Status Filter
     if (statusFilter === "available") {
       list = list.filter(p => p.status === "AVAILABLE" && p.totalRemaining > 0);
@@ -633,6 +638,9 @@ export default function StockOnWarehouseView({
       list = list.filter(p => p.status === "PARTIAL" && p.totalRemaining > 0);
     } else if (statusFilter === "exhausted") {
       list = list.filter(p => p.status === "EXHAUSTED" || p.totalRemaining === 0);
+    } else if (statusFilter === "all" && !showArchivedDispatched) {
+      // By default in "Semua di Gudang", only show active POs with remaining stock unless archive checkbox is checked
+      list = list.filter(p => p.totalRemaining > 0);
     }
 
     // Vessel Filter
@@ -677,11 +685,6 @@ export default function StockOnWarehouseView({
   const filteredPartBalances = useMemo(() => {
     let list = [...consolidatedPartBalances];
 
-    // By default, exclude spare parts that have 0 balance in warehouse
-    if (!showArchivedDispatched) {
-      list = list.filter(p => p.warehouseBalance > 0);
-    }
-
     // Status Filter
     if (statusFilter === "available") {
       list = list.filter(p => p.warehouseBalance > 0 && p.totalOutbound === 0);
@@ -689,6 +692,9 @@ export default function StockOnWarehouseView({
       list = list.filter(p => p.totalOutbound > 0 && p.warehouseBalance > 0);
     } else if (statusFilter === "exhausted") {
       list = list.filter(p => p.warehouseBalance === 0);
+    } else if (statusFilter === "all" && !showArchivedDispatched) {
+      // By default in "Semua di Gudang", only show active parts with stock in warehouse
+      list = list.filter(p => p.warehouseBalance > 0);
     }
 
     // Location Filter
@@ -1083,19 +1089,17 @@ export default function StockOnWarehouseView({
                 <span>Sebagian Terkirim</span>
               </button>
 
-              {showArchivedDispatched && (
-                <button
-                  onClick={() => setStatusFilter("exhausted")}
-                  className={`px-3 py-1 rounded-lg text-xs font-bold transition-all cursor-pointer shrink-0 flex items-center gap-1.5 ${
-                    statusFilter === "exhausted"
-                      ? "bg-rose-600 text-white shadow-xs"
-                      : "bg-rose-50 text-rose-700 hover:bg-rose-100"
-                  }`}
-                >
-                  <span className="w-1.5 h-1.5 rounded-full bg-rose-500"></span>
-                  <span>Habis Terdistribusi</span>
-                </button>
-              )}
+              <button
+                onClick={() => setStatusFilter("exhausted")}
+                className={`px-3 py-1 rounded-lg text-xs font-bold transition-all cursor-pointer shrink-0 flex items-center gap-1.5 ${
+                  statusFilter === "exhausted"
+                    ? "bg-rose-600 text-white shadow-xs"
+                    : "bg-rose-50 text-rose-700 hover:bg-rose-100"
+                }`}
+              >
+                <span className="w-1.5 h-1.5 rounded-full bg-rose-500"></span>
+                <span>Habis Terdistribusi</span>
+              </button>
             </div>
 
             {/* Checkbox to reveal 0-stock archived items */}
@@ -1107,9 +1111,6 @@ export default function StockOnWarehouseView({
                   onChange={(e) => {
                     const checked = e.target.checked;
                     setShowArchivedDispatched(checked);
-                    if (!checked && statusFilter === "exhausted") {
-                      setStatusFilter("all");
-                    }
                   }}
                   className="rounded border-slate-300 text-blue-600 focus:ring-blue-500 w-3.5 h-3.5 cursor-pointer"
                 />
@@ -1245,6 +1246,7 @@ export default function StockOnWarehouseView({
 
                         {/* Expand Button */}
                         {(() => {
+                          const isShowAllForGroup = Boolean(showAllItemsPerGroup[group.groupKey]) || group.totalRemaining === 0;
                           const availableItemsCount = group.items.filter(i => i.remainingStock > 0).length;
                           return (
                             <button
@@ -1258,7 +1260,7 @@ export default function StockOnWarehouseView({
                               <span>
                                 {isExpanded 
                                   ? "Tutup Rincian" 
-                                  : showArchivedDispatched
+                                  : isShowAllForGroup
                                     ? `Rincian (${group.items.length} Item)`
                                     : `Rincian (${availableItemsCount} Item di Gudang)`
                                 }
@@ -1274,8 +1276,9 @@ export default function StockOnWarehouseView({
 
                     {/* Expandable Breakdown Table */}
                     {isExpanded && (() => {
-                      const displayedItems = group.items.filter(itm => showArchivedDispatched ? true : itm.remainingStock > 0);
-                      const exhaustedCount = group.items.length - displayedItems.length;
+                      const isShowAllForThisGroup = Boolean(showAllItemsPerGroup[group.groupKey]) || group.totalRemaining === 0;
+                      const displayedItems = group.items.filter(itm => isShowAllForThisGroup ? true : itm.remainingStock > 0);
+                      const exhaustedCount = group.items.length - group.items.filter(itm => itm.remainingStock > 0).length;
 
                       return (
                         <div className="border-t border-slate-200 bg-slate-50/50 p-4 sm:p-5">
@@ -1284,19 +1287,19 @@ export default function StockOnWarehouseView({
                             <div className="flex items-center gap-1.5">
                               <Boxes className="w-4 h-4 text-blue-600" />
                               <span>
-                                {showArchivedDispatched 
-                                  ? `Seluruh Suku Cadang pada PO: ${group.poNumber}` 
+                                {isShowAllForThisGroup 
+                                  ? `Seluruh Suku Cadang pada PO: ${group.poNumber} (${displayedItems.length} Item)` 
                                   : `Daftar Suku Cadang Tersedia di Gudang pada PO: ${group.poNumber} (${displayedItems.length} Item Fisik)`
                                 }
                               </span>
                             </div>
-                            {exhaustedCount > 0 && (
+                            {exhaustedCount > 0 && group.totalRemaining > 0 && (
                               <button
-                                onClick={() => setShowArchivedDispatched(!showArchivedDispatched)}
+                                onClick={() => toggleShowAllItemsForGroup(group.groupKey)}
                                 className="text-[11px] font-semibold text-blue-600 hover:text-blue-800 underline cursor-pointer"
                               >
-                                {showArchivedDispatched 
-                                  ? `Sembunyikan ${exhaustedCount} item yang sudah habis` 
+                                {isShowAllForThisGroup 
+                                  ? `Sembunyikan ${exhaustedCount} item yang sudah terkirim habis` 
                                   : `Tampilkan juga ${exhaustedCount} item yang sudah terkirim habis`
                                 }
                               </button>
@@ -1424,23 +1427,23 @@ export default function StockOnWarehouseView({
                             </table>
                           </div>
 
-                          {exhaustedCount > 0 && (
+                          {exhaustedCount > 0 && group.totalRemaining > 0 && (
                             <div className={`mt-2.5 px-3 py-2 rounded-xl text-[11px] flex items-center justify-between ${
-                              showArchivedDispatched 
+                              isShowAllForThisGroup 
                                 ? "bg-blue-50/80 border border-blue-200 text-blue-700" 
                                 : "bg-slate-100/80 text-slate-500"
                             }`}>
                               <span>
-                                {showArchivedDispatched 
-                                  ? `* Menampilkan seluruh ${group.items.length} jenis item (termasuk ${exhaustedCount} item yang sudah terkirim habis).` 
+                                {isShowAllForThisGroup 
+                                  ? `* Menampilkan seluruh ${group.items.length} jenis item pada PO: ${group.poNumber} (termasuk ${exhaustedCount} item yang sudah terkirim habis).` 
                                   : `* Menampilkan ${displayedItems.length} jenis item yang masih bersisa di gudang (${exhaustedCount} item telah terkirim habis dan disembunyikan).`
                                 }
                               </span>
                               <button
-                                onClick={() => setShowArchivedDispatched(!showArchivedDispatched)}
+                                onClick={() => toggleShowAllItemsForGroup(group.groupKey)}
                                 className="text-blue-600 hover:text-blue-800 underline font-semibold cursor-pointer shrink-0 ml-2"
                               >
-                                {showArchivedDispatched ? "Sembunyikan Item Habis" : "Tampilkan Semua"}
+                                {isShowAllForThisGroup ? "Sembunyikan Item Terkirim" : "Tampilkan Semua"}
                               </button>
                             </div>
                           )}
