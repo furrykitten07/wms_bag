@@ -51,6 +51,7 @@ import {
   Vessel, 
   User 
 } from "../types.js";
+import { calculatePartNameSimilarity } from "../utils/sparePartMatcher.js";
 
 interface StockOnWarehouseViewProps {
   parts?: SparePart[];
@@ -322,8 +323,12 @@ export default function StockOnWarehouseView({
         });
 
         if (isMatch) {
+          const groupItems = Array.from(group.itemsMap.values());
+          const isAutoImported1to1 = rawNotes.toLowerCase().includes("diimpor otomatis") || (dsp.items.length === groupItems.length);
+          const effectiveVessel = (dsp.vessel_name && dsp.vessel_name !== "-" && dsp.vessel_name !== "null") ? dsp.vessel_name : (group.vesselName || "-");
+
           // Deduct matching items
-          dsp.items.forEach(dItem => {
+          dsp.items.forEach((dItem, dspIdx) => {
             if (!dItem) return;
             const qtyOut = Number(dItem.qty_dispatched ?? dItem.qty_approved ?? dItem.requested_qty ?? 0);
             if (qtyOut <= 0) return;
@@ -336,22 +341,52 @@ export default function StockOnWarehouseView({
             // 1. By exact spare_part_id / id (if non-dummy)
             let targetItem: any = null;
             if (dId && !dId.startsWith("temp-") && !dId.startsWith("item-") && dId !== "-" && dId !== "null" && dId !== "undefined") {
-              targetItem = Array.from(group.itemsMap.values()).find(i => 
+              targetItem = groupItems.find(i => 
                 (i.sparePartId && i.sparePartId.toLowerCase() === dId) || (i.partKey === `id:${dId}`)
               );
             }
 
             // 2. By distinct Part Number
             if (!targetItem && dPn && !invalidPns.includes(dPn)) {
-              targetItem = Array.from(group.itemsMap.values()).find(i => cleanStr(i.partNumber) === dPn);
+              targetItem = groupItems.find(i => cleanStr(i.partNumber) === dPn);
             }
 
-            // 3. By Part Name
+            // 3. By Part Name (exact match, preferring item that still has remaining stock)
             if (!targetItem && dName) {
-              targetItem = Array.from(group.itemsMap.values()).find(i => cleanStr(i.partName) === dName);
+              const exactMatches = groupItems.filter(i => cleanStr(i.partName) === dName);
+              targetItem = exactMatches.find(i => i.remainingStock > 0) || exactMatches[0] || null;
             }
 
-            // 4. Fallback to partKey
+            // 4. By Fuzzy / Bilingual Token Similarity (e.g. PYLOX HITAM <-> PYLOX BLACK, KUNCI L BINTANG <-> TEKIRO, etc.)
+            if (!targetItem && dName) {
+              let bestCandidate: any = null;
+              let bestScore = 0;
+              groupItems.forEach(i => {
+                const score = calculatePartNameSimilarity(i.partName, dName);
+                if (score > bestScore) {
+                  bestScore = score;
+                  bestCandidate = i;
+                } else if (score === bestScore && bestCandidate && i.remainingStock > bestCandidate.remainingStock) {
+                  bestCandidate = i;
+                }
+              });
+              if (bestScore >= 0.65 && bestCandidate) {
+                targetItem = bestCandidate;
+              }
+            }
+
+            // 5. Fallback for 1-to-1 auto-imported dispatches: index alignment
+            if (!targetItem && isAutoImported1to1 && dspIdx < groupItems.length) {
+              const candidateAtIdx = groupItems[dspIdx];
+              if (candidateAtIdx) {
+                const score = calculatePartNameSimilarity(candidateAtIdx.partName, dName);
+                if (score >= 0.4 || cleanStr(candidateAtIdx.unit) === cleanStr(dItem.unit)) {
+                  targetItem = candidateAtIdx;
+                }
+              }
+            }
+
+            // 6. Fallback to partKey
             if (!targetItem) {
               const dKey = getPartKey(dItem);
               targetItem = group.itemsMap.get(dKey);
@@ -365,7 +400,7 @@ export default function StockOnWarehouseView({
                 dispatchNumber: dsp.dispatch_number || "-",
                 tug8Number: dspTUG8,
                 dispatchDate: dspDate,
-                vesselName: dspVessel,
+                vesselName: effectiveVessel,
                 qtyDispatched: qtyOut
               });
             }
@@ -1255,12 +1290,15 @@ export default function StockOnWarehouseView({
                                 }
                               </span>
                             </div>
-                            {exhaustedCount > 0 && !showArchivedDispatched && (
+                            {exhaustedCount > 0 && (
                               <button
-                                onClick={() => setShowArchivedDispatched(true)}
+                                onClick={() => setShowArchivedDispatched(!showArchivedDispatched)}
                                 className="text-[11px] font-semibold text-blue-600 hover:text-blue-800 underline cursor-pointer"
                               >
-                                Tampilkan juga {exhaustedCount} item yang sudah terkirim habis
+                                {showArchivedDispatched 
+                                  ? `Sembunyikan ${exhaustedCount} item yang sudah habis` 
+                                  : `Tampilkan juga ${exhaustedCount} item yang sudah terkirim habis`
+                                }
                               </button>
                             )}
                           </div>
@@ -1386,16 +1424,23 @@ export default function StockOnWarehouseView({
                             </table>
                           </div>
 
-                          {exhaustedCount > 0 && !showArchivedDispatched && (
-                            <div className="mt-2.5 px-3 py-2 bg-slate-100/80 rounded-xl text-[11px] text-slate-500 flex items-center justify-between">
+                          {exhaustedCount > 0 && (
+                            <div className={`mt-2.5 px-3 py-2 rounded-xl text-[11px] flex items-center justify-between ${
+                              showArchivedDispatched 
+                                ? "bg-blue-50/80 border border-blue-200 text-blue-700" 
+                                : "bg-slate-100/80 text-slate-500"
+                            }`}>
                               <span>
-                                * Menampilkan <strong>{displayedItems.length}</strong> jenis item yang masih bersisa di gudang ({exhaustedCount} item telah terkirim habis dan disembunyikan).
+                                {showArchivedDispatched 
+                                  ? `* Menampilkan seluruh ${group.items.length} jenis item (termasuk ${exhaustedCount} item yang sudah terkirim habis).` 
+                                  : `* Menampilkan ${displayedItems.length} jenis item yang masih bersisa di gudang (${exhaustedCount} item telah terkirim habis dan disembunyikan).`
+                                }
                               </span>
                               <button
-                                onClick={() => setShowArchivedDispatched(true)}
+                                onClick={() => setShowArchivedDispatched(!showArchivedDispatched)}
                                 className="text-blue-600 hover:text-blue-800 underline font-semibold cursor-pointer shrink-0 ml-2"
                               >
-                                Tampilkan Semua
+                                {showArchivedDispatched ? "Sembunyikan Item Habis" : "Tampilkan Semua"}
                               </button>
                             </div>
                           )}

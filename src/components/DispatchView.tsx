@@ -44,6 +44,7 @@ import {
 } from "lucide-react";
 import { OutboundDispatch, DispatchStatus, UserRole, SparePart, MaterialRequest, SPKWorkOrder, MaterialReturn, InboundReceiving, ReceivingStatus, Vessel } from "../types.js";
 import { FLEET_VESSELS } from "./ReceivingView.js";
+import { calculatePartNameSimilarity } from "../utils/sparePartMatcher.js";
 
 interface DispatchViewProps {
   dispatchList: OutboundDispatch[];
@@ -106,7 +107,8 @@ export const matchSparePartItem = (a: any, b: any): boolean => {
   const bName = cleanName(b.spare_part_name || b.part_name);
 
   if (aName && bName) {
-    return aName === bName;
+    if (aName === bName) return true;
+    return calculatePartNameSimilarity(aName, bName) >= 0.65;
   }
 
   return false;
