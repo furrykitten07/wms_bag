@@ -36,8 +36,12 @@ import {
   ArrowUpRight,
   TrendingUp,
   Sparkles,
-  History as HistoryIcon
+  History as HistoryIcon,
+  LineChart,
+  Flame,
+  Zap
 } from "lucide-react";
+import { motion, AnimatePresence } from "motion/react";
 import { MaintenanceLog, User, UserRole } from "../types.js";
 import { api } from "../api.js";
 
@@ -65,6 +69,38 @@ export function formatJakartaDateTime(dateInput?: string | number | Date): strin
   });
 }
 
+// Helper interpolasi spline kurva halus untuk grafik Motion SVG
+function createSmoothSplinePath(
+  points: Array<{ x: number; y: number }>, 
+  closeBottom = false, 
+  bottomY = 200
+): string {
+  if (points.length === 0) return "";
+  if (points.length === 1) return `M ${points[0].x},${points[0].y}`;
+
+  let d = `M ${points[0].x.toFixed(1)},${points[0].y.toFixed(1)}`;
+  for (let i = 0; i < points.length - 1; i++) {
+    const p0 = points[Math.max(i - 1, 0)];
+    const p1 = points[i];
+    const p2 = points[i + 1];
+    const p3 = points[Math.min(i + 2, points.length - 1)];
+
+    const cp1x = p1.x + (p2.x - p0.x) / 6;
+    const cp1y = p1.y + (p2.y - p0.y) / 6;
+    const cp2x = p2.x - (p3.x - p1.x) / 6;
+    const cp2y = p2.y - (p3.y - p1.y) / 6;
+
+    d += ` C ${cp1x.toFixed(1)},${cp1y.toFixed(1)} ${cp2x.toFixed(1)},${cp2y.toFixed(1)} ${p2.x.toFixed(1)},${p2.y.toFixed(1)}`;
+  }
+
+  if (closeBottom) {
+    const lastX = points[points.length - 1].x;
+    const firstX = points[0].x;
+    d += ` L ${lastX.toFixed(1)},${bottomY} L ${firstX.toFixed(1)},${bottomY} Z`;
+  }
+  return d;
+}
+
 // Historical logs are loaded strictly from real database records (no dummy seed data)
 
 export default function LoginAndLogsView({
@@ -83,6 +119,9 @@ export default function LoginAndLogsView({
   const [selectedUser, setSelectedUser] = useState<string>("ALL");
   const [searchQuery, setSearchQuery] = useState("");
   const [chartMetric, setChartMetric] = useState<"BOTH" | "LOGIN" | "LOGS">("BOTH");
+  const [chartStyle, setChartStyle] = useState<"BAR" | "AREA">("BAR");
+  const [hoveredIdx, setHoveredIdx] = useState<number | null>(null);
+  const [legendFocus, setLegendFocus] = useState<"ALL" | "LOGIN" | "LOGS">("ALL");
 
   // Pagination
   const [currentPage, setCurrentPage] = useState(1);
@@ -274,6 +313,34 @@ export default function LoginAndLogsView({
       if (chartMetric === "LOGS") return d.logs;
       return Math.max(d.logins, d.logs);
     }));
+  }, [dailyStats, chartMetric]);
+
+  // Executive summary metrics for the Motion daily trend chart
+  const chartSummary = useMemo(() => {
+    let totalLogins = 0;
+    let totalLogs = 0;
+    let peakDay = dailyStats[0] || { label: "-", total: 0, logins: 0, logs: 0, dateStr: "-" };
+
+    dailyStats.forEach(d => {
+      totalLogins += d.logins;
+      totalLogs += d.logs;
+      const metricVal = chartMetric === "LOGIN" ? d.logins : chartMetric === "LOGS" ? d.logs : d.total;
+      const peakVal = chartMetric === "LOGIN" ? peakDay.logins : chartMetric === "LOGS" ? peakDay.logs : peakDay.total;
+      if (metricVal > peakVal) {
+        peakDay = d;
+      }
+    });
+
+    const grandTotal = totalLogins + totalLogs;
+    const avgPerDay = Math.round(grandTotal / (dailyStats.length || 1));
+
+    return {
+      totalLogins,
+      totalLogs,
+      grandTotal,
+      avgPerDay,
+      peakDay
+    };
   }, [dailyStats, chartMetric]);
 
   // User engagement summary: Real usage tracking from verified audit logs
@@ -596,132 +663,556 @@ export default function LoginAndLogsView({
 
         </div>
 
-        {/* GRAFIK HARIAN: Daily Activity & Login Trend Chart */}
-        <div className="bg-white rounded-2xl border border-slate-200 shadow-2xs p-5 sm:p-6 space-y-4">
-          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b border-slate-100 pb-3">
+        {/* GRAFIK HARIAN: Modern Motion Daily Activity & Login Trend Chart */}
+        <div className="bg-white rounded-3xl border border-slate-200/80 shadow-xs p-5 sm:p-6 space-y-5 relative overflow-hidden">
+          
+          {/* Subtle decorative background glow */}
+          <div className="absolute -top-24 -right-24 w-72 h-72 bg-gradient-to-br from-blue-100/50 via-indigo-100/30 to-emerald-100/30 rounded-full blur-3xl pointer-events-none -z-0" />
+          
+          {/* Header & Controls */}
+          <div className="relative z-10 flex flex-col lg:flex-row lg:items-center justify-between gap-4 border-b border-slate-100 pb-4">
             <div>
-              <div className="flex items-center gap-2">
-                <TrendingUp className="w-4.5 h-4.5 text-blue-600" />
-                <h3 className="text-sm font-black uppercase tracking-wider text-slate-900 font-mono">
-                  Grafik Tren Harian: Login Pengguna vs Log Aktivitas Sistem
-                </h3>
+              <div className="flex items-center gap-2.5">
+                <div className="w-8 h-8 rounded-xl bg-gradient-to-tr from-blue-600 to-indigo-500 text-white flex items-center justify-center shadow-xs shadow-blue-500/30">
+                  <TrendingUp className="w-4 h-4" />
+                </div>
+                <div>
+                  <div className="flex items-center gap-2">
+                    <h3 className="text-sm font-black uppercase tracking-wider text-slate-900 font-mono">
+                      Grafik Tren Harian: Login Pengguna vs Log Aktivitas Sistem
+                    </h3>
+                    <span className="hidden sm:inline-flex items-center gap-1 text-[10px] font-mono font-bold bg-blue-50 text-blue-700 border border-blue-200/80 px-2 py-0.5 rounded-full shadow-2xs">
+                      <Sparkles className="w-2.5 h-2.5 text-blue-500" />
+                      {chartDays} Hari Terakhir
+                    </span>
+                  </div>
+                  <p className="text-xs text-slate-500 mt-0.5 font-sans">
+                    Visualisasi interaktif volume kunjungan dan produktivitas modul logistik WMS
+                  </p>
+                </div>
               </div>
-              <p className="text-xs text-slate-500 mt-0.5">
-                Visualisasi frekuensi kunjungan dan produktivitas modul WMS dalam {chartDays} hari terakhir
-              </p>
             </div>
 
-            {/* Metric Toggle Buttons */}
-            <div className="flex items-center gap-1.5 bg-slate-100 p-1 rounded-xl text-xs font-mono font-bold self-start sm:self-auto">
-              <button
-                type="button"
-                onClick={() => setChartMetric("BOTH")}
-                className={`px-3 py-1 rounded-lg transition-all cursor-pointer ${
-                  chartMetric === "BOTH" ? "bg-white text-slate-900 shadow-xs" : "text-slate-500 hover:text-slate-800"
-                }`}
-              >
-                Keduanya
-              </button>
-              <button
-                type="button"
-                onClick={() => setChartMetric("LOGIN")}
-                className={`px-3 py-1 rounded-lg transition-all cursor-pointer flex items-center gap-1.5 ${
-                  chartMetric === "LOGIN" ? "bg-blue-600 text-white shadow-xs" : "text-slate-500 hover:text-slate-800"
-                }`}
-              >
-                <span className="w-2 h-2 rounded-full bg-blue-400" />
-                <span>Login Saja</span>
-              </button>
-              <button
-                type="button"
-                onClick={() => setChartMetric("LOGS")}
-                className={`px-3 py-1 rounded-lg transition-all cursor-pointer flex items-center gap-1.5 ${
-                  chartMetric === "LOGS" ? "bg-emerald-600 text-white shadow-xs" : "text-slate-500 hover:text-slate-800"
-                }`}
-              >
-                <span className="w-2 h-2 rounded-full bg-emerald-400" />
-                <span>Logs Saja</span>
-              </button>
+            {/* Controls: Chart Style (Bar vs Area) + Metric Switcher */}
+            <div className="flex flex-wrap items-center gap-2 self-start lg:self-auto">
+              
+              {/* Visual Style Switcher (Bar vs Smooth Curve) */}
+              <div className="flex items-center gap-1 bg-slate-100/90 p-1 rounded-xl text-xs font-mono font-bold border border-slate-200/50">
+                <button
+                  type="button"
+                  onClick={() => setChartStyle("BAR")}
+                  className={`relative px-2.5 py-1 rounded-lg transition-colors cursor-pointer flex items-center gap-1.5 ${
+                    chartStyle === "BAR" ? "text-slate-900" : "text-slate-500 hover:text-slate-800"
+                  }`}
+                  title="Tampilan Grafik Batang (Bar Chart)"
+                >
+                  {chartStyle === "BAR" && (
+                    <motion.div
+                      layoutId="activeChartStylePill"
+                      className="absolute inset-0 bg-white rounded-lg shadow-xs border border-slate-200/80"
+                      transition={{ type: "spring", stiffness: 400, damping: 30 }}
+                    />
+                  )}
+                  <span className="relative z-10 flex items-center gap-1.5">
+                    <BarChart3 className="w-3.5 h-3.5 text-blue-600" />
+                    <span>Batang</span>
+                  </span>
+                </button>
+
+                <button
+                  type="button"
+                  onClick={() => setChartStyle("AREA")}
+                  className={`relative px-2.5 py-1 rounded-lg transition-colors cursor-pointer flex items-center gap-1.5 ${
+                    chartStyle === "AREA" ? "text-slate-900" : "text-slate-500 hover:text-slate-800"
+                  }`}
+                  title="Tampilan Grafik Kurva Halus (Smooth Spline Area)"
+                >
+                  {chartStyle === "AREA" && (
+                    <motion.div
+                      layoutId="activeChartStylePill"
+                      className="absolute inset-0 bg-white rounded-lg shadow-xs border border-slate-200/80"
+                      transition={{ type: "spring", stiffness: 400, damping: 30 }}
+                    />
+                  )}
+                  <span className="relative z-10 flex items-center gap-1.5">
+                    <LineChart className="w-3.5 h-3.5 text-emerald-600" />
+                    <span>Kurva</span>
+                  </span>
+                </button>
+              </div>
+
+              {/* Metric Filter Switcher */}
+              <div className="flex items-center gap-1 bg-slate-100/90 p-1 rounded-xl text-xs font-mono font-bold border border-slate-200/50">
+                {(["BOTH", "LOGIN", "LOGS"] as const).map(metric => {
+                  const isActive = chartMetric === metric;
+                  const label = metric === "BOTH" ? "Keduanya" : metric === "LOGIN" ? "Login Saja" : "Logs Saja";
+                  return (
+                    <button
+                      key={metric}
+                      type="button"
+                      onClick={() => setChartMetric(metric)}
+                      className={`relative px-2.5 sm:px-3 py-1 rounded-lg transition-colors cursor-pointer flex items-center gap-1.5 ${
+                        isActive ? "text-slate-900" : "text-slate-500 hover:text-slate-800"
+                      }`}
+                    >
+                      {isActive && (
+                        <motion.div
+                          layoutId="activeChartMetricPill"
+                          className="absolute inset-0 bg-white rounded-lg shadow-xs border border-slate-200/80"
+                          transition={{ type: "spring", stiffness: 400, damping: 30 }}
+                        />
+                      )}
+                      <span className="relative z-10 flex items-center gap-1.5">
+                        {metric === "LOGIN" && <span className="w-2 h-2 rounded-full bg-blue-500 shadow-2xs" />}
+                        {metric === "LOGS" && <span className="w-2 h-2 rounded-full bg-emerald-500 shadow-2xs" />}
+                        {label}
+                      </span>
+                    </button>
+                  );
+                })}
+              </div>
+
             </div>
           </div>
 
-          {/* SVG Responsive Bar Chart */}
-          <div className="pt-2">
-            <div className="h-60 sm:h-64 flex items-end gap-2 sm:gap-4 px-2 pb-6 border-b border-slate-200 relative">
-              
-              {/* Background Reference Lines */}
-              <div className="absolute inset-x-0 top-0 border-t border-slate-100 text-[10px] font-mono text-slate-400 pl-1">
-                {maxChartValue} Max
+          {/* Quick Metrics Strip */}
+          <div className="grid grid-cols-2 sm:grid-cols-4 gap-2.5 relative z-10">
+            <div className="bg-slate-50/80 border border-slate-200/70 rounded-2xl p-3 flex items-center gap-3">
+              <div className="w-9 h-9 rounded-xl bg-blue-100 text-blue-700 flex items-center justify-center shrink-0 shadow-2xs">
+                <LogIn className="w-4 h-4" />
               </div>
-              <div className="absolute inset-x-0 top-1/2 border-t border-dashed border-slate-100 text-[10px] font-mono text-slate-400 pl-1">
-                {Math.round(maxChartValue / 2)}
+              <div className="min-w-0">
+                <div className="text-[10px] font-mono text-slate-400 uppercase font-bold truncate">Total Login</div>
+                <div className="text-base font-black font-mono text-blue-700 leading-tight">
+                  {chartSummary.totalLogins} <span className="text-[10px] text-slate-500 font-normal">Sesi</span>
+                </div>
               </div>
+            </div>
 
-              {dailyStats.map((d, idx) => {
-                const loginHeightPercent = Math.min(100, Math.max(8, (d.logins / maxChartValue) * 85));
-                const logsHeightPercent = Math.min(100, Math.max(8, (d.logs / maxChartValue) * 85));
+            <div className="bg-slate-50/80 border border-slate-200/70 rounded-2xl p-3 flex items-center gap-3">
+              <div className="w-9 h-9 rounded-xl bg-emerald-100 text-emerald-700 flex items-center justify-center shrink-0 shadow-2xs">
+                <Zap className="w-4 h-4" />
+              </div>
+              <div className="min-w-0">
+                <div className="text-[10px] font-mono text-slate-400 uppercase font-bold truncate">Total Aktivitas</div>
+                <div className="text-base font-black font-mono text-emerald-700 leading-tight">
+                  {chartSummary.totalLogs} <span className="text-[10px] text-slate-500 font-normal">Aksi</span>
+                </div>
+              </div>
+            </div>
 
-                return (
-                  <div key={idx} className="flex-1 flex flex-col items-center justify-end h-full group relative">
-                    
-                    {/* Hover Floating Tooltip */}
-                    <div className="opacity-0 group-hover:opacity-100 pointer-events-none absolute -top-12 z-20 bg-slate-900 text-white text-[10px] font-mono p-2 rounded-lg shadow-xl border border-slate-800 whitespace-nowrap transition-all duration-150 transform -translate-y-1">
-                      <div className="font-bold text-amber-300 mb-0.5">{d.dateStr}</div>
-                      <div className="flex items-center gap-2">
-                        <span>🔐 Login: <strong>{d.logins}</strong></span>
-                        <span>⚡ Logs: <strong>{d.logs}</strong></span>
+            <div className="bg-slate-50/80 border border-slate-200/70 rounded-2xl p-3 flex items-center gap-3">
+              <div className="w-9 h-9 rounded-xl bg-amber-100 text-amber-700 flex items-center justify-center shrink-0 shadow-2xs">
+                <Flame className="w-4 h-4" />
+              </div>
+              <div className="min-w-0">
+                <div className="text-[10px] font-mono text-slate-400 uppercase font-bold truncate">Puncak Ramai</div>
+                <div className="text-base font-black font-mono text-amber-700 leading-tight truncate">
+                  {chartSummary.peakDay.label} <span className="text-[10px] text-slate-500 font-normal">({chartSummary.peakDay.total}x)</span>
+                </div>
+              </div>
+            </div>
+
+            <div className="bg-slate-50/80 border border-slate-200/70 rounded-2xl p-3 flex items-center gap-3">
+              <div className="w-9 h-9 rounded-xl bg-indigo-100 text-indigo-700 flex items-center justify-center shrink-0 shadow-2xs">
+                <Activity className="w-4 h-4" />
+              </div>
+              <div className="min-w-0">
+                <div className="text-[10px] font-mono text-slate-400 uppercase font-bold truncate">Rata-Rata Harian</div>
+                <div className="text-base font-black font-mono text-slate-800 leading-tight">
+                  {chartSummary.avgPerDay} <span className="text-[10px] text-slate-500 font-normal">Event/Hari</span>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          {/* Interactive Chart Canvas with Motion */}
+          <div className="relative z-10 pt-2">
+            
+            {/* BAR CHART VIEW */}
+            {chartStyle === "BAR" && (
+              <div className="h-60 sm:h-68 flex items-end gap-1.5 sm:gap-3 px-2 pb-6 border-b border-slate-200/90 relative">
+                
+                {/* Horizontal Reference Lines */}
+                <div className="absolute inset-x-0 top-0 border-t border-slate-200/60 text-[10px] font-mono text-slate-400 pl-1 flex items-center justify-between">
+                  <span>{maxChartValue} Max</span>
+                  <span className="text-slate-300 pr-1">100%</span>
+                </div>
+                <div className="absolute inset-x-0 top-1/2 border-t border-dashed border-slate-200/60 text-[10px] font-mono text-slate-400 pl-1 flex items-center justify-between">
+                  <span>{Math.round(maxChartValue / 2)}</span>
+                  <span className="text-slate-300 pr-1">50%</span>
+                </div>
+
+                {dailyStats.map((d, idx) => {
+                  const isHovered = hoveredIdx === idx;
+                  const loginHeightPercent = Math.min(100, Math.max(6, (d.logins / maxChartValue) * 86));
+                  const logsHeightPercent = Math.min(100, Math.max(6, (d.logs / maxChartValue) * 86));
+
+                  return (
+                    <div
+                      key={d.dateStr}
+                      onMouseEnter={() => setHoveredIdx(idx)}
+                      onMouseLeave={() => setHoveredIdx(null)}
+                      className="flex-1 flex flex-col items-center justify-end h-full relative cursor-pointer group py-1"
+                    >
+                      {/* Animated Column Backdrop on Hover */}
+                      {isHovered && (
+                        <motion.div
+                          layoutId="hoverDayBackdrop"
+                          className="absolute inset-0 -mx-1 -my-1.5 bg-gradient-to-b from-blue-50/80 via-slate-50/70 to-emerald-50/50 rounded-2xl border border-blue-200/70 pointer-events-none z-0 shadow-xs"
+                          transition={{ type: "spring", stiffness: 450, damping: 35 }}
+                        />
+                      )}
+
+                      {/* Floating Motion HUD Tooltip */}
+                      <AnimatePresence>
+                        {isHovered && (
+                          <motion.div
+                            initial={{ opacity: 0, y: -6, scale: 0.95 }}
+                            animate={{ opacity: 1, y: 0, scale: 1 }}
+                            exit={{ opacity: 0, y: -6, scale: 0.95 }}
+                            transition={{ type: "spring", stiffness: 400, damping: 28 }}
+                            className="absolute -top-16 z-30 pointer-events-none bg-slate-900/95 backdrop-blur-md text-white text-[11px] font-mono px-3 py-2 rounded-xl shadow-xl border border-slate-700/80 whitespace-nowrap flex flex-col gap-1 min-w-[140px]"
+                          >
+                            <div className="flex items-center justify-between gap-3 text-amber-300 font-bold text-[10.5px]">
+                              <span>📅 {d.dateStr}</span>
+                              <span className="text-slate-300 font-normal">Total: {d.total}</span>
+                            </div>
+                            <div className="flex items-center justify-between gap-2 text-[10px]">
+                              <span className="flex items-center gap-1 text-sky-300">
+                                <span className="w-1.5 h-1.5 rounded-full bg-sky-400" />
+                                Login: <strong>{d.logins}</strong>
+                              </span>
+                              <span className="flex items-center gap-1 text-emerald-300">
+                                <span className="w-1.5 h-1.5 rounded-full bg-emerald-400" />
+                                Logs: <strong>{d.logs}</strong>
+                              </span>
+                            </div>
+                            {/* Proportional Ratio Bar */}
+                            <div className="w-full bg-slate-800 rounded-full h-1 overflow-hidden flex mt-0.5">
+                              <div 
+                                className="bg-sky-400 h-full transition-all" 
+                                style={{ width: `${d.total > 0 ? (d.logins / d.total) * 100 : 50}%` }} 
+                              />
+                              <div 
+                                className="bg-emerald-400 h-full transition-all" 
+                                style={{ width: `${d.total > 0 ? (d.logs / d.total) * 100 : 50}%` }} 
+                              />
+                            </div>
+                          </motion.div>
+                        )}
+                      </AnimatePresence>
+
+                      {/* Bars Container */}
+                      <div className="w-full flex items-end justify-center gap-1 sm:gap-2 h-full pb-1 relative z-10">
+                        
+                        {/* Login Bar */}
+                        {(chartMetric === "BOTH" || chartMetric === "LOGIN") && (
+                          <motion.div
+                            layout
+                            initial={{ height: 0 }}
+                            animate={{ 
+                              height: `${loginHeightPercent}%`,
+                              opacity: legendFocus === "LOGS" ? 0.25 : 1
+                            }}
+                            transition={{
+                              type: "spring",
+                              stiffness: 180,
+                              damping: 20,
+                              delay: idx * 0.02
+                            }}
+                            whileHover={{ scaleY: 1.05, originY: 1 }}
+                            className="w-1/2 max-w-[22px] min-w-[7px] bg-gradient-to-t from-blue-600 via-indigo-600 to-sky-400 rounded-t-lg relative shadow-xs shadow-blue-500/20 group-hover:brightness-110"
+                          >
+                            <div className="absolute top-0 inset-x-0 h-1 bg-sky-200/80 rounded-t-lg" />
+                            {d.logins > 0 && (
+                              <span className="opacity-0 group-hover:opacity-100 transition-opacity absolute -top-4 left-1/2 -translate-x-1/2 text-[9px] font-mono font-bold text-blue-700 bg-blue-50/90 px-1 rounded shadow-2xs pointer-events-none">
+                                {d.logins}
+                              </span>
+                            )}
+                          </motion.div>
+                        )}
+
+                        {/* Logs Bar */}
+                        {(chartMetric === "BOTH" || chartMetric === "LOGS") && (
+                          <motion.div
+                            layout
+                            initial={{ height: 0 }}
+                            animate={{ 
+                              height: `${logsHeightPercent}%`,
+                              opacity: legendFocus === "LOGIN" ? 0.25 : 1
+                            }}
+                            transition={{
+                              type: "spring",
+                              stiffness: 180,
+                              damping: 20,
+                              delay: idx * 0.02 + 0.01
+                            }}
+                            whileHover={{ scaleY: 1.05, originY: 1 }}
+                            className="w-1/2 max-w-[22px] min-w-[7px] bg-gradient-to-t from-emerald-600 via-teal-600 to-emerald-400 rounded-t-lg relative shadow-xs shadow-emerald-500/20 group-hover:brightness-110"
+                          >
+                            <div className="absolute top-0 inset-x-0 h-1 bg-emerald-200/80 rounded-t-lg" />
+                            {d.logs > 0 && (
+                              <span className="opacity-0 group-hover:opacity-100 transition-opacity absolute -top-4 left-1/2 -translate-x-1/2 text-[9px] font-mono font-bold text-emerald-700 bg-emerald-50/90 px-1 rounded shadow-2xs pointer-events-none">
+                                {d.logs}
+                              </span>
+                            )}
+                          </motion.div>
+                        )}
+
                       </div>
+
+                      {/* X-Axis Date Label */}
+                      <span className={`text-[10px] sm:text-[10.5px] font-mono transition-colors mt-2 text-center truncate w-full relative z-10 ${
+                        isHovered ? "text-slate-900 font-extrabold" : "text-slate-500 font-medium"
+                      }`}>
+                        {d.label}
+                      </span>
                     </div>
+                  );
+                })}
+              </div>
+            )}
 
-                    {/* Bars Container */}
-                    <div className="w-full flex items-end justify-center gap-1 sm:gap-1.5 h-full pb-1">
-                      
-                      {/* Login Bar */}
-                      {(chartMetric === "BOTH" || chartMetric === "LOGIN") && (
-                        <div 
-                          style={{ height: `${loginHeightPercent}%` }}
-                          className="w-1/2 max-w-[20px] bg-gradient-to-t from-blue-600 to-indigo-500 hover:from-blue-500 hover:to-indigo-400 rounded-t-md transition-all duration-300 relative shadow-2xs group-hover:brightness-110"
-                        >
-                          <span className="opacity-0 group-hover:opacity-100 absolute -top-4 left-1/2 -translate-x-1/2 text-[9px] font-mono font-bold text-blue-700">
-                            {d.logins}
-                          </span>
-                        </div>
-                      )}
+            {/* SMOOTH SPLINE AREA VIEW */}
+            {chartStyle === "AREA" && (() => {
+              const width = 1000;
+              const height = 250;
+              const paddingX = 45;
+              const paddingTop = 25;
+              const paddingBottom = 40;
+              const plotWidth = width - paddingX * 2;
+              const plotHeight = height - paddingTop - paddingBottom;
+              const stepX = dailyStats.length > 1 ? plotWidth / (dailyStats.length - 1) : 0;
 
-                      {/* Logs Bar */}
-                      {(chartMetric === "BOTH" || chartMetric === "LOGS") && (
-                        <div 
-                          style={{ height: `${logsHeightPercent}%` }}
-                          className="w-1/2 max-w-[20px] bg-gradient-to-t from-emerald-600 to-teal-500 hover:from-emerald-500 hover:to-teal-400 rounded-t-md transition-all duration-300 relative shadow-2xs group-hover:brightness-110"
-                        >
-                          <span className="opacity-0 group-hover:opacity-100 absolute -top-4 left-1/2 -translate-x-1/2 text-[9px] font-mono font-bold text-emerald-700">
-                            {d.logs}
-                          </span>
-                        </div>
-                      )}
+              const loginPoints = dailyStats.map((d, i) => ({
+                x: paddingX + i * stepX,
+                y: paddingTop + plotHeight * (1 - (d.logins / maxChartValue))
+              }));
 
-                    </div>
+              const logsPoints = dailyStats.map((d, i) => ({
+                x: paddingX + i * stepX,
+                y: paddingTop + plotHeight * (1 - (d.logs / maxChartValue))
+              }));
 
-                    {/* X-Axis Date Label */}
-                    <span className="text-[10px] font-mono font-semibold text-slate-500 mt-2 truncate w-full text-center">
-                      {d.label}
-                    </span>
-                  </div>
-                );
-              })}
+              const loginLinePath = createSmoothSplinePath(loginPoints, false);
+              const loginAreaPath = createSmoothSplinePath(loginPoints, true, paddingTop + plotHeight);
+
+              const logsLinePath = createSmoothSplinePath(logsPoints, false);
+              const logsAreaPath = createSmoothSplinePath(logsPoints, true, paddingTop + plotHeight);
+
+              return (
+                <div className="w-full relative h-60 sm:h-68">
+                  
+                  {/* Floating Tooltip in Area Mode */}
+                  <AnimatePresence>
+                    {hoveredIdx !== null && dailyStats[hoveredIdx] && (
+                      <motion.div
+                        initial={{ opacity: 0, y: -6, scale: 0.95 }}
+                        animate={{ opacity: 1, y: 0, scale: 1 }}
+                        exit={{ opacity: 0, y: -6, scale: 0.95 }}
+                        transition={{ type: "spring", stiffness: 400, damping: 28 }}
+                        className="absolute top-2 right-4 z-30 pointer-events-none bg-slate-900/95 backdrop-blur-md text-white text-[11px] font-mono px-3 py-2 rounded-xl shadow-xl border border-slate-700/80 whitespace-nowrap flex items-center gap-3"
+                      >
+                        <span className="text-amber-300 font-bold">📅 {dailyStats[hoveredIdx].dateStr}</span>
+                        <span className="text-sky-300">🔐 Login: <strong>{dailyStats[hoveredIdx].logins}</strong></span>
+                        <span className="text-emerald-300">⚡ Logs: <strong>{dailyStats[hoveredIdx].logs}</strong></span>
+                        <span className="text-slate-300 border-l border-slate-700 pl-2">Total: <strong>{dailyStats[hoveredIdx].total}</strong></span>
+                      </motion.div>
+                    )}
+                  </AnimatePresence>
+
+                  <svg
+                    viewBox={`0 0 ${width} ${height}`}
+                    className="w-full h-full overflow-visible"
+                    preserveAspectRatio="none"
+                  >
+                    <defs>
+                      <linearGradient id="loginAreaGradient" x1="0" y1="0" x2="0" y2="1">
+                        <stop offset="0%" stopColor="#3b82f6" stopOpacity="0.45" />
+                        <stop offset="85%" stopColor="#6366f1" stopOpacity="0.05" />
+                        <stop offset="100%" stopColor="#6366f1" stopOpacity="0" />
+                      </linearGradient>
+                      <linearGradient id="logsAreaGradient" x1="0" y1="0" x2="0" y2="1">
+                        <stop offset="0%" stopColor="#10b981" stopOpacity="0.45" />
+                        <stop offset="85%" stopColor="#14b8a6" stopOpacity="0.05" />
+                        <stop offset="100%" stopColor="#14b8a6" stopOpacity="0" />
+                      </linearGradient>
+                    </defs>
+
+                    {/* Horizontal reference grid lines */}
+                    {[0, 0.5, 1].map((pct, gIdx) => {
+                      const y = paddingTop + plotHeight * (1 - pct);
+                      return (
+                        <g key={gIdx}>
+                          <line
+                            x1={paddingX}
+                            y1={y}
+                            x2={width - paddingX}
+                            y2={y}
+                            stroke="#e2e8f0"
+                            strokeDasharray={pct === 0 ? "none" : "4 4"}
+                            strokeWidth="1"
+                          />
+                          <text
+                            x={paddingX - 10}
+                            y={y + 3}
+                            textAnchor="end"
+                            className="text-[10px] font-mono fill-slate-400"
+                          >
+                            {Math.round(maxChartValue * pct)}
+                          </text>
+                        </g>
+                      );
+                    })}
+
+                    {/* Active Hover Guide Line */}
+                    {hoveredIdx !== null && (
+                      <motion.line
+                        initial={{ opacity: 0 }}
+                        animate={{ opacity: 1 }}
+                        x1={paddingX + hoveredIdx * stepX}
+                        y1={paddingTop}
+                        x2={paddingX + hoveredIdx * stepX}
+                        y2={paddingTop + plotHeight}
+                        stroke="#64748b"
+                        strokeWidth="1.5"
+                        strokeDasharray="3 3"
+                      />
+                    )}
+
+                    {/* Login Area & Line */}
+                    {(chartMetric === "BOTH" || chartMetric === "LOGIN") && (
+                      <g opacity={legendFocus === "LOGS" ? 0.2 : 1} className="transition-opacity duration-200">
+                        <motion.path
+                          d={loginAreaPath}
+                          fill="url(#loginAreaGradient)"
+                          initial={{ opacity: 0 }}
+                          animate={{ opacity: 1 }}
+                          transition={{ duration: 0.5 }}
+                        />
+                        <motion.path
+                          d={loginLinePath}
+                          fill="none"
+                          stroke="#2563eb"
+                          strokeWidth="3.5"
+                          strokeLinecap="round"
+                          strokeLinejoin="round"
+                          initial={{ pathLength: 0 }}
+                          animate={{ pathLength: 1 }}
+                          transition={{ duration: 0.9, ease: "easeOut" }}
+                        />
+                        {loginPoints.map((pt, pIdx) => (
+                          <motion.circle
+                            key={pIdx}
+                            cx={pt.x}
+                            cy={pt.y}
+                            r={hoveredIdx === pIdx ? 6 : 4}
+                            className="fill-white stroke-blue-600 cursor-pointer"
+                            strokeWidth={hoveredIdx === pIdx ? 3.5 : 2}
+                            onMouseEnter={() => setHoveredIdx(pIdx)}
+                            onMouseLeave={() => setHoveredIdx(null)}
+                            whileHover={{ scale: 1.4 }}
+                            transition={{ type: "spring", stiffness: 400, damping: 25 }}
+                          />
+                        ))}
+                      </g>
+                    )}
+
+                    {/* Logs Area & Line */}
+                    {(chartMetric === "BOTH" || chartMetric === "LOGS") && (
+                      <g opacity={legendFocus === "LOGIN" ? 0.2 : 1} className="transition-opacity duration-200">
+                        <motion.path
+                          d={logsAreaPath}
+                          fill="url(#logsAreaGradient)"
+                          initial={{ opacity: 0 }}
+                          animate={{ opacity: 1 }}
+                          transition={{ duration: 0.5 }}
+                        />
+                        <motion.path
+                          d={logsLinePath}
+                          fill="none"
+                          stroke="#059669"
+                          strokeWidth="3.5"
+                          strokeLinecap="round"
+                          strokeLinejoin="round"
+                          initial={{ pathLength: 0 }}
+                          animate={{ pathLength: 1 }}
+                          transition={{ duration: 0.9, ease: "easeOut" }}
+                        />
+                        {logsPoints.map((pt, pIdx) => (
+                          <motion.circle
+                            key={pIdx}
+                            cx={pt.x}
+                            cy={pt.y}
+                            r={hoveredIdx === pIdx ? 6 : 4}
+                            className="fill-white stroke-emerald-600 cursor-pointer"
+                            strokeWidth={hoveredIdx === pIdx ? 3.5 : 2}
+                            onMouseEnter={() => setHoveredIdx(pIdx)}
+                            onMouseLeave={() => setHoveredIdx(null)}
+                            whileHover={{ scale: 1.4 }}
+                            transition={{ type: "spring", stiffness: 400, damping: 25 }}
+                          />
+                        ))}
+                      </g>
+                    )}
+
+                    {/* X-Axis Labels in SVG */}
+                    {dailyStats.map((d, i) => (
+                      <text
+                        key={i}
+                        x={paddingX + i * stepX}
+                        y={height - 10}
+                        textAnchor="middle"
+                        className={`text-[10px] sm:text-[10.5px] font-mono cursor-pointer transition-all ${
+                          hoveredIdx === i ? "fill-slate-900 font-extrabold" : "fill-slate-500 font-medium"
+                        }`}
+                        onMouseEnter={() => setHoveredIdx(i)}
+                        onMouseLeave={() => setHoveredIdx(null)}
+                      >
+                        {d.label}
+                      </text>
+                    ))}
+                  </svg>
+                </div>
+              );
+            })()}
+
+            {/* Interactive Chart Legend */}
+            <div className="flex flex-wrap items-center justify-center gap-6 pt-4 text-xs font-mono border-t border-slate-100">
+              <button
+                type="button"
+                onMouseEnter={() => setLegendFocus("LOGIN")}
+                onMouseLeave={() => setLegendFocus("ALL")}
+                onClick={() => setChartMetric(prev => prev === "LOGIN" ? "BOTH" : "LOGIN")}
+                className={`flex items-center gap-2 cursor-pointer transition-opacity px-2.5 py-1 rounded-xl hover:bg-slate-50 ${
+                  legendFocus === "LOGS" ? "opacity-30" : "opacity-100"
+                }`}
+                title="Klik untuk memfilter Login Saja, atau arahkan mouse untuk menyorot"
+              >
+                <span className="w-3 h-3 rounded-full bg-gradient-to-tr from-blue-600 to-sky-400 shadow-2xs shadow-blue-500/50" />
+                <span className="text-slate-800 font-bold">
+                  Sesi Login Pengguna <span className="text-blue-600">({chartSummary.totalLogins})</span>
+                </span>
+              </button>
+
+              <button
+                type="button"
+                onMouseEnter={() => setLegendFocus("LOGS")}
+                onMouseLeave={() => setLegendFocus("ALL")}
+                onClick={() => setChartMetric(prev => prev === "LOGS" ? "BOTH" : "LOGS")}
+                className={`flex items-center gap-2 cursor-pointer transition-opacity px-2.5 py-1 rounded-xl hover:bg-slate-50 ${
+                  legendFocus === "LOGIN" ? "opacity-30" : "opacity-100"
+                }`}
+                title="Klik untuk memfilter Logs Saja, atau arahkan mouse untuk menyorot"
+              >
+                <span className="w-3 h-3 rounded-full bg-gradient-to-tr from-emerald-600 to-teal-400 shadow-2xs shadow-emerald-500/50" />
+                <span className="text-slate-800 font-bold">
+                  Aktivitas Sistem / Transaksi <span className="text-emerald-600">({chartSummary.totalLogs})</span>
+                </span>
+              </button>
             </div>
 
-            {/* Chart Legend */}
-            <div className="flex items-center justify-center gap-6 pt-3 text-xs font-mono">
-              <div className="flex items-center gap-2">
-                <span className="w-3 h-3 rounded bg-blue-600" />
-                <span className="text-slate-700 font-bold">Sesi Login Pengguna</span>
-              </div>
-              <div className="flex items-center gap-2">
-                <span className="w-3 h-3 rounded bg-emerald-600" />
-                <span className="text-slate-700 font-bold">Aktivitas Sistem / Transaksi</span>
-              </div>
-            </div>
           </div>
         </div>
 
