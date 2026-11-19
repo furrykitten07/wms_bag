@@ -26,8 +26,11 @@ import {
   ArrowUpRight,
   ArrowDownLeft,
   SlidersHorizontal,
-  FileCheck
+  FileCheck,
+  BarChart3,
+  LineChart
 } from "lucide-react";
+import { motion, AnimatePresence } from "motion/react";
 import { 
   AuditLog, 
   MaterialRequest, 
@@ -38,6 +41,72 @@ import {
   MovementLedgerEntry,
   SparePart
 } from "../types.js";
+
+// Helper Fritsch-Carlson monotone cubic spline untuk kurva grafik SVG yang halus & tidak overshoot baseline
+function createMonotoneSplinePath(
+  points: Array<{ x: number; y: number }>,
+  closeBottom = false,
+  bottomY = 195,
+  minY = 15
+): string {
+  if (points.length === 0) return "";
+  if (points.length === 1) return `M ${points[0].x.toFixed(1)},${points[0].y.toFixed(1)}`;
+
+  const n = points.length;
+  const dx: number[] = [];
+  const dy: number[] = [];
+  const m: number[] = [];
+  for (let i = 0; i < n - 1; i++) {
+    dx.push(points[i + 1].x - points[i].x);
+    dy.push(points[i + 1].y - points[i].y);
+    m.push(dx[i] === 0 ? 0 : dy[i] / dx[i]);
+  }
+
+  const tangents: number[] = new Array(n).fill(0);
+  tangents[0] = m[0];
+  tangents[n - 1] = m[n - 2];
+
+  for (let i = 1; i < n - 1; i++) {
+    if (m[i - 1] * m[i] <= 0) {
+      tangents[i] = 0;
+    } else {
+      tangents[i] = (m[i - 1] + m[i]) / 2;
+    }
+  }
+
+  for (let i = 0; i < n - 1; i++) {
+    if (m[i] === 0) {
+      tangents[i] = 0;
+      tangents[i + 1] = 0;
+    } else {
+      const a = tangents[i] / m[i];
+      const b = tangents[i + 1] / m[i];
+      const h = Math.hypot(a, b);
+      if (h > 3) {
+        const t = 3 / h;
+        tangents[i] = t * a * m[i];
+        tangents[i + 1] = t * b * m[i];
+      }
+    }
+  }
+
+  let d = `M ${points[0].x.toFixed(1)},${points[0].y.toFixed(1)}`;
+  for (let i = 0; i < n - 1; i++) {
+    const p1 = points[i];
+    const p2 = points[i + 1];
+    const segDx = dx[i] / 3;
+    const cp1x = p1.x + segDx;
+    const cp1y = Math.min(bottomY, Math.max(minY, p1.y + segDx * tangents[i]));
+    const cp2x = p2.x - segDx;
+    const cp2y = Math.min(bottomY, Math.max(minY, p2.y - segDx * tangents[i + 1]));
+    d += ` C ${cp1x.toFixed(1)},${cp1y.toFixed(1)} ${cp2x.toFixed(1)},${cp2y.toFixed(1)} ${p2.x.toFixed(1)},${p2.y.toFixed(1)}`;
+  }
+
+  if (closeBottom) {
+    d += ` L ${points[n - 1].x.toFixed(1)},${bottomY} L ${points[0].x.toFixed(1)},${bottomY} Z`;
+  }
+  return d;
+}
 
 interface DashboardViewProps {
   summary: {
@@ -126,6 +195,9 @@ export default function DashboardView({
   }, [availableYears, selectedYear]);
 
   const [selectedMonth, setSelectedMonth] = useState<number>(0);
+  const [chartStyle, setChartStyle] = useState<"AREA" | "BAR">("AREA");
+  const [chartMetric, setChartMetric] = useState<"BOTH" | "TUG5" | "TUG8">("BOTH");
+  const [legendFocus, setLegendFocus] = useState<"ALL" | "TUG5" | "TUG8">("ALL");
   
   // Storage utilization percentage calculator (simulated based on parts layout)
   const utilPercent = Math.min(95, 45 + (summary.totalParts * 6.5));
@@ -615,32 +687,114 @@ export default function DashboardView({
 
       </section>
 
-      {/* SVG Analytical Flow Chart Comparison (Receiving vs Dispatch) */}
-      <section className="bg-white border border-slate-200/90 rounded-2xl p-6 shadow-sm flex flex-col gap-5 shrink-0">
+      {/* Motion Analytical Flow Chart Comparison (TUG 5 vs TUG 8) */}
+      <section className="bg-white border border-slate-200/90 rounded-3xl p-5 sm:p-6 shadow-sm flex flex-col gap-5 shrink-0 relative overflow-hidden">
         
-        {/* Section Header */}
-        <div className="flex flex-col md:flex-row items-start md:items-center justify-between gap-3 border-b border-slate-100 pb-4">
-          <div>
-            <h3 className="text-sm font-black font-display uppercase tracking-wider text-slate-900 flex items-center gap-2">
-              <span className="w-2.5 h-2.5 rounded-full bg-blue-600 animate-ping" />
-              Analisis Tren Permintaan (TUG 5) vs Pengeluaran Armada (TUG 8)
-            </h3>
-            <p className="text-xs text-slate-500 font-mono mt-0.5">
-              Grafik perbandingan volume permintaan barang (TUG 5) vs pengeluaran armada (TUG 8) per bulan.
-            </p>
+        {/* Subtle decorative ambient glow */}
+        <div className="absolute -top-24 -right-24 w-72 h-72 bg-gradient-to-br from-blue-100/50 via-indigo-100/30 to-amber-100/30 rounded-full blur-3xl pointer-events-none" />
+
+        {/* Section Header & Motion Controls */}
+        <div className="relative z-10 flex flex-col lg:flex-row items-start lg:items-center justify-between gap-4 border-b border-slate-100 pb-4">
+          <div className="flex items-center gap-3">
+            <div className="w-9 h-9 rounded-xl bg-gradient-to-tr from-blue-600 to-indigo-500 text-white flex items-center justify-center shadow-sm shadow-blue-500/25 shrink-0">
+              <TrendingUp className="w-4.5 h-4.5" />
+            </div>
+            <div>
+              <h3 className="text-sm font-black font-display uppercase tracking-wider text-slate-900 flex items-center gap-2 flex-wrap">
+                <span>Analisis Tren Permintaan (TUG 5) vs Pengeluaran Armada (TUG 8)</span>
+                <span className="inline-flex items-center gap-1 text-[10px] font-mono font-bold bg-blue-50 text-blue-700 border border-blue-200/80 px-2 py-0.5 rounded-full">
+                  <Sparkles className="w-2.5 h-2.5 text-blue-500" />
+                  {selectedYear}
+                </span>
+              </h3>
+              <p className="text-xs text-slate-500 font-mono mt-0.5">
+                Visualisasi interaktif volume permintaan barang (TUG 5) vs pengeluaran armada (TUG 8) per bulan.
+              </p>
+            </div>
           </div>
-          <div className="flex items-center gap-3 text-xs font-mono text-slate-600 uppercase font-semibold">
-            <span className="flex items-center gap-1.5 bg-blue-50 text-blue-700 px-3 py-1 rounded-lg border border-blue-200/60 font-bold">
-              <span className="w-2.5 h-2.5 bg-blue-600 rounded-sm" /> Permintaan (TUG 5)
-            </span>
-            <span className="flex items-center gap-1.5 bg-amber-50 text-amber-700 px-3 py-1 rounded-lg border border-amber-200/60 font-bold">
-              <span className="w-2.5 h-2.5 bg-amber-500 rounded-sm" /> Pengeluaran (TUG 8)
-            </span>
+
+          {/* Interactive Motion Pill Controls: Style (Kurva vs Batang) + Metric Filter */}
+          <div className="flex flex-wrap items-center gap-2 self-start lg:self-auto">
+            {/* Visual Style Switcher */}
+            <div className="flex items-center gap-1 bg-slate-100/90 p-1 rounded-xl text-xs font-mono font-bold border border-slate-200/60">
+              <button
+                type="button"
+                onClick={() => setChartStyle("AREA")}
+                className={`relative px-2.5 py-1 rounded-lg transition-colors cursor-pointer flex items-center gap-1.5 ${
+                  chartStyle === "AREA" ? "text-slate-900" : "text-slate-500 hover:text-slate-800"
+                }`}
+                title="Grafik Kurva Halus (Smooth Spline Area)"
+              >
+                {chartStyle === "AREA" && (
+                  <motion.div
+                    layoutId="dashChartStylePill"
+                    className="absolute inset-0 bg-white rounded-lg shadow-xs border border-slate-200/80"
+                    transition={{ type: "spring", stiffness: 420, damping: 32 }}
+                  />
+                )}
+                <span className="relative z-10 flex items-center gap-1.5">
+                  <LineChart className="w-3.5 h-3.5 text-blue-600" />
+                  <span>Kurva</span>
+                </span>
+              </button>
+
+              <button
+                type="button"
+                onClick={() => setChartStyle("BAR")}
+                className={`relative px-2.5 py-1 rounded-lg transition-colors cursor-pointer flex items-center gap-1.5 ${
+                  chartStyle === "BAR" ? "text-slate-900" : "text-slate-500 hover:text-slate-800"
+                }`}
+                title="Grafik Batang (Bar Chart)"
+              >
+                {chartStyle === "BAR" && (
+                  <motion.div
+                    layoutId="dashChartStylePill"
+                    className="absolute inset-0 bg-white rounded-lg shadow-xs border border-slate-200/80"
+                    transition={{ type: "spring", stiffness: 420, damping: 32 }}
+                  />
+                )}
+                <span className="relative z-10 flex items-center gap-1.5">
+                  <BarChart3 className="w-3.5 h-3.5 text-amber-600" />
+                  <span>Batang</span>
+                </span>
+              </button>
+            </div>
+
+            {/* Metric Filter Switcher */}
+            <div className="flex items-center gap-1 bg-slate-100/90 p-1 rounded-xl text-xs font-mono font-bold border border-slate-200/60">
+              {(["BOTH", "TUG5", "TUG8"] as const).map(metric => {
+                const isActive = chartMetric === metric;
+                const label = metric === "BOTH" ? "Keduanya" : metric === "TUG5" ? "TUG 5" : "TUG 8";
+                return (
+                  <button
+                    key={metric}
+                    type="button"
+                    onClick={() => setChartMetric(metric)}
+                    className={`relative px-2.5 sm:px-3 py-1 rounded-lg transition-colors cursor-pointer flex items-center gap-1.5 ${
+                      isActive ? "text-slate-900" : "text-slate-500 hover:text-slate-800"
+                    }`}
+                  >
+                    {isActive && (
+                      <motion.div
+                        layoutId="dashMetricPill"
+                        className="absolute inset-0 bg-white rounded-lg shadow-xs border border-slate-200/80"
+                        transition={{ type: "spring", stiffness: 420, damping: 32 }}
+                      />
+                    )}
+                    <span className="relative z-10 flex items-center gap-1.5">
+                      {metric === "TUG5" && <span className="w-2 h-2 rounded-full bg-blue-600" />}
+                      {metric === "TUG8" && <span className="w-2 h-2 rounded-full bg-amber-500" />}
+                      <span>{label}</span>
+                    </span>
+                  </button>
+                );
+              })}
+            </div>
           </div>
         </div>
 
         {/* Year Filter & Aggregated KPI Bar */}
-        <div className="bg-slate-50 border border-slate-200/80 rounded-xl p-4 flex flex-col md:flex-row gap-4 justify-between items-center shrink-0">
+        <div className="relative z-10 bg-slate-50/90 border border-slate-200/80 rounded-2xl p-4 flex flex-col md:flex-row gap-4 justify-between items-center shrink-0">
           
           {/* Year Selector */}
           <div className="flex flex-col gap-1 shrink-0 self-start md:self-center w-full md:w-auto">
@@ -686,251 +840,585 @@ export default function DashboardView({
         </div>
 
         {/* Chart & Detailed Sidebar Grid */}
-        <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 items-stretch">
+        <div className="relative z-10 grid grid-cols-1 lg:grid-cols-12 gap-6 items-stretch">
           
-          {/* Main SVG Vector Graph Container */}
+          {/* Main Motion Graph Container */}
           <div className="lg:col-span-8 flex flex-col justify-between">
-            <div className="flex justify-between items-center bg-blue-50/60 border border-blue-100 p-2.5 px-3.5 rounded-xl text-xs font-mono mb-3">
-              <span>
-                Bulan Terpilih: <strong className="text-blue-800 font-bold">{MONTHS_DATA[safeSelectedMonth]?.name}</strong>
-              </span>
-              <span>
-                Rasio Pemenuhan: <strong className="text-amber-600 font-bold">{(MONTHS_DATA[safeSelectedMonth]?.tug8 / Math.max(1, MONTHS_DATA[safeSelectedMonth]?.tug5) * 100).toFixed(0)}%</strong> dari total permintaan
-              </span>
-            </div>
-
-            {/* Custom Vector Graph (Heightened to fill space) */}
-            <div className="h-[340px] md:h-[380px] w-full bg-slate-50/80 border border-slate-200 rounded-xl p-4 flex items-center justify-center relative font-mono text-[9.5px] text-slate-400 shadow-inner">
-              <svg className="w-full h-full" viewBox="0 0 700 220" fill="none">
-                <defs>
-                  <linearGradient id="blue-grad" x1="0" y1="0" x2="0" y2="1">
-                    <stop offset="0%" stopColor="#2563eb" stopOpacity="0.35" />
-                    <stop offset="100%" stopColor="#2563eb" stopOpacity="0.01" />
-                  </linearGradient>
-                  <linearGradient id="amber-grad" x1="0" y1="0" x2="0" y2="1">
-                    <stop offset="0%" stopColor="#f59e0b" stopOpacity="0.30" />
-                    <stop offset="100%" stopColor="#f59e0b" stopOpacity="0.01" />
-                  </linearGradient>
-                </defs>
-
-                {/* Horizontal reference grid metrics */}
-                <line x1="50" y1="25" x2="680" y2="25" stroke="#e2e8f0" strokeDasharray="3,3" />
-                <line x1="50" y1="70" x2="680" y2="70" stroke="#e2e8f0" strokeDasharray="3,3" />
-                <line x1="50" y1="115" x2="680" y2="115" stroke="#e2e8f0" strokeDasharray="3,3" />
-                <line x1="50" y1="160" x2="680" y2="160" stroke="#e2e8f0" strokeDasharray="3,3" />
-                <line x1="50" y1="195" x2="680" y2="195" stroke="#cbd5e1" strokeWidth="1.5" />
-
-                {/* Y Axis markings */}
-                <text x="10" y="29" fill="#64748b" fontWeight="bold">{maxScale} unit</text>
-                <text x="10" y="74" fill="#64748b">{Math.round(maxScale * 0.75)} unit</text>
-                <text x="10" y="119" fill="#64748b">{Math.round(maxScale * 0.5)} unit</text>
-                <text x="10" y="164" fill="#64748b">{Math.round(maxScale * 0.25)} unit</text>
-                <text x="10" y="199" fill="#64748b">0 unit</text>
-
-                {/* Active Tracking Line */}
-                <line 
-                  x1={xCoords[safeSelectedMonth]} 
-                  y1="15" 
-                  x2={xCoords[safeSelectedMonth]} 
-                  y2="195" 
-                  stroke="#2563eb" 
-                  strokeWidth="1.5" 
-                  strokeDasharray="4,4" 
-                />
-                
-                {/* Active Selection Card Highlight Backdrop */}
-                <rect
-                  x={xCoords[safeSelectedMonth] - 32}
-                  y="15"
-                  width="64"
-                  height="180"
-                  fill="#eff6ff"
-                  opacity="0.85"
-                  rx="8"
-                />
-
-                {MONTHS_DATA.length > 1 ? (
-                  <>
-                    {/* Shaded Area Paths */}
-                    <path
-                      d={`M ${xCoords[0]} 195 ` + MONTHS_DATA.map((m, i) => `L ${xCoords[i]} ${195 - (m.inbound / maxScale) * 165}`).join(' ') + ` L ${xCoords[MONTHS_DATA.length - 1]} 195 Z`}
-                      fill="url(#blue-grad)"
-                    />
-                    <path
-                      d={`M ${xCoords[0]} 195 ` + MONTHS_DATA.map((m, i) => `L ${xCoords[i]} ${195 - (m.outbound / maxScale) * 165}`).join(' ') + ` L ${xCoords[MONTHS_DATA.length - 1]} 195 Z`}
-                      fill="url(#amber-grad)"
-                    />
-
-                    {/* Primary Data Line Paths */}
-                    <path 
-                      d={MONTHS_DATA.map((m, i) => `${i === 0 ? 'M' : 'L'} ${xCoords[i]} ${195 - (m.inbound / maxScale) * 165}`).join(' ')} 
-                      stroke="#2563eb" 
-                      strokeWidth="3.5" 
-                      strokeLinecap="round" 
-                      strokeLinejoin="round" 
-                    />
-                    <path 
-                      d={MONTHS_DATA.map((m, i) => `${i === 0 ? 'M' : 'L'} ${xCoords[i]} ${195 - (m.outbound / maxScale) * 165}`).join(' ')} 
-                      stroke="#f59e0b" 
-                      strokeWidth="3.5" 
-                      strokeLinecap="round" 
-                      strokeLinejoin="round" 
-                    />
-                  </>
-                ) : (
-                  /* Single Month Pillar Representation */
-                  <g>
-                    <rect
-                      x={xCoords[0] - 28}
-                      y={195 - (MONTHS_DATA[0].inbound / maxScale) * 165}
-                      width="24"
-                      height={(MONTHS_DATA[0].inbound / maxScale) * 165}
-                      fill="#2563eb"
-                      rx="4"
-                    />
-                    <rect
-                      x={xCoords[0] + 4}
-                      y={195 - (MONTHS_DATA[0].outbound / maxScale) * 165}
-                      width="24"
-                      height={(MONTHS_DATA[0].outbound / maxScale) * 165}
-                      fill="#f59e0b"
-                      rx="4"
-                    />
-                  </g>
-                )}
-
-                {/* Blue Metric Anchors */}
-                {xCoords.map((x, idx) => {
-                  const m = MONTHS_DATA[idx];
-                  if (!m) return null;
-                  const yVal = 195 - (m.inbound / maxScale) * 165;
-                  const active = safeSelectedMonth === idx;
-                  return (
-                    <g key={`banchor-${idx}`}>
-                      {active && <circle cx={x} cy={yVal} r="10" fill="#2563eb" opacity="0.3" className="animate-ping" />}
-                      <circle 
-                        cx={x} 
-                        cy={yVal} 
-                        r={active ? "7" : "5"} 
-                        fill="#2563eb" 
-                        stroke="#ffffff" 
-                        strokeWidth="2" 
+            {(() => {
+              const activeMonthData = MONTHS_DATA[safeSelectedMonth];
+              const fulfillmentPct = activeMonthData
+                ? Math.min(100, Math.round((activeMonthData.tug8 / Math.max(1, activeMonthData.tug5)) * 100))
+                : 0;
+              return (
+                <div className="flex flex-col sm:flex-row sm:justify-between sm:items-center gap-2 bg-gradient-to-r from-blue-50/80 via-slate-50 to-amber-50/70 border border-blue-100/90 p-2.5 px-3.5 rounded-xl text-xs font-mono mb-3">
+                  <div className="flex items-center gap-2">
+                    <span className="w-2 h-2 rounded-full bg-blue-600 shrink-0" />
+                    <span>
+                      Bulan Terpilih: <strong className="text-blue-800 font-black">{activeMonthData?.name}</strong>
+                    </span>
+                  </div>
+                  <div className="flex items-center gap-2.5">
+                    <span>
+                      Rasio Pemenuhan: <strong className="text-amber-600 font-black">{fulfillmentPct}%</strong> dari total permintaan
+                    </span>
+                    <div className="hidden sm:block w-20 h-1.5 bg-slate-200/80 rounded-full overflow-hidden">
+                      <motion.div
+                        className="h-full bg-gradient-to-r from-blue-600 to-amber-500 rounded-full"
+                        initial={{ width: 0 }}
+                        animate={{ width: `${fulfillmentPct}%` }}
+                        transition={{ type: "spring", stiffness: 260, damping: 24 }}
                       />
-                    </g>
-                  );
-                })}
+                    </div>
+                  </div>
+                </div>
+              );
+            })()}
 
-                {/* Amber Metric Anchors */}
-                {xCoords.map((x, idx) => {
-                  const m = MONTHS_DATA[idx];
-                  if (!m) return null;
-                  const yVal = 195 - (m.outbound / maxScale) * 165;
-                  const active = safeSelectedMonth === idx;
-                  return (
-                    <g key={`aanchor-${idx}`}>
-                      {active && <circle cx={x} cy={yVal} r="10" fill="#f59e0b" opacity="0.3" className="animate-ping" />}
-                      <circle 
-                        cx={x} 
-                        cy={yVal} 
-                        r={active ? "7" : "5"} 
-                        fill="#f59e0b" 
-                        stroke="#ffffff" 
-                        strokeWidth="2" 
-                      />
-                    </g>
-                  );
-                })}
-
-                {/* Interactive Hitzones */}
-                {xCoords.map((x, idx) => (
-                  <rect
-                    key={`hit-${idx}`}
-                    x={x - 25}
-                    y="10"
-                    width="50"
-                    height="190"
-                    fill="transparent"
-                    className="cursor-pointer hover:fill-slate-900/5 transition-all"
-                    onClick={() => setSelectedMonth(idx)}
-                    onMouseEnter={() => setSelectedMonth(idx)}
-                  />
-                ))}
-
-                {/* X Axis Labels */}
-                {MONTHS_DATA.map((m, idx) => (
-                  <text 
-                    key={`xlab-${idx}`} 
-                    x={xCoords[idx] - 16} 
-                    y="214" 
-                    fill={safeSelectedMonth === idx ? "#1e40af" : "#64748b"} 
-                    fontWeight={safeSelectedMonth === idx ? "bold" : "normal"}
-                    className="text-[10px] cursor-pointer font-bold"
-                    onClick={() => setSelectedMonth(idx)}
+            {/* Motion Vector & Bar Graph Stage */}
+            <div className="h-[340px] md:h-[380px] w-full bg-gradient-to-b from-slate-50/90 to-white border border-slate-200/90 rounded-2xl p-4 sm:p-5 flex flex-col justify-between relative font-mono text-[9.5px] text-slate-400 shadow-inner overflow-hidden">
+              
+              {/* Floating Interactive HUD Tooltip */}
+              <AnimatePresence mode="wait">
+                {MONTHS_DATA[safeSelectedMonth] && (
+                  <motion.div
+                    key={`hud-${selectedYear}-${safeSelectedMonth}`}
+                    initial={{ opacity: 0, y: -6, scale: 0.96 }}
+                    animate={{ opacity: 1, y: 0, scale: 1 }}
+                    exit={{ opacity: 0, y: -4, scale: 0.96 }}
+                    transition={{ type: "spring", stiffness: 420, damping: 30 }}
+                    className="hidden sm:flex items-center gap-3 self-end bg-slate-900/95 backdrop-blur-md text-white text-[10.5px] font-mono px-3 py-1.5 rounded-xl shadow-lg border border-slate-700/80 z-20 mb-1"
                   >
-                    {m.label}
-                  </text>
-                ))}
-              </svg>
+                    <span className="text-amber-300 font-bold">📅 {MONTHS_DATA[safeSelectedMonth].label} {selectedYear}</span>
+                    <span className="flex items-center gap-1 text-sky-300">
+                      <span className="w-1.5 h-1.5 rounded-full bg-sky-400" />
+                      TUG 5: <strong>{MONTHS_DATA[safeSelectedMonth].inbound}</strong>
+                    </span>
+                    <span className="flex items-center gap-1 text-amber-300">
+                      <span className="w-1.5 h-1.5 rounded-full bg-amber-400" />
+                      TUG 8: <strong>{MONTHS_DATA[safeSelectedMonth].outbound}</strong>
+                    </span>
+                  </motion.div>
+                )}
+              </AnimatePresence>
+
+              {/* MODE 1: SMOOTH MONOTONE SPLINE AREA CHART */}
+              {chartStyle === "AREA" && (() => {
+                const baselineY = 192;
+                const topY = 22;
+                const chartHeight = baselineY - topY;
+
+                const inboundPoints = MONTHS_DATA.map((m, i) => ({
+                  x: xCoords[i],
+                  y: baselineY - (m.inbound / maxScale) * chartHeight
+                }));
+                const outboundPoints = MONTHS_DATA.map((m, i) => ({
+                  x: xCoords[i],
+                  y: baselineY - (m.outbound / maxScale) * chartHeight
+                }));
+
+                const inboundLinePath = createMonotoneSplinePath(inboundPoints, false, baselineY, topY);
+                const inboundAreaPath = createMonotoneSplinePath(inboundPoints, true, baselineY, topY);
+                const outboundLinePath = createMonotoneSplinePath(outboundPoints, false, baselineY, topY);
+                const outboundAreaPath = createMonotoneSplinePath(outboundPoints, true, baselineY, topY);
+
+                const activeX = xCoords[safeSelectedMonth] ?? 350;
+
+                return (
+                  <div className="flex-1 w-full min-h-0 flex items-center justify-center">
+                    <svg className="w-full h-full overflow-visible" viewBox="0 0 700 222" fill="none">
+                      <defs>
+                        <linearGradient id="dash-blue-grad" x1="0" y1="0" x2="0" y2="1">
+                          <stop offset="0%" stopColor="#2563eb" stopOpacity="0.38" />
+                          <stop offset="75%" stopColor="#6366f1" stopOpacity="0.08" />
+                          <stop offset="100%" stopColor="#2563eb" stopOpacity="0" />
+                        </linearGradient>
+                        <linearGradient id="dash-amber-grad" x1="0" y1="0" x2="0" y2="1">
+                          <stop offset="0%" stopColor="#f59e0b" stopOpacity="0.35" />
+                          <stop offset="75%" stopColor="#fb923c" stopOpacity="0.07" />
+                          <stop offset="100%" stopColor="#f59e0b" stopOpacity="0" />
+                        </linearGradient>
+                        <linearGradient id="dash-active-col" x1="0" y1="0" x2="0" y2="1">
+                          <stop offset="0%" stopColor="#3b82f6" stopOpacity="0.12" />
+                          <stop offset="100%" stopColor="#3b82f6" stopOpacity="0.02" />
+                        </linearGradient>
+                      </defs>
+
+                      {/* Horizontal reference grid metrics */}
+                      {[1, 0.75, 0.5, 0.25, 0].map((ratio, gIdx) => {
+                        const y = baselineY - chartHeight * ratio;
+                        const isBase = ratio === 0;
+                        return (
+                          <g key={`grid-${gIdx}`}>
+                            <line
+                              x1="62"
+                              y1={y}
+                              x2="675"
+                              y2={y}
+                              stroke={isBase ? "#cbd5e1" : "#e2e8f0"}
+                              strokeWidth={isBase ? "1.5" : "1"}
+                              strokeDasharray={isBase ? "none" : "4,4"}
+                            />
+                            <text
+                              x="54"
+                              y={y + 3.5}
+                              textAnchor="end"
+                              fill="#64748b"
+                              fontWeight={ratio === 1 ? "bold" : "normal"}
+                              className="text-[9.5px] font-mono"
+                            >
+                              {Math.round(maxScale * ratio)} unit
+                            </text>
+                          </g>
+                        );
+                      })}
+
+                      {/* Smooth Spring-Gliding Active Selection Backdrop */}
+                      <motion.rect
+                        animate={{ x: activeX - 34 }}
+                        transition={{ type: "spring", stiffness: 360, damping: 32 }}
+                        y={topY - 8}
+                        width="68"
+                        height={chartHeight + 8}
+                        fill="url(#dash-active-col)"
+                        stroke="#bfdbfe"
+                        strokeOpacity="0.7"
+                        strokeWidth="1"
+                        rx="12"
+                      />
+
+                      {/* Smooth Spring-Gliding Vertical Tracking Line */}
+                      <motion.line
+                        animate={{ x1: activeX, x2: activeX }}
+                        transition={{ type: "spring", stiffness: 360, damping: 32 }}
+                        y1={topY - 8}
+                        y2={baselineY}
+                        stroke="#2563eb"
+                        strokeOpacity="0.55"
+                        strokeWidth="1.5"
+                        strokeDasharray="4,4"
+                      />
+
+                      {MONTHS_DATA.length > 1 ? (
+                        <>
+                          {/* TUG 5 Permintaan Smooth Area & Curve */}
+                          {(chartMetric === "BOTH" || chartMetric === "TUG5") && (
+                            <g opacity={legendFocus === "TUG8" ? 0.2 : 1} className="transition-opacity duration-200">
+                              <motion.path
+                                key={`area-in-${selectedYear}-${MONTHS_DATA.length}`}
+                                d={inboundAreaPath}
+                                fill="url(#dash-blue-grad)"
+                                initial={{ opacity: 0 }}
+                                animate={{ opacity: 1 }}
+                                transition={{ duration: 0.6 }}
+                              />
+                              <motion.path
+                                key={`line-in-${selectedYear}-${MONTHS_DATA.length}`}
+                                d={inboundLinePath}
+                                stroke="#2563eb"
+                                strokeWidth="3.2"
+                                strokeLinecap="round"
+                                strokeLinejoin="round"
+                                initial={{ pathLength: 0, opacity: 0.3 }}
+                                animate={{ pathLength: 1, opacity: 1 }}
+                                transition={{ duration: 0.85, ease: "easeOut" }}
+                              />
+                            </g>
+                          )}
+
+                          {/* TUG 8 Pengeluaran Smooth Area & Curve */}
+                          {(chartMetric === "BOTH" || chartMetric === "TUG8") && (
+                            <g opacity={legendFocus === "TUG5" ? 0.2 : 1} className="transition-opacity duration-200">
+                              <motion.path
+                                key={`area-out-${selectedYear}-${MONTHS_DATA.length}`}
+                                d={outboundAreaPath}
+                                fill="url(#dash-amber-grad)"
+                                initial={{ opacity: 0 }}
+                                animate={{ opacity: 1 }}
+                                transition={{ duration: 0.6 }}
+                              />
+                              <motion.path
+                                key={`line-out-${selectedYear}-${MONTHS_DATA.length}`}
+                                d={outboundLinePath}
+                                stroke="#f59e0b"
+                                strokeWidth="3.2"
+                                strokeLinecap="round"
+                                strokeLinejoin="round"
+                                initial={{ pathLength: 0, opacity: 0.3 }}
+                                animate={{ pathLength: 1, opacity: 1 }}
+                                transition={{ duration: 0.85, ease: "easeOut", delay: 0.08 }}
+                              />
+                            </g>
+                          )}
+                        </>
+                      ) : (
+                        /* Single Month Animated Pillars */
+                        <g>
+                          {(chartMetric === "BOTH" || chartMetric === "TUG5") && (
+                            <motion.rect
+                              initial={{ height: 0, y: baselineY }}
+                              animate={{
+                                y: baselineY - (MONTHS_DATA[0].inbound / maxScale) * chartHeight,
+                                height: Math.max(4, (MONTHS_DATA[0].inbound / maxScale) * chartHeight)
+                              }}
+                              transition={{ type: "spring", stiffness: 200, damping: 22 }}
+                              x={xCoords[0] - 30}
+                              width="24"
+                              fill="#2563eb"
+                              rx="6"
+                            />
+                          )}
+                          {(chartMetric === "BOTH" || chartMetric === "TUG8") && (
+                            <motion.rect
+                              initial={{ height: 0, y: baselineY }}
+                              animate={{
+                                y: baselineY - (MONTHS_DATA[0].outbound / maxScale) * chartHeight,
+                                height: Math.max(4, (MONTHS_DATA[0].outbound / maxScale) * chartHeight)
+                              }}
+                              transition={{ type: "spring", stiffness: 200, damping: 22, delay: 0.06 }}
+                              x={xCoords[0] + 6}
+                              width="24"
+                              fill="#f59e0b"
+                              rx="6"
+                            />
+                          )}
+                        </g>
+                      )}
+
+                      {/* Blue Metric Anchors with Concentric Motion Radar Pulse */}
+                      {(chartMetric === "BOTH" || chartMetric === "TUG5") && xCoords.map((x, idx) => {
+                        const m = MONTHS_DATA[idx];
+                        if (!m) return null;
+                        const yVal = baselineY - (m.inbound / maxScale) * chartHeight;
+                        const active = safeSelectedMonth === idx;
+                        return (
+                          <g
+                            key={`banchor-${idx}`}
+                            opacity={legendFocus === "TUG8" ? 0.2 : 1}
+                            className="transition-opacity duration-200"
+                          >
+                            {active && (
+                              <motion.circle
+                                cx={x}
+                                cy={yVal}
+                                fill="#2563eb"
+                                initial={{ r: 6, opacity: 0.55 }}
+                                animate={{ r: [6, 15], opacity: [0.5, 0] }}
+                                transition={{ repeat: Infinity, duration: 1.6, ease: "easeOut" }}
+                              />
+                            )}
+                            <motion.circle
+                              cx={x}
+                              cy={yVal}
+                              fill="#2563eb"
+                              stroke="#ffffff"
+                              strokeWidth={active ? 2.8 : 2}
+                              animate={{ r: active ? 6.5 : 4.5 }}
+                              transition={{ type: "spring", stiffness: 400, damping: 25 }}
+                            />
+                            {active && (
+                              <motion.g
+                                initial={{ opacity: 0, y: 4 }}
+                                animate={{ opacity: 1, y: 0 }}
+                                transition={{ type: "spring", stiffness: 360, damping: 24 }}
+                              >
+                                <rect
+                                  x={x - 18}
+                                  y={Math.max(2, yVal - 24)}
+                                  width="36"
+                                  height="15"
+                                  rx="5"
+                                  fill="#1d4ed8"
+                                />
+                                <text
+                                  x={x}
+                                  y={Math.max(12.5, yVal - 13.5)}
+                                  textAnchor="middle"
+                                  fill="#ffffff"
+                                  className="text-[9px] font-mono font-bold"
+                                >
+                                  {m.inbound}
+                                </text>
+                              </motion.g>
+                            )}
+                          </g>
+                        );
+                      })}
+
+                      {/* Amber Metric Anchors with Concentric Motion Radar Pulse */}
+                      {(chartMetric === "BOTH" || chartMetric === "TUG8") && xCoords.map((x, idx) => {
+                        const m = MONTHS_DATA[idx];
+                        if (!m) return null;
+                        const yVal = baselineY - (m.outbound / maxScale) * chartHeight;
+                        const active = safeSelectedMonth === idx;
+                        return (
+                          <g
+                            key={`aanchor-${idx}`}
+                            opacity={legendFocus === "TUG5" ? 0.2 : 1}
+                            className="transition-opacity duration-200"
+                          >
+                            {active && (
+                              <motion.circle
+                                cx={x}
+                                cy={yVal}
+                                fill="#f59e0b"
+                                initial={{ r: 6, opacity: 0.55 }}
+                                animate={{ r: [6, 15], opacity: [0.5, 0] }}
+                                transition={{ repeat: Infinity, duration: 1.6, ease: "easeOut", delay: 0.25 }}
+                              />
+                            )}
+                            <motion.circle
+                              cx={x}
+                              cy={yVal}
+                              fill="#f59e0b"
+                              stroke="#ffffff"
+                              strokeWidth={active ? 2.8 : 2}
+                              animate={{ r: active ? 6.5 : 4.5 }}
+                              transition={{ type: "spring", stiffness: 400, damping: 25 }}
+                            />
+                          </g>
+                        );
+                      })}
+
+                      {/* Interactive Column Hitzones */}
+                      {xCoords.map((x, idx) => (
+                        <rect
+                          key={`hit-${idx}`}
+                          x={x - 34}
+                          y={topY - 10}
+                          width="68"
+                          height={chartHeight + 25}
+                          fill="transparent"
+                          className="cursor-pointer"
+                          onClick={() => setSelectedMonth(idx)}
+                          onMouseEnter={() => setSelectedMonth(idx)}
+                        />
+                      ))}
+
+                      {/* Centered X Axis Labels */}
+                      {MONTHS_DATA.map((m, idx) => {
+                        const isSel = safeSelectedMonth === idx;
+                        return (
+                          <text
+                            key={`xlab-${idx}`}
+                            x={xCoords[idx]}
+                            y="214"
+                            textAnchor="middle"
+                            fill={isSel ? "#1d4ed8" : "#64748b"}
+                            fontWeight={isSel ? "800" : "600"}
+                            className="text-[10px] cursor-pointer font-mono transition-colors"
+                            onClick={() => setSelectedMonth(idx)}
+                            onMouseEnter={() => setSelectedMonth(idx)}
+                          >
+                            {m.label}
+                          </text>
+                        );
+                      })}
+                    </svg>
+                  </div>
+                );
+              })()}
+
+              {/* MODE 2: SPRING-ANIMATED GROUPED BAR CHART */}
+              {chartStyle === "BAR" && (
+                <div className="flex-1 w-full flex items-end gap-2 sm:gap-4 px-2 pt-6 pb-5 border-b border-slate-200/80 relative min-h-0">
+                  
+                  {/* Horizontal Grid Reference Lines */}
+                  <div className="absolute inset-x-0 top-2 border-t border-slate-200/60 text-[9.5px] font-mono text-slate-400 pl-1 flex justify-between pointer-events-none">
+                    <span>{maxScale} unit</span>
+                    <span className="text-slate-300 pr-1">100%</span>
+                  </div>
+                  <div className="absolute inset-x-0 top-1/2 border-t border-dashed border-slate-200/70 text-[9.5px] font-mono text-slate-400 pl-1 flex justify-between pointer-events-none">
+                    <span>{Math.round(maxScale * 0.5)} unit</span>
+                    <span className="text-slate-300 pr-1">50%</span>
+                  </div>
+
+                  {MONTHS_DATA.map((m, idx) => {
+                    const isSel = safeSelectedMonth === idx;
+                    const inPct = Math.min(100, Math.max(5, (m.inbound / maxScale) * 86));
+                    const outPct = Math.min(100, Math.max(5, (m.outbound / maxScale) * 86));
+
+                    return (
+                      <div
+                        key={`bar-month-${selectedYear}-${m.monthIdx}`}
+                        onClick={() => setSelectedMonth(idx)}
+                        onMouseEnter={() => setSelectedMonth(idx)}
+                        className="flex-1 flex flex-col items-center justify-end h-full relative cursor-pointer group py-1"
+                      >
+                        {/* Spring Sliding Active Backdrop */}
+                        {isSel && (
+                          <motion.div
+                            layoutId="dashHoverBarBackdrop"
+                            className="absolute inset-0 -mx-1 -my-1 bg-gradient-to-b from-blue-50/90 via-slate-50/70 to-amber-50/50 rounded-2xl border border-blue-200/80 pointer-events-none z-0 shadow-xs"
+                            transition={{ type: "spring", stiffness: 420, damping: 32 }}
+                          />
+                        )}
+
+                        {/* Grouped Bars */}
+                        <div className="w-full flex items-end justify-center gap-1.5 sm:gap-2.5 h-full pb-1 relative z-10">
+                          {(chartMetric === "BOTH" || chartMetric === "TUG5") && (
+                            <motion.div
+                              layout
+                              initial={{ height: 0 }}
+                              animate={{
+                                height: `${inPct}%`,
+                                opacity: legendFocus === "TUG8" ? 0.25 : 1
+                              }}
+                              transition={{
+                                type: "spring",
+                                stiffness: 190,
+                                damping: 20,
+                                delay: idx * 0.04
+                              }}
+                              whileHover={{ scaleY: 1.04, originY: 1 }}
+                              className="w-1/2 max-w-[28px] min-w-[10px] bg-gradient-to-t from-blue-600 via-indigo-600 to-sky-400 rounded-t-lg relative shadow-sm shadow-blue-500/20"
+                            >
+                              <div className="absolute top-0 inset-x-0 h-1 bg-sky-200/80 rounded-t-lg" />
+                              <span className={`absolute -top-5 left-1/2 -translate-x-1/2 text-[9px] font-mono font-black px-1 rounded transition-opacity ${
+                                isSel ? "opacity-100 text-blue-700 bg-blue-50 border border-blue-200" : "opacity-0 group-hover:opacity-100 text-blue-600"
+                              }`}>
+                                {m.inbound}
+                              </span>
+                            </motion.div>
+                          )}
+
+                          {(chartMetric === "BOTH" || chartMetric === "TUG8") && (
+                            <motion.div
+                              layout
+                              initial={{ height: 0 }}
+                              animate={{
+                                height: `${outPct}%`,
+                                opacity: legendFocus === "TUG5" ? 0.25 : 1
+                              }}
+                              transition={{
+                                type: "spring",
+                                stiffness: 190,
+                                damping: 20,
+                                delay: idx * 0.04 + 0.025
+                              }}
+                              whileHover={{ scaleY: 1.04, originY: 1 }}
+                              className="w-1/2 max-w-[28px] min-w-[10px] bg-gradient-to-t from-amber-600 via-amber-500 to-yellow-400 rounded-t-lg relative shadow-sm shadow-amber-500/20"
+                            >
+                              <div className="absolute top-0 inset-x-0 h-1 bg-amber-200/90 rounded-t-lg" />
+                              <span className={`absolute -top-5 left-1/2 -translate-x-1/2 text-[9px] font-mono font-black px-1 rounded transition-opacity ${
+                                isSel ? "opacity-100 text-amber-700 bg-amber-50 border border-amber-200" : "opacity-0 group-hover:opacity-100 text-amber-600"
+                              }`}>
+                                {m.outbound}
+                              </span>
+                            </motion.div>
+                          )}
+                        </div>
+
+                        {/* X-Axis Label */}
+                        <span className={`text-[10px] font-mono mt-1.5 text-center truncate w-full relative z-10 transition-colors ${
+                          isSel ? "text-blue-700 font-black" : "text-slate-500 font-semibold"
+                        }`}>
+                          {m.label}
+                        </span>
+                      </div>
+                    );
+                  })}
+                </div>
+              )}
+
+              {/* Interactive Focus Legend Footer */}
+              <div className="flex flex-wrap items-center justify-center gap-4 pt-2.5 mt-1 border-t border-slate-100 text-[10.5px] font-mono relative z-10">
+                <button
+                  type="button"
+                  onMouseEnter={() => setLegendFocus("TUG5")}
+                  onMouseLeave={() => setLegendFocus("ALL")}
+                  onClick={() => setChartMetric(prev => prev === "TUG5" ? "BOTH" : "TUG5")}
+                  className={`flex items-center gap-1.5 px-2.5 py-0.5 rounded-lg hover:bg-blue-50/70 transition-all cursor-pointer ${
+                    legendFocus === "TUG8" ? "opacity-30" : "opacity-100"
+                  }`}
+                  title="Hover untuk menyorot, klik untuk filter Permintaan (TUG 5)"
+                >
+                  <span className="w-2.5 h-2.5 rounded-full bg-gradient-to-tr from-blue-600 to-sky-400 shadow-2xs" />
+                  <span className="text-slate-700 font-bold">Permintaan (TUG 5)</span>
+                </button>
+                <button
+                  type="button"
+                  onMouseEnter={() => setLegendFocus("TUG8")}
+                  onMouseLeave={() => setLegendFocus("ALL")}
+                  onClick={() => setChartMetric(prev => prev === "TUG8" ? "BOTH" : "TUG8")}
+                  className={`flex items-center gap-1.5 px-2.5 py-0.5 rounded-lg hover:bg-amber-50/70 transition-all cursor-pointer ${
+                    legendFocus === "TUG5" ? "opacity-30" : "opacity-100"
+                  }`}
+                  title="Hover untuk menyorot, klik untuk filter Pengeluaran (TUG 8)"
+                >
+                  <span className="w-2.5 h-2.5 rounded-full bg-gradient-to-tr from-amber-600 to-yellow-400 shadow-2xs" />
+                  <span className="text-slate-700 font-bold">Pengeluaran (TUG 8)</span>
+                </button>
+              </div>
             </div>
           </div>
 
-          {/* Interactive KPI Sidebar Breakdown Panel */}
-          <div className="lg:col-span-4 bg-slate-900 text-white border border-slate-800 rounded-xl p-5 flex flex-col justify-between shadow-lg h-[340px] md:h-[380px]">
-            <div className="flex flex-col h-full justify-between">
-              <div>
-                <div className="flex justify-between items-center pb-2.5 border-b border-slate-800 text-[10px] font-mono text-slate-400">
-                  <span>ANALISIS BULANAN</span>
-                  <span className="bg-emerald-500/20 text-emerald-400 px-2 py-0.5 rounded-full border border-emerald-500/30 font-bold">
-                    {MONTHS_DATA[safeSelectedMonth]?.staffPerformance}
-                  </span>
-                </div>
-
-                <h4 className="text-sm font-bold uppercase font-display tracking-wide text-white mt-3">
-                  {MONTHS_DATA[safeSelectedMonth]?.name}
-                </h4>
-                <p className="text-[11px] text-slate-400 font-mono mt-0.5">Ringkasan Alokasi Kargo Kapal</p>
-
-                {/* Grid Values Summary */}
-                <div className="grid grid-cols-2 gap-2.5 mt-3">
-                  <div className="bg-slate-800/80 border border-slate-700/80 p-2.5 rounded-xl">
-                    <span className="text-[9px] text-slate-400 block font-mono">Inbound Receipts</span>
-                    <p className="text-base font-black font-mono text-blue-400 mt-0.5">{MONTHS_DATA[safeSelectedMonth]?.inbound} <span className="text-[10px] text-slate-400 font-normal">PCS</span></p>
+          {/* Interactive KPI Sidebar Breakdown Panel with Motion Transition */}
+          <div className="lg:col-span-4 bg-gradient-to-b from-slate-900 to-slate-950 text-white border border-slate-800 rounded-2xl p-5 flex flex-col justify-between shadow-lg h-[340px] md:h-[380px] relative overflow-hidden">
+            <div className="absolute -top-12 -right-12 w-36 h-36 bg-blue-600/15 rounded-full blur-2xl pointer-events-none" />
+            <AnimatePresence mode="wait">
+              <motion.div
+                key={`sidebar-${selectedYear}-${safeSelectedMonth}`}
+                initial={{ opacity: 0, y: 6 }}
+                animate={{ opacity: 1, y: 0 }}
+                exit={{ opacity: 0, y: -6 }}
+                transition={{ duration: 0.2 }}
+                className="flex flex-col h-full justify-between relative z-10"
+              >
+                <div>
+                  <div className="flex justify-between items-center pb-2.5 border-b border-slate-800 text-[10px] font-mono text-slate-400">
+                    <span>ANALISIS BULANAN</span>
+                    <span className="bg-emerald-500/20 text-emerald-400 px-2 py-0.5 rounded-full border border-emerald-500/30 font-bold">
+                      {MONTHS_DATA[safeSelectedMonth]?.staffPerformance}
+                    </span>
                   </div>
-                  <div className="bg-slate-800/80 border border-slate-700/80 p-2.5 rounded-xl">
-                    <span className="text-[9px] text-slate-400 block font-mono">Outbound TUG 8</span>
-                    <p className="text-base font-black font-mono text-amber-400 mt-0.5">{MONTHS_DATA[safeSelectedMonth]?.outbound} <span className="text-[10px] text-slate-400 font-normal">PCS</span></p>
+
+                  <h4 className="text-sm font-bold uppercase font-display tracking-wide text-white mt-3">
+                    {MONTHS_DATA[safeSelectedMonth]?.name}
+                  </h4>
+                  <p className="text-[11px] text-slate-400 font-mono mt-0.5">Ringkasan Alokasi Kargo Kapal</p>
+
+                  {/* Grid Values Summary */}
+                  <div className="grid grid-cols-2 gap-2.5 mt-3">
+                    <div className="bg-slate-800/80 border border-slate-700/80 p-2.5 rounded-xl">
+                      <span className="text-[9px] text-slate-400 block font-mono">Inbound Receipts</span>
+                      <p className="text-base font-black font-mono text-blue-400 mt-0.5">{MONTHS_DATA[safeSelectedMonth]?.inbound} <span className="text-[10px] text-slate-400 font-normal">PCS</span></p>
+                    </div>
+                    <div className="bg-slate-800/80 border border-slate-700/80 p-2.5 rounded-xl">
+                      <span className="text-[9px] text-slate-400 block font-mono">Outbound TUG 8</span>
+                      <p className="text-base font-black font-mono text-amber-400 mt-0.5">{MONTHS_DATA[safeSelectedMonth]?.outbound} <span className="text-[10px] text-slate-400 font-normal">PCS</span></p>
+                    </div>
                   </div>
                 </div>
-              </div>
 
-              {/* Unified Metric Indicators Table including Kapal Tujuan */}
-              <div className="space-y-1.5 text-xs font-mono bg-slate-950/80 border border-slate-800/80 p-3 rounded-xl mt-3">
-                <div className="flex justify-between border-b border-slate-800/80 pb-1.5">
-                  <span className="text-slate-400">Tonnage Kargo:</span>
-                  <span className="text-slate-100 font-bold">{MONTHS_DATA[safeSelectedMonth]?.volumeCargo}</span>
+                {/* Unified Metric Indicators Table including Kapal Tujuan */}
+                <div className="space-y-1.5 text-xs font-mono bg-slate-950/80 border border-slate-800/80 p-3 rounded-xl mt-3">
+                  <div className="flex justify-between border-b border-slate-800/80 pb-1.5">
+                    <span className="text-slate-400">Tonnage Kargo:</span>
+                    <span className="text-slate-100 font-bold">{MONTHS_DATA[safeSelectedMonth]?.volumeCargo}</span>
+                  </div>
+                  <div className="flex justify-between border-b border-slate-800/80 pb-1.5">
+                    <span className="text-slate-400">Efisiensi Processing:</span>
+                    <span className="text-emerald-400 font-bold">{MONTHS_DATA[safeSelectedMonth]?.efficiency}</span>
+                  </div>
+                  <div className="flex justify-between border-b border-slate-800/80 pb-1.5">
+                    <span className="text-slate-400">Alarm Kritis:</span>
+                    <span className={`${(MONTHS_DATA[safeSelectedMonth]?.criticalDeliveries || 0) > 5 ? 'text-rose-400 font-bold' : 'text-slate-200'}`}>
+                      {MONTHS_DATA[safeSelectedMonth]?.criticalDeliveries} Alert Items
+                    </span>
+                  </div>
+                  <div className="flex justify-between border-b border-slate-800/80 pb-1.5">
+                    <span className="text-slate-400">Kategori Terbanyak:</span>
+                    <span className="text-blue-300 font-bold truncate max-w-[150px]">{MONTHS_DATA[safeSelectedMonth]?.topCategory}</span>
+                  </div>
+                  <div className="flex justify-between items-center pt-0.5">
+                    <span className="text-slate-400">Kapal Tujuan:</span>
+                    <span className="text-amber-300 font-bold flex items-center gap-1 text-[11px] truncate max-w-[170px]" title={MONTHS_DATA[safeSelectedMonth]?.vesselServiced}>
+                      ⚓ {MONTHS_DATA[safeSelectedMonth]?.vesselServiced}
+                    </span>
+                  </div>
                 </div>
-                <div className="flex justify-between border-b border-slate-800/80 pb-1.5">
-                  <span className="text-slate-400">Efisiensi Processing:</span>
-                  <span className="text-emerald-400 font-bold">{MONTHS_DATA[safeSelectedMonth]?.efficiency}</span>
-                </div>
-                <div className="flex justify-between border-b border-slate-800/80 pb-1.5">
-                  <span className="text-slate-400">Alarm Kritis:</span>
-                  <span className={`${(MONTHS_DATA[safeSelectedMonth]?.criticalDeliveries || 0) > 5 ? 'text-rose-400 font-bold' : 'text-slate-200'}`}>
-                    {MONTHS_DATA[safeSelectedMonth]?.criticalDeliveries} Alert Items
-                  </span>
-                </div>
-                <div className="flex justify-between border-b border-slate-800/80 pb-1.5">
-                  <span className="text-slate-400">Kategori Terbanyak:</span>
-                  <span className="text-blue-300 font-bold truncate max-w-[150px]">{MONTHS_DATA[safeSelectedMonth]?.topCategory}</span>
-                </div>
-                <div className="flex justify-between items-center pt-0.5">
-                  <span className="text-slate-400">Kapal Tujuan:</span>
-                  <span className="text-amber-300 font-bold flex items-center gap-1 text-[11px] truncate max-w-[170px]" title={MONTHS_DATA[safeSelectedMonth]?.vesselServiced}>
-                    ⚓ {MONTHS_DATA[safeSelectedMonth]?.vesselServiced}
-                  </span>
-                </div>
-              </div>
-            </div>
+              </motion.div>
+            </AnimatePresence>
           </div>
 
         </div>
