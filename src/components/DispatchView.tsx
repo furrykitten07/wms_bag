@@ -457,16 +457,48 @@ export default function DispatchView({
   const [tableTabFilter, setTableTabFilter] = useState<"shortage" | "selected" | "complete" | "all">("shortage");
   const [tableSearchQuery, setTableSearchQuery] = useState("");
 
+  // Helper to match dispatches strictly belonging to a specific TUG 10 return document
+  const isSameTug10Dispatch = (d: OutboundDispatch, retNumber?: string, tug10Number?: string): boolean => {
+    if (!d) return false;
+    const retClean = (retNumber || "").trim().toLowerCase();
+    const tug10Clean = (tug10Number || "").trim().toLowerCase();
+    const dReq = (d.request_reference || "").trim().toLowerCase();
+    const dNotes = (d.notes || "").toLowerCase();
+
+    if (retClean && retClean !== "-" && retClean !== "manual") {
+      if (dReq === retClean) return true;
+      if (dNotes.includes(`via tug 10 [${retClean}]`) || dNotes.includes(`tug 10: ${retClean}`)) return true;
+    }
+    if (tug10Clean && tug10Clean !== "-" && tug10Clean !== "manual") {
+      if (dReq === tug10Clean) return true;
+      if (dNotes.includes(`via tug 10 [${tug10Clean}]`) || dNotes.includes(`tug 10: ${tug10Clean}`)) return true;
+    }
+    return false;
+  };
+
   // Detailed multi-shipment fulfillment breakdown per part & per phase
   const getDetailedFulfillmentForDispatch = (dsp: OutboundDispatch) => {
     const reqRef = dsp.request_reference;
-    const woRef = dsp.work_order_ref || dsp.spk_number;
+    const rawWoRef = (dsp.work_order_ref || dsp.spk_number || "").trim();
+    const woRef = rawWoRef && !["manual", "-", "np", "null", "undefined"].includes(rawWoRef.toLowerCase()) ? rawWoRef : "";
 
-    const relatedDispatches = (dispatchList || []).filter(d => 
-      Boolean(d) && (
-        (reqRef && d.request_reference === reqRef) ||
-        (woRef && (d.work_order_ref === woRef || d.spk_number === woRef))
+    const targetReturn = materialReturns?.find(r =>
+      Boolean(r) && reqRef && (
+        r.return_number === reqRef ||
+        r.tug10_number === reqRef ||
+        isSameTug10Dispatch(dsp, r.return_number, r.tug10_number)
       )
+    );
+
+    const relatedDispatches = (
+      targetReturn
+        ? (dispatchList || []).filter(d => isSameTug10Dispatch(d, targetReturn.return_number, targetReturn.tug10_number))
+        : (dispatchList || []).filter(d =>
+            Boolean(d) && (
+              (reqRef && d.request_reference === reqRef) ||
+              (woRef && (d.work_order_ref === woRef || d.spk_number === woRef))
+            )
+          )
     ).sort((a, b) => {
       const timeA = new Date(a.created_at || a.dispatch_date || 0).getTime();
       const timeB = new Date(b.created_at || b.dispatch_date || 0).getTime();
@@ -474,12 +506,14 @@ export default function DispatchView({
       return (a.id || "").localeCompare(b.id || "");
     });
 
-    const targetMR = requests?.find(r => 
-      Boolean(r) && (
-        (reqRef && r.request_number === reqRef) ||
-        (woRef && r.work_order_ref === woRef)
-      )
-    );
+    const targetMR = targetReturn
+      ? undefined
+      : requests?.find(r =>
+          Boolean(r) && (
+            (reqRef && r.request_number === reqRef) ||
+            (woRef && r.work_order_ref === woRef)
+          )
+        );
 
     type PartDetail = {
       id: string;
@@ -495,8 +529,25 @@ export default function DispatchView({
 
     const partsMap = new Map<string, PartDetail>();
 
-    // 1. Initialize from targetMR items
-    if (targetMR && targetMR.items) {
+    // 1. Initialize from targetReturn (TUG 10) or targetMR (TUG 5) items
+    if (targetReturn && targetReturn.items) {
+      targetReturn.items.forEach(itm => {
+        const key = getPartMatchKey(itm);
+        if (!key) return;
+        const retQty = Number(itm.qty_returned ?? itm.qty_returnable ?? itm.requested_qty ?? 1);
+        partsMap.set(key, {
+          id: itm.spare_part_id || key,
+          part_name: itm.spare_part_name || (itm as any).part_name || itm.part_number || "Suku Cadang",
+          part_number: itm.part_number || "-",
+          unit: itm.unit || "PCS",
+          qty_requested: retQty,
+          phases: {},
+          total_dispatched: 0,
+          remaining_qty: retQty,
+          is_complete: false
+        });
+      });
+    } else if (targetMR && targetMR.items) {
       targetMR.items.forEach(itm => {
         const key = getPartMatchKey(itm);
         if (!key) return;
@@ -514,7 +565,7 @@ export default function DispatchView({
       });
     }
 
-    // 2. Add any parts from dispatches that might not be in targetMR
+    // 2. Add any parts from dispatches that might not be in targetMR / targetReturn
     relatedDispatches.forEach(d => {
       (d.items || []).forEach(itm => {
         const key = getPartMatchKey(itm);
@@ -569,6 +620,7 @@ export default function DispatchView({
     return {
       relatedDispatches,
       targetMR,
+      targetReturn,
       partsList,
       totalRequested,
       totalDispatched,
@@ -582,6 +634,23 @@ export default function DispatchView({
   // Open followup dispatch form automatically prefilled with remaining parts & next phase
   const handleOpenFollowupDispatch = (dsp: OutboundDispatch) => {
     const fulfillment = getDetailedFulfillmentForDispatch(dsp);
+    const targetRet = fulfillment.targetReturn || materialReturns?.find(r =>
+      Boolean(r) && dsp.request_reference && (
+        r.return_number === dsp.request_reference ||
+        r.tug10_number === dsp.request_reference
+      )
+    );
+
+    if (targetRet) {
+      setDispatchSource("tug10");
+      setSelectedTug10Id(targetRet.id);
+      setTug10SearchQuery(`[${targetRet.return_number}] - Dari Kapal: ${targetRet.vessel_name}`);
+      setIsTug10DropdownOpen(false);
+      setTargetVesselName(dsp.vessel_name || "");
+      setIsCreateModalOpen(true);
+      return;
+    }
+
     const targetReq = fulfillment.targetMR || requests?.find(r => 
       Boolean(r) && (
         (dsp.request_reference && r.request_number === dsp.request_reference) ||
@@ -602,18 +671,27 @@ export default function DispatchView({
     }
   };
 
-  // Helper to calculate multi-shipment status and history for an SPK / TUG 5
+  // Helper to calculate multi-shipment status and history for an SPK / TUG 5 / TUG 10
   const getMultiShipmentHistoryForSPK = (spkRef?: string, tug5Ref?: string) => {
-    if (!spkRef && !tug5Ref) {
+    const cleanSpkRef = (spkRef || "").trim();
+    const validSpkRef = cleanSpkRef && !["manual", "-", "np", "null", "undefined"].includes(cleanSpkRef.toLowerCase()) ? cleanSpkRef : "";
+
+    const matchedReturn = tug5Ref
+      ? materialReturns?.find(r => Boolean(r) && (r.return_number === tug5Ref || r.tug10_number === tug5Ref))
+      : undefined;
+
+    if (!validSpkRef && !tug5Ref && !matchedReturn) {
       return { count: 0, dispatches: [] as OutboundDispatch[], totalRequested: 0, totalDispatched: 0, isAllComplete: false, hasPartial: false };
     }
 
-    const matches = (dispatchList || []).filter(d => 
-      Boolean(d) && (
-        (spkRef && (d.work_order_ref === spkRef || d.spk_number === spkRef)) ||
-        (tug5Ref && d.request_reference === tug5Ref)
-      )
-    );
+    const matches = matchedReturn
+      ? (dispatchList || []).filter(d => isSameTug10Dispatch(d, matchedReturn.return_number, matchedReturn.tug10_number))
+      : (dispatchList || []).filter(d =>
+          Boolean(d) && (
+            (validSpkRef && (d.work_order_ref === validSpkRef || d.spk_number === validSpkRef)) ||
+            (tug5Ref && d.request_reference === tug5Ref)
+          )
+        );
 
     matches.sort((a, b) => {
       const timeA = new Date(a.created_at || a.dispatch_date || 0).getTime();
@@ -752,28 +830,51 @@ export default function DispatchView({
         setWName(selectedReturn.warehouse_name || "GUDANG PENURUNAN");
         setDDest("Target Vessel Side");
         setNotesText(`[TRANSFER ANTAR KAPAL] Penurunan barang dari kapal ${selectedReturn.vessel_name} via TUG 10 [${selectedReturn.return_number}]. ` + (selectedReturn.notes || ""));
-        
+
+        // Find existing dispatches strictly matching this TUG 10 return document
+        const prevDispatches = (dispatchList || []).filter(d =>
+          isSameTug10Dispatch(d, selectedReturn.return_number, selectedReturn.tug10_number)
+        );
+
         const items = (selectedReturn.items || []).map(itm => {
           if (!itm) return null;
+          const totalRet = Number(itm.qty_returned ?? itm.qty_returnable ?? itm.requested_qty ?? 1);
+
+          // Sum previously dispatched quantities across earlier batches
+          const previouslyDispatched = prevDispatches.reduce((sum, d) => {
+            if (!d || !d.items) return sum;
+            const itemDispatchedSum = d.items
+              .filter(di => Boolean(di) && matchSparePartItem(di, itm))
+              .reduce((subSum, di) => subSum + (Number(di.qty_dispatched) || 0), 0);
+            return sum + itemDispatchedSum;
+          }, 0);
+
+          const remainingToDispatch = Math.max(0, totalRet - previouslyDispatched);
+
           return {
-            spare_part_id: itm.spare_part_id,
-            spare_part_name: itm.part_name,
-            part_number: itm.part_number,
-            qty_requested: itm.qty_returned,
-            qty_approved: itm.qty_returned,
-            qty_dispatched: itm.qty_returned,
+            spare_part_id: itm.spare_part_id || "",
+            spare_part_name: itm.spare_part_name || itm.part_name || "",
+            part_number: itm.part_number || "-",
+            qty_requested: totalRet,
+            qty_approved: totalRet,
+            previously_dispatched: previouslyDispatched,
+            qty_dispatched: remainingToDispatch,
             qty_remaining: 0,
             unit: itm.unit || "PCS",
             unit_price: (itm as any).unit_price !== undefined ? Number((itm as any).unit_price) : 0,
-            notes: `[TRANSFER DARI KAPAL ${selectedReturn.vessel_name.toUpperCase()}] ` + (itm.notes || "")
+            notes: `[TRANSFER DARI KAPAL ${(selectedReturn.vessel_name || "").toUpperCase()}] ` + (itm.notes || "")
           };
         }).filter(Boolean);
         setDispatchItems(items);
+        const hasAnyShortage = items.some(i => ((i?.qty_requested || 0) - (i?.previously_dispatched || 0)) > 0);
+        setTableTabFilter(hasAnyShortage ? "shortage" : "all");
+        setTableSearchQuery("");
       }
     } else if (!selectedTug10Id && dispatchSource === "tug10") {
       setDispatchItems([]);
+      setTableSearchQuery("");
     }
-  }, [selectedTug10Id, dispatchSource, materialReturns]);
+  }, [selectedTug10Id, dispatchSource, materialReturns, dispatchList]);
 
   const handleCreateDispatchSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -957,6 +1058,51 @@ export default function DispatchView({
           return;
         }
 
+        const totalQtyDispatchedInThisBatch = dispatchItems.reduce((acc, i) => acc + (Number(i.qty_dispatched) || 0), 0);
+        if (totalQtyDispatchedInThisBatch <= 0) {
+          alert("Perhatian: Belum ada suku cadang yang ditentukan untuk dikirim pada tahap ini (Total QTY Kirim = 0).\n\nSilakan centang checkbox [Kirim?] atau tentukan jumlah pada kolom QTY Kirim untuk suku cadang yang akan dikirim.");
+          setIsLoading(false);
+          return;
+        }
+
+        const prevDispatches = (dispatchList || []).filter(d =>
+          isSameTug10Dispatch(d, selectedReturn.return_number, selectedReturn.tug10_number)
+        );
+        const currentPhase = prevDispatches.length + 1;
+
+        // Check if any item remains unfulfilled after this phase
+        const isPartial = dispatchItems.some(i => {
+          const prev = i.previously_dispatched || 0;
+          const current = i.qty_dispatched || 0;
+          const req = i.qty_requested || 0;
+          return (prev + current) < req;
+        });
+
+        const incItems = dispatchItems
+          .filter(i => {
+            const prev = i.previously_dispatched || 0;
+            const current = i.qty_dispatched || 0;
+            const req = i.qty_requested || 0;
+            return (prev + current) < req;
+          })
+          .map(i => {
+            const prev = i.previously_dispatched || 0;
+            const current = i.qty_dispatched || 0;
+            const req = i.qty_requested || 0;
+            const sisa = req - (prev + current);
+            return `[OUTBOUND TUG 10 TAHAP ${currentPhase}] ${i.spare_part_name}: TUG 10 ${req} ${i.unit} → Terkirim Kumulatif (${prev + current}), Sisa ${sisa} ${i.unit}`;
+          });
+
+        const incompleteSummary = incItems.join(" | ");
+
+        const ensuredTug10Notes = (notesText || "").includes(`via TUG 10 [${selectedReturn.return_number}]`)
+          ? notesText
+          : `[TRANSFER ANTAR KAPAL] Penurunan barang dari kapal ${selectedReturn.vessel_name} via TUG 10 [${selectedReturn.return_number}]. ${notesText || ""}`;
+
+        const phaseNotes = isPartial
+          ? `[PENGIRIMAN PARSIAL TAHAP ${currentPhase}] ` + ensuredTug10Notes
+          : (currentPhase > 1 ? `[PENGIRIMAN SUSULAN LENGKAP TAHAP ${currentPhase}] ` : "") + ensuredTug10Notes;
+
         const vTarget = targetVesselName.trim() || `Kapal Penerima (ex-${selectedReturn.vessel_name})`;
 
         const customDateIso = dispatchDate 
@@ -970,26 +1116,56 @@ export default function DispatchView({
           vessel_name: vTarget,
           warehouse_name: wName || selectedReturn.warehouse_name || "GUDANG PENURUNAN",
           delivery_destination: dDest || "Target Vessel Side",
-          notes: notesText,
+          notes: phaseNotes,
           courier_name: cName || "Internal Cargo",
           tracking_number: tNumber || "-",
           driver_pic: dPic || "-",
           work_order_ref: selectedReturn.work_order_number || selectedReturn.spk_number || "",
           account_code: selectedReturn.account_code || "BPP",
           function_code: selectedReturn.function_code || "ARMADA",
-          items: dispatchItems
+          items: dispatchItems.map(i => ({
+            ...i,
+            qty_remaining: Math.max(0, (i.qty_requested || 0) - (i.previously_dispatched || 0) - (i.qty_dispatched || 0))
+          })),
+          is_partial: isPartial,
+          shipment_phase: currentPhase,
+          incomplete_items_summary: incompleteSummary,
+          status: isPartial ? "DISPATCHED_PARTIAL" : DispatchStatus.DISPATCHED,
+          dispatch_logs: [
+            {
+              timestamp: customDateIso,
+              action: `PENGIRIMAN TUG 10 TAHAP ${currentPhase}`,
+              user: role || "Petugas Gudang",
+              notes: isPartial
+                ? `Outbound Dispatch TUG 10 Tahap ${currentPhase} (Parsial). Masih terdapat sisa barang yang belum dikirim.`
+                : `Outbound Dispatch TUG 10 Tahap ${currentPhase} (Lengkap & Terverifikasi).`,
+              phase: currentPhase,
+              dispatched_items_summary: dispatchItems
+                .filter(i => (Number(i.qty_dispatched) || 0) > 0)
+                .map(i => `${i.spare_part_name} (${i.qty_dispatched} ${i.unit})`)
+                .join(", ")
+            }
+          ]
         };
 
         const createdDisp = await onCreateDispatch(payload);
 
-        // Update the TUG 10 return document status to Completed
+        // Update the TUG 10 return document status (Completed only if 100% dispatched)
         if (onUpdateReturn) {
           const dispNum = createdDisp?.dispatch_number || "DSP-V2V";
-          await onUpdateReturn(selectedReturn.id, {
-            status: "Completed",
-            dispatch_reference: dispNum,
-            notes: (selectedReturn.notes || "") + `\n[SINKRONISASI] Ditransfer ke kapal ${vTarget} dengan TUG 8: ${dispNum}`
-          });
+          if (!isPartial) {
+            await onUpdateReturn(selectedReturn.id, {
+              status: "Completed",
+              dispatch_reference: dispNum,
+              notes: (selectedReturn.notes || "") + `\n[SINKRONISASI] Ditransfer lengkap ke kapal ${vTarget} dengan TUG 8: ${dispNum}`
+            });
+          } else {
+            await onUpdateReturn(selectedReturn.id, {
+              status: selectedReturn.status === "Draft" ? "Submitted" : selectedReturn.status,
+              dispatch_reference: dispNum,
+              notes: (selectedReturn.notes || "") + `\n[SINKRONISASI PARSIAL TAHAP ${currentPhase}] Sebagian barang ditransfer ke kapal ${vTarget} dengan TUG 8: ${dispNum}`
+            });
+          }
         }
 
         setIsCreateModalOpen(false);
@@ -1006,7 +1182,10 @@ export default function DispatchView({
         setDDest("Port Agent / Vessel Side");
         setDispatchDate(new Date().toISOString().split("T")[0]);
 
-        alert(`Transfer Antar Kapal Berhasil!\n\nDokumen Pengiriman TUG 8 telah terbit untuk kapal ${vTarget} dan terhubung dengan penurunan barang kapal ${selectedReturn.vessel_name} (TUG 10: ${selectedReturn.return_number}).\nStatus dokumen TUG 10 otomatis diubah menjadi COMPLETED.`);
+        const tug10SuccessMsg = isPartial
+          ? `Pengiriman Parsial Tahap ${currentPhase} dari TUG 10 berhasil diterbitkan!\n\n⚠️ Masih ada sisa suku cadang pada TUG 10 (${selectedReturn.return_number}) untuk pengiriman susulan Tahap ${currentPhase + 1}. Dokumen TUG 10 belum ditandai Completed sampai seluruh sisa selesai dikirim.`
+          : `Transfer Antar Kapal Lengkap 100% Berhasil (Tahap ${currentPhase})!\n\nDokumen Pengiriman TUG 8 telah terbit untuk kapal ${vTarget} dan terhubung dengan TUG 10 (${selectedReturn.return_number}). Status dokumen TUG 10 otomatis diubah menjadi COMPLETED.`;
+        alert(tug10SuccessMsg);
       }
     } catch (err: any) {
       alert("Gagal membuat pengiriman: " + err.message);
@@ -4325,6 +4504,12 @@ export default function DispatchView({
                     {selectedTug10Id && (() => {
                       const selReturn = materialReturns.find(r => r.id === selectedTug10Id);
                       if (!selReturn) return null;
+
+                      const prevDispatches = (dispatchList || []).filter(d =>
+                        isSameTug10Dispatch(d, selReturn.return_number, selReturn.tug10_number)
+                      );
+                      const currentPhase = prevDispatches.length + 1;
+
                       return (
                         <div className="space-y-3">
                           <div className="grid grid-cols-2 md:grid-cols-4 gap-4 bg-white p-3.5 rounded-lg border border-emerald-100/70 text-xs">
@@ -4346,51 +4531,538 @@ export default function DispatchView({
                             </div>
                           </div>
 
-                          <div className="bg-white p-3 rounded-lg border border-slate-200">
-                            <span className="text-[10px] font-bold text-slate-500 uppercase tracking-wider block mb-2">
-                              Suku Cadang yang Akan Ditransfer ({dispatchItems.length} Item)
-                            </span>
-                            <div className="overflow-x-auto max-h-48 overflow-y-auto border border-slate-100 rounded">
-                              <table className="w-full text-left text-[11px] border-collapse">
-                                <thead>
-                                  <tr className="bg-slate-50 text-slate-600 border-b border-slate-150 font-bold">
-                                    <th className="p-2">Suku Cadang / Part Number</th>
-                                    <th className="p-2 text-center w-24">Unit</th>
-                                    <th className="p-2 text-center w-28">QTY Transfer</th>
-                                    <th className="p-2 text-right w-36">Harga Stn (IDR)</th>
-                                  </tr>
-                                </thead>
-                                <tbody>
-                                  {dispatchItems.map((itm, index) => (
-                                    <tr key={index} className="border-b border-slate-100 hover:bg-slate-50">
-                                      <td className="p-2">
-                                        <div className="font-bold text-slate-800">{itm.spare_part_name}</div>
-                                        <div className="text-[10px] text-slate-400 font-mono">{itm.part_number}</div>
-                                      </td>
-                                      <td className="p-2 text-center text-slate-600 font-bold">{itm.unit}</td>
-                                      <td className="p-2 text-center font-mono font-bold text-emerald-700 bg-emerald-50/30">
-                                        {itm.qty_dispatched}
-                                      </td>
-                                      <td className="p-2">
-                                        <div className="relative">
-                                          <span className="absolute left-1.5 top-1.5 text-[10px] text-slate-400 font-bold">Rp</span>
-                                          <input
-                                            type="number"
-                                            min="0"
-                                            value={itm.unit_price}
-                                            onChange={(e) => {
-                                              const val = Math.max(0, parseInt(e.target.value) || 0);
-                                              setDispatchItems(prev => prev.map((item, i) => i === index ? { ...item, unit_price: val } : item));
-                                            }}
-                                            className="w-full bg-slate-50 border border-slate-200 rounded p-1 pl-6 text-xs font-bold font-mono text-right text-slate-800 focus:outline-none focus:border-emerald-500"
-                                          />
-                                        </div>
-                                      </td>
-                                    </tr>
-                                  ))}
-                                </tbody>
-                              </table>
+                          {prevDispatches.length > 0 && (
+                            <div className="bg-emerald-100/70 border border-emerald-200 p-2.5 rounded-lg text-xs font-mono flex items-center justify-between text-emerald-950">
+                              <span className="font-bold flex items-center gap-1.5">
+                                <History className="w-4 h-4 text-emerald-700 shrink-0" />
+                                Terdeteksi {prevDispatches.length}x Pengiriman Sebelumnya Untuk TUG 10 #{selReturn.return_number}
+                              </span>
+                              <span className="text-[10px] bg-emerald-200 px-2 py-0.5 rounded font-black">
+                                Pengiriman Tahap ke-{currentPhase}
+                              </span>
                             </div>
+                          )}
+
+                          {/* Interactive Item Table with UX Filters, Search, and Partial Dispatch Controls */}
+                          <div className="bg-white p-3.5 rounded-xl border border-emerald-200 shadow-xs space-y-3.5">
+                            {/* Top Control Bar: Title & Batch Preset Buttons */}
+                            <div className="flex items-center justify-between flex-wrap gap-2.5 bg-slate-50/80 p-2.5 rounded-lg border border-slate-200">
+                              <div>
+                                <span className="text-xs font-black text-slate-800 uppercase tracking-wider flex items-center gap-1.5 font-mono">
+                                  <PackageCheck className="w-4 h-4 text-emerald-600" />
+                                  Atur Suku Cadang Dikirim ({dispatchItems.length} Item)
+                                </span>
+                                <span className="text-[10px] font-mono text-slate-500">
+                                  Pilih suku cadang dan tentukan QTY yang dikirim untuk {currentPhase > 1 ? `Tahap ke-${currentPhase} (Susulan)` : "tahap ini"}.
+                                </span>
+                              </div>
+                              <div className="flex items-center gap-1.5 flex-wrap">
+                                <button
+                                  type="button"
+                                  onClick={() => {
+                                    setDispatchItems(prevItems => prevItems.map(item => {
+                                      const prev = item.previously_dispatched || 0;
+                                      const req = item.qty_requested || 0;
+                                      const maxRemaining = Math.max(0, req - prev);
+                                      return { ...item, qty_dispatched: maxRemaining };
+                                    }));
+                                  }}
+                                  className="px-3 py-1.5 bg-emerald-600 hover:bg-emerald-700 text-white rounded-lg text-[10.5px] font-bold cursor-pointer transition-colors shadow-xs flex items-center gap-1"
+                                  title="Isi otomatis semua barang dengan sisa QTY TUG 10 yang belum terkirim"
+                                >
+                                  ⚡ Kirim Semua Sisa
+                                </button>
+                                <button
+                                  type="button"
+                                  onClick={() => {
+                                    setDispatchItems(prevItems => prevItems.map(item => ({ ...item, qty_dispatched: 0 })));
+                                    setTableTabFilter("shortage");
+                                  }}
+                                  className="px-2.5 py-1.5 bg-amber-50 hover:bg-amber-100 text-amber-800 border border-amber-300 rounded-lg text-[10.5px] font-bold cursor-pointer transition-colors shadow-2xs flex items-center gap-1"
+                                  title="Kosongkan QTY semua barang menjadi 0 agar Anda dapat memilih dan mencentang barang tertentu saja"
+                                >
+                                  📦 Mode Parsial (Nolkan &amp; Pilih Sendiri)
+                                </button>
+                                <button
+                                  type="button"
+                                  onClick={() => {
+                                    setDispatchItems(prevItems => prevItems.map(item => ({ ...item, qty_dispatched: 0 })));
+                                  }}
+                                  className="px-2.5 py-1.5 bg-slate-200/80 hover:bg-slate-300 text-slate-700 rounded-lg text-[10.5px] font-bold cursor-pointer transition-colors"
+                                  title="Nolkan semua nilai QTY kirim"
+                                >
+                                  ✕ Nolkan Semua (0)
+                                </button>
+                              </div>
+                            </div>
+
+                            {/* Summary KPI Badges (Interactive clickable filters) */}
+                            {(() => {
+                              const shortageCount = dispatchItems.filter(i => {
+                                const req = i.qty_requested || 0;
+                                const prev = i.previously_dispatched || 0;
+                                return (req - prev) > 0;
+                              }).length;
+                              const selectedCount = dispatchItems.filter(i => (i.qty_dispatched || 0) > 0).length;
+                              const selectedQtyTotal = dispatchItems.reduce((acc, i) => acc + (Number(i.qty_dispatched) || 0), 0);
+                              const completeCount = dispatchItems.filter(i => (i.previously_dispatched || 0) >= (i.qty_requested || 0)).length;
+
+                              return (
+                                <>
+                                  <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 font-mono text-xs">
+                                    <div
+                                      onClick={() => setTableTabFilter("all")}
+                                      className={`border rounded-xl p-2.5 flex flex-col cursor-pointer transition-all ${
+                                        tableTabFilter === "all" ? "bg-slate-100 border-slate-400 ring-2 ring-slate-400/30" : "bg-slate-50 border-slate-200 hover:bg-slate-100/70"
+                                      }`}
+                                    >
+                                      <span className="text-[9.5px] uppercase text-slate-500 font-bold">Total Suku Cadang</span>
+                                      <span className="text-base font-black text-slate-800">{dispatchItems.length} Item</span>
+                                    </div>
+                                    <div
+                                      onClick={() => setTableTabFilter("shortage")}
+                                      className={`border rounded-xl p-2.5 flex flex-col cursor-pointer transition-all ${
+                                        tableTabFilter === "shortage" ? "bg-amber-100/70 border-amber-400 ring-2 ring-amber-400/40" : "bg-amber-50/70 border-amber-200 hover:bg-amber-100/40"
+                                      }`}
+                                    >
+                                      <span className="text-[9.5px] uppercase text-amber-700 font-bold flex items-center justify-between">
+                                        Perlu Dikirim / Ada Sisa
+                                        {shortageCount > 0 && <span className="w-2 h-2 rounded-full bg-amber-500 animate-pulse"></span>}
+                                      </span>
+                                      <span className="text-base font-black text-amber-900">{shortageCount} Item</span>
+                                    </div>
+                                    <div
+                                      onClick={() => setTableTabFilter("selected")}
+                                      className={`border rounded-xl p-2.5 flex flex-col cursor-pointer transition-all ${
+                                        tableTabFilter === "selected" ? "bg-emerald-100/80 border-emerald-400 ring-2 ring-emerald-400/40" : "bg-emerald-50/70 border-emerald-200 hover:bg-emerald-100/40"
+                                      }`}
+                                    >
+                                      <span className="text-[9.5px] uppercase text-emerald-700 font-bold">Dikirim Tahap Ini</span>
+                                      <span className="text-base font-black text-emerald-900">
+                                        {selectedCount} Item ({selectedQtyTotal} Qty)
+                                      </span>
+                                    </div>
+                                    <div
+                                      onClick={() => setTableTabFilter("complete")}
+                                      className={`border rounded-xl p-2.5 flex flex-col cursor-pointer transition-all ${
+                                        tableTabFilter === "complete" ? "bg-teal-100/80 border-teal-400 ring-2 ring-teal-400/40" : "bg-teal-50/70 border-teal-200 hover:bg-teal-100/40"
+                                      }`}
+                                    >
+                                      <span className="text-[9.5px] uppercase text-teal-700 font-bold">Sudah Selesai (100%)</span>
+                                      <span className="text-base font-black text-teal-900">{completeCount} Item</span>
+                                    </div>
+                                  </div>
+
+                                  {/* Filter Tabs & Search Bar */}
+                                  <div className="flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-2.5 pt-1 border-t border-slate-150">
+                                    <div className="flex items-center gap-1 overflow-x-auto pb-1 sm:pb-0">
+                                      <button
+                                        type="button"
+                                        onClick={() => setTableTabFilter("shortage")}
+                                        className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all whitespace-nowrap cursor-pointer flex items-center gap-1.5 ${
+                                          tableTabFilter === "shortage"
+                                            ? "bg-amber-600 text-white shadow-xs font-black"
+                                            : "bg-slate-100 text-slate-700 hover:bg-slate-200"
+                                        }`}
+                                      >
+                                        <span>⚠️ Perlu Dikirim / Sisa</span>
+                                        <span className={`px-1.5 py-0.2 rounded-full text-[10px] font-mono ${
+                                          tableTabFilter === "shortage" ? "bg-amber-800 text-white" : "bg-amber-100 text-amber-900"
+                                        }`}>
+                                          {shortageCount}
+                                        </span>
+                                      </button>
+                                      <button
+                                        type="button"
+                                        onClick={() => setTableTabFilter("selected")}
+                                        className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all whitespace-nowrap cursor-pointer flex items-center gap-1.5 ${
+                                          tableTabFilter === "selected"
+                                            ? "bg-emerald-600 text-white shadow-xs font-black"
+                                            : "bg-slate-100 text-slate-700 hover:bg-slate-200"
+                                        }`}
+                                      >
+                                        <span>📦 Terpilih ({selectedCount})</span>
+                                      </button>
+                                      <button
+                                        type="button"
+                                        onClick={() => setTableTabFilter("complete")}
+                                        className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all whitespace-nowrap cursor-pointer flex items-center gap-1.5 ${
+                                          tableTabFilter === "complete"
+                                            ? "bg-teal-600 text-white shadow-xs font-black"
+                                            : "bg-slate-100 text-slate-700 hover:bg-slate-200"
+                                        }`}
+                                      >
+                                        <span>✓ Sudah Selesai ({completeCount})</span>
+                                      </button>
+                                      <button
+                                        type="button"
+                                        onClick={() => setTableTabFilter("all")}
+                                        className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all whitespace-nowrap cursor-pointer flex items-center gap-1.5 ${
+                                          tableTabFilter === "all"
+                                            ? "bg-slate-800 text-white shadow-xs font-black"
+                                            : "bg-slate-100 text-slate-700 hover:bg-slate-200"
+                                        }`}
+                                      >
+                                        <span>📋 Semua ({dispatchItems.length})</span>
+                                      </button>
+                                    </div>
+
+                                    <div className="relative min-w-[220px]">
+                                      <Search className="w-3.5 h-3.5 text-slate-400 absolute left-2.5 top-1/2 -translate-y-1/2 pointer-events-none" />
+                                      <input
+                                        type="text"
+                                        value={tableSearchQuery}
+                                        onChange={(e) => setTableSearchQuery(e.target.value)}
+                                        placeholder="Cari suku cadang / part number..."
+                                        className="w-full bg-slate-50 border border-slate-250 rounded-lg text-xs pl-8 pr-7 py-1.5 font-medium text-slate-800 placeholder:text-slate-400 focus:outline-none focus:ring-1 focus:ring-emerald-500 focus:bg-white"
+                                      />
+                                      {tableSearchQuery && (
+                                        <button
+                                          type="button"
+                                          onClick={() => setTableSearchQuery("")}
+                                          className="absolute right-2 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600 p-0.5 cursor-pointer"
+                                        >
+                                          <X className="w-3.5 h-3.5" />
+                                        </button>
+                                      )}
+                                    </div>
+                                  </div>
+                                </>
+                              );
+                            })()}
+
+                            {/* Table with Sticky Header */}
+                            {(() => {
+                              const itemsWithOrig = dispatchItems.map((itm, index) => ({ itm, originalIndex: index }));
+                              const filteredList = itemsWithOrig.filter(({ itm }) => {
+                                const req = itm.qty_requested || 0;
+                                const prev = itm.previously_dispatched || 0;
+                                const curr = itm.qty_dispatched || 0;
+                                const hasShortage = (req - prev) > 0;
+                                const isFinished = prev >= req;
+                                const isSelected = curr > 0;
+
+                                if (tableTabFilter === "shortage") {
+                                  if (!hasShortage && !isSelected) return false;
+                                } else if (tableTabFilter === "selected") {
+                                  if (!isSelected) return false;
+                                } else if (tableTabFilter === "complete") {
+                                  if (!isFinished) return false;
+                                }
+
+                                if (tableSearchQuery.trim()) {
+                                  const q = tableSearchQuery.toLowerCase();
+                                  const name = (itm.spare_part_name || "").toLowerCase();
+                                  const pn = (itm.part_number || "").toLowerCase();
+                                  return name.includes(q) || pn.includes(q);
+                                }
+
+                                return true;
+                              }).sort((a, b) => {
+                                const aCurr = a.itm.qty_dispatched || 0;
+                                const bCurr = b.itm.qty_dispatched || 0;
+                                if (aCurr > 0 && bCurr === 0) return -1;
+                                if (bCurr > 0 && aCurr === 0) return 1;
+
+                                const aRem = (a.itm.qty_requested || 0) - (a.itm.previously_dispatched || 0);
+                                const bRem = (b.itm.qty_requested || 0) - (b.itm.previously_dispatched || 0);
+                                if (aRem > 0 && bRem <= 0) return -1;
+                                if (bRem > 0 && aRem <= 0) return 1;
+
+                                return a.originalIndex - b.originalIndex;
+                              });
+
+                              return (
+                                <div className="overflow-x-auto max-h-[460px] overflow-y-auto border border-slate-200 rounded-xl shadow-inner">
+                                  <table className="w-full text-left text-[11px] border-collapse relative">
+                                    <thead className="sticky top-0 z-10 bg-slate-100/95 backdrop-blur-xs border-b-2 border-slate-300 shadow-xs">
+                                      <tr className="text-slate-700 font-mono text-[10px] uppercase tracking-wider">
+                                        <th className="p-2.5 text-center w-12 font-black">Kirim?</th>
+                                        <th className="p-2.5 font-black">Suku Cadang / Part No.</th>
+                                        <th className="p-2.5 text-center w-14 font-black">Satuan</th>
+                                        <th className="p-2.5 text-center w-20 font-black text-slate-700">Target TUG 10</th>
+                                        <th className="p-2.5 text-center w-28 font-black text-slate-800 bg-slate-200/60">Pernah Dikirim (Tahap Lalu)</th>
+                                        <th className="p-2.5 text-center w-36 font-black text-emerald-900 bg-emerald-100/60">QTY Kirim (Tahap Ini)</th>
+                                        <th className="p-2.5 text-center w-24 font-black text-rose-900 bg-rose-50/50">Sisa Belum Kirim</th>
+                                        <th className="p-2.5 text-right w-32 font-black text-slate-700">Harga Stn (IDR)</th>
+                                        <th className="p-2.5 text-center w-28 font-black">Status Item</th>
+                                      </tr>
+                                    </thead>
+                                    <tbody className="divide-y divide-slate-100 text-slate-800 font-sans">
+                                      {filteredList.length === 0 ? (
+                                        <tr>
+                                          <td colSpan={9} className="p-8 text-center text-slate-500 font-medium">
+                                            <div className="flex flex-col items-center justify-center gap-1.5">
+                                              <ClipboardList className="w-8 h-8 text-slate-300" />
+                                              <span>Tidak ada suku cadang pada kategori filter ini.</span>
+                                              {tableSearchQuery && (
+                                                <button
+                                                  type="button"
+                                                  onClick={() => setTableSearchQuery("")}
+                                                  className="text-xs text-emerald-600 underline font-bold mt-1 cursor-pointer"
+                                                >
+                                                  Hapus Pencarian &quot;{tableSearchQuery}&quot;
+                                                </button>
+                                              )}
+                                            </div>
+                                          </td>
+                                        </tr>
+                                      ) : (
+                                        filteredList.map(({ itm, originalIndex }) => {
+                                          const prev = itm.previously_dispatched || 0;
+                                          const req = itm.qty_requested || 0;
+                                          const curr = itm.qty_dispatched || 0;
+                                          const maxAvailable = Math.max(0, req - prev);
+                                          const remaining = Math.max(0, req - prev - curr);
+                                          const isAlreadyFinished = prev >= req;
+                                          const isItemCompleteAfterThis = (prev + curr) >= req;
+                                          const isSelectedForDispatch = curr > 0;
+
+                                          return (
+                                            <tr
+                                              key={originalIndex}
+                                              className={`transition-colors ${
+                                                isSelectedForDispatch
+                                                  ? "bg-emerald-50/50 hover:bg-emerald-50/70"
+                                                  : isAlreadyFinished
+                                                    ? "bg-slate-50/60 text-slate-500 hover:bg-slate-100/50 opacity-75"
+                                                    : remaining === 0
+                                                      ? "bg-emerald-50/20 hover:bg-emerald-50/40"
+                                                      : "hover:bg-slate-50/80"
+                                              }`}
+                                            >
+                                              {/* Checkbox Kirim Toggle */}
+                                              <td className="p-2.5 text-center">
+                                                {isAlreadyFinished ? (
+                                                  <span className="text-emerald-600 text-xs font-bold" title="Barang ini sudah terkirim 100%">✓</span>
+                                                ) : (
+                                                  <input
+                                                    type="checkbox"
+                                                    checked={isSelectedForDispatch}
+                                                    onChange={(e) => {
+                                                      const willBeChecked = e.target.checked;
+                                                      setDispatchItems(prevItems => prevItems.map((item, i) => {
+                                                        if (i !== originalIndex) return item;
+                                                        return {
+                                                          ...item,
+                                                          qty_dispatched: willBeChecked ? maxAvailable : 0
+                                                        };
+                                                      }));
+                                                    }}
+                                                    className="w-4 h-4 rounded text-emerald-600 border-slate-300 focus:ring-emerald-500 cursor-pointer"
+                                                    title={isSelectedForDispatch ? "Hilangkan centang untuk membatalkan pengiriman barang ini" : "Centang untuk mengirim barang ini"}
+                                                  />
+                                                )}
+                                              </td>
+
+                                              {/* Suku Cadang & Part No */}
+                                              <td className="p-2.5">
+                                                <div className="flex items-center gap-1.5 flex-wrap">
+                                                  <span className={`font-bold ${isSelectedForDispatch ? "text-emerald-950 font-black" : isAlreadyFinished ? "text-slate-600" : "text-slate-900"}`}>
+                                                    {itm.spare_part_name}
+                                                  </span>
+                                                  {isAlreadyFinished && (
+                                                    <span className="text-[9px] bg-slate-200 text-slate-700 px-1.5 py-0.2 rounded font-bold uppercase font-mono">
+                                                      100% Selesai
+                                                    </span>
+                                                  )}
+                                                  {isSelectedForDispatch && (
+                                                    <span className="text-[9px] bg-emerald-100 text-emerald-800 border border-emerald-200 px-1.5 py-0.2 rounded font-bold uppercase font-mono">
+                                                      Kirim {curr} {itm.unit}
+                                                    </span>
+                                                  )}
+                                                </div>
+                                                <div className="text-[10px] text-slate-400 font-mono mt-0.5">
+                                                  {itm.part_number && itm.part_number !== "-" ? itm.part_number : "-"}
+                                                </div>
+                                              </td>
+
+                                              <td className="p-2.5 text-center font-mono font-bold text-slate-600">{itm.unit}</td>
+                                              <td className="p-2.5 text-center font-mono font-bold text-slate-800">{req}</td>
+
+                                              {/* Pernah Dikirim (Tahap Lalu) */}
+                                              <td className="p-2.5 text-center font-mono font-bold text-slate-600 bg-slate-50/60">
+                                                {prev > 0 ? (
+                                                  <div className="inline-flex flex-col items-center">
+                                                    <span className="text-emerald-800 bg-emerald-100 border border-emerald-200 px-2 py-0.5 rounded font-black text-xs">
+                                                      {prev} {itm.unit}
+                                                    </span>
+                                                    <span className="text-[8.5px] text-slate-500 font-sans mt-0.5">
+                                                      (Tahap Lalu)
+                                                    </span>
+                                                  </div>
+                                                ) : (
+                                                  <span className="text-slate-400 font-medium">0</span>
+                                                )}
+                                              </td>
+
+                                              {/* QTY Kirim Tahap Ini */}
+                                              <td className="p-2.5 text-center bg-emerald-50/30">
+                                                {isAlreadyFinished ? (
+                                                  <div className="flex items-center justify-center gap-1">
+                                                    <span className="text-xs font-mono font-bold text-slate-400">0</span>
+                                                    <span className="text-[9px] text-emerald-700 font-bold bg-emerald-100 px-1.5 py-0.5 rounded font-mono">
+                                                      Lengkap
+                                                    </span>
+                                                  </div>
+                                                ) : (
+                                                  <div className="flex items-center justify-center gap-1">
+                                                    <input
+                                                      type="number"
+                                                      min="0"
+                                                      max={maxAvailable}
+                                                      value={itm.qty_dispatched}
+                                                      onChange={(e) => {
+                                                        const rawVal = parseInt(e.target.value);
+                                                        const parsedVal = isNaN(rawVal) ? 0 : rawVal;
+                                                        const clampedVal = Math.min(maxAvailable, Math.max(0, parsedVal));
+                                                        setDispatchItems(prevItems => prevItems.map((item, i) => i === originalIndex ? { ...item, qty_dispatched: clampedVal } : item));
+                                                      }}
+                                                      className={`w-16 bg-white border rounded p-1 text-center font-mono font-black text-xs focus:outline-none focus:ring-2 focus:ring-emerald-500 shadow-2xs ${
+                                                        curr > 0 ? "border-emerald-500 text-emerald-900 bg-emerald-50/50 ring-1 ring-emerald-400" : "border-slate-300 text-slate-400"
+                                                      }`}
+                                                    />
+                                                    <div className="flex flex-col gap-0.5">
+                                                      <button
+                                                        type="button"
+                                                        onClick={() => {
+                                                          setDispatchItems(prevItems => prevItems.map((item, i) => i === originalIndex ? { ...item, qty_dispatched: maxAvailable } : item));
+                                                        }}
+                                                        className="px-1.5 py-0.2 bg-emerald-100 hover:bg-emerald-200 text-emerald-800 rounded text-[8.5px] font-bold cursor-pointer font-mono"
+                                                        title={`Isi maksimal sisa (${maxAvailable})`}
+                                                      >
+                                                        Max
+                                                      </button>
+                                                      <button
+                                                        type="button"
+                                                        onClick={() => {
+                                                          setDispatchItems(prevItems => prevItems.map((item, i) => i === originalIndex ? { ...item, qty_dispatched: 0 } : item));
+                                                        }}
+                                                        className="px-1.5 py-0.2 bg-slate-100 hover:bg-slate-200 text-slate-600 rounded text-[8.5px] font-bold cursor-pointer font-mono"
+                                                        title="Nolkan QTY kirim"
+                                                      >
+                                                        0
+                                                      </button>
+                                                    </div>
+                                                  </div>
+                                                )}
+                                                {!isAlreadyFinished && (
+                                                  <span className="text-[9px] text-slate-400 font-mono block mt-0.5">
+                                                    Maks sisa: <strong className="text-slate-700">{maxAvailable}</strong>
+                                                  </span>
+                                                )}
+                                              </td>
+
+                                              {/* Sisa Belum Kirim */}
+                                              <td className="p-2.5 text-center font-mono font-bold bg-rose-50/20">
+                                                {remaining > 0 ? (
+                                                  <span className="text-rose-700 bg-rose-100/80 px-2 py-0.5 rounded font-black text-xs">
+                                                    {remaining}
+                                                  </span>
+                                                ) : (
+                                                  <span className="text-emerald-700 font-black text-xs">0</span>
+                                                )}
+                                              </td>
+
+                                              {/* Harga Satuan */}
+                                              <td className="p-2.5">
+                                                <div className="relative">
+                                                  <span className="absolute left-1.5 top-1.5 text-[10px] text-slate-400 font-bold">Rp</span>
+                                                  <input
+                                                    type="number"
+                                                    min="0"
+                                                    value={itm.unit_price ?? 0}
+                                                    onChange={(e) => {
+                                                      const val = Math.max(0, parseInt(e.target.value) || 0);
+                                                      setDispatchItems(prev => prev.map((item, i) => i === originalIndex ? { ...item, unit_price: val } : item));
+                                                    }}
+                                                    className="w-full bg-slate-50 border border-slate-200 rounded p-1 pl-6 text-xs font-bold font-mono text-right text-slate-800 focus:outline-none focus:border-emerald-500"
+                                                  />
+                                                </div>
+                                              </td>
+
+                                              {/* Status Item */}
+                                              <td className="p-2.5 text-center">
+                                                {isAlreadyFinished ? (
+                                                  <span className="bg-slate-100 text-slate-700 border border-slate-200 px-2 py-0.5 rounded text-[9.5px] font-bold font-mono">
+                                                    ✓ Sudah Dikirim
+                                                  </span>
+                                                ) : isItemCompleteAfterThis ? (
+                                                  <span className="bg-emerald-100 text-emerald-800 border border-emerald-200 px-2 py-0.5 rounded text-[9.5px] font-bold font-mono">
+                                                    ✓ Lengkap
+                                                  </span>
+                                                ) : (
+                                                  <span className="bg-amber-100 text-amber-800 border border-amber-200 px-2 py-0.5 rounded text-[9.5px] font-bold font-mono">
+                                                    ⚠️ Parsial ({remaining} {itm.unit})
+                                                  </span>
+                                                )}
+                                              </td>
+                                            </tr>
+                                          );
+                                        })
+                                      )}
+                                    </tbody>
+                                  </table>
+                                </div>
+                              );
+                            })()}
+
+                            {/* Live Dispatched Items Summary Banner */}
+                            {(() => {
+                              const selectedItems = dispatchItems
+                                .map((itm, originalIndex) => ({ itm, originalIndex }))
+                                .filter(({ itm }) => (itm.qty_dispatched || 0) > 0);
+                              const totalQty = selectedItems.reduce((acc, { itm }) => acc + (Number(itm.qty_dispatched) || 0), 0);
+
+                              if (selectedItems.length > 0) {
+                                return (
+                                  <div className="bg-emerald-50/90 border border-emerald-200 rounded-xl p-3 shadow-2xs space-y-2">
+                                    <div className="flex items-center justify-between">
+                                      <span className="text-xs font-black text-emerald-950 flex items-center gap-1.5 font-mono">
+                                        <PackageCheck className="w-4 h-4 text-emerald-600" />
+                                        RINGKASAN SUKU CADANG DIKIRIM PADA TAHAP INI ({selectedItems.length} Jenis &bull; Total {totalQty} Unit):
+                                      </span>
+                                      <span className="text-[10px] font-mono font-bold bg-emerald-200 text-emerald-900 px-2 py-0.5 rounded">
+                                        Siap Terbit TUG 8
+                                      </span>
+                                    </div>
+                                    <div className="flex flex-wrap gap-1.5 max-h-24 overflow-y-auto pt-1">
+                                      {selectedItems.map(({ itm, originalIndex }) => (
+                                        <span
+                                          key={originalIndex}
+                                          className="inline-flex items-center gap-1.5 text-[11px] bg-white border border-emerald-300 text-emerald-950 font-bold px-2.5 py-1 rounded-lg shadow-2xs"
+                                        >
+                                          <span>{itm.spare_part_name}</span>
+                                          <span className="bg-emerald-600 text-white font-mono text-[10px] px-1.5 py-0.2 rounded-full font-black">
+                                            {itm.qty_dispatched} {itm.unit}
+                                          </span>
+                                          <button
+                                            type="button"
+                                            onClick={() => {
+                                              setDispatchItems(prev => prev.map((item, i) => i === originalIndex ? { ...item, qty_dispatched: 0 } : item));
+                                            }}
+                                            className="text-slate-400 hover:text-rose-600 hover:bg-rose-50 rounded-full w-4 h-4 flex items-center justify-center cursor-pointer transition-colors"
+                                            title="Batalkan pengiriman barang ini"
+                                          >
+                                            ×
+                                          </button>
+                                        </span>
+                                      ))}
+                                    </div>
+                                  </div>
+                                );
+                              }
+
+                              return (
+                                <div className="bg-amber-50 border border-amber-300 rounded-xl p-3 flex items-center gap-2.5 text-xs text-amber-900">
+                                  <AlertTriangle className="w-4 h-4 text-amber-600 shrink-0" />
+                                  <div>
+                                    <span className="font-bold block text-amber-950">Belum ada suku cadang yang dipilih untuk dikirim pada tahap ini.</span>
+                                    Silakan centang checkbox <strong>[Kirim?]</strong> atau isi nilai pada kolom <strong>QTY Kirim</strong> di tabel atas.
+                                  </div>
+                                </div>
+                              );
+                            })()}
                           </div>
                         </div>
                       );
@@ -4632,12 +5304,12 @@ export default function DispatchView({
                   disabled={
                     isLoading || 
                     (dispatchSource === "tug5" && (!selectedTug5Id || dispatchItems.every(i => (i.qty_dispatched || 0) === 0))) || 
-                    (dispatchSource === "tug10" && (!selectedTug10Id || !targetVesselName.trim() || dispatchItems.every(i => (i.qty_dispatched || 0) === 0)))
+                    (dispatchSource === "tug10" && (!selectedTug10Id || dispatchItems.every(i => (i.qty_dispatched || 0) === 0)))
                   }
                   className={`px-5 py-2.5 rounded-lg text-white text-xs font-bold uppercase tracking-wider transition-all flex items-center gap-1.5 cursor-pointer shadow-md ${
                     isLoading || 
                     (dispatchSource === "tug5" && (!selectedTug5Id || dispatchItems.every(i => (i.qty_dispatched || 0) === 0))) || 
-                    (dispatchSource === "tug10" && (!selectedTug10Id || !targetVesselName.trim() || dispatchItems.every(i => (i.qty_dispatched || 0) === 0)))
+                    (dispatchSource === "tug10" && (!selectedTug10Id || dispatchItems.every(i => (i.qty_dispatched || 0) === 0)))
                       ? "bg-slate-300 border-slate-300 cursor-not-allowed text-slate-500 shadow-none"
                       : dispatchSource === "tug10"
                         ? "bg-emerald-600 hover:bg-emerald-500 border border-emerald-700"
