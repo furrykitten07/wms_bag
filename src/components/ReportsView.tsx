@@ -177,6 +177,7 @@ export default function ReportsView({
   const [searchQuery, setSearchQuery] = useState<string>("");
 
   // Interactive Motion Chart States
+  const [chartPeriod, setChartPeriod] = useState<"DAILY" | "WEEKLY" | "MONTHLY">("DAILY");
   const [chartStyle, setChartStyle] = useState<"BAR" | "AREA">("BAR");
   const [chartMetric, setChartMetric] = useState<"BOTH" | "IN" | "OUT">("BOTH");
   const [hoveredChartIdx, setHoveredChartIdx] = useState<number | null>(null);
@@ -856,31 +857,118 @@ export default function ReportsView({
     return Object.values(map);
   }, [filteredData]);
 
-  // Generate Date Trend data for Motion Visual Dashboard
-  const chartData = useMemo(() => {
-    const datesMap: { [key: string]: { dateKey: string; dateLabel: string; dateObj: Date; inQty: number; outQty: number } } = {};
+  // Chart source movements: use full non-time-clipped dataset for Weekly/Monthly trends unless user set custom dates
+  const chartSourceMovements = useMemo(() => {
+    if (chartPeriod === "DAILY" || timeFilter === "custom") {
+      return filteredData;
+    }
 
-    // Populate with active dates from filteredData
-    filteredData.forEach(m => {
-      // YYYY-MM-DD
-      const dateStr = m.transaction_date.split("T")[0];
-      if (!datesMap[dateStr]) {
-        const dObj = new Date(m.transaction_date);
-        datesMap[dateStr] = {
-          dateKey: dateStr,
-          dateLabel: dObj.toLocaleDateString("id-ID", { month: "short", day: "numeric" }),
-          dateObj: dObj,
+    return allCombinedMovements.filter(m => {
+      const isInbound = m.qty_in > 0 || m.transaction_type === TransactionType.RECEIVING;
+      const isOutbound = m.qty_out > 0 || m.transaction_type === TransactionType.DISPATCH || m.transaction_type === TransactionType.VESSEL_CONSUMPTION;
+
+      if (typeFilter === "in" && !isInbound) return false;
+      if (typeFilter === "out" && !isOutbound) return false;
+
+      if (categoryFilter !== "all") {
+        const partInfo = parts.find(p => p.id === m.spare_part_id);
+        if (!partInfo || partInfo.category !== categoryFilter) return false;
+      }
+
+      if (searchQuery.trim() !== "") {
+        const cleanQuery = searchQuery.toLowerCase();
+        const matchesName = m.spare_part_name.toLowerCase().includes(cleanQuery);
+        const matchesNum = m.part_number.toLowerCase().includes(cleanQuery);
+        const matchesRef = m.reference_number.toLowerCase().includes(cleanQuery);
+        const matchesUser = m.created_by.toLowerCase().includes(cleanQuery);
+        const matchesRemarks = m.remarks ? m.remarks.toLowerCase().includes(cleanQuery) : false;
+        const matchesVessel = m.vessel_name ? m.vessel_name.toLowerCase().includes(cleanQuery) : false;
+
+        if (!matchesName && !matchesNum && !matchesRef && !matchesUser && !matchesRemarks && !matchesVessel) {
+          return false;
+        }
+      }
+
+      if (docTypesFilter) {
+        if (isInbound && docTypesFilter.inbound === false) return false;
+        if (isOutbound && docTypesFilter.tug8 === false) return false;
+      }
+
+      return true;
+    });
+  }, [chartPeriod, timeFilter, filteredData, allCombinedMovements, typeFilter, categoryFilter, searchQuery, docTypesFilter, parts]);
+
+  // Generate Trend data grouped by Harian (DAILY), Mingguan (WEEKLY), or Bulanan (MONTHLY)
+  const chartData = useMemo(() => {
+    const bucketMap: {
+      [key: string]: { dateKey: string; dateLabel: string; fullLabel: string; dateObj: Date; inQty: number; outQty: number };
+    } = {};
+
+    const parseLocalDate = (raw: string): Date | null => {
+      if (!raw) return null;
+      const ymd = raw.split("T")[0];
+      if (/^\d{4}-\d{2}-\d{2}$/.test(ymd)) {
+        const [y, mo, da] = ymd.split("-").map(Number);
+        return new Date(y, mo - 1, da);
+      }
+      const parsed = new Date(raw);
+      return isNaN(parsed.getTime()) ? null : new Date(parsed.getFullYear(), parsed.getMonth(), parsed.getDate());
+    };
+
+    chartSourceMovements.forEach(m => {
+      const localDate = parseLocalDate(m.transaction_date);
+      if (!localDate) return;
+
+      let key = "";
+      let dateLabel = "";
+      let fullLabel = "";
+      let sortDate = localDate;
+
+      if (chartPeriod === "MONTHLY") {
+        const monthStart = new Date(localDate.getFullYear(), localDate.getMonth(), 1);
+        key = `${monthStart.getFullYear()}-${String(monthStart.getMonth() + 1).padStart(2, "0")}`;
+        dateLabel = monthStart.toLocaleDateString("id-ID", { month: "short", year: "numeric" });
+        fullLabel = monthStart.toLocaleDateString("id-ID", { month: "long", year: "numeric" });
+        sortDate = monthStart;
+      } else if (chartPeriod === "WEEKLY") {
+        const day = localDate.getDay();
+        const diffToMonday = day === 0 ? -6 : 1 - day;
+        const weekStart = new Date(localDate.getFullYear(), localDate.getMonth(), localDate.getDate() + diffToMonday);
+        const weekEnd = new Date(weekStart.getFullYear(), weekStart.getMonth(), weekStart.getDate() + 6);
+        key = `${weekStart.getFullYear()}-${String(weekStart.getMonth() + 1).padStart(2, "0")}-${String(weekStart.getDate()).padStart(2, "0")}`;
+
+        const startShort = weekStart.toLocaleDateString("id-ID", { day: "numeric", month: "short" });
+        const endShort = weekEnd.toLocaleDateString("id-ID", { day: "numeric", month: "short" });
+        dateLabel = weekStart.getMonth() === weekEnd.getMonth()
+          ? `${weekStart.getDate()}-${weekEnd.getDate()} ${weekEnd.toLocaleDateString("id-ID", { month: "short" })}`
+          : `${startShort}-${endShort}`;
+        fullLabel = `Minggu (${startShort} – ${endShort} ${weekEnd.getFullYear()})`;
+        sortDate = weekStart;
+      } else {
+        key = `${localDate.getFullYear()}-${String(localDate.getMonth() + 1).padStart(2, "0")}-${String(localDate.getDate()).padStart(2, "0")}`;
+        dateLabel = localDate.toLocaleDateString("id-ID", { day: "numeric", month: "short" });
+        fullLabel = localDate.toLocaleDateString("id-ID", { day: "numeric", month: "short", year: "numeric" });
+      }
+
+      if (!bucketMap[key]) {
+        bucketMap[key] = {
+          dateKey: key,
+          dateLabel,
+          fullLabel,
+          dateObj: sortDate,
           inQty: 0,
           outQty: 0
         };
       }
-      datesMap[dateStr].inQty += m.qty_in;
-      datesMap[dateStr].outQty += m.qty_out;
+      bucketMap[key].inQty += m.qty_in;
+      bucketMap[key].outQty += m.qty_out;
     });
 
-    // Sort chronologically
-    return Object.values(datesMap).sort((a, b) => a.dateObj.getTime() - b.dateObj.getTime()).slice(-14); // limiting to last 14 active days for visual neatness
-  }, [filteredData]);
+    const maxPoints = chartPeriod === "DAILY" ? 14 : 12;
+    return Object.values(bucketMap)
+      .sort((a, b) => a.dateObj.getTime() - b.dateObj.getTime())
+      .slice(-maxPoints);
+  }, [chartSourceMovements, chartPeriod]);
 
   // Max value to scale our relative chart neatly based on active metric
   const maxChartVal = useMemo(() => {
@@ -898,11 +986,11 @@ export default function ReportsView({
     return Math.ceil(max * 1.15); // Add padding space on top
   }, [chartData, chartMetric]);
 
-  // Summary metrics for the daily mutation trend chart
+  // Summary metrics for the mutation trend chart
   const chartSummary = useMemo(() => {
     let totalIn = 0;
     let totalOut = 0;
-    let peakDay = chartData[0] || { dateKey: "-", dateLabel: "-", inQty: 0, outQty: 0 };
+    let peakDay = chartData[0] || { dateKey: "-", dateLabel: "-", fullLabel: "-", inQty: 0, outQty: 0 };
 
     const getMetricVal = (d: { inQty: number; outQty: number }) =>
       chartMetric === "IN" ? d.inQty : chartMetric === "OUT" ? d.outQty : d.inQty + d.outQty;
@@ -1360,23 +1448,53 @@ export default function ReportsView({
             <div>
               <div className="flex items-center gap-2 flex-wrap">
                 <h3 className="text-sm font-black uppercase tracking-wider text-slate-900 font-mono">
-                  Grafik Visual: Tren Mutasi Barang Masuk vs Keluar Harian
+                  Grafik Visual: Tren Mutasi Barang Masuk vs Keluar {chartPeriod === "MONTHLY" ? "Bulanan" : chartPeriod === "WEEKLY" ? "Mingguan" : "Harian"}
                 </h3>
                 {chartData.length > 0 && (
                   <span className="inline-flex items-center gap-1 text-[10px] font-mono font-bold bg-emerald-50 text-emerald-700 border border-emerald-200/80 px-2 py-0.5 rounded-full">
                     <Sparkles className="w-2.5 h-2.5 text-emerald-500" />
-                    {chartData.length} Hari Aktif
+                    {chartData.length} {chartPeriod === "MONTHLY" ? "Bulan Aktif" : chartPeriod === "WEEKLY" ? "Minggu Aktif" : "Hari Aktif"}
                   </span>
                 )}
               </div>
               <p className="text-xs text-slate-500 mt-0.5">
-                Visualisasi intensitas volume barang masuk harian (hijau) disandingkan dengan volume keluar (amber).
+                Visualisasi intensitas volume barang masuk {chartPeriod === "MONTHLY" ? "bulanan" : chartPeriod === "WEEKLY" ? "mingguan" : "harian"} (hijau) disandingkan dengan volume keluar (amber).
               </p>
             </div>
           </div>
 
-          {/* Controls: Chart Style (Batang vs Kurva) + Metric Switcher */}
+          {/* Controls: Period (Harian / Mingguan / Bulanan) + Style (Batang vs Kurva) + Metric Switcher */}
           <div className="flex flex-wrap items-center gap-2 self-start lg:self-auto">
+            {/* Period Switcher */}
+            <div className="flex items-center gap-1 bg-slate-100/90 p-1 rounded-xl text-xs font-mono font-bold border border-slate-200/60">
+              {(["DAILY", "WEEKLY", "MONTHLY"] as const).map(period => {
+                const isActive = chartPeriod === period;
+                const label = period === "DAILY" ? "Harian" : period === "WEEKLY" ? "Mingguan" : "Bulanan";
+                return (
+                  <button
+                    key={period}
+                    type="button"
+                    onClick={() => {
+                      setChartPeriod(period);
+                      setHoveredChartIdx(null);
+                    }}
+                    className={`relative px-2.5 py-1 rounded-lg transition-colors cursor-pointer flex items-center gap-1 ${
+                      isActive ? "text-slate-900" : "text-slate-500 hover:text-slate-800"
+                    }`}
+                  >
+                    {isActive && (
+                      <motion.div
+                        layoutId="reportsChartPeriodPill"
+                        className="absolute inset-0 bg-white rounded-lg shadow-xs border border-slate-200/80"
+                        transition={{ type: "spring", stiffness: 420, damping: 32 }}
+                      />
+                    )}
+                    <span className="relative z-10">{label}</span>
+                  </button>
+                );
+              })}
+            </div>
+
             {/* Style Switcher */}
             <div className="flex items-center gap-1 bg-slate-100/90 p-1 rounded-xl text-xs font-mono font-bold border border-slate-200/60">
               <button
@@ -1576,7 +1694,7 @@ export default function ReportsView({
                               }`}
                             >
                               <div className="flex items-center justify-between gap-3 text-amber-300 font-bold text-[10.5px]">
-                                <span>📅 {d.dateLabel}</span>
+                                <span>📅 {d.fullLabel}</span>
                                 <span className={`text-[10px] font-bold ${netDay >= 0 ? "text-sky-300" : "text-rose-300"}`}>
                                   Net: {netDay >= 0 ? "+" : ""}{netDay.toLocaleString()}
                                 </span>
@@ -1732,7 +1850,7 @@ export default function ReportsView({
                           transition={{ type: "spring", stiffness: 400, damping: 28 }}
                           className="absolute top-2 right-4 z-30 pointer-events-none bg-slate-900/95 backdrop-blur-md text-white text-[11px] font-mono px-3 py-2 rounded-xl shadow-xl border border-slate-700/80 whitespace-nowrap flex items-center gap-3"
                         >
-                          <span className="text-amber-300 font-bold">📅 {chartData[hoveredChartIdx].dateLabel}</span>
+                          <span className="text-amber-300 font-bold">📅 {chartData[hoveredChartIdx].fullLabel}</span>
                           <span className="text-emerald-300">Masuk: <strong>+{chartData[hoveredChartIdx].inQty.toLocaleString()}</strong></span>
                           <span className="text-amber-300">Keluar: <strong>-{chartData[hoveredChartIdx].outQty.toLocaleString()}</strong></span>
                         </motion.div>
@@ -1784,7 +1902,7 @@ export default function ReportsView({
                       })}
 
                       {/* Active Hover Guide Line */}
-                      {hoveredChartIdx !== null && (
+                      {hoveredChartIdx !== null && chartData[hoveredChartIdx] && (
                         <motion.line
                           animate={{ x1: getPointX(hoveredChartIdx), x2: getPointX(hoveredChartIdx) }}
                           transition={{ type: "spring", stiffness: 380, damping: 32 }}
@@ -1802,7 +1920,7 @@ export default function ReportsView({
                           {chartData.length > 1 && (
                             <>
                               <motion.path
-                                key={`rep-in-area-${chartMetric}-${chartData.length}`}
+                                key={`rep-in-area-${chartPeriod}-${chartMetric}-${chartData.length}`}
                                 d={inAreaPath}
                                 fill="url(#reportsInAreaGrad)"
                                 initial={{ opacity: 0 }}
@@ -1810,7 +1928,7 @@ export default function ReportsView({
                                 transition={{ duration: 0.5 }}
                               />
                               <motion.path
-                                key={`rep-in-line-${chartMetric}-${chartData.length}`}
+                                key={`rep-in-line-${chartPeriod}-${chartMetric}-${chartData.length}`}
                                 d={inLinePath}
                                 fill="none"
                                 stroke="#059669"
@@ -1857,7 +1975,7 @@ export default function ReportsView({
                           {chartData.length > 1 && (
                             <>
                               <motion.path
-                                key={`rep-out-area-${chartMetric}-${chartData.length}`}
+                                key={`rep-out-area-${chartPeriod}-${chartMetric}-${chartData.length}`}
                                 d={outAreaPath}
                                 fill="url(#reportsOutAreaGrad)"
                                 initial={{ opacity: 0 }}
@@ -1865,7 +1983,7 @@ export default function ReportsView({
                                 transition={{ duration: 0.5 }}
                               />
                               <motion.path
-                                key={`rep-out-line-${chartMetric}-${chartData.length}`}
+                                key={`rep-out-line-${chartPeriod}-${chartMetric}-${chartData.length}`}
                                 d={outLinePath}
                                 fill="none"
                                 stroke="#d97706"
