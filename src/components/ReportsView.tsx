@@ -38,8 +38,80 @@ import {
   FileSpreadsheet,
   Eye,
   Image as ImageIcon,
-  X
+  X,
+  BarChart3,
+  LineChart,
+  Sparkles,
+  Flame,
+  Activity
 } from "lucide-react";
+import { motion, AnimatePresence } from "motion/react";
+
+// Helper Fritsch-Carlson monotone cubic spline untuk kurva grafik mutasi SVG yang halus tanpa overshoot
+function createReportsMonotoneSpline(
+  points: Array<{ x: number; y: number }>,
+  closeBottom = false,
+  bottomY = 205,
+  minY = 20
+): string {
+  if (points.length === 0) return "";
+  if (points.length === 1) return `M ${points[0].x.toFixed(1)},${points[0].y.toFixed(1)}`;
+
+  const n = points.length;
+  const dx: number[] = [];
+  const dy: number[] = [];
+  const m: number[] = [];
+  for (let i = 0; i < n - 1; i++) {
+    dx.push(points[i + 1].x - points[i].x);
+    dy.push(points[i + 1].y - points[i].y);
+    m.push(dx[i] === 0 ? 0 : dy[i] / dx[i]);
+  }
+
+  const tangents: number[] = new Array(n).fill(0);
+  tangents[0] = m[0];
+  tangents[n - 1] = m[n - 2];
+
+  for (let i = 1; i < n - 1; i++) {
+    if (m[i - 1] * m[i] <= 0) {
+      tangents[i] = 0;
+    } else {
+      tangents[i] = (m[i - 1] + m[i]) / 2;
+    }
+  }
+
+  for (let i = 0; i < n - 1; i++) {
+    if (m[i] === 0) {
+      tangents[i] = 0;
+      tangents[i + 1] = 0;
+    } else {
+      const a = tangents[i] / m[i];
+      const b = tangents[i + 1] / m[i];
+      const h = Math.hypot(a, b);
+      if (h > 3) {
+        const t = 3 / h;
+        tangents[i] = t * a * m[i];
+        tangents[i + 1] = t * b * m[i];
+      }
+    }
+  }
+
+  let d = `M ${points[0].x.toFixed(1)},${points[0].y.toFixed(1)}`;
+  for (let i = 0; i < n - 1; i++) {
+    const p1 = points[i];
+    const p2 = points[i + 1];
+    const segDx = dx[i] / 3;
+    const cp1x = p1.x + segDx;
+    const cp1y = Math.min(bottomY, Math.max(minY, p1.y + segDx * tangents[i]));
+    const cp2x = p2.x - segDx;
+    const cp2y = Math.min(bottomY, Math.max(minY, p2.y - segDx * tangents[i + 1]));
+    d += ` C ${cp1x.toFixed(1)},${cp1y.toFixed(1)} ${cp2x.toFixed(1)},${cp2y.toFixed(1)} ${p2.x.toFixed(1)},${p2.y.toFixed(1)}`;
+  }
+
+  if (closeBottom) {
+    d += ` L ${points[n - 1].x.toFixed(1)},${bottomY} L ${points[0].x.toFixed(1)},${bottomY} Z`;
+  }
+  return d;
+}
 
 interface ReportsViewProps {
   movements: MovementLedgerEntry[];
@@ -103,6 +175,12 @@ export default function ReportsView({
   const [typeFilter, setTypeFilter] = useState<"all" | "in" | "out">("all");
   const [categoryFilter, setCategoryFilter] = useState<string>("all");
   const [searchQuery, setSearchQuery] = useState<string>("");
+
+  // Interactive Motion Chart States
+  const [chartStyle, setChartStyle] = useState<"BAR" | "AREA">("BAR");
+  const [chartMetric, setChartMetric] = useState<"BOTH" | "IN" | "OUT">("BOTH");
+  const [hoveredChartIdx, setHoveredChartIdx] = useState<number | null>(null);
+  const [legendFocus, setLegendFocus] = useState<"ALL" | "IN" | "OUT">("ALL");
 
   const safeFormatDate = (dateVal?: any, options?: Intl.DateTimeFormatOptions) => {
     if (!dateVal) return "-";
@@ -778,17 +856,18 @@ export default function ReportsView({
     return Object.values(map);
   }, [filteredData]);
 
-  // Generate Date Trend data for gorgeous SVG-based Visual Dashboard
+  // Generate Date Trend data for Motion Visual Dashboard
   const chartData = useMemo(() => {
-    const datesMap: { [key: string]: { dateLabel: string; dateObj: Date; inQty: number; outQty: number } } = {};
+    const datesMap: { [key: string]: { dateKey: string; dateLabel: string; dateObj: Date; inQty: number; outQty: number } } = {};
 
-    // Populate with last 10 days by default if filter is week, or group by days
+    // Populate with active dates from filteredData
     filteredData.forEach(m => {
       // YYYY-MM-DD
       const dateStr = m.transaction_date.split("T")[0];
       if (!datesMap[dateStr]) {
         const dObj = new Date(m.transaction_date);
         datesMap[dateStr] = {
+          dateKey: dateStr,
           dateLabel: dObj.toLocaleDateString("id-ID", { month: "short", day: "numeric" }),
           dateObj: dObj,
           inQty: 0,
@@ -803,15 +882,52 @@ export default function ReportsView({
     return Object.values(datesMap).sort((a, b) => a.dateObj.getTime() - b.dateObj.getTime()).slice(-14); // limiting to last 14 active days for visual neatness
   }, [filteredData]);
 
-  // Max value to scale our relative SVG chart neatly
+  // Max value to scale our relative chart neatly based on active metric
   const maxChartVal = useMemo(() => {
-    let max = 15;
+    let max = 10;
     chartData.forEach(d => {
-      if (d.inQty > max) max = d.inQty;
-      if (d.outQty > max) max = d.outQty;
+      if (chartMetric === "IN") {
+        if (d.inQty > max) max = d.inQty;
+      } else if (chartMetric === "OUT") {
+        if (d.outQty > max) max = d.outQty;
+      } else {
+        const val = Math.max(d.inQty, d.outQty);
+        if (val > max) max = val;
+      }
     });
     return Math.ceil(max * 1.15); // Add padding space on top
-  }, [chartData]);
+  }, [chartData, chartMetric]);
+
+  // Summary metrics for the daily mutation trend chart
+  const chartSummary = useMemo(() => {
+    let totalIn = 0;
+    let totalOut = 0;
+    let peakDay = chartData[0] || { dateKey: "-", dateLabel: "-", inQty: 0, outQty: 0 };
+
+    const getMetricVal = (d: { inQty: number; outQty: number }) =>
+      chartMetric === "IN" ? d.inQty : chartMetric === "OUT" ? d.outQty : d.inQty + d.outQty;
+
+    chartData.forEach(d => {
+      totalIn += d.inQty;
+      totalOut += d.outQty;
+      if (getMetricVal(d) > getMetricVal(peakDay)) {
+        peakDay = d;
+      }
+    });
+
+    const netDelta = totalIn - totalOut;
+    const avgDaily = Math.round((totalIn + totalOut) / Math.max(1, chartData.length));
+    const peakVal = getMetricVal(peakDay);
+
+    return {
+      totalIn,
+      totalOut,
+      netDelta,
+      avgDaily,
+      peakDay,
+      peakVal
+    };
+  }, [chartData, chartMetric]);
 
   // Direct CSV Export utility
   const handleExportCSV = () => {
@@ -1227,124 +1343,638 @@ export default function ReportsView({
 
       </div>
 
-      {/* COMPREHENSIVE TREND GRAPHICS (CUSTOM SVG DESIGNS) */}
-      <div className="bg-white border border-slate-200 rounded-lg p-5 shadow-xs space-y-4">
+      {/* COMPREHENSIVE TREND GRAPHICS (MOTION INTERACTIVE CHART) */}
+      <div className="bg-white border border-slate-200/80 rounded-3xl p-5 sm:p-6 shadow-xs space-y-5 relative overflow-hidden">
         
-        <div>
-          <h3 className="text-xs font-bold uppercase tracking-wider text-slate-900 flex items-center gap-1.5 mb-1">
-            <Clock className="w-4 h-4 text-blue-500 animate-pulse" />
-            Grafik Visual: Tren Mutasi Barang Masuk vs Keluar Harian
-          </h3>
-          <p className="text-[11px] text-slate-400 leading-none">
-            Diagram batang berpasangan mewakili intensitas volume barang masuk harian (hijau) disandingkan dengan volume keluar (amber).
-          </p>
+        {/* Subtle decorative ambient glow */}
+        <div className="absolute -top-24 -right-24 w-72 h-72 bg-gradient-to-br from-emerald-100/50 via-blue-100/30 to-amber-100/40 rounded-full blur-3xl pointer-events-none" />
+
+        {/* Header & Sliding Motion Controls */}
+        <div className="relative z-10 flex flex-col lg:flex-row lg:items-center justify-between gap-4 border-b border-slate-100 pb-4">
+          <div className="flex items-center gap-3">
+            <div className="w-9 h-9 rounded-xl bg-gradient-to-tr from-emerald-600 to-teal-500 text-white flex items-center justify-center shadow-sm shadow-emerald-500/25 shrink-0">
+              <TrendingUp className="w-4.5 h-4.5" />
+            </div>
+            <div>
+              <div className="flex items-center gap-2 flex-wrap">
+                <h3 className="text-sm font-black uppercase tracking-wider text-slate-900 font-mono">
+                  Grafik Visual: Tren Mutasi Barang Masuk vs Keluar Harian
+                </h3>
+                {chartData.length > 0 && (
+                  <span className="inline-flex items-center gap-1 text-[10px] font-mono font-bold bg-emerald-50 text-emerald-700 border border-emerald-200/80 px-2 py-0.5 rounded-full">
+                    <Sparkles className="w-2.5 h-2.5 text-emerald-500" />
+                    {chartData.length} Hari Aktif
+                  </span>
+                )}
+              </div>
+              <p className="text-xs text-slate-500 mt-0.5">
+                Visualisasi intensitas volume barang masuk harian (hijau) disandingkan dengan volume keluar (amber).
+              </p>
+            </div>
+          </div>
+
+          {/* Controls: Chart Style (Batang vs Kurva) + Metric Switcher */}
+          <div className="flex flex-wrap items-center gap-2 self-start lg:self-auto">
+            {/* Style Switcher */}
+            <div className="flex items-center gap-1 bg-slate-100/90 p-1 rounded-xl text-xs font-mono font-bold border border-slate-200/60">
+              <button
+                type="button"
+                onClick={() => setChartStyle("BAR")}
+                className={`relative px-2.5 py-1 rounded-lg transition-colors cursor-pointer flex items-center gap-1.5 ${
+                  chartStyle === "BAR" ? "text-slate-900" : "text-slate-500 hover:text-slate-800"
+                }`}
+                title="Tampilan Grafik Batang (Bar Chart)"
+              >
+                {chartStyle === "BAR" && (
+                  <motion.div
+                    layoutId="reportsChartStylePill"
+                    className="absolute inset-0 bg-white rounded-lg shadow-xs border border-slate-200/80"
+                    transition={{ type: "spring", stiffness: 420, damping: 32 }}
+                  />
+                )}
+                <span className="relative z-10 flex items-center gap-1.5">
+                  <BarChart3 className="w-3.5 h-3.5 text-emerald-600" />
+                  <span>Batang</span>
+                </span>
+              </button>
+
+              <button
+                type="button"
+                onClick={() => setChartStyle("AREA")}
+                className={`relative px-2.5 py-1 rounded-lg transition-colors cursor-pointer flex items-center gap-1.5 ${
+                  chartStyle === "AREA" ? "text-slate-900" : "text-slate-500 hover:text-slate-800"
+                }`}
+                title="Tampilan Grafik Kurva Halus (Smooth Spline Area)"
+              >
+                {chartStyle === "AREA" && (
+                  <motion.div
+                    layoutId="reportsChartStylePill"
+                    className="absolute inset-0 bg-white rounded-lg shadow-xs border border-slate-200/80"
+                    transition={{ type: "spring", stiffness: 420, damping: 32 }}
+                  />
+                )}
+                <span className="relative z-10 flex items-center gap-1.5">
+                  <LineChart className="w-3.5 h-3.5 text-amber-600" />
+                  <span>Kurva</span>
+                </span>
+              </button>
+            </div>
+
+            {/* Metric Switcher */}
+            <div className="flex items-center gap-1 bg-slate-100/90 p-1 rounded-xl text-xs font-mono font-bold border border-slate-200/60">
+              {(["BOTH", "IN", "OUT"] as const).map(metric => {
+                const isActive = chartMetric === metric;
+                const label = metric === "BOTH" ? "Keduanya" : metric === "IN" ? "Masuk" : "Keluar";
+                return (
+                  <button
+                    key={metric}
+                    type="button"
+                    onClick={() => setChartMetric(metric)}
+                    className={`relative px-2.5 sm:px-3 py-1 rounded-lg transition-colors cursor-pointer flex items-center gap-1.5 ${
+                      isActive ? "text-slate-900" : "text-slate-500 hover:text-slate-800"
+                    }`}
+                  >
+                    {isActive && (
+                      <motion.div
+                        layoutId="reportsChartMetricPill"
+                        className="absolute inset-0 bg-white rounded-lg shadow-xs border border-slate-200/80"
+                        transition={{ type: "spring", stiffness: 420, damping: 32 }}
+                      />
+                    )}
+                    <span className="relative z-10 flex items-center gap-1.5">
+                      {metric === "IN" && <span className="w-2 h-2 rounded-full bg-emerald-500" />}
+                      {metric === "OUT" && <span className="w-2 h-2 rounded-full bg-amber-500" />}
+                      <span>{label}</span>
+                    </span>
+                  </button>
+                );
+              })}
+            </div>
+          </div>
         </div>
 
         {chartData.length === 0 ? (
-          <div className="h-44 flex flex-col items-center justify-center text-center p-6 bg-slate-50 border border-dashed border-slate-200 rounded-lg text-slate-400">
+          <div className="relative z-10 h-52 flex flex-col items-center justify-center text-center p-6 bg-slate-50 border border-dashed border-slate-200 rounded-2xl text-slate-400">
             <Info className="w-6 h-6 text-slate-300 mb-2" />
             <p className="text-xs font-medium">Tidak ada data untuk rentang waktu yang dipilih dalam pembuatan tren grafik.</p>
           </div>
         ) : (
-          <div className="space-y-4 pt-2">
-            
-            {/* The SVG Layout */}
-            <div className="relative w-full overflow-x-auto select-none no-scrollbar">
-              <svg 
-                className="w-full min-w-[700px] h-48"
-                viewBox="0 0 800 200"
-                fill="none"
-                xmlns="http://www.w3.org/2000/svg"
-              >
-                {/* Horizontal Guide Lines */}
-                <line x1="40" y1="20" x2="780" y2="20" stroke="#f1f5f9" strokeWidth="1" strokeDasharray="3 3" />
-                <line x1="40" y1="60" x2="780" y2="60" stroke="#f1f5f9" strokeWidth="1" strokeDasharray="3 3" />
-                <line x1="40" y1="100" x2="780" y2="100" stroke="#f1f5f9" strokeWidth="1" />
-                <line x1="40" y1="140" x2="780" y2="140" stroke="#f1f5f9" strokeWidth="1" strokeDasharray="3 3" />
-                <line x1="40" y1="170" x2="780" y2="170" stroke="#e2e8f0" strokeWidth="1" />
+          <div className="relative z-10 space-y-4">
 
-                {/* Y-Axis scale label */}
-                <text x="35" y="25" fill="#94a3b8" fontSize="9" fontFamily="monospace" textAnchor="end">{maxChartVal} Qty</text>
-                <text x="35" y="105" fill="#94a3b8" fontSize="9" fontFamily="monospace" textAnchor="end">0 Qty</text>
-                <text x="35" y="175" fill="#94a3b8" fontSize="9" fontFamily="monospace" textAnchor="end">Bottom</text>
+            {/* 4-Card Mini KPI Strip */}
+            <div className="grid grid-cols-2 sm:grid-cols-4 gap-2.5">
+              <div className="bg-slate-50/80 border border-slate-200/70 rounded-2xl p-3 flex items-center gap-3">
+                <div className="w-9 h-9 rounded-xl bg-emerald-100 text-emerald-700 flex items-center justify-center shrink-0 shadow-2xs">
+                  <ArrowDownLeft className="w-4 h-4" />
+                </div>
+                <div className="min-w-0">
+                  <div className="text-[10px] font-mono text-slate-400 uppercase font-bold truncate">Total Masuk</div>
+                  <div className="text-base font-black font-mono text-emerald-700 leading-tight">
+                    +{chartSummary.totalIn.toLocaleString()} <span className="text-[10px] text-slate-500 font-normal">Qty</span>
+                  </div>
+                </div>
+              </div>
 
-                {/* Render Dual Bars */}
-                {chartData.map((d, index) => {
-                  const spacing = 740 / chartData.length;
-                  const x = 50 + index * spacing;
-                  
-                  // Inbound calculation height
-                  const inHeight = Math.max(2, (d.inQty / maxChartVal) * 130);
-                  const inY = 170 - inHeight;
+              <div className="bg-slate-50/80 border border-slate-200/70 rounded-2xl p-3 flex items-center gap-3">
+                <div className="w-9 h-9 rounded-xl bg-amber-100 text-amber-700 flex items-center justify-center shrink-0 shadow-2xs">
+                  <ArrowUpRight className="w-4 h-4" />
+                </div>
+                <div className="min-w-0">
+                  <div className="text-[10px] font-mono text-slate-400 uppercase font-bold truncate">Total Keluar</div>
+                  <div className="text-base font-black font-mono text-amber-600 leading-tight">
+                    -{chartSummary.totalOut.toLocaleString()} <span className="text-[10px] text-slate-500 font-normal">Qty</span>
+                  </div>
+                </div>
+              </div>
 
-                  // Outbound calculation height (side by side)
-                  const outHeight = Math.max(2, (d.outQty / maxChartVal) * 130);
-                  const outY = 170 - outHeight;
+              <div className="bg-slate-50/80 border border-slate-200/70 rounded-2xl p-3 flex items-center gap-3">
+                <div className={`w-9 h-9 rounded-xl flex items-center justify-center shrink-0 shadow-2xs ${
+                  chartSummary.netDelta >= 0 ? "bg-blue-100 text-blue-700" : "bg-rose-100 text-rose-700"
+                }`}>
+                  <Activity className="w-4 h-4" />
+                </div>
+                <div className="min-w-0">
+                  <div className="text-[10px] font-mono text-slate-400 uppercase font-bold truncate">Net Mutasi</div>
+                  <div className={`text-base font-black font-mono leading-tight ${
+                    chartSummary.netDelta >= 0 ? "text-blue-700" : "text-rose-700"
+                  }`}>
+                    {chartSummary.netDelta >= 0 ? "+" : ""}{chartSummary.netDelta.toLocaleString()} <span className="text-[10px] text-slate-500 font-normal">Qty</span>
+                  </div>
+                </div>
+              </div>
 
-                  return (
-                    <g key={index} className="group cursor-pointer">
-                      
-                      {/* Hover Backdrop Box */}
-                      <rect 
-                        x={x - 10} 
-                        y="10" 
-                        width={spacing - 4} 
-                        height="180" 
-                        rx="4" 
-                        className="fill-slate-500/0 hover:fill-slate-500/5 transition-colors" 
-                      />
-
-                      {/* Green Bar (Inbound) */}
-                      <rect 
-                        x={x} 
-                        y={inY} 
-                        width="10" 
-                        height={inHeight} 
-                        rx="2"
-                        className="fill-emerald-500 brightness-100 hover:brightness-105 transition-all"
-                      />
-
-                      {/* Amber Bar (Outbound) */}
-                      <rect 
-                        x={x + 13} 
-                        y={outY} 
-                        width="10" 
-                        height={outHeight} 
-                        rx="2"
-                        className="fill-amber-500 brightness-100 hover:brightness-105 transition-all"
-                      />
-
-                      {/* Day Label */}
-                      <text 
-                        x={x + 11} 
-                        y="190" 
-                        fill="#64748b" 
-                        fontSize="9" 
-                        fontWeight="bold" 
-                        textAnchor="middle" 
-                        fontFamily="monospace"
-                      >
-                        {d.dateLabel}
-                      </text>
-
-                      {/* Tooltip detail overlay displayed on hover (Tailwind control) */}
-                      <title>{`Tanggal: ${d.dateLabel}\n- Masuk: +${d.inQty} PCS\n- Keluar: -${d.outQty} PCS`}</title>
-                    </g>
-                  );
-                })}
-              </svg>
+              <div className="bg-slate-50/80 border border-slate-200/70 rounded-2xl p-3 flex items-center gap-3">
+                <div className="w-9 h-9 rounded-xl bg-orange-100 text-orange-700 flex items-center justify-center shrink-0 shadow-2xs">
+                  <Flame className="w-4 h-4" />
+                </div>
+                <div className="min-w-0">
+                  <div className="text-[10px] font-mono text-slate-400 uppercase font-bold truncate">Puncak Mutasi</div>
+                  <div className="text-sm sm:text-base font-black font-mono text-slate-800 leading-tight truncate">
+                    {chartSummary.peakDay.dateLabel} <span className="text-[10px] text-orange-600 font-bold">({chartSummary.peakVal.toLocaleString()} Qty)</span>
+                  </div>
+                </div>
+              </div>
             </div>
 
-            {/* Legend Indicators */}
-            <div className="flex items-center justify-center gap-6 text-[10px] font-bold font-mono">
-              <span className="flex items-center gap-1.5">
-                <span className="w-3 h-3 rounded bg-emerald-500" />
-                <span className="text-slate-600">Barang Masuk (Inbound / QC)</span>
-              </span>
-              <span className="flex items-center gap-1.5">
-                <span className="w-3 h-3 rounded bg-amber-500" />
-                <span className="text-slate-600">Barang Keluar (Outbound / Supply)</span>
-              </span>
+            {/* Interactive Chart Canvas Stage */}
+            <div className="pt-2">
+
+              {/* MODE 1: FULL-WIDTH SPRING-ANIMATED BAR CHART */}
+              {chartStyle === "BAR" && (
+                <div className="h-64 sm:h-72 flex items-end gap-1.5 sm:gap-3 pl-14 pr-2 pb-6 border-b border-slate-200/90 relative">
+                  
+                  {/* Accurate Horizontal Reference Grid Lines */}
+                  <div className="absolute inset-x-0 top-0 border-t border-slate-200/70 text-[10px] font-mono text-slate-400 flex items-center justify-between pointer-events-none">
+                    <span className="bg-white pr-1.5 font-bold text-slate-500">{maxChartVal.toLocaleString()} Qty</span>
+                    <span className="text-slate-300 text-[9px] pr-1">100%</span>
+                  </div>
+                  <div className="absolute inset-x-0 top-1/2 border-t border-dashed border-slate-200/70 text-[10px] font-mono text-slate-400 flex items-center justify-between pointer-events-none">
+                    <span className="bg-white pr-1.5">{Math.round(maxChartVal / 2).toLocaleString()} Qty</span>
+                    <span className="text-slate-300 text-[9px] pr-1">50%</span>
+                  </div>
+                  <div className="absolute left-0 bottom-5 text-[10px] font-mono text-slate-400 pointer-events-none bg-white pr-1.5">
+                    0 Qty
+                  </div>
+
+                  {chartData.map((d, idx) => {
+                    const isHovered = hoveredChartIdx === idx;
+                    const inHeightPct = d.inQty > 0 ? Math.min(100, Math.max(5, (d.inQty / maxChartVal) * 86)) : 2;
+                    const outHeightPct = d.outQty > 0 ? Math.min(100, Math.max(5, (d.outQty / maxChartVal) * 86)) : 2;
+                    const totalQty = d.inQty + d.outQty;
+                    const netDay = d.inQty - d.outQty;
+                    const isRightEdge = idx >= chartData.length - 2 && chartData.length > 4;
+                    const isLeftEdge = idx <= 1 && chartData.length > 4;
+
+                    return (
+                      <div
+                        key={d.dateKey}
+                        onMouseEnter={() => setHoveredChartIdx(idx)}
+                        onMouseLeave={() => setHoveredChartIdx(null)}
+                        className="flex-1 flex flex-col items-center justify-end h-full relative cursor-pointer group py-1 min-w-0"
+                      >
+                        {/* Spring Sliding Hover Backdrop */}
+                        {isHovered && (
+                          <motion.div
+                            layoutId="reportsHoverBarBackdrop"
+                            className="absolute inset-0 -mx-1 -my-1.5 bg-gradient-to-b from-emerald-50/75 via-slate-50/70 to-amber-50/55 rounded-2xl border border-emerald-200/70 pointer-events-none z-0 shadow-xs"
+                            transition={{ type: "spring", stiffness: 440, damping: 34 }}
+                          />
+                        )}
+
+                        {/* Floating Motion HUD Tooltip */}
+                        <AnimatePresence>
+                          {isHovered && (
+                            <motion.div
+                              initial={{ opacity: 0, y: -6, scale: 0.95 }}
+                              animate={{ opacity: 1, y: 0, scale: 1 }}
+                              exit={{ opacity: 0, y: -6, scale: 0.95 }}
+                              transition={{ type: "spring", stiffness: 400, damping: 28 }}
+                              className={`absolute -top-16 z-30 pointer-events-none bg-slate-900/95 backdrop-blur-md text-white text-[11px] font-mono px-3 py-2 rounded-xl shadow-xl border border-slate-700/80 whitespace-nowrap flex flex-col gap-1 min-w-[165px] ${
+                                isRightEdge ? "right-0" : isLeftEdge ? "left-0" : ""
+                              }`}
+                            >
+                              <div className="flex items-center justify-between gap-3 text-amber-300 font-bold text-[10.5px]">
+                                <span>📅 {d.dateLabel}</span>
+                                <span className={`text-[10px] font-bold ${netDay >= 0 ? "text-sky-300" : "text-rose-300"}`}>
+                                  Net: {netDay >= 0 ? "+" : ""}{netDay.toLocaleString()}
+                                </span>
+                              </div>
+                              <div className="flex items-center justify-between gap-3 text-[10px]">
+                                <span className="flex items-center gap-1 text-emerald-300">
+                                  <span className="w-1.5 h-1.5 rounded-full bg-emerald-400" />
+                                  Masuk: <strong>+{d.inQty.toLocaleString()}</strong>
+                                </span>
+                                <span className="flex items-center gap-1 text-amber-300">
+                                  <span className="w-1.5 h-1.5 rounded-full bg-amber-400" />
+                                  Keluar: <strong>-{d.outQty.toLocaleString()}</strong>
+                                </span>
+                              </div>
+                              {/* Proportional Ratio Bar */}
+                              <div className="w-full bg-slate-800 rounded-full h-1 overflow-hidden flex mt-0.5">
+                                <div
+                                  className="bg-emerald-400 h-full transition-all"
+                                  style={{ width: `${totalQty > 0 ? (d.inQty / totalQty) * 100 : 50}%` }}
+                                />
+                                <div
+                                  className="bg-amber-400 h-full transition-all"
+                                  style={{ width: `${totalQty > 0 ? (d.outQty / totalQty) * 100 : 50}%` }}
+                                />
+                              </div>
+                            </motion.div>
+                          )}
+                        </AnimatePresence>
+
+                        {/* Bars Container */}
+                        <div className="w-full flex items-end justify-center gap-1 sm:gap-1.5 h-full pb-1 relative z-10">
+                          {/* Inbound Bar (Emerald) */}
+                          {(chartMetric === "BOTH" || chartMetric === "IN") && (
+                            <motion.div
+                              layout
+                              initial={{ height: 0 }}
+                              animate={{
+                                height: `${inHeightPct}%`,
+                                opacity: legendFocus === "OUT" ? 0.25 : 1
+                              }}
+                              transition={{
+                                type: "spring",
+                                stiffness: 185,
+                                damping: 20,
+                                delay: idx * 0.025
+                              }}
+                              whileHover={{ scaleY: 1.04, originY: 1 }}
+                              className={`w-1/2 max-w-[24px] min-w-[7px] rounded-t-lg relative shadow-xs ${
+                                d.inQty > 0
+                                  ? "bg-gradient-to-t from-emerald-600 via-teal-500 to-emerald-400 shadow-emerald-500/20"
+                                  : "bg-emerald-200/70"
+                              }`}
+                            >
+                              {d.inQty > 0 && (
+                                <>
+                                  <div className="absolute top-0 inset-x-0 h-1 bg-emerald-200/80 rounded-t-lg" />
+                                  <span className="opacity-0 group-hover:opacity-100 transition-opacity absolute -top-4 left-1/2 -translate-x-1/2 text-[9px] font-mono font-bold text-emerald-700 bg-emerald-50/95 border border-emerald-200/70 px-1 rounded shadow-2xs pointer-events-none">
+                                    {d.inQty}
+                                  </span>
+                                </>
+                              )}
+                            </motion.div>
+                          )}
+
+                          {/* Outbound Bar (Amber) */}
+                          {(chartMetric === "BOTH" || chartMetric === "OUT") && (
+                            <motion.div
+                              layout
+                              initial={{ height: 0 }}
+                              animate={{
+                                height: `${outHeightPct}%`,
+                                opacity: legendFocus === "IN" ? 0.25 : 1
+                              }}
+                              transition={{
+                                type: "spring",
+                                stiffness: 185,
+                                damping: 20,
+                                delay: idx * 0.025 + 0.015
+                              }}
+                              whileHover={{ scaleY: 1.04, originY: 1 }}
+                              className={`w-1/2 max-w-[24px] min-w-[7px] rounded-t-lg relative shadow-xs ${
+                                d.outQty > 0
+                                  ? "bg-gradient-to-t from-amber-600 via-amber-500 to-yellow-400 shadow-amber-500/20"
+                                  : "bg-amber-200/70"
+                              }`}
+                            >
+                              {d.outQty > 0 && (
+                                <>
+                                  <div className="absolute top-0 inset-x-0 h-1 bg-amber-200/90 rounded-t-lg" />
+                                  <span className="opacity-0 group-hover:opacity-100 transition-opacity absolute -top-4 left-1/2 -translate-x-1/2 text-[9px] font-mono font-bold text-amber-700 bg-amber-50/95 border border-amber-200/70 px-1 rounded shadow-2xs pointer-events-none">
+                                    {d.outQty}
+                                  </span>
+                                </>
+                              )}
+                            </motion.div>
+                          )}
+                        </div>
+
+                        {/* X-Axis Date Label */}
+                        <span className={`text-[9.5px] sm:text-[10.5px] font-mono transition-colors mt-2 text-center truncate w-full relative z-10 ${
+                          isHovered ? "text-slate-900 font-extrabold" : "text-slate-500 font-medium"
+                        }`}>
+                          {d.dateLabel}
+                        </span>
+                      </div>
+                    );
+                  })}
+                </div>
+              )}
+
+              {/* MODE 2: FULL-WIDTH SMOOTH MONOTONE SPLINE AREA CHART */}
+              {chartStyle === "AREA" && (() => {
+                const width = 1000;
+                const height = 250;
+                const paddingLeft = 65;
+                const paddingRight = 35;
+                const paddingTop = 25;
+                const paddingBottom = 42;
+                const plotWidth = width - paddingLeft - paddingRight;
+                const plotHeight = height - paddingTop - paddingBottom;
+                const baselineY = paddingTop + plotHeight;
+                const stepX = chartData.length > 1 ? plotWidth / (chartData.length - 1) : 0;
+
+                const getPointX = (i: number) =>
+                  chartData.length === 1 ? paddingLeft + plotWidth / 2 : paddingLeft + i * stepX;
+
+                const inPoints = chartData.map((d, i) => ({
+                  x: getPointX(i),
+                  y: paddingTop + plotHeight * (1 - d.inQty / maxChartVal)
+                }));
+
+                const outPoints = chartData.map((d, i) => ({
+                  x: getPointX(i),
+                  y: paddingTop + plotHeight * (1 - d.outQty / maxChartVal)
+                }));
+
+                const inLinePath = createReportsMonotoneSpline(inPoints, false, baselineY, paddingTop);
+                const inAreaPath = createReportsMonotoneSpline(inPoints, true, baselineY, paddingTop);
+                const outLinePath = createReportsMonotoneSpline(outPoints, false, baselineY, paddingTop);
+                const outAreaPath = createReportsMonotoneSpline(outPoints, true, baselineY, paddingTop);
+
+                const hitWidth = chartData.length > 1 ? Math.max(30, stepX) : 80;
+
+                return (
+                  <div className="w-full relative h-64 sm:h-72">
+                    {/* Floating HUD Tooltip in Area Mode */}
+                    <AnimatePresence>
+                      {hoveredChartIdx !== null && chartData[hoveredChartIdx] && (
+                        <motion.div
+                          initial={{ opacity: 0, y: -6, scale: 0.95 }}
+                          animate={{ opacity: 1, y: 0, scale: 1 }}
+                          exit={{ opacity: 0, y: -6, scale: 0.95 }}
+                          transition={{ type: "spring", stiffness: 400, damping: 28 }}
+                          className="absolute top-2 right-4 z-30 pointer-events-none bg-slate-900/95 backdrop-blur-md text-white text-[11px] font-mono px-3 py-2 rounded-xl shadow-xl border border-slate-700/80 whitespace-nowrap flex items-center gap-3"
+                        >
+                          <span className="text-amber-300 font-bold">📅 {chartData[hoveredChartIdx].dateLabel}</span>
+                          <span className="text-emerald-300">Masuk: <strong>+{chartData[hoveredChartIdx].inQty.toLocaleString()}</strong></span>
+                          <span className="text-amber-300">Keluar: <strong>-{chartData[hoveredChartIdx].outQty.toLocaleString()}</strong></span>
+                        </motion.div>
+                      )}
+                    </AnimatePresence>
+
+                    <svg
+                      viewBox={`0 0 ${width} ${height}`}
+                      className="w-full h-full overflow-visible"
+                      preserveAspectRatio="none"
+                    >
+                      <defs>
+                        <linearGradient id="reportsInAreaGrad" x1="0" y1="0" x2="0" y2="1">
+                          <stop offset="0%" stopColor="#10b981" stopOpacity="0.42" />
+                          <stop offset="80%" stopColor="#14b8a6" stopOpacity="0.06" />
+                          <stop offset="100%" stopColor="#14b8a6" stopOpacity="0" />
+                        </linearGradient>
+                        <linearGradient id="reportsOutAreaGrad" x1="0" y1="0" x2="0" y2="1">
+                          <stop offset="0%" stopColor="#f59e0b" stopOpacity="0.38" />
+                          <stop offset="80%" stopColor="#fb923c" stopOpacity="0.06" />
+                          <stop offset="100%" stopColor="#fb923c" stopOpacity="0" />
+                        </linearGradient>
+                      </defs>
+
+                      {/* Horizontal Reference Grid Lines */}
+                      {[0, 0.5, 1].map((pct, gIdx) => {
+                        const y = paddingTop + plotHeight * (1 - pct);
+                        return (
+                          <g key={`rep-grid-${gIdx}`}>
+                            <line
+                              x1={paddingLeft}
+                              y1={y}
+                              x2={width - paddingRight}
+                              y2={y}
+                              stroke={pct === 0 ? "#cbd5e1" : "#e2e8f0"}
+                              strokeDasharray={pct === 0 ? "none" : "4 4"}
+                              strokeWidth={pct === 0 ? "1.5" : "1"}
+                            />
+                            <text
+                              x={paddingLeft - 10}
+                              y={y + 3.5}
+                              textAnchor="end"
+                              className="text-[10px] font-mono fill-slate-400"
+                            >
+                              {Math.round(maxChartVal * pct).toLocaleString()} Qty
+                            </text>
+                          </g>
+                        );
+                      })}
+
+                      {/* Active Hover Guide Line */}
+                      {hoveredChartIdx !== null && (
+                        <motion.line
+                          animate={{ x1: getPointX(hoveredChartIdx), x2: getPointX(hoveredChartIdx) }}
+                          transition={{ type: "spring", stiffness: 380, damping: 32 }}
+                          y1={paddingTop}
+                          y2={baselineY}
+                          stroke="#64748b"
+                          strokeWidth="1.5"
+                          strokeDasharray="3 3"
+                        />
+                      )}
+
+                      {/* Inbound Area & Curve */}
+                      {(chartMetric === "BOTH" || chartMetric === "IN") && (
+                        <g opacity={legendFocus === "OUT" ? 0.2 : 1} className="transition-opacity duration-200">
+                          {chartData.length > 1 && (
+                            <>
+                              <motion.path
+                                key={`rep-in-area-${chartMetric}-${chartData.length}`}
+                                d={inAreaPath}
+                                fill="url(#reportsInAreaGrad)"
+                                initial={{ opacity: 0 }}
+                                animate={{ opacity: 1 }}
+                                transition={{ duration: 0.5 }}
+                              />
+                              <motion.path
+                                key={`rep-in-line-${chartMetric}-${chartData.length}`}
+                                d={inLinePath}
+                                fill="none"
+                                stroke="#059669"
+                                strokeWidth="3.2"
+                                strokeLinecap="round"
+                                strokeLinejoin="round"
+                                initial={{ pathLength: 0 }}
+                                animate={{ pathLength: 1 }}
+                                transition={{ duration: 0.85, ease: "easeOut" }}
+                              />
+                            </>
+                          )}
+                          {inPoints.map((pt, pIdx) => {
+                            const isActive = hoveredChartIdx === pIdx;
+                            return (
+                              <g key={`rep-in-pt-${pIdx}`}>
+                                {isActive && (
+                                  <motion.circle
+                                    cx={pt.x}
+                                    cy={pt.y}
+                                    fill="#10b981"
+                                    initial={{ r: 5, opacity: 0.55 }}
+                                    animate={{ r: [5, 14], opacity: [0.5, 0] }}
+                                    transition={{ repeat: Infinity, duration: 1.5, ease: "easeOut" }}
+                                  />
+                                )}
+                                <motion.circle
+                                  cx={pt.x}
+                                  cy={pt.y}
+                                  r={isActive ? 6 : 4}
+                                  className="fill-white stroke-emerald-600"
+                                  strokeWidth={isActive ? 3.5 : 2}
+                                  transition={{ type: "spring", stiffness: 400, damping: 25 }}
+                                />
+                              </g>
+                            );
+                          })}
+                        </g>
+                      )}
+
+                      {/* Outbound Area & Curve */}
+                      {(chartMetric === "BOTH" || chartMetric === "OUT") && (
+                        <g opacity={legendFocus === "IN" ? 0.2 : 1} className="transition-opacity duration-200">
+                          {chartData.length > 1 && (
+                            <>
+                              <motion.path
+                                key={`rep-out-area-${chartMetric}-${chartData.length}`}
+                                d={outAreaPath}
+                                fill="url(#reportsOutAreaGrad)"
+                                initial={{ opacity: 0 }}
+                                animate={{ opacity: 1 }}
+                                transition={{ duration: 0.5 }}
+                              />
+                              <motion.path
+                                key={`rep-out-line-${chartMetric}-${chartData.length}`}
+                                d={outLinePath}
+                                fill="none"
+                                stroke="#d97706"
+                                strokeWidth="3.2"
+                                strokeLinecap="round"
+                                strokeLinejoin="round"
+                                initial={{ pathLength: 0 }}
+                                animate={{ pathLength: 1 }}
+                                transition={{ duration: 0.85, ease: "easeOut", delay: 0.08 }}
+                              />
+                            </>
+                          )}
+                          {outPoints.map((pt, pIdx) => {
+                            const isActive = hoveredChartIdx === pIdx;
+                            return (
+                              <g key={`rep-out-pt-${pIdx}`}>
+                                {isActive && (
+                                  <motion.circle
+                                    cx={pt.x}
+                                    cy={pt.y}
+                                    fill="#f59e0b"
+                                    initial={{ r: 5, opacity: 0.55 }}
+                                    animate={{ r: [5, 14], opacity: [0.5, 0] }}
+                                    transition={{ repeat: Infinity, duration: 1.5, ease: "easeOut", delay: 0.2 }}
+                                  />
+                                )}
+                                <motion.circle
+                                  cx={pt.x}
+                                  cy={pt.y}
+                                  r={isActive ? 6 : 4}
+                                  className="fill-white stroke-amber-600"
+                                  strokeWidth={isActive ? 3.5 : 2}
+                                  transition={{ type: "spring", stiffness: 400, damping: 25 }}
+                                />
+                              </g>
+                            );
+                          })}
+                        </g>
+                      )}
+
+                      {/* Interactive Hit Zones */}
+                      {chartData.map((d, idx) => (
+                        <rect
+                          key={`rep-hit-${idx}`}
+                          x={getPointX(idx) - hitWidth / 2}
+                          y={paddingTop - 8}
+                          width={hitWidth}
+                          height={plotHeight + 35}
+                          fill="transparent"
+                          className="cursor-pointer"
+                          onMouseEnter={() => setHoveredChartIdx(idx)}
+                          onMouseLeave={() => setHoveredChartIdx(null)}
+                        />
+                      ))}
+
+                      {/* X-Axis Labels */}
+                      {chartData.map((d, i) => (
+                        <text
+                          key={`rep-xlab-${i}`}
+                          x={getPointX(i)}
+                          y={height - 10}
+                          textAnchor="middle"
+                          className={`text-[10px] font-mono cursor-pointer transition-all ${
+                            hoveredChartIdx === i ? "fill-slate-900 font-extrabold" : "fill-slate-500 font-medium"
+                          }`}
+                          onMouseEnter={() => setHoveredChartIdx(i)}
+                          onMouseLeave={() => setHoveredChartIdx(null)}
+                        >
+                          {d.dateLabel}
+                        </text>
+                      ))}
+                    </svg>
+                  </div>
+                );
+              })()}
+
+              {/* Interactive Focus Legend Footer */}
+              <div className="flex flex-wrap items-center justify-center gap-6 pt-4 text-xs font-mono border-t border-slate-100">
+                <button
+                  type="button"
+                  onMouseEnter={() => setLegendFocus("IN")}
+                  onMouseLeave={() => setLegendFocus("ALL")}
+                  onClick={() => setChartMetric(prev => prev === "IN" ? "BOTH" : "IN")}
+                  className={`flex items-center gap-2 cursor-pointer transition-opacity px-2.5 py-1 rounded-xl hover:bg-slate-50 ${
+                    legendFocus === "OUT" ? "opacity-30" : "opacity-100"
+                  }`}
+                  title="Arahkan mouse untuk menyorot, atau klik untuk memfilter Barang Masuk"
+                >
+                  <span className="w-3 h-3 rounded-full bg-gradient-to-tr from-emerald-600 to-teal-400 shadow-2xs shadow-emerald-500/50" />
+                  <span className="text-slate-800 font-bold">
+                    Barang Masuk (Inbound / QC) <span className="text-emerald-600">({chartSummary.totalIn.toLocaleString()})</span>
+                  </span>
+                </button>
+
+                <button
+                  type="button"
+                  onMouseEnter={() => setLegendFocus("OUT")}
+                  onMouseLeave={() => setLegendFocus("ALL")}
+                  onClick={() => setChartMetric(prev => prev === "OUT" ? "BOTH" : "OUT")}
+                  className={`flex items-center gap-2 cursor-pointer transition-opacity px-2.5 py-1 rounded-xl hover:bg-slate-50 ${
+                    legendFocus === "IN" ? "opacity-30" : "opacity-100"
+                  }`}
+                  title="Arahkan mouse untuk menyorot, atau klik untuk memfilter Barang Keluar"
+                >
+                  <span className="w-3 h-3 rounded-full bg-gradient-to-tr from-amber-600 to-yellow-400 shadow-2xs shadow-amber-500/50" />
+                  <span className="text-slate-800 font-bold">
+                    Barang Keluar (Outbound / Supply) <span className="text-amber-600">({chartSummary.totalOut.toLocaleString()})</span>
+                  </span>
+                </button>
+              </div>
+
             </div>
 
           </div>
