@@ -40,11 +40,13 @@ import {
   SlidersHorizontal,
   Loader2,
   CheckCircle,
-  X
+  X,
+  RotateCcw
 } from "lucide-react";
 import { 
   InboundReceiving, 
   OutboundDispatch, 
+  MaterialReturn,
   SparePart, 
   WarehouseLocation, 
   SPKWorkOrder, 
@@ -57,6 +59,7 @@ interface StockOnWarehouseViewProps {
   parts?: SparePart[];
   receivingList?: InboundReceiving[];
   dispatchList?: OutboundDispatch[];
+  materialReturns?: MaterialReturn[];
   locations?: WarehouseLocation[];
   spkList?: SPKWorkOrder[];
   vessels?: Vessel[];
@@ -69,6 +72,13 @@ interface StockOnWarehouseViewProps {
 // Clean and normalize strings for robust matching
 const cleanStr = (val: any): string => 
   (val || "").toString().trim().toLowerCase().replace(/\s+/g, " ");
+
+const isDamagedText = (text?: any): boolean => {
+  const s = (text || "").toString();
+  if (!s) return false;
+  if (/tidak\s+rusak/i.test(s)) return false;
+  return /\b(broken|rusak|afkir|scrap)\b/i.test(s);
+};
 
 const invalidPns = ["", "-", "--", "---", "none", "null", "undefined", "n/a", "na", "pn-generic", "generic", "0"];
 
@@ -95,6 +105,7 @@ export default function StockOnWarehouseView({
   parts = [],
   receivingList = [],
   dispatchList = [],
+  materialReturns = [],
   locations = [],
   spkList = [],
   vessels = [],
@@ -109,6 +120,7 @@ export default function StockOnWarehouseView({
   // Filtering states
   const [searchQuery, setSearchQuery] = useState<string>("");
   const [statusFilter, setStatusFilter] = useState<"all" | "available" | "partial" | "exhausted">("all");
+  const [sourceFilter, setSourceFilter] = useState<"all" | "RECEIVING" | "RETURN">("all");
   const [selectedVessel, setSelectedVessel] = useState<string>("all");
   const [selectedLocation, setSelectedLocation] = useState<string>("all");
   const [sortBy, setSortBy] = useState<"remaining_desc" | "remaining_asc" | "date_desc" | "date_asc" | "name_asc">("date_desc");
@@ -172,13 +184,17 @@ export default function StockOnWarehouseView({
     // Structure: Map<po_spk_key, PO_SPK_Group>
     const groupMap = new Map<string, {
       groupKey: string;
+      sourceType: "RECEIVING" | "RETURN";
       poNumber: string;
       spkNumber: string;
+      tug10Number?: string;
+      returnReason?: string;
       deliveryNote: string;
       vendorName: string;
       vesselName: string;
       receivedDate: string;
       receivingIds: string[];
+      returnIds: string[];
       rawReceivingDocs: InboundReceiving[];
       itemsMap: Map<string, {
         partKey: string;
@@ -219,6 +235,7 @@ export default function StockOnWarehouseView({
       if (!groupMap.has(key)) {
         groupMap.set(key, {
           groupKey: key,
+          sourceType: "RECEIVING",
           poNumber: poNum || spkNum || "PO-NON-REGISTERED",
           spkNumber: spkNum || "-",
           deliveryNote: rec.delivery_note_num || "-",
@@ -226,6 +243,7 @@ export default function StockOnWarehouseView({
           vesselName: rec.vessel_name || "-",
           receivedDate: rec.received_date || rec.created_at || "",
           receivingIds: [rec.id],
+          returnIds: [],
           rawReceivingDocs: [rec],
           itemsMap: new Map()
         });
@@ -279,7 +297,101 @@ export default function StockOnWarehouseView({
       });
     });
 
-    // Scan Dispatch List (Outbound) to deduct from matching PO / SPK groups
+    // Scan Material Returns (TUG 10 - Pengembalian Barang dari Kapal ke Gudang)
+    // Included starting from Submitted status; Draft, Rejected, and Broken/damaged items are excluded.
+    (materialReturns || []).forEach(ret => {
+      if (!ret) return;
+      const statusNorm = cleanStr(ret.status);
+      if (!statusNorm || statusNorm === "draft" || statusNorm === "rejected") return;
+      if (isDamagedText(ret.return_reason)) return;
+
+      const tug10Num = (ret.tug10_number || ret.return_number || "").trim();
+      const key = `tug10:${cleanStr(tug10Num || ret.id)}`;
+      const spkRaw = (ret.spk_number || "").trim();
+      const validSpk = spkRaw && cleanStr(spkRaw) !== "manual" && spkRaw !== "-" ? spkRaw : "-";
+      const dispRefRaw = (ret.dispatch_reference || "").trim();
+      const validDispRef = dispRefRaw && cleanStr(dispRefRaw) !== "manual" ? dispRefRaw : "-";
+
+      if (!groupMap.has(key)) {
+        groupMap.set(key, {
+          groupKey: key,
+          sourceType: "RETURN",
+          poNumber: tug10Num || "TUG10-NON-REGISTERED",
+          spkNumber: validSpk,
+          tug10Number: tug10Num,
+          returnReason: ret.return_reason || "",
+          deliveryNote: validDispRef,
+          vendorName: ret.vessel_name ? `Pengembalian (${ret.vessel_name})` : "Pengembalian Kapal",
+          vesselName: ret.vessel_name || "-",
+          receivedDate: ret.return_date || ret.created_at || "",
+          receivingIds: [],
+          returnIds: [ret.id],
+          rawReceivingDocs: [],
+          itemsMap: new Map()
+        });
+      } else {
+        const existing = groupMap.get(key)!;
+        if (!existing.returnIds.includes(ret.id)) {
+          existing.returnIds.push(ret.id);
+        }
+      }
+
+      const group = groupMap.get(key)!;
+
+      (ret.items || []).forEach(item => {
+        if (!item) return;
+        if (isDamagedText(item.condition) || isDamagedText(item.return_reason) || isDamagedText(item.notes)) return;
+
+        const qtyIn = Number(item.qty_returned ?? item.qty_returnable ?? item.requested_qty ?? (item as any).qty ?? 0);
+        if (qtyIn <= 0) return;
+
+        const partKey = getPartKey(item);
+        const matchedMaster = parts.find(p => getPartKey(p) === partKey);
+        const resolvedName = item.spare_part_name || item.part_name || matchedMaster?.part_name || "Suku Cadang";
+        const resolvedPn = item.part_number || matchedMaster?.part_number || "-";
+        const resolvedUnit = item.unit || matchedMaster?.unit || "PCS";
+        const resolvedLoc = getLocationName(
+          (item as any).location_id || matchedMaster?.location_id,
+          ret.warehouse_name || (matchedMaster as any)?.location_name
+        );
+
+        if (!group.itemsMap.has(partKey)) {
+          group.itemsMap.set(partKey, {
+            partKey,
+            sparePartId: item.spare_part_id || (item as any).id || matchedMaster?.id || `sp-${Math.random()}`,
+            partName: resolvedName,
+            partNumber: resolvedPn,
+            unit: resolvedUnit,
+            category: (item as any).category || matchedMaster?.category || "General Spares",
+            barcode: (item as any).barcode || matchedMaster?.barcode || "-",
+            locationId: (item as any).location_id || matchedMaster?.location_id || "loc-wh-merak",
+            locationName: resolvedLoc,
+            qtyReceived: qtyIn,
+            qtyDispatched: 0,
+            remainingStock: qtyIn,
+            matchedDispatches: []
+          });
+        } else {
+          const it = group.itemsMap.get(partKey)!;
+          it.qtyReceived += qtyIn;
+          it.remainingStock += qtyIn;
+        }
+      });
+
+      if (group.itemsMap.size === 0) {
+        groupMap.delete(key);
+      }
+    });
+
+    const returnNumberSet = new Set<string>();
+    groupMap.forEach(g => {
+      if (g.sourceType === "RETURN") {
+        if (g.poNumber) returnNumberSet.add(cleanStr(g.poNumber));
+        if (g.tug10Number) returnNumberSet.add(cleanStr(g.tug10Number));
+      }
+    });
+
+    // Scan Dispatch List (Outbound) to deduct from matching PO / SPK or TUG 10 groups
     (dispatchList || []).forEach(dsp => {
       if (!dsp || !dsp.items || dsp.items.length === 0) return;
 
@@ -304,33 +416,60 @@ export default function StockOnWarehouseView({
       if (m3 && m3[1]) dspRefs.add(cleanStr(m3[1]));
       const m4 = rawNotes.match(/SPK[:\s]+([A-Za-z0-9_.\/-]+)/i);
       if (m4 && m4[1]) dspRefs.add(cleanStr(m4[1]));
+      const mTug10 = rawNotes.match(/via\s+TUG\s*10\s*\[([^\]]+)\]/i);
+      if (mTug10 && mTug10[1]) dspRefs.add(cleanStr(mTug10[1]));
+
+      const isTug10Dispatch =
+        /via\s+TUG\s*10/i.test(rawNotes) ||
+        /\[TRANSFER\s+ANTAR\s+KAPAL\]/i.test(rawNotes) ||
+        Boolean(rawReqRef && returnNumberSet.has(rawReqRef)) ||
+        Boolean(mTug10 && mTug10[1]);
 
       const dspTUG8 = dsp.tug8_number || dsp.dispatch_number || `TUG8-${dsp.id}`;
       const dspDate = dsp.dispatch_date || dsp.created_at || "";
       const dspVessel = dsp.vessel_name || "-";
 
-      // If dispatch does NOT have any valid PO/SPK reference, do NOT match any group
+      // If dispatch does NOT have any valid reference, do NOT match any group
       if (dspRefs.size === 0) return;
 
       const refList = Array.from(dspRefs);
 
-      // Match target PO / SPK groups
+      // Match target PO / SPK or TUG 10 groups without cross-contaminating deductions
       groupMap.forEach(group => {
-        const grpSPK = cleanStr(group.spkNumber);
-        const grpPO = cleanStr(group.poNumber);
+        let isMatch = false;
 
-        const isMatch = refList.some(ref => {
-          if (!ref || ref.length < 2) return false;
-          if (grpPO && grpPO !== "po-non-registered") {
-            if (ref === grpPO) return true;
-            if (ref.length >= 4 && grpPO.length >= 4 && (ref.includes(grpPO) || grpPO.includes(ref))) return true;
-          }
-          if (grpSPK && grpSPK !== "-" && grpSPK !== "null") {
-            if (ref === grpSPK) return true;
-            if (ref.length >= 4 && grpSPK.length >= 4 && (ref.includes(grpSPK) || grpSPK.includes(ref))) return true;
-          }
-          return false;
-        });
+        if (isTug10Dispatch) {
+          if (group.sourceType !== "RETURN") return;
+          const grpRet = cleanStr(group.poNumber);
+          const grpTug10 = cleanStr(group.tug10Number);
+          isMatch = refList.some(ref => {
+            if (!ref || ref.length < 2) return false;
+            if (grpRet && grpRet !== "tug10-non-registered" && (ref === grpRet || (ref.length >= 4 && grpRet.length >= 4 && (ref.includes(grpRet) || grpRet.includes(ref))))) {
+              return true;
+            }
+            if (grpTug10 && (ref === grpTug10 || (ref.length >= 4 && grpTug10.length >= 4 && (ref.includes(grpTug10) || grpTug10.includes(ref))))) {
+              return true;
+            }
+            return false;
+          });
+        } else {
+          if (group.sourceType !== "RECEIVING") return;
+          const grpSPK = cleanStr(group.spkNumber);
+          const grpPO = cleanStr(group.poNumber);
+
+          isMatch = refList.some(ref => {
+            if (!ref || ref.length < 2) return false;
+            if (grpPO && grpPO !== "po-non-registered") {
+              if (ref === grpPO) return true;
+              if (ref.length >= 4 && grpPO.length >= 4 && (ref.includes(grpPO) || grpPO.includes(ref))) return true;
+            }
+            if (grpSPK && grpSPK !== "-" && grpSPK !== "null") {
+              if (ref === grpSPK) return true;
+              if (ref.length >= 4 && grpSPK.length >= 4 && (ref.includes(grpSPK) || grpSPK.includes(ref))) return true;
+            }
+            return false;
+          });
+        }
 
         if (isMatch) {
           const groupItems = Array.from(group.itemsMap.values());
@@ -419,16 +558,20 @@ export default function StockOnWarehouseView({
       });
     });
 
-    // Convert map to list and compute summary metrics for each PO / SPK
+    // Convert map to list and compute summary metrics for each PO / SPK / TUG 10 Return
     const result: Array<{
       groupKey: string;
+      sourceType: "RECEIVING" | "RETURN";
       poNumber: string;
       spkNumber: string;
+      tug10Number?: string;
+      returnReason?: string;
       deliveryNote: string;
       vendorName: string;
       vesselName: string;
       receivedDate: string;
       receivingIds: string[];
+      returnIds: string[];
       rawReceivingDocs: InboundReceiving[];
       totalReceived: number;
       totalDispatched: number;
@@ -498,13 +641,17 @@ export default function StockOnWarehouseView({
 
       result.push({
         groupKey: group.groupKey,
+        sourceType: group.sourceType,
         poNumber: group.poNumber,
         spkNumber: group.spkNumber,
+        tug10Number: group.tug10Number,
+        returnReason: group.returnReason,
         deliveryNote: group.deliveryNote,
         vendorName: group.vendorName,
         vesselName: group.vesselName,
         receivedDate: group.receivedDate,
         receivingIds: group.receivingIds,
+        returnIds: group.returnIds,
         rawReceivingDocs: group.rawReceivingDocs,
         totalReceived: totalIn,
         totalDispatched: totalOut,
@@ -517,7 +664,7 @@ export default function StockOnWarehouseView({
     });
 
     return result;
-  }, [receivingList, dispatchList, parts, locations]);
+  }, [receivingList, dispatchList, materialReturns, parts, locations]);
 
   // 2. Compute Consolidated Spare Part Stock on Hand (Tab 2)
   const consolidatedPartBalances = useMemo(() => {
@@ -652,6 +799,11 @@ export default function StockOnWarehouseView({
       list = list.filter(p => cleanStr(p.vesselName).includes(cleanStr(selectedVessel)));
     }
 
+    // Source Type Filter
+    if (sourceFilter !== "all") {
+      list = list.filter(p => p.sourceType === sourceFilter);
+    }
+
     // Location Filter
     if (selectedLocation !== "all") {
       list = list.filter(p => p.items.some(i => cleanStr(i.locationName).includes(cleanStr(selectedLocation))));
@@ -661,12 +813,15 @@ export default function StockOnWarehouseView({
     if (searchQuery.trim()) {
       const q = cleanStr(searchQuery);
       list = list.filter(p => {
+        const sourceKeywords = p.sourceType === "RETURN" ? "pengembalian barang tug 10 retur" : "receiving penerimaan";
         return (
           cleanStr(p.poNumber).includes(q) ||
           cleanStr(p.spkNumber).includes(q) ||
+          cleanStr(p.tug10Number).includes(q) ||
           cleanStr(p.vendorName).includes(q) ||
           cleanStr(p.vesselName).includes(q) ||
           cleanStr(p.deliveryNote).includes(q) ||
+          sourceKeywords.includes(q) ||
           p.items.some(i => cleanStr(i.partName).includes(q) || cleanStr(i.partNumber).includes(q) || cleanStr(i.barcode).includes(q))
         );
       });
@@ -683,7 +838,7 @@ export default function StockOnWarehouseView({
     });
 
     return list;
-  }, [poSPKBalances, showArchivedDispatched, statusFilter, selectedVessel, selectedLocation, searchQuery, sortBy]);
+  }, [poSPKBalances, showArchivedDispatched, statusFilter, sourceFilter, selectedVessel, selectedLocation, searchQuery, sortBy]);
 
   // 5. Filtering and Sorting for Tab 2 (Consolidated Suku Cadang)
   const filteredPartBalances = useMemo(() => {
@@ -1016,6 +1171,21 @@ export default function StockOnWarehouseView({
               )}
             </div>
 
+            {/* Source Filter (Receiving vs Pengembalian Barang) */}
+            {activeTab === "pospk" && (
+              <div className="w-full md:w-48">
+                <select
+                  value={sourceFilter}
+                  onChange={(e) => setSourceFilter(e.target.value as any)}
+                  className="w-full py-2 px-3 bg-slate-50 border border-slate-200 rounded-xl text-xs text-slate-700 font-semibold focus:outline-none focus:ring-2 focus:ring-blue-100 cursor-pointer"
+                >
+                  <option value="all">Semua Sumber Masuk</option>
+                  <option value="RECEIVING">Receiving (Inbound)</option>
+                  <option value="RETURN">Pengembalian Barang (TUG 10)</option>
+                </select>
+              </div>
+            )}
+
             {/* Vessel Filter */}
             <div className="w-full md:w-52">
               <select
@@ -1157,9 +1327,15 @@ export default function StockOnWarehouseView({
 
                         <div>
                           <div className="flex items-center gap-2 flex-wrap">
-                            <span className="font-mono text-sm font-black text-slate-900 tracking-tight bg-blue-50 text-blue-900 px-2 py-0.5 rounded-md border border-blue-200">
-                              PO: {group.poNumber}
-                            </span>
+                            {group.sourceType === "RETURN" ? (
+                              <span className="font-mono text-sm font-black tracking-tight bg-purple-50 text-purple-900 px-2 py-0.5 rounded-md border border-purple-200">
+                                TUG 10: {group.poNumber}
+                              </span>
+                            ) : (
+                              <span className="font-mono text-sm font-black tracking-tight bg-blue-50 text-blue-900 px-2 py-0.5 rounded-md border border-blue-200">
+                                PO: {group.poNumber}
+                              </span>
+                            )}
                             
                             {group.spkNumber && group.spkNumber !== "-" && (
                               <span className="font-mono text-xs font-bold bg-indigo-50 text-indigo-800 px-2 py-0.5 rounded-md border border-indigo-200">
@@ -1185,20 +1361,39 @@ export default function StockOnWarehouseView({
                             )}
                           </div>
 
-                          <div className="flex items-center gap-4 mt-2 text-xs text-slate-500 flex-wrap">
+                          <div className="flex items-center gap-3 mt-2 text-xs text-slate-500 flex-wrap">
                             <div className="flex items-center gap-1.5 font-medium">
                               <Truck className="w-3.5 h-3.5 text-slate-400" />
-                              <span>Vendor: <strong className="text-slate-700">{group.vendorName}</strong></span>
+                              <span>
+                                {group.sourceType === "RETURN" ? "Sumber: " : "Vendor: "}
+                                <strong className="text-slate-700">{group.sourceType === "RETURN" ? "Retur Armada (TUG 10)" : group.vendorName}</strong>
+                              </span>
                             </div>
                             <span>&bull;</span>
                             <div className="flex items-center gap-1.5 font-medium">
                               <Ship className="w-3.5 h-3.5 text-slate-400" />
-                              <span>Kapal Target: <strong className="text-slate-700">{group.vesselName}</strong></span>
+                              <span>
+                                {group.sourceType === "RETURN" ? "Kapal Asal: " : "Kapal Target: "}
+                                <strong className="text-slate-700">{group.vesselName}</strong>
+                              </span>
                             </div>
                             <span>&bull;</span>
-                            <div className="flex items-center gap-1.5 font-medium font-mono">
-                              <Calendar className="w-3.5 h-3.5 text-slate-400" />
-                              <span>Tgl Masuk: {group.receivedDate ? group.receivedDate.split("T")[0] : "-"}</span>
+                            <div className="flex items-center gap-2 font-medium font-mono flex-wrap">
+                              <div className="flex items-center gap-1.5">
+                                <Calendar className="w-3.5 h-3.5 text-slate-400" />
+                                <span>Tgl Masuk: {group.receivedDate ? group.receivedDate.split("T")[0] : "-"}</span>
+                              </div>
+                              {group.sourceType === "RETURN" ? (
+                                <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md text-[10px] font-bold font-mono bg-purple-50 text-purple-700 border border-purple-200">
+                                  <RotateCcw className="w-3 h-3 text-purple-600" />
+                                  <span>Pengembalian Barang</span>
+                                </span>
+                              ) : (
+                                <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md text-[10px] font-bold font-mono bg-sky-50 text-sky-700 border border-sky-200">
+                                  <ArrowDownLeft className="w-3 h-3 text-sky-600" />
+                                  <span>Receiving</span>
+                                </span>
+                              )}
                             </div>
                           </div>
                         </div>
@@ -1292,8 +1487,8 @@ export default function StockOnWarehouseView({
                               <Boxes className="w-4 h-4 text-blue-600" />
                               <span>
                                 {isShowAllForThisGroup 
-                                  ? `Seluruh Suku Cadang pada PO: ${group.poNumber} (${displayedItems.length} Item)` 
-                                  : `Daftar Suku Cadang Tersedia di Gudang pada PO: ${group.poNumber} (${displayedItems.length} Item Fisik)`
+                                  ? `Seluruh Suku Cadang pada ${group.sourceType === "RETURN" ? "TUG 10" : "PO"}: ${group.poNumber} (${displayedItems.length} Item)` 
+                                  : `Daftar Suku Cadang Tersedia di Gudang pada ${group.sourceType === "RETURN" ? "TUG 10" : "PO"}: ${group.poNumber} (${displayedItems.length} Item Fisik)`
                                 }
                               </span>
                             </div>
@@ -1468,9 +1663,18 @@ export default function StockOnWarehouseView({
                           <div className="mt-3 p-3 bg-white rounded-xl border border-slate-200 flex flex-col sm:flex-row items-center justify-between gap-3 text-xs">
                             <div className="flex items-center gap-2 text-slate-500">
                               <Clock className="w-3.5 h-3.5 text-slate-400" />
-                              <span>
-                                Dokumen Sumber Inbound: <strong className="text-slate-700">{group.receivingIds.length} Penerimaan</strong> &bull; Surat Jalan: <span className="font-mono text-slate-700">{group.deliveryNote}</span>
-                              </span>
+                              {group.sourceType === "RETURN" ? (
+                                <span>
+                                  Dokumen Sumber: <strong className="text-purple-700">Pengembalian Barang (TUG 10)</strong> &bull; Alasan: <span className="font-mono text-slate-700">{group.returnReason || "-"}</span>
+                                  {group.deliveryNote && group.deliveryNote !== "-" && (
+                                    <> &bull; Ref TUG 8 Asal: <span className="font-mono text-slate-700">{group.deliveryNote}</span></>
+                                  )}
+                                </span>
+                              ) : (
+                                <span>
+                                  Dokumen Sumber Inbound: <strong className="text-slate-700">{group.receivingIds.length} Penerimaan</strong> &bull; Surat Jalan: <span className="font-mono text-slate-700">{group.deliveryNote}</span>
+                                </span>
+                              )}
                             </div>
 
                             <div className="flex items-center gap-2">
@@ -1864,11 +2068,11 @@ export default function StockOnWarehouseView({
                           <div className="bg-slate-100 border-b border-slate-800 px-3.5 py-1.5 flex flex-wrap items-center justify-between gap-2 text-xs font-mono text-slate-900">
                             <div className="flex items-center gap-2">
                               <span className="font-extrabold text-blue-900">
-                                PO/SPK: {group.spkNumber}
+                                {group.sourceType === "RETURN" ? `TUG 10: ${group.poNumber}` : `PO/SPK: ${group.spkNumber !== "-" ? group.spkNumber : group.poNumber}`}
                               </span>
                               <span className="text-slate-400">•</span>
                               <span className="text-slate-700 font-medium truncate max-w-xs">
-                                Vendor: {group.vendorName}
+                                {group.sourceType === "RETURN" ? `Sumber: Pengembalian Barang` : `Vendor: ${group.vendorName}`}
                               </span>
                               <span className="text-slate-400">•</span>
                               <span className="text-indigo-900 font-bold">
@@ -1876,7 +2080,7 @@ export default function StockOnWarehouseView({
                               </span>
                             </div>
                             <div className="flex items-center gap-3 text-[10.5px]">
-                              <span>Tgl Masuk: <strong>{group.receivedDate}</strong></span>
+                              <span>Tgl Masuk: <strong>{group.receivedDate}</strong> ({group.sourceType === "RETURN" ? "Pengembalian Barang" : "Receiving"})</span>
                               <span className="px-2 py-0.5 rounded font-black text-[10px] bg-emerald-100 text-emerald-800 border border-emerald-300">
                                 Sisa Gudang: {group.totalRemaining} Unit
                               </span>
